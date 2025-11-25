@@ -1140,7 +1140,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                   <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--canalco-neutral-900))]">
                     Firmas
                   </h3>
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     {/* Solicitado por - SIEMPRE se muestra */}
                     <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
                       <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -1148,9 +1148,6 @@ const RevisarRequisicionesPage: React.FC = () => {
                       </p>
                       <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                         {selectedRequisition.creator.nombre}
-                      </p>
-                      <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
                       </p>
                     </div>
 
@@ -1167,11 +1164,6 @@ const RevisarRequisicionesPage: React.FC = () => {
                             (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                           )?.user.nombre}
                         </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                          )?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
                       </div>
                     )}
 
@@ -1183,9 +1175,6 @@ const RevisarRequisicionesPage: React.FC = () => {
                         </p>
                         <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                           {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
                         </p>
                       </div>
                     )}
@@ -1202,11 +1191,6 @@ const RevisarRequisicionesPage: React.FC = () => {
                           {selectedRequisition.logs.find(
                             (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                           )?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                          )?.user.role?.nombreRol || 'Sin rol'}
                         </p>
                       </div>
                     )}

@@ -31,6 +31,10 @@ export interface User {
   userId: number;
   nombre: string;
   email: string;
+  role?: {
+    roleId: number;
+    nombreRol: string;
+  };
 }
 
 export interface RequisitionStatus {

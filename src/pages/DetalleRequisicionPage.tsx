@@ -268,7 +268,7 @@ export default function DetalleRequisicionPage() {
             <CardTitle>Firmas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {/* Solicitado por - SIEMPRE se muestra */}
               <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
                 <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -276,9 +276,6 @@ export default function DetalleRequisicionPage() {
                 </p>
                 <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                   {requisition.creator.nombre}
-                </p>
-                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                  {requisition.creator.role?.nombreRol || 'Sin rol'}
                 </p>
               </div>
 
@@ -295,11 +292,6 @@ export default function DetalleRequisicionPage() {
                       (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                     )?.user.nombre}
                   </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                    )?.user.role?.nombreRol || 'Sin rol'}
-                  </p>
                 </div>
               )}
 
@@ -311,9 +303,6 @@ export default function DetalleRequisicionPage() {
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                     {requisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}
@@ -330,11 +319,6 @@ export default function DetalleRequisicionPage() {
                     {requisition.logs.find(
                       (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                     )?.user.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                    )?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}
