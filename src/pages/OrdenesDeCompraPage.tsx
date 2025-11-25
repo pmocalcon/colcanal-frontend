@@ -311,7 +311,6 @@ export default function OrdenesDeCompraPage() {
             <StatusDashboard
               pendingByStatus={Object.values(statusCounts)}
               overdueCount={overdueCount}
-              title="Órdenes de Compra Pendientes"
             />
           );
         })()}

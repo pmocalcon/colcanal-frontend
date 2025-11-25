@@ -354,7 +354,6 @@ export default function CotizacionesPage() {
             <StatusDashboard
               pendingByStatus={Object.values(statusCounts)}
               overdueCount={overdueCount}
-              title="Requisiciones Pendientes de Cotización"
             />
           );
         })()}

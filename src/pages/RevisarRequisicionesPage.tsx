@@ -516,7 +516,6 @@ const RevisarRequisicionesPage: React.FC = () => {
             <StatusDashboard
               pendingByStatus={Object.values(statusCounts)}
               overdueCount={overdueCount}
-              title="Requisiciones Pendientes de Atención"
             />
           );
         })()}

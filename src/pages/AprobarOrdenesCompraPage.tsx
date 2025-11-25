@@ -420,7 +420,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
             <StatusDashboard
               pendingByStatus={statusCounts}
               overdueCount={overdueCount}
-              title="Órdenes de Compra Pendientes de Aprobación"
             />
           );
         })()}

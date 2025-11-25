@@ -272,7 +272,6 @@ export default function RecepcionesPage() {
             <StatusDashboard
               pendingByStatus={Object.values(statusCounts)}
               overdueCount={overdueCount}
-              title="Recepciones Pendientes"
             />
           );
         })()}

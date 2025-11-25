@@ -325,7 +325,6 @@ const AutorizarRequisicionesPage: React.FC = () => {
             <StatusDashboard
               pendingByStatus={statusCounts}
               overdueCount={overdueCount}
-              title="Requisiciones Pendientes de Autorización"
             />
           );
         })()}

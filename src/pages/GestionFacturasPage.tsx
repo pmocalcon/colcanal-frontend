@@ -16,6 +16,7 @@ import {
   getPurchaseOrdersForInvoicing,
   type PurchaseOrderForInvoicing,
 } from '@/services/invoices.service';
+import { StatusDashboard } from '@/components/ui/status-dashboard';
 
 const GestionFacturasPage: React.FC = () => {
   const navigate = useNavigate();
@@ -134,6 +135,14 @@ const GestionFacturasPage: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Status Dashboard */}
+        <StatusDashboard
+          totalPending={purchaseOrders.filter(
+            po => po.invoiceStatus === 'sin_factura' || po.invoiceStatus === 'facturacion_parcial'
+          ).length}
+          overdueCount={0}
+        />
+
         {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
