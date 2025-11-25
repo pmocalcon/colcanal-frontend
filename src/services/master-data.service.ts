@@ -12,9 +12,17 @@ export interface Project {
   name: string;
 }
 
+export interface MaterialCategory {
+  categoryId: number;
+  name: string;
+  description?: string;
+}
+
 export interface MaterialGroup {
   groupId: number;
   name: string;
+  categoryId: number;
+  category: MaterialCategory;
 }
 
 export interface Material {
@@ -69,18 +77,28 @@ export const masterDataService = {
   },
 
   /**
-   * Get all materials
+   * Get material categories
    */
-  async getMaterials(): Promise<Material[]> {
-    const response = await api.get<{ data: Material[]; total: number }>('/purchases/master-data/materials');
+  async getMaterialCategories(): Promise<MaterialCategory[]> {
+    const response = await api.get<{ data: MaterialCategory[]; total: number }>('/purchases/master-data/material-categories');
     return response.data.data;
   },
 
   /**
-   * Get all material groups
+   * Get material groups (optionally filtered by category)
    */
-  async getMaterialGroups(): Promise<MaterialGroup[]> {
-    const response = await api.get<{ data: MaterialGroup[]; total: number }>('/purchases/master-data/material-groups');
+  async getMaterialGroups(categoryId?: number): Promise<MaterialGroup[]> {
+    const params = categoryId ? { categoryId } : {};
+    const response = await api.get<{ data: MaterialGroup[]; total: number }>('/purchases/master-data/material-groups', { params });
+    return response.data.data;
+  },
+
+  /**
+   * Get materials (optionally filtered by group)
+   */
+  async getMaterials(groupId?: number): Promise<Material[]> {
+    const params = groupId ? { groupId } : {};
+    const response = await api.get<{ data: Material[]; total: number }>('/purchases/master-data/materials', { params });
     return response.data.data;
   },
 

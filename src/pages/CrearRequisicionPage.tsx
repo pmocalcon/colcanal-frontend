@@ -7,6 +7,8 @@ import type {
   Company,
   Project,
   Material,
+  MaterialCategory,
+  MaterialGroup,
   OperationCenter,
   ProjectCode,
 } from '@/services/master-data.service';
@@ -43,6 +45,8 @@ export default function CrearRequisicionPage() {
   // Master data state
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [categories, setCategories] = useState<MaterialCategory[]>([]);
+  const [materialGroups, setMaterialGroups] = useState<MaterialGroup[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [operationCenters, setOperationCenters] = useState<OperationCenter[]>([]);
   const [projectCodes, setProjectCodes] = useState<ProjectCode[]>([]);
@@ -62,7 +66,9 @@ export default function CrearRequisicionPage() {
   const [error, setError] = useState<string | null>(null);
   const [createdRequisitionNumber, setCreatedRequisitionNumber] = useState<string | null>(null);
 
-  // Material search state
+  // Material filter state
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [materialSearch, setMaterialSearch] = useState('');
 
   // Load master data on mount
@@ -74,15 +80,14 @@ export default function CrearRequisicionPage() {
     try {
       setLoading(true);
       setError(null); // Clear any previous errors
-      const [companiesData, materialsData] = await Promise.all([
+      const [companiesData, categoriesData] = await Promise.all([
         masterDataService.getCompanies(),
-        masterDataService.getMaterials(),
+        masterDataService.getMaterialCategories(),
       ]);
       console.log('✅ Companies loaded:', companiesData?.length || 0);
-      console.log('✅ Materials loaded:', materialsData?.length || 0);
-      console.log('📦 First material sample:', materialsData?.[0]);
+      console.log('✅ Categories loaded:', categoriesData?.length || 0);
       setCompanies(Array.isArray(companiesData) ? companiesData : []);
-      setMaterials(Array.isArray(materialsData) ? materialsData : []);
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
     } catch (err: any) {
       console.error('❌ Error loading master data:', err);
       console.error('Error details:', err.response?.data || err.message);
@@ -92,7 +97,7 @@ export default function CrearRequisicionPage() {
       setError(errorMessage);
       // Ensure arrays even on error
       setCompanies([]);
-      setMaterials([]);
+      setCategories([]);
     } finally {
       setLoading(false);
     }
@@ -119,6 +124,30 @@ export default function CrearRequisicionPage() {
       loadProjectCodes();
     }
   }, [projectId]);
+
+  // Load material groups when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      loadMaterialGroups(selectedCategoryId);
+    } else {
+      setMaterialGroups([]);
+      setSelectedGroupId(null);
+      setMaterials([]);
+    }
+  }, [selectedCategoryId]);
+
+  // Load materials when group changes
+  useEffect(() => {
+    if (selectedGroupId) {
+      loadMaterials(selectedGroupId);
+    } else if (!selectedCategoryId) {
+      // If no category and no group, load all materials
+      loadMaterials();
+    } else {
+      // If category is selected but no group, clear materials
+      setMaterials([]);
+    }
+  }, [selectedGroupId, selectedCategoryId]);
 
   const loadProjects = async () => {
     if (!companyId) return;
@@ -156,6 +185,26 @@ export default function CrearRequisicionPage() {
     } catch (err) {
       console.error('Error loading project codes:', err);
       setProjectCodes([]);
+    }
+  };
+
+  const loadMaterialGroups = async (categoryId?: number) => {
+    try {
+      const groupsData = await masterDataService.getMaterialGroups(categoryId);
+      setMaterialGroups(Array.isArray(groupsData) ? groupsData : []);
+    } catch (err) {
+      console.error('Error loading material groups:', err);
+      setMaterialGroups([]);
+    }
+  };
+
+  const loadMaterials = async (groupId?: number) => {
+    try {
+      const materialsData = await masterDataService.getMaterials(groupId);
+      setMaterials(Array.isArray(materialsData) ? materialsData : []);
+    } catch (err) {
+      console.error('Error loading materials:', err);
+      setMaterials([]);
     }
   };
 
@@ -576,12 +625,69 @@ export default function CrearRequisicionPage() {
                 {/* Material selector with search */}
                 <div className="mb-4">
                   <Label htmlFor="material-select">Seleccionar Elemento</Label>
+
+                  {/* Filtros de Categoría y Grupo */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3 mt-2">
+                    {/* Filtro de Categoría */}
+                    <div>
+                      <Label htmlFor="category-select" className="text-xs">
+                        Categoría (opcional)
+                      </Label>
+                      <Select
+                        value={selectedCategoryId?.toString() || ''}
+                        onValueChange={(value) => {
+                          setSelectedCategoryId(value ? parseInt(value) : null);
+                          setSelectedGroupId(null); // Reset group when category changes
+                        }}
+                      >
+                        <SelectTrigger id="category-select" className="h-9">
+                          <SelectValue placeholder="Todas las categorías" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Todas las categorías</SelectItem>
+                          {categories.map((category) => (
+                            <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Filtro de Grupo */}
+                    <div>
+                      <Label htmlFor="group-select" className="text-xs">
+                        Grupo (opcional)
+                      </Label>
+                      <Select
+                        value={selectedGroupId?.toString() || ''}
+                        onValueChange={(value) => setSelectedGroupId(value ? parseInt(value) : null)}
+                        disabled={selectedCategoryId === null && materialGroups.length === 0}
+                      >
+                        <SelectTrigger id="group-select" className="h-9">
+                          <SelectValue placeholder={selectedCategoryId ? "Seleccione un grupo" : "Seleccione categoría primero"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Todos los grupos</SelectItem>
+                          {materialGroups.map((group) => (
+                            <SelectItem key={group.groupId} value={group.groupId.toString()}>
+                              {group.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
+                    <Label htmlFor="material-search-input" className="text-xs">
+                      Buscar por código o descripción
+                    </Label>
                     <Input
                       id="material-search-input"
                       value={materialSearch}
                       onChange={(e) => setMaterialSearch(e.target.value)}
-                      placeholder="Escriba para buscar por código, descripción o grupo..."
+                      placeholder="Escriba para buscar..."
                       className="w-full"
                     />
                     {materialSearch && (
@@ -624,7 +730,12 @@ export default function CrearRequisicionPage() {
                     )}
                     {!materialSearch && materials.length > 0 && (
                       <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        Escriba en el campo de búsqueda para ver los elementos disponibles ({materials.length} elementos)
+                        Escriba en el campo de búsqueda para ver los elementos disponibles ({materials.length} elemento{materials.length !== 1 ? 's' : ''})
+                      </p>
+                    )}
+                    {!materialSearch && materials.length === 0 && selectedCategoryId && !selectedGroupId && (
+                      <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Seleccione un grupo para filtrar los materiales
                       </p>
                     )}
                   </div>
