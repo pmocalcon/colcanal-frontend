@@ -80,14 +80,26 @@ export default function CrearRequisicionPage() {
     try {
       setLoading(true);
       setError(null); // Clear any previous errors
-      const [companiesData, categoriesData] = await Promise.all([
-        masterDataService.getCompanies(),
-        masterDataService.getMaterialCategories(),
-      ]);
+
+      // Load companies (required)
+      const companiesData = await masterDataService.getCompanies();
       console.log('✅ Companies loaded:', companiesData?.length || 0);
-      console.log('✅ Categories loaded:', categoriesData?.length || 0);
       setCompanies(Array.isArray(companiesData) ? companiesData : []);
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+
+      // Try to load categories (optional - backend may not have this endpoint yet)
+      try {
+        const categoriesData = await masterDataService.getMaterialCategories();
+        console.log('✅ Categories loaded:', categoriesData?.length || 0);
+        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      } catch (catErr: any) {
+        // If categories endpoint doesn't exist (404), just continue without categories
+        if (catErr.response?.status === 404) {
+          console.log('⚠️ Categories endpoint not available yet - continuing without category filters');
+          setCategories([]);
+        } else {
+          throw catErr; // Re-throw other errors
+        }
+      }
     } catch (err: any) {
       console.error('❌ Error loading master data:', err);
       console.error('Error details:', err.response?.data || err.message);
@@ -634,9 +646,9 @@ export default function CrearRequisicionPage() {
                         Categoría (opcional)
                       </Label>
                       <Select
-                        value={selectedCategoryId?.toString() || ''}
+                        value={selectedCategoryId?.toString() || 'all'}
                         onValueChange={(value) => {
-                          setSelectedCategoryId(value ? parseInt(value) : null);
+                          setSelectedCategoryId(value === 'all' ? null : parseInt(value));
                           setSelectedGroupId(null); // Reset group when category changes
                         }}
                       >
@@ -644,7 +656,7 @@ export default function CrearRequisicionPage() {
                           <SelectValue placeholder="Todas las categorías" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Todas las categorías</SelectItem>
+                          <SelectItem value="all">Todas las categorías</SelectItem>
                           {categories.map((category) => (
                             <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
                               {category.name}
@@ -660,15 +672,15 @@ export default function CrearRequisicionPage() {
                         Grupo (opcional)
                       </Label>
                       <Select
-                        value={selectedGroupId?.toString() || ''}
-                        onValueChange={(value) => setSelectedGroupId(value ? parseInt(value) : null)}
+                        value={selectedGroupId?.toString() || 'all'}
+                        onValueChange={(value) => setSelectedGroupId(value === 'all' ? null : parseInt(value))}
                         disabled={selectedCategoryId === null && materialGroups.length === 0}
                       >
                         <SelectTrigger id="group-select" className="h-9">
                           <SelectValue placeholder={selectedCategoryId ? "Seleccione un grupo" : "Seleccione categoría primero"} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Todos los grupos</SelectItem>
+                          <SelectItem value="all">Todos los grupos</SelectItem>
                           {materialGroups.map((group) => (
                             <SelectItem key={group.groupId} value={group.groupId.toString()}>
                               {group.name}
