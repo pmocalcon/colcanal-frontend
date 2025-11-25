@@ -471,10 +471,13 @@ const AutorizarRequisicionesPage: React.FC = () => {
               <>
                 {/* Card de Información General */}
                 <Card className="p-6">
-                  <h2 className="text-xl font-bold mb-4 text-[hsl(var(--canalco-neutral-900))]">
+                  <h2 className="text-xl font-bold mb-2 text-[hsl(var(--canalco-neutral-900))]">
                     Requisición {selectedRequisition.requisitionNumber}
                   </h2>
-                  <div className="grid grid-cols-2 gap-4">
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mb-4">
+                    Creada el {formatDate(selectedRequisition.createdAt)}
+                  </p>
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                         Empresa
@@ -497,17 +500,6 @@ const AutorizarRequisicionesPage: React.FC = () => {
                       </Label>
                       <p className="font-medium">
                         {selectedRequisition.operationCenter.code}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        Solicitado por
-                      </Label>
-                      <p className="font-medium">
-                        {selectedRequisition.creator.nombre}
-                      </p>
-                      <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
                       </p>
                     </div>
                   </div>
@@ -635,6 +627,84 @@ const AutorizarRequisicionesPage: React.FC = () => {
                     </div>
                   </Card>
                 )}
+
+                {/* Sección de Firmas */}
+                <Card className="p-6 bg-[hsl(var(--canalco-neutral-50))]">
+                  <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--canalco-neutral-900))]">
+                    Firmas
+                  </h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Solicitado por - SIEMPRE se muestra */}
+                    <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
+                      <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                        Solicitado por
+                      </p>
+                      <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                        {selectedRequisition.creator.nombre}
+                      </p>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
+                      </p>
+                    </div>
+
+                    {/* Revisado por - solo si existe */}
+                    {selectedRequisition.logs?.find(
+                      (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                    ) && (
+                      <div className="border-l-4 border-blue-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Revisado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                          )?.user.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                          )?.user.role?.nombreRol || 'Sin rol'}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Autorizado por - solo si existe */}
+                    {selectedRequisition.logs?.find((log) => log.action === 'authorized') && (
+                      <div className="border-l-4 border-amber-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Autorizado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {selectedRequisition.logs.find((log) => log.action === 'authorized')?.user.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find((log) => log.action === 'authorized')?.user.role?.nombreRol || 'Sin rol'}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Aprobado por - solo si existe */}
+                    {selectedRequisition.logs?.find(
+                      (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                    ) && (
+                      <div className="border-l-4 border-green-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Aprobado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                          )?.user.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                          )?.user.role?.nombreRol || 'Sin rol'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </Card>
               </>
             ) : null}
           </div>
