@@ -777,9 +777,9 @@ const AprobarOrdenesCompraPage: React.FC = () => {
 
                   return (
                     <Card key={item.poItemId} className={`p-4 border-2 ${statusBgColor}`}>
-                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 items-center">
                         {/* Información del material */}
-                        <div className="md:col-span-2">
+                        <div>
                           <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">Material</Label>
                           <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
                             {item.requisitionItem?.material?.code || '-'}
@@ -794,21 +794,31 @@ const AprobarOrdenesCompraPage: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Cantidades y precios */}
+                        {/* Cantidad */}
                         <div>
                           <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">Cantidad</Label>
-                          <p className="font-semibold">{item.quantity} {item.requisitionItem?.material?.unit || ''}</p>
-                          <Label className="text-xs text-[hsl(var(--canalco-neutral-600))] mt-2">Precio Unitario</Label>
+                          <p className="font-semibold">{item.quantity}</p>
+                        </div>
+
+                        {/* Precio Unitario */}
+                        <div>
+                          <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">Precio Unitario</Label>
                           <p className="font-medium">{formatCurrency(item.unitPrice)}</p>
                         </div>
 
+                        {/* IVA */}
                         <div>
                           <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">IVA</Label>
                           <p className="font-medium">{item.hasIva ? `${item.ivaPercentage}%` : 'No'}</p>
-                          <Label className="text-xs text-[hsl(var(--canalco-neutral-600))] mt-2">Descuento</Label>
+                        </div>
+
+                        {/* Descuento */}
+                        <div>
+                          <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">Descuento</Label>
                           <p className="font-medium">{formatCurrency(item.discount)}</p>
                         </div>
 
+                        {/* Total Ítem */}
                         <div>
                           <Label className="text-xs text-[hsl(var(--canalco-neutral-600))]">Total Ítem</Label>
                           <p className="font-bold text-lg text-[hsl(var(--canalco-primary))]">
