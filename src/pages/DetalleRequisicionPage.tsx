@@ -284,7 +284,7 @@ export default function DetalleRequisicionPage() {
 
               {/* Revisado por - solo si existe */}
               {requisition.logs?.find(
-                (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
               ) && (
                 <div className="border-l-4 border-blue-500 pl-4">
                   <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -292,35 +292,35 @@ export default function DetalleRequisicionPage() {
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                     {requisition.logs.find(
-                      (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                     )?.user.nombre}
                   </p>
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                     {requisition.logs.find(
-                      (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                     )?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}
 
               {/* Autorizado por - solo si existe */}
-              {requisition.logs?.find((log) => log.action === 'authorized') && (
+              {requisition.logs?.find((log) => log.action === 'autorizar') && (
                 <div className="border-l-4 border-amber-500 pl-4">
                   <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
                     Autorizado por
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.logs.find((log) => log.action === 'authorized')?.user.nombre}
+                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
                   </p>
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find((log) => log.action === 'authorized')?.user.role?.nombreRol || 'Sin rol'}
+                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}
 
               {/* Aprobado por - solo si existe */}
               {requisition.logs?.find(
-                (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
               ) && (
                 <div className="border-l-4 border-green-500 pl-4">
                   <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -328,12 +328,12 @@ export default function DetalleRequisicionPage() {
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                     {requisition.logs.find(
-                      (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                     )?.user.nombre}
                   </p>
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                     {requisition.logs.find(
-                      (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                     )?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
