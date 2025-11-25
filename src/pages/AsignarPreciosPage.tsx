@@ -30,6 +30,7 @@ interface ItemPriceState {
   itemId: number;
   quotationId: number | null;
   selectedSupplier: RequisitionItemQuotation | null;
+  quantity: number;
   unitPrice: string;
   hasIva: boolean;
   ivaPercentage: number;
@@ -130,6 +131,7 @@ export default function AsignarPreciosPage() {
             itemId: item.itemId,
             quotationId: selectedQuotation.quotationId,
             selectedSupplier: selectedQuotation,
+            quantity: item.quantity,
             unitPrice,
             hasIva,
             ivaPercentage,
@@ -166,20 +168,18 @@ export default function AsignarPreciosPage() {
 
       const updated = { ...currentState, [field]: value };
 
-      // Recalcular totales
-      const item = requisition?.items.find((i) => i.itemId === itemId);
-      if (item) {
-        const unitPrice = parseFloat(updated.unitPrice) || 0;
-        const discount = parseFloat(updated.discount) || 0;
-        const calculatedValues = calculateTotals(
-          unitPrice,
-          item.quantity,
-          updated.hasIva,
-          updated.ivaPercentage,
-          discount
-        );
-        Object.assign(updated, calculatedValues);
-      }
+      // Recalcular totales con la cantidad del estado (que ahora es editable)
+      const unitPrice = parseFloat(updated.unitPrice) || 0;
+      const quantity = field === 'quantity' ? parseFloat(value) || 0 : updated.quantity;
+      const discount = parseFloat(updated.discount) || 0;
+      const calculatedValues = calculateTotals(
+        unitPrice,
+        quantity,
+        updated.hasIva,
+        updated.ivaPercentage,
+        discount
+      );
+      Object.assign(updated, calculatedValues);
 
       newMap.set(itemId, updated);
       return newMap;
@@ -240,6 +240,7 @@ export default function AsignarPreciosPage() {
         ...currentState,
         quotationId,
         selectedSupplier: selectedQuotation,
+        quantity: item.quantity,
         unitPrice,
         hasIva,
         ivaPercentage,
@@ -573,10 +574,25 @@ export default function AsignarPreciosPage() {
                     )}
 
                     {/* Price Inputs */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">
-                          Precio antes de Iva
+                          Cantidad
+                        </label>
+                        <Input
+                          type="number"
+                          value={priceState?.quantity || 0}
+                          onChange={(e) =>
+                            handlePriceChange(item.itemId, 'quantity', e.target.value)
+                          }
+                          placeholder="0"
+                          min="1"
+                          step="1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Precio Unitario
                         </label>
                         <Input
                           type="number"
@@ -603,28 +619,27 @@ export default function AsignarPreciosPage() {
                           <span className="ml-2 text-sm">Sí</span>
                         </div>
                       </div>
-                      {priceState?.hasIva && (
-                        <div>
-                          <label className="block text-sm font-medium mb-2">
-                            % IVA
-                          </label>
-                          <Select
-                            value={priceState.ivaPercentage.toString()}
-                            onValueChange={(value) =>
-                              handlePriceChange(item.itemId, 'ivaPercentage', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="19">19%</SelectItem>
-                              <SelectItem value="5">5%</SelectItem>
-                              <SelectItem value="0">0%</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          % IVA
+                        </label>
+                        <Select
+                          value={priceState?.ivaPercentage.toString() || '19'}
+                          onValueChange={(value) =>
+                            handlePriceChange(item.itemId, 'ivaPercentage', parseInt(value))
+                          }
+                          disabled={!priceState?.hasIva}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="19">19%</SelectItem>
+                            <SelectItem value="5">5%</SelectItem>
+                            <SelectItem value="0">0%</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div>
                         <label className="block text-sm font-medium mb-2">
                           Descuento

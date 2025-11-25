@@ -139,6 +139,44 @@ const FacturasOrdenCompraPage: React.FC = () => {
       return;
     }
 
+    // Validar que no se exceda el monto total de la orden de compra
+    const currentInvoicedAmount = invoices
+      .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
+      .reduce((sum, inv) => sum + Number(inv.amount), 0);
+
+    const newTotalInvoiced = currentInvoicedAmount + Number(formData.amount);
+    const totalOrderAmount = Number(purchaseOrder?.totalAmount || 0);
+
+    if (newTotalInvoiced > totalOrderAmount) {
+      const remainingAmount = totalOrderAmount - currentInvoicedAmount;
+      setFormError(
+        `El monto excede el total de la orden de compra. ` +
+        `Monto disponible: ${formatCurrency(remainingAmount)}`
+      );
+      return;
+    }
+
+    // Validar que no se exceda la cantidad total de materiales
+    const totalExpectedQuantity = purchaseOrder?.items?.reduce(
+      (sum, item) => sum + Number(item.quantity),
+      0
+    ) || 0;
+
+    const currentInvoicedQuantity = invoices
+      .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
+      .reduce((sum, inv) => sum + Number(inv.materialQuantity), 0);
+
+    const newTotalInvoicedQuantity = currentInvoicedQuantity + Number(formData.materialQuantity);
+
+    if (newTotalInvoicedQuantity > totalExpectedQuantity) {
+      const remainingQuantity = totalExpectedQuantity - currentInvoicedQuantity;
+      setFormError(
+        `La cantidad excede el total esperado de la orden de compra. ` +
+        `Cantidad disponible: ${remainingQuantity}`
+      );
+      return;
+    }
+
     try {
       setFormLoading(true);
 
@@ -621,6 +659,33 @@ const FacturasOrdenCompraPage: React.FC = () => {
               <h2 className="text-base font-bold mb-3">
                 {editingInvoice ? 'Editar Factura' : 'Nueva Factura'}
               </h2>
+
+              {/* Info disponible */}
+              {!editingInvoice && summary && (
+                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-900 mb-1">Disponible para facturar:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-blue-700">Monto:</p>
+                      <p className="text-xs font-bold text-blue-900">
+                        {formatCurrency(summary.pendingAmount)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-blue-700">Cantidad:</p>
+                      <p className="text-xs font-bold text-blue-900">
+                        {(() => {
+                          const totalExpected = purchaseOrder?.items?.reduce(
+                            (sum, item) => sum + Number(item.quantity),
+                            0
+                          ) || 0;
+                          return totalExpected - summary.totalInvoicedQuantity;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {formError && (
                 <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
