@@ -654,6 +654,9 @@ const AutorizarRequisicionesPage: React.FC = () => {
                       <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                         {selectedRequisition.creator.nombre}
                       </p>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
+                      </p>
                     </div>
 
                     {/* Revisado por - solo si existe */}
@@ -669,6 +672,11 @@ const AutorizarRequisicionesPage: React.FC = () => {
                             (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                           )?.user.nombre}
                         </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
+                          )?.user.role?.nombreRol || 'Sin rol'}
+                        </p>
                       </div>
                     )}
 
@@ -680,6 +688,9 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         </p>
                         <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                           {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
                         </p>
                       </div>
                     )}
@@ -696,6 +707,11 @@ const AutorizarRequisicionesPage: React.FC = () => {
                           {selectedRequisition.logs.find(
                             (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                           )?.user.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.logs.find(
+                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
+                          )?.user.role?.nombreRol || 'Sin rol'}
                         </p>
                       </div>
                     )}

@@ -277,6 +277,9 @@ export default function DetalleRequisicionPage() {
                 <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                   {requisition.creator.nombre}
                 </p>
+                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                  {requisition.creator.role?.nombreRol || 'Sin rol'}
+                </p>
               </div>
 
               {/* Revisado por - solo si existe */}
@@ -292,6 +295,11 @@ export default function DetalleRequisicionPage() {
                       (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
                     )?.user.nombre}
                   </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
+                    )?.user.role?.nombreRol || 'Sin rol'}
+                  </p>
                 </div>
               )}
 
@@ -303,6 +311,9 @@ export default function DetalleRequisicionPage() {
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
                     {requisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
+                  </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}
@@ -319,6 +330,11 @@ export default function DetalleRequisicionPage() {
                     {requisition.logs.find(
                       (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
                     )?.user.nombre}
+                  </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
+                    )?.user.role?.nombreRol || 'Sin rol'}
                   </p>
                 </div>
               )}

@@ -52,6 +52,7 @@ export default function AsignarPreciosPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [itemPrices, setItemPrices] = useState<Map<number, ItemPriceState>>(new Map());
+  const [universalSupplierId, setUniversalSupplierId] = useState<number | null>(null);
 
   const isCompras = user?.nombreRol === 'Compras';
 
@@ -352,6 +353,53 @@ export default function AsignarPreciosPage() {
     return { grandSubtotal, grandIva, grandDiscount, grandTotal };
   };
 
+  // Get all unique suppliers from all items (union)
+  const getAllSuppliers = () => {
+    if (!requisition) return [];
+
+    const suppliersMap = new Map<number, { supplierId: number; name: string; nitCc: string }>();
+
+    cotizarItems.forEach((item) => {
+      item.quotations
+        .filter((q) => q.action === 'cotizar' && q.isActive && q.supplier && q.supplierId)
+        .forEach((q) => {
+          if (q.supplierId && !suppliersMap.has(q.supplierId)) {
+            suppliersMap.set(q.supplierId, {
+              supplierId: q.supplierId,
+              name: q.supplier!.name,
+              nitCc: q.supplier!.nitCc,
+            });
+          }
+        });
+    });
+
+    return Array.from(suppliersMap.values());
+  };
+
+  // Apply universal supplier to items without a supplier
+  const handleApplyUniversalSupplier = async () => {
+    if (!universalSupplierId || !requisition) return;
+
+    // Find all items that don't have a supplier selected yet
+    const itemsToUpdate = cotizarItems.filter((item) => {
+      const priceState = itemPrices.get(item.itemId);
+      // Apply to items without quotationId (no supplier selected)
+      return !priceState || !priceState.quotationId;
+    });
+
+    // Apply supplier to each item
+    for (const item of itemsToUpdate) {
+      // Find quotation for this supplier in this item
+      const quotationForSupplier = item.quotations.find(
+        (q) => q.action === 'cotizar' && q.isActive && q.supplierId === universalSupplierId
+      );
+
+      if (quotationForSupplier) {
+        await handleSupplierChange(item.itemId, quotationForSupplier.quotationId);
+      }
+    }
+  };
+
   if (!isCompras) return null;
 
   if (loading) {
@@ -484,6 +532,47 @@ export default function AsignarPreciosPage() {
             </div>
           </div>
         </div>
+
+        {/* Universal Supplier Selector */}
+        {cotizarItems.length > 0 && getAllSuppliers().length > 1 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl shadow-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-2 text-blue-900">
+              Seleccionar Proveedor Universal
+            </h2>
+            <p className="text-sm text-blue-700 mb-4">
+              Selecciona un proveedor para aplicar a todos los ítems que aún NO tengan proveedor asignado
+            </p>
+            <div className="flex items-end gap-4">
+              <div className="flex-grow">
+                <label className="block text-sm font-medium mb-2 text-blue-900">
+                  Proveedor
+                </label>
+                <Select
+                  value={universalSupplierId?.toString() || ''}
+                  onValueChange={(value) => setUniversalSupplierId(value ? parseInt(value) : null)}
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Selecciona un proveedor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getAllSuppliers().map((supplier) => (
+                      <SelectItem key={supplier.supplierId} value={supplier.supplierId.toString()}>
+                        {supplier.name} - NIT: {supplier.nitCc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleApplyUniversalSupplier}
+                disabled={!universalSupplierId}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Aplicar a Ítems Sin Proveedor
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Items Table */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
