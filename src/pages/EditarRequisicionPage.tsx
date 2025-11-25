@@ -365,14 +365,6 @@ const EditarRequisicionPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -435,7 +427,7 @@ const EditarRequisicionPage: React.FC = () => {
 
         {/* Materiales Card */}
         <Card className="p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">Materiales Solicitados</h2>
+          <h2 className="text-xl font-bold mb-4">Elementos Solicitados</h2>
 
           {/* Alerta de ítems rechazados */}
           {itemApprovals.some((a) => a.status === 'rejected' && a.isValid) && (
@@ -457,7 +449,7 @@ const EditarRequisicionPage: React.FC = () => {
 
           {/* Búsqueda de materiales */}
           <div className="mb-6">
-            <Label htmlFor="material-search">Agregar Material</Label>
+            <Label htmlFor="material-search">Agregar Elemento</Label>
             <Input
               id="material-search"
               value={materialSearch}
@@ -490,7 +482,7 @@ const EditarRequisicionPage: React.FC = () => {
                   ))
                 ) : (
                   <div className="px-4 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
-                    No se encontraron materiales
+                    No se encontraron elementos
                   </div>
                 )}
               </div>
@@ -500,8 +492,8 @@ const EditarRequisicionPage: React.FC = () => {
           {/* Tabla de ítems */}
           {items.length === 0 ? (
             <div className="text-center py-8 text-[hsl(var(--canalco-neutral-500))]">
-              <p>No hay materiales agregados</p>
-              <p className="text-sm mt-1">Usa el buscador arriba para agregar materiales</p>
+              <p>No hay elementos agregados</p>
+              <p className="text-sm mt-1">Usa el buscador arriba para agregar elementos</p>
             </div>
           ) : (
             <div className="border border-[hsl(var(--canalco-neutral-200))] rounded-lg overflow-hidden">

@@ -74,6 +74,10 @@ export default function ComprasPage() {
         // Can review requisitions (only Directors)
         return canReviewRoles.includes(userRole);
 
+      case 'autorizacion':
+        // Only Gerencia de Proyectos can authorize requisitions
+        return userRole === 'Gerencia de Proyectos';
+
       case 'aprobacion':
       case 'aprobacion-ordenes':
         // Only Gerencia can approve requisitions and purchase orders
@@ -109,6 +113,13 @@ export default function ComprasPage() {
       slug: 'revision',
       icono: 'ClipboardCheck',
       hasAccess: getSubModuleAccess('revision'),
+    },
+    {
+      gestionId: 109,
+      nombre: 'Autorización',
+      slug: 'autorizacion',
+      icono: 'Shield',
+      hasAccess: getSubModuleAccess('autorizacion'),
     },
     {
       gestionId: 103,
@@ -166,6 +177,8 @@ export default function ComprasPage() {
       navigate('/dashboard/compras/requisiciones');
     } else if (subModule.slug === 'revision' || subModule.slug === 'aprobacion') {
       navigate('/dashboard/compras/requisiciones/revisar');
+    } else if (subModule.slug === 'autorizacion') {
+      navigate('/dashboard/compras/requisiciones/autorizar');
     } else if (subModule.slug === 'aprobacion-ordenes') {
       navigate('/dashboard/compras/ordenes-compra/aprobar');
     } else if (subModule.slug === 'cotizaciones') {
@@ -217,14 +230,6 @@ export default function ComprasPage() {
               </div>
             </div>
 
-            {/* Logo 2 - Right */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 md:w-20 md:h-20 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>

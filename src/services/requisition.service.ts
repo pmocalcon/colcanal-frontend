@@ -138,6 +138,11 @@ export interface RejectRequisitionDto {
   comments: string;
 }
 
+export interface AuthorizeRequisitionDto {
+  decision: 'authorize' | 'reject';
+  comments?: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -240,6 +245,20 @@ export const rejectRequisition = async (
 ): Promise<Requisition> => {
   const response = await api.post(
     `/purchases/requisitions/${requisitionId}/reject`,
+    data
+  );
+  return response.data;
+};
+
+/**
+ * Autorizar una requisición (para Gerencia de Proyectos)
+ */
+export const authorizeRequisition = async (
+  requisitionId: number,
+  data: AuthorizeRequisitionDto
+): Promise<Requisition> => {
+  const response = await api.post(
+    `/purchases/requisitions/${requisitionId}/authorize`,
     data
   );
   return response.data;

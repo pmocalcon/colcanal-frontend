@@ -53,12 +53,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (err) {
       const axiosError = err as AxiosError<{ message: string | string[] }>;
 
+      console.error('Login error details:', {
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data,
+        message: axiosError.message,
+        code: axiosError.code,
+      });
+
       // Handle error messages from backend
       if (axiosError.response?.data?.message) {
         const message = axiosError.response.data.message;
         setError(Array.isArray(message) ? message.join(', ') : message);
+      } else if (axiosError.response?.status === 401) {
+        setError('Credenciales inválidas. Verifica tu correo y contraseña.');
+      } else if (axiosError.code === 'ERR_NETWORK' || !axiosError.response) {
+        setError('No se puede conectar al servidor. Verifica que el backend esté corriendo.');
       } else {
-        setError('Error al iniciar sesión. Por favor, intenta de nuevo.');
+        setError(`Error al iniciar sesión: ${axiosError.message}`);
       }
 
       throw err;

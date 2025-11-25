@@ -12,7 +12,7 @@ import { suppliersService, type Supplier } from '@/services/suppliers.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Home, Save, X, Search, ArrowLeft } from 'lucide-react';
+import { Home, Save, X, Search, ArrowLeft, Copy } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -253,6 +253,45 @@ export default function GestionarCotizacionPage() {
     });
   };
 
+  const handleApplySupplierToAll = (sourceItemId: number, order: 1 | 2) => {
+    const sourceState = itemStates[sourceItemId];
+    if (!sourceState) return;
+
+    const supplierIndex = order - 1;
+    const supplierToCopy = sourceState.suppliers[supplierIndex];
+
+    if (!supplierToCopy?.supplier) return;
+
+    // Apply to all items that have action = 'cotizar'
+    setItemStates(prev => {
+      const updated = { ...prev };
+
+      Object.keys(updated).forEach(itemIdStr => {
+        const itemId = Number(itemIdStr);
+        // Don't apply to the source item itself
+        if (itemId === sourceItemId) return;
+
+        const state = updated[itemId];
+        // Only apply to items with 'cotizar' action
+        if (state.action === 'cotizar') {
+          const newSuppliers = [...state.suppliers];
+          newSuppliers[supplierIndex] = {
+            supplier: supplierToCopy.supplier,
+            supplierOrder: order,
+            observations: supplierToCopy.observations || '',
+          };
+
+          updated[itemId] = {
+            ...state,
+            suppliers: newSuppliers,
+          };
+        }
+      });
+
+      return updated;
+    });
+  };
+
   const handleObservationsChange = (itemId: number, order: 1 | 2, observations: string) => {
     const supplierIndex = order - 1;
     setItemStates(prev => {
@@ -452,14 +491,6 @@ export default function GestionarCotizacionPage() {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -683,6 +714,18 @@ export default function GestionarCotizacionPage() {
                                   disabled={!editable}
                                   className="text-sm"
                                 />
+                                {/* Apply to All button - Only show on first item if there are multiple items */}
+                                {editable && index === 0 && requisition && requisition.items.length > 1 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleApplySupplierToAll(item.itemId, 1)}
+                                    className="w-full mt-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                                  >
+                                    <Copy className="w-4 h-4 mr-2" />
+                                    Aplicar este proveedor a todos los elementos
+                                  </Button>
+                                )}
                               </div>
                             ) : (
                               <div className="relative">
@@ -758,6 +801,18 @@ export default function GestionarCotizacionPage() {
                                   disabled={!editable}
                                   className="text-sm"
                                 />
+                                {/* Apply to All button for second supplier - Only show on first item if there are multiple items */}
+                                {editable && index === 0 && requisition && requisition.items.length > 1 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleApplySupplierToAll(item.itemId, 2)}
+                                    className="w-full mt-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                                  >
+                                    <Copy className="w-4 h-4 mr-2" />
+                                    Aplicar este proveedor a todos los elementos
+                                  </Button>
+                                )}
                               </div>
                             ) : (
                               <div className="relative">

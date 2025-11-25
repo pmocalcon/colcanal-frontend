@@ -7,6 +7,7 @@ import RequisicionesPage from './pages/RequisicionesPage'
 import CrearRequisicionPage from './pages/CrearRequisicionPage'
 import EditarRequisicionPage from './pages/EditarRequisicionPage'
 import RevisarRequisicionesPage from './pages/RevisarRequisicionesPage'
+import AutorizarRequisicionesPage from './pages/AutorizarRequisicionesPage'
 import DetalleRequisicionPage from './pages/DetalleRequisicionPage'
 import CotizacionesPage from './pages/CotizacionesPage'
 import GestionarCotizacionPage from './pages/GestionarCotizacionPage'
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/dashboard/compras/requisiciones/editar/:id" element={<EditarRequisicionPage />} />
           <Route path="/dashboard/compras/requisiciones/detalle/:id" element={<DetalleRequisicionPage />} />
           <Route path="/dashboard/compras/requisiciones/revisar" element={<RevisarRequisicionesPage />} />
+          <Route path="/dashboard/compras/requisiciones/autorizar" element={<AutorizarRequisicionesPage />} />
           <Route path="/dashboard/compras/ordenes-compra/aprobar" element={<AprobarOrdenesCompraPage />} />
           <Route path="/dashboard/compras/cotizaciones" element={<CotizacionesPage />} />
           <Route path="/dashboard/compras/cotizaciones/gestionar/:requisitionId" element={<GestionarCotizacionPage />} />

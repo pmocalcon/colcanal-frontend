@@ -23,6 +23,7 @@ import {
   type PurchaseOrderItem,
   type ApprovePurchaseOrderDto,
 } from '@/services/purchase-orders.service';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
 // Estado de aprobación por ítem
 interface ItemApprovalStatus {
@@ -366,14 +367,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -405,6 +398,32 @@ const AprobarOrdenesCompraPage: React.FC = () => {
             )
           </p>
         </div>
+
+        {/* Dashboard de Estado */}
+        {!showDetail && (() => {
+          // Calcular pendientes por estado
+          const pendingPOs = purchaseOrders.filter((po) => po.approvalStatus?.code === 'pendiente_aprobacion_gerencia');
+
+          const statusCounts: StatusCount[] = [];
+          if (pendingPOs.length > 0) {
+            statusCounts.push({
+              status: 'pendiente_aprobacion_gerencia',
+              statusLabel: 'Pendiente de Aprobación',
+              count: pendingPOs.length,
+            });
+          }
+
+          // Calcular vencidos
+          const overdueCount = pendingPOs.filter(po => po.isOverdue).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={statusCounts}
+              overdueCount={overdueCount}
+              title="Órdenes de Compra Pendientes de Aprobación"
+            />
+          );
+        })()}
 
         {/* Vista de Lista */}
         {!showDetail && (

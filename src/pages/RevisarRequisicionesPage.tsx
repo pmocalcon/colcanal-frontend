@@ -24,6 +24,7 @@ import {
 } from '@/services/requisition.service';
 import { requisitionsService, type ItemApprovalResponse } from '@/services/requisitions.service';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
 // Estado de aprobación por ítem
 interface ItemReviewStatus {
@@ -324,6 +325,8 @@ const RevisarRequisicionesPage: React.FC = () => {
       pendiente: 'bg-gray-100 text-gray-800',
       en_revision: 'bg-blue-100 text-blue-800',
       aprobada_revisor: 'bg-green-100 text-green-800',
+      pendiente_autorizacion: 'bg-amber-100 text-amber-800',
+      autorizado: 'bg-lime-100 text-lime-800',
       aprobada_gerencia: 'bg-emerald-100 text-emerald-800',
       rechazada_revisor: 'bg-orange-100 text-orange-800',
       rechazada_gerencia: 'bg-red-100 text-red-800',
@@ -474,14 +477,6 @@ const RevisarRequisicionesPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Right: Logo 2 - Alumbrado Público */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -499,17 +494,32 @@ const RevisarRequisicionesPage: React.FC = () => {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="mb-6 p-4 bg-[hsl(var(--canalco-neutral-100))] rounded-lg flex items-center justify-between">
-          <div>
-            <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-              Total: <span className="font-semibold text-[hsl(var(--canalco-primary))]">{total}</span> requisiciones
-            </p>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))] mt-1">
-              <span className="font-medium text-orange-600">{pendingCount} Pendientes</span> | <span className="font-medium text-green-600">{processedCount} Procesadas</span>
-            </p>
-          </div>
-        </div>
+        {/* Dashboard de Estado */}
+        {!showDetail && (() => {
+          // Calcular pendientes por estado
+          const statusCounts = requisitions.reduce((acc, req) => {
+            if (req.isPending) {
+              const statusCode = req.status?.code || 'pendiente';
+              const statusName = req.status?.name || 'Pendiente';
+              if (!acc[statusCode]) {
+                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
+              }
+              acc[statusCode].count++;
+            }
+            return acc;
+          }, {} as Record<string, StatusCount>);
+
+          // Calcular vencidos
+          const overdueCount = requisitions.filter(req => req.isPending && req.isOverdue).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={Object.values(statusCounts)}
+              overdueCount={overdueCount}
+              title="Requisiciones Pendientes de Atención"
+            />
+          );
+        })()}
 
         {/* Vista de Lista */}
         {!showDetail && (
@@ -917,7 +927,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                 {!showConfirmation ? (
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">
-                      Materiales Solicitados ({selectedRequisition.items.length})
+                      Elementos Solicitados ({selectedRequisition.items.length})
                     </h3>
                     <div className="space-y-4">
                       {selectedRequisition.items.map((item) => {

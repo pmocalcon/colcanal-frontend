@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table';
 import { formatDate } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
 // Mapeo de colores de estados
 const getStatusColor = (statusCode: string) => {
@@ -251,14 +252,6 @@ export default function OrdenesDeCompraPage() {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -285,6 +278,36 @@ export default function OrdenesDeCompraPage() {
             requisición(es) cotizada(s) lista(s) para generar órdenes de compra
           </p>
         </div>
+
+        {/* Dashboard de Estado */}
+        {(() => {
+          // Calcular pendientes por estado
+          const statusCounts = requisitions.reduce((acc, req) => {
+            const statusCode = req.status?.code || '';
+            // Solo mostrar estados que requieren acción
+            if (['cotizada', 'en_orden_compra'].includes(statusCode)) {
+              const statusName = req.status?.name || '';
+              if (!acc[statusCode]) {
+                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
+              }
+              acc[statusCode].count++;
+            }
+            return acc;
+          }, {} as Record<string, StatusCount>);
+
+          // Calcular vencidos (órdenes de compra pendientes de crear o aprobar)
+          const overdueCount = requisitions.filter(req =>
+            req.isOverdue && ['cotizada', 'en_orden_compra'].includes(req.status?.code || '')
+          ).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={Object.values(statusCounts)}
+              overdueCount={overdueCount}
+              title="Órdenes de Compra Pendientes"
+            />
+          );
+        })()}
 
         {/* Filtros */}
         {!loading && requisitions.length > 0 && (

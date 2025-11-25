@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { formatDate } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
 // Mapeo de estados a colores (siguiendo el formato de RevisarRequisicionesPage)
 const STATUS_COLORS: Record<string, string> = {
@@ -255,14 +256,6 @@ export default function CotizacionesPage() {
               </p>
             </div>
 
-            {/* Right: Logo 2 - Alumbrado Público */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -328,6 +321,36 @@ export default function CotizacionesPage() {
             Historial completo de cotizaciones: pendientes, en proceso y completadas
           </p>
         </div>
+
+        {/* Dashboard de Estado */}
+        {(() => {
+          // Calcular pendientes por estado
+          const statusCounts = requisitions.reduce((acc, req) => {
+            // Solo contar las que están en proceso de cotización
+            const statusCode = req.status?.code || '';
+            if (['aprobada_gerencia', 'en_cotizacion'].includes(statusCode)) {
+              const statusName = req.status?.name || '';
+              if (!acc[statusCode]) {
+                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
+              }
+              acc[statusCode].count++;
+            }
+            return acc;
+          }, {} as Record<string, StatusCount>);
+
+          // Calcular vencidos (requisiciones que llevan mucho tiempo sin cotizar)
+          const overdueCount = requisitions.filter(req =>
+            req.status?.code === 'aprobada_gerencia' && req.isOverdue
+          ).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={Object.values(statusCounts)}
+              overdueCount={overdueCount}
+              title="Requisiciones Pendientes de Cotización"
+            />
+          );
+        })()}
 
         {/* Filtros */}
         {!loading && requisitions.length > 0 && (

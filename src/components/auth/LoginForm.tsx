@@ -17,10 +17,10 @@ const loginSchema = z.object({
     .refine(
       (email) => {
         const domain = email.split('@')[1];
-        return domain === 'canalco.com' || domain === 'alumbrado.com';
+        return domain === 'canalco.com' || domain === 'alumbrado.com' || domain === 'canalcongroup.com';
       },
       {
-        message: 'El email debe ser de dominio @canalco.com o @alumbrado.com',
+        message: 'El email debe ser de dominio @canalco.com, @alumbrado.com o @canalcongroup.com',
       }
     ),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),

@@ -1,8 +1,12 @@
 import axios from 'axios';
 
 // Create axios instance with base configuration
+const baseURL = import.meta.env.VITE_API_URL || 'https://colcanal-backend.onrender.com/api';
+console.log('🔧 API Base URL:', baseURL);
+console.log('🔧 Environment variable VITE_API_URL:', import.meta.env.VITE_API_URL);
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+  baseURL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

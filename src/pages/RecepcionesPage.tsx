@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateShort } from '@/utils/dateUtils';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
 // Mapeo de estados a colores
 const STATUS_COLORS: Record<string, string> = {
@@ -165,14 +166,6 @@ export default function RecepcionesPage() {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -253,6 +246,36 @@ export default function RecepcionesPage() {
             Aquí puedes ver y registrar las recepciones de materiales. Se muestra el historial completo: pendientes, en proceso y completadas.
           </p>
         </div>
+
+        {/* Dashboard de Estado */}
+        {!loading && (() => {
+          // Calcular pendientes por estado
+          const statusCounts = requisitions.reduce((acc, req) => {
+            const statusCode = req.status?.code || '';
+            // Solo mostrar estados que requieren acción
+            if (['pendiente_recepcion', 'en_recepcion'].includes(statusCode)) {
+              const statusName = req.status?.name || '';
+              if (!acc[statusCode]) {
+                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
+              }
+              acc[statusCode].count++;
+            }
+            return acc;
+          }, {} as Record<string, StatusCount>);
+
+          // Calcular vencidos (recepciones pendientes que están atrasadas)
+          const overdueCount = requisitions.filter(req =>
+            ['pendiente_recepcion', 'en_recepcion'].includes(req.status?.code || '') && req.isOverdue
+          ).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={Object.values(statusCounts)}
+              overdueCount={overdueCount}
+              title="Recepciones Pendientes"
+            />
+          );
+        })()}
 
         {/* Loading State */}
         {loading && (

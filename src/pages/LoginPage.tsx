@@ -22,14 +22,6 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Logo 2 - Alumbrado Público - Top Right */}
-        <div className="bg-white rounded-xl shadow-md p-4 w-24 h-24 md:w-28 md:h-28 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))]">
-          <img
-            src="/assets/images/logo-alumbrado.png"
-            alt="Alumbrado Público"
-            className="w-full h-full object-contain"
-          />
-        </div>
       </div>
 
       {/* Main Content */}

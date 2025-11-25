@@ -378,14 +378,6 @@ export default function CrearRequisicionPage() {
               </p>
             </div>
 
-            {/* Right: Logo 2 */}
-            <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
-              <img
-                src="/assets/images/logo-alumbrado.png"
-                alt="Alumbrado Público"
-                className="w-full h-full object-contain"
-              />
-            </div>
           </div>
         </div>
       </header>
@@ -578,12 +570,12 @@ export default function CrearRequisicionPage() {
               {/* Items section */}
               <div className="border-t border-[hsl(var(--canalco-neutral-300))] pt-6">
                 <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-900))] mb-4">
-                  Materiales Solicitados <span className="text-red-500">*</span>
+                  Elementos Solicitados <span className="text-red-500">*</span>
                 </h3>
 
                 {/* Material selector with search */}
                 <div className="mb-4">
-                  <Label htmlFor="material-select">Seleccionar Material</Label>
+                  <Label htmlFor="material-select">Seleccionar Elemento</Label>
                   <div className="space-y-2">
                     <Input
                       id="material-search-input"
@@ -624,7 +616,7 @@ export default function CrearRequisicionPage() {
                           ))
                         ) : (
                           <div className="px-4 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
-                            <p>No se encontraron materiales</p>
+                            <p>No se encontraron elementos</p>
                             <p className="text-xs mt-1">Intente con otros términos de búsqueda</p>
                           </div>
                         )}
@@ -632,7 +624,7 @@ export default function CrearRequisicionPage() {
                     )}
                     {!materialSearch && materials.length > 0 && (
                       <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        Escriba en el campo de búsqueda para ver los materiales disponibles ({materials.length} materiales)
+                        Escriba en el campo de búsqueda para ver los elementos disponibles ({materials.length} elementos)
                       </p>
                     )}
                   </div>
@@ -641,7 +633,7 @@ export default function CrearRequisicionPage() {
                 {/* Items table */}
                 {items.length === 0 ? (
                   <div className="text-center py-12 text-[hsl(var(--canalco-neutral-600))] border border-dashed border-[hsl(var(--canalco-neutral-300))] rounded-lg">
-                    <p>No hay materiales agregados. Use el buscador para agregar materiales.</p>
+                    <p>No hay elementos agregados. Use el buscador para agregar elementos.</p>
                   </div>
                 ) : (
                   <div className="border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
