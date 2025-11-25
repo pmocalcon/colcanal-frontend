@@ -163,17 +163,7 @@ export default function DetalleRequisicionPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Creador */}
-              <div className="flex items-start space-x-3">
-                <User className="h-5 w-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Solicitado por</p>
-                  <p className="text-sm">{requisition.creator.nombre}</p>
-                  <p className="text-xs text-gray-500">{requisition.creator.role?.nombreRol || "Sin rol"}</p>
-                </div>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Empresa */}
               <div className="flex items-start space-x-3">
                 <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
@@ -213,15 +203,6 @@ export default function DetalleRequisicionPage() {
                   </div>
                 </div>
               )}
-
-              {/* Última actualización */}
-              <div className="flex items-start space-x-3">
-                <Clock className="h-5 w-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Última actualización</p>
-                  <p className="text-sm">{formatDate(requisition.updatedAt)}</p>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -268,8 +249,88 @@ export default function DetalleRequisicionPage() {
           </CardContent>
         </Card>
 
-        {/* Historial de Cambios */}
-        {requisition.logs && requisition.logs.length > 0 && (
+        {/* Sección de Firmas */}
+        <Card className="bg-[hsl(var(--canalco-neutral-50))]">
+          <CardHeader>
+            <CardTitle>Firmas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Solicitado por - SIEMPRE se muestra */}
+              <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
+                <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                  Solicitado por
+                </p>
+                <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                  {requisition.creator.nombre}
+                </p>
+                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                  {requisition.creator.role?.nombreRol || 'Sin rol'}
+                </p>
+              </div>
+
+              {/* Revisado por - solo si existe */}
+              {requisition.logs?.find(
+                (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+              ) && (
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                    Revisado por
+                  </p>
+                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                    )?.user.nombre}
+                  </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'reviewed' && log.newStatus === 'aprobada_revisor'
+                    )?.user.role?.nombreRol || 'Sin rol'}
+                  </p>
+                </div>
+              )}
+
+              {/* Autorizado por - solo si existe */}
+              {requisition.logs?.find((log) => log.action === 'authorized') && (
+                <div className="border-l-4 border-amber-500 pl-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                    Autorizado por
+                  </p>
+                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                    {requisition.logs.find((log) => log.action === 'authorized')?.user.nombre}
+                  </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find((log) => log.action === 'authorized')?.user.role?.nombreRol || 'Sin rol'}
+                  </p>
+                </div>
+              )}
+
+              {/* Aprobado por - solo si existe */}
+              {requisition.logs?.find(
+                (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+              ) && (
+                <div className="border-l-4 border-green-500 pl-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                    Aprobado por
+                  </p>
+                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                    )?.user.nombre}
+                  </p>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    {requisition.logs.find(
+                      (log) => log.action === 'approved' && log.newStatus === 'aprobada_gerencia'
+                    )?.user.role?.nombreRol || 'Sin rol'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Historial de Cambios - Solo visible para el creador */}
+        {requisition.logs && requisition.logs.length > 0 && user?.userId === requisition.creator.userId && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
