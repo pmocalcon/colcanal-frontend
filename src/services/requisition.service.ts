@@ -88,6 +88,10 @@ export interface Requisition {
   isPending?: boolean;
   lastActionDate?: string;
   lastActionLabel?: string;
+  // SLA fields
+  isOverdue?: boolean;
+  slaDeadline?: string;
+  daysOverdue?: number;
 }
 
 export interface RequisitionLog {
@@ -149,6 +153,8 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+  pending?: number;
+  processed?: number;
 }
 
 export interface FilterRequisitionsDto {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, Edit, CheckCircle, XCircle, AlertCircle, Loader2, ArrowLeft, Check, X, History, MessageSquare, CheckCheck } from 'lucide-react';
+import { Eye, Edit, CheckCircle, XCircle, AlertCircle, Loader2, ArrowLeft, Check, X, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -20,7 +20,6 @@ import {
   approveRequisition,
   rejectRequisition,
   type Requisition,
-  type RequisitionItem,
 } from '@/services/requisition.service';
 import { requisitionsService, type ItemApprovalResponse } from '@/services/requisitions.service';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
@@ -40,9 +39,6 @@ const RevisarRequisicionesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [processedCount, setProcessedCount] = useState(0);
 
   // Detalle de requisición
   const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
@@ -77,9 +73,6 @@ const RevisarRequisicionesPage: React.FC = () => {
       const response = await getPendingActions({ page, limit: 10 });
       setRequisitions(response.data);
       setTotalPages(response.totalPages);
-      setTotal(response.total);
-      setPendingCount(response.pending || 0);
-      setProcessedCount(response.processed || 0);
     } catch (err: any) {
       console.error('Error loading pending requisitions:', err);
       setError(err.response?.data?.message || 'Error al cargar las requisiciones pendientes');
@@ -631,7 +624,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                                         <span className="text-red-600">❌</span>
                                         <span className="text-red-600 font-medium">Vencida</span>
                                       </div>
-                                      {req.daysOverdue > 0 && (
+                                      {req.daysOverdue && req.daysOverdue > 0 && (
                                         <span className="text-xs text-red-500">
                                           Hace {req.daysOverdue} día{req.daysOverdue !== 1 ? 's' : ''}
                                         </span>
@@ -750,7 +743,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                                         <span className="text-red-600">❌</span>
                                         <span className="text-red-600 font-medium">Vencida</span>
                                       </div>
-                                      {req.daysOverdue > 0 && (
+                                      {req.daysOverdue && req.daysOverdue > 0 && (
                                         <span className="text-xs text-red-500">
                                           Hace {req.daysOverdue} día{req.daysOverdue !== 1 ? 's' : ''}
                                         </span>
