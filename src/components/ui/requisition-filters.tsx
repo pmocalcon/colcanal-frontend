@@ -11,18 +11,22 @@ import { Button } from '@/components/ui/button';
 import { X, Search } from 'lucide-react';
 
 export interface FilterValues {
+  company: string;
+  project: string;
   requisitionNumber: string;
   startDate: string;
   endDate: string;
-  operationCenter: string;
   status: string;
-  creatorName: string;
+  operationCenter?: string;
+  creatorName?: string;
 }
 
 interface RequisitionFiltersProps {
   filters: FilterValues;
   onFiltersChange: (filters: FilterValues) => void;
   availableStatuses?: Array<{ code: string; name: string }>;
+  availableCompanies?: Array<{ companyId: number; name: string }>;
+  availableProjects?: Array<{ projectId: number; name: string }>;
   availableOperationCenters?: Array<{ code: string; name: string }>;
 }
 
@@ -30,6 +34,8 @@ export function RequisitionFilters({
   filters,
   onFiltersChange,
   availableStatuses = [],
+  availableCompanies = [],
+  availableProjects = [],
   availableOperationCenters = [],
 }: RequisitionFiltersProps) {
   const handleFilterChange = (field: keyof FilterValues, value: string) => {
@@ -38,12 +44,12 @@ export function RequisitionFilters({
 
   const clearFilters = () => {
     onFiltersChange({
+      company: '',
+      project: '',
       requisitionNumber: '',
       startDate: '',
       endDate: '',
-      operationCenter: '',
       status: '',
-      creatorName: '',
     });
   };
 
@@ -72,6 +78,52 @@ export function RequisitionFilters({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+        {/* Empresa */}
+        <div>
+          <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
+            Empresa
+          </label>
+          <Select
+            value={filters.company}
+            onValueChange={(value) => handleFilterChange('company', value)}
+          >
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {availableCompanies.map((company) => (
+                <SelectItem key={company.companyId} value={company.companyId.toString()}>
+                  {company.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Proyecto */}
+        <div>
+          <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
+            Proyecto
+          </label>
+          <Select
+            value={filters.project}
+            onValueChange={(value) => handleFilterChange('project', value)}
+          >
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {availableProjects.map((project) => (
+                <SelectItem key={project.projectId} value={project.projectId.toString()}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Número de Requisición */}
         <div>
           <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -112,29 +164,6 @@ export function RequisitionFilters({
           />
         </div>
 
-        {/* Centro de Operación */}
-        <div>
-          <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
-            Centro de Costo
-          </label>
-          <Select
-            value={filters.operationCenter}
-            onValueChange={(value) => handleFilterChange('operationCenter', value)}
-          >
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {availableOperationCenters.map((center) => (
-                <SelectItem key={center.code} value={center.code}>
-                  {center.name || center.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Estado */}
         <div>
           <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -156,20 +185,6 @@ export function RequisitionFilters({
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {/* Solicitante */}
-        <div>
-          <label className="block text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">
-            Solicitante
-          </label>
-          <Input
-            type="text"
-            placeholder="Nombre del solicitante"
-            value={filters.creatorName}
-            onChange={(e) => handleFilterChange('creatorName', e.target.value)}
-            className="h-9 text-sm"
-          />
         </div>
       </div>
     </div>

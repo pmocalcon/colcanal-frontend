@@ -52,12 +52,12 @@ export default function RequisicionesPage() {
 
   // Filters state
   const [filters, setFilters] = useState<FilterValues>({
+    company: '',
+    project: '',
     requisitionNumber: '',
     startDate: '',
     endDate: '',
-    operationCenter: '',
     status: '',
-    creatorName: '',
   });
 
   // Available statuses for the filter dropdown
@@ -320,6 +320,8 @@ export default function RequisicionesPage() {
             filters={filters}
             onFiltersChange={setFilters}
             availableStatuses={availableStatuses}
+            availableCompanies={[]}
+            availableProjects={[]}
           />
         </div>
 

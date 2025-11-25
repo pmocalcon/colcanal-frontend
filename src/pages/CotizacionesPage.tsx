@@ -52,12 +52,12 @@ export default function CotizacionesPage() {
 
   // Filtros
   const [filters, setFilters] = useState<FilterValues>({
+    company: '',
+    project: '',
     requisitionNumber: '',
     startDate: '',
     endDate: '',
-    operationCenter: '',
     status: '',
-    creatorName: '',
   });
 
   // Check if user is Compras
@@ -124,14 +124,20 @@ export default function CotizacionesPage() {
     return uniqueStatuses;
   }, [requisitions]);
 
-  const availableOperationCenters = useMemo(() => {
-    const centers = requisitions
-      .map((r) => r.operationCenter)
-      .filter((c): c is NonNullable<typeof c> => c != null);
-    const uniqueCenters = Array.from(
-      new Map(centers.map((c) => [c.code, { code: c.code, name: c.code }])).values()
+  const availableCompanies = useMemo(() => {
+    const companies = requisitions.map((r) => r.company);
+    const uniqueCompanies = Array.from(
+      new Map(companies.map((c) => [c.companyId, c])).values()
     );
-    return uniqueCenters;
+    return uniqueCompanies;
+  }, [requisitions]);
+
+  const availableProjects = useMemo(() => {
+    const projects = requisitions.map((r) => r.project).filter(Boolean);
+    const uniqueProjects = Array.from(
+      new Map(projects.map((p) => [p.projectId, p])).values()
+    );
+    return uniqueProjects;
   }, [requisitions]);
 
   // Filtrar requisiciones
@@ -162,11 +168,20 @@ export default function CotizacionesPage() {
         if (reqDate > endDate) return false;
       }
 
-      // Filtro por centro de operación
+      // Filtro por empresa
       if (
-        filters.operationCenter &&
-        filters.operationCenter !== 'all' &&
-        req.operationCenter.code !== filters.operationCenter
+        filters.company &&
+        filters.company !== 'all' &&
+        req.company.companyId.toString() !== filters.company
+      ) {
+        return false;
+      }
+
+      // Filtro por proyecto
+      if (
+        filters.project &&
+        filters.project !== 'all' &&
+        req.project?.projectId.toString() !== filters.project
       ) {
         return false;
       }
@@ -176,14 +191,6 @@ export default function CotizacionesPage() {
         filters.status &&
         filters.status !== 'all' &&
         req.status?.code !== filters.status
-      ) {
-        return false;
-      }
-
-      // Filtro por solicitante (creador)
-      if (
-        filters.creatorName &&
-        !req.creator.nombre.toLowerCase().includes(filters.creatorName.toLowerCase())
       ) {
         return false;
       }
@@ -359,7 +366,8 @@ export default function CotizacionesPage() {
               filters={filters}
               onFiltersChange={setFilters}
               availableStatuses={availableStatuses}
-              availableOperationCenters={availableOperationCenters}
+              availableCompanies={availableCompanies}
+              availableProjects={availableProjects}
             />
           </div>
         )}

@@ -52,12 +52,12 @@ const AutorizarRequisicionesPage: React.FC = () => {
 
   // Filtros
   const [filters, setFilters] = useState<FilterValues>({
+    company: '',
+    project: '',
     requisitionNumber: '',
     startDate: '',
     endDate: '',
-    operationCenter: '',
     status: '',
-    creatorName: '',
   });
 
   // Cargar requisiciones pendientes de autorización
@@ -205,19 +205,20 @@ const AutorizarRequisicionesPage: React.FC = () => {
         if (reqDate > endDate) return false;
       }
 
-      // Filtro por centro de operación
+      // Filtro por empresa
       if (
-        filters.operationCenter &&
-        filters.operationCenter !== 'all' &&
-        req.operationCenter.code !== filters.operationCenter
+        filters.company &&
+        filters.company !== 'all' &&
+        req.company.companyId.toString() !== filters.company
       ) {
         return false;
       }
 
-      // Filtro por solicitante (creador)
+      // Filtro por proyecto
       if (
-        filters.creatorName &&
-        !req.creator.nombre.toLowerCase().includes(filters.creatorName.toLowerCase())
+        filters.project &&
+        filters.project !== 'all' &&
+        req.project?.projectId.toString() !== filters.project
       ) {
         return false;
       }
@@ -233,12 +234,20 @@ const AutorizarRequisicionesPage: React.FC = () => {
     ];
   }, []);
 
-  const availableOperationCenters = useMemo(() => {
-    const centers = requisitions.map((r) => r.operationCenter);
-    const uniqueCenters = Array.from(
-      new Map(centers.map((c) => [c.code, c])).values()
+  const availableCompanies = useMemo(() => {
+    const companies = requisitions.map((r) => r.company);
+    const uniqueCompanies = Array.from(
+      new Map(companies.map((c) => [c.companyId, c])).values()
     );
-    return uniqueCenters;
+    return uniqueCompanies;
+  }, [requisitions]);
+
+  const availableProjects = useMemo(() => {
+    const projects = requisitions.map((r) => r.project).filter(Boolean);
+    const uniqueProjects = Array.from(
+      new Map(projects.map((p) => [p.projectId, p])).values()
+    );
+    return uniqueProjects;
   }, [requisitions]);
 
   return (
@@ -331,7 +340,8 @@ const AutorizarRequisicionesPage: React.FC = () => {
                   filters={filters}
                   onFiltersChange={setFilters}
                   availableStatuses={availableStatuses}
-                  availableOperationCenters={availableOperationCenters}
+                  availableCompanies={availableCompanies}
+                  availableProjects={availableProjects}
                 />
               </div>
             )}
