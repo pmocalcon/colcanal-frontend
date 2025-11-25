@@ -92,6 +92,19 @@ const RevisarRequisicionesPage: React.FC = () => {
       setShowDetail(true);
       setShowConfirmation(false);
       const fullRequisition = await getRequisitionById(requisition.requisitionId);
+
+      // DEBUG: Log para ver qué datos vienen del backend
+      console.log('📋 Requisition data (Revisar):', fullRequisition);
+      console.log('📝 Logs array:', fullRequisition.logs);
+      if (fullRequisition.logs && fullRequisition.logs.length > 0) {
+        console.log('🔍 Log actions:', fullRequisition.logs.map(log => ({
+          action: log.action,
+          newStatus: log.newStatus,
+          previousStatus: log.previousStatus,
+          user: log.user.nombre
+        })));
+      }
+
       setSelectedRequisition(fullRequisition);
 
       // Determinar nivel de aprobación según el estado de la requisición

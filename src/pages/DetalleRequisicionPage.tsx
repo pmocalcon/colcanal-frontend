@@ -51,6 +51,19 @@ export default function DetalleRequisicionPage() {
         return;
       }
       const data = await requisitionsService.getRequisitionById(Number(id));
+
+      // DEBUG: Log para ver qué datos vienen del backend
+      console.log('📋 Requisition data:', data);
+      console.log('📝 Logs array:', data.logs);
+      if (data.logs && data.logs.length > 0) {
+        console.log('🔍 Log actions:', data.logs.map(log => ({
+          action: log.action,
+          newStatus: log.newStatus,
+          previousStatus: log.previousStatus,
+          user: log.user.nombre
+        })));
+      }
+
       setRequisition(data);
     } catch (err: any) {
       console.error('Error loading requisition:', err);
