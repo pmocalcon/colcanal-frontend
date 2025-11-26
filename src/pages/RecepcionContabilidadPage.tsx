@@ -255,21 +255,6 @@ const RecepcionContabilidadPage: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Summary Bar */}
-        <div className="mb-6 p-4 bg-[hsl(var(--canalco-neutral-100))] rounded-lg">
-          <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-            Total: <span className="font-semibold text-[hsl(var(--canalco-primary))]">{pendingTotal + receivedTotal}</span> órdenes con facturas (
-            <span className="text-orange-600 font-semibold">
-              {pendingTotal} pendientes
-            </span>
-            {' y '}
-            <span className="text-green-600 font-semibold">
-              {receivedTotal} recibidas
-            </span>
-            )
-          </p>
-        </div>
-
         {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
