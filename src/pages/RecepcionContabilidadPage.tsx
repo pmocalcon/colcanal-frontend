@@ -11,7 +11,16 @@ import {
   Building,
   Package,
   X,
+  Search,
 } from 'lucide-react';
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -51,6 +60,11 @@ const RecepcionContabilidadPage: React.FC = () => {
   // Pagination for received section (internal pagination)
   const [receivedPage, setReceivedPage] = useState(1);
   const receivedLimit = 10;
+
+  // Filter states
+  const [filterCompany, setFilterCompany] = useState<string>('all');
+  const [filterSupplier, setFilterSupplier] = useState<string>('');
+  const [filterOrderNumber, setFilterOrderNumber] = useState<string>('');
 
   // Detail modal state
   const [selectedPO, setSelectedPO] = useState<PurchaseOrderForInvoicing | null>(null);
@@ -159,6 +173,39 @@ const RecepcionContabilidadPage: React.FC = () => {
     };
   };
 
+  // Get unique companies from pending orders
+  const getUniqueCompanies = () => {
+    const companies = new Set<string>();
+    pendingOrders.forEach((po) => {
+      const companyName = po.requisition?.operationCenter?.company?.name;
+      if (companyName) companies.add(companyName);
+    });
+    return Array.from(companies).sort();
+  };
+
+  // Filter pending orders
+  const filteredPendingOrders = pendingOrders.filter((po) => {
+    // Filter by company
+    if (filterCompany !== 'all') {
+      const companyName = po.requisition?.operationCenter?.company?.name || '';
+      if (companyName !== filterCompany) return false;
+    }
+
+    // Filter by supplier name
+    if (filterSupplier) {
+      const supplierName = po.supplier?.name?.toLowerCase() || '';
+      if (!supplierName.includes(filterSupplier.toLowerCase())) return false;
+    }
+
+    // Filter by order number
+    if (filterOrderNumber) {
+      const orderNum = po.purchaseOrderNumber?.toLowerCase() || '';
+      if (!orderNum.includes(filterOrderNumber.toLowerCase())) return false;
+    }
+
+    return true;
+  });
+
   if (loading && pendingOrders.length === 0 && receivedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -248,6 +295,95 @@ const RecepcionContabilidadPage: React.FC = () => {
           </div>
         )}
 
+        {/* Status Dashboard */}
+        <StatusDashboard
+          title="Pendientes de Atención"
+          statusCounts={[
+            {
+              label: 'Pendientes de Recibir',
+              count: filteredPendingOrders.length,
+              color: 'orange',
+            },
+          ]}
+          className="mb-6"
+        />
+
+        {/* Filters Section */}
+        <Card className="mb-6 p-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Company Filter */}
+            <div>
+              <Label htmlFor="filterCompany" className="text-sm font-medium mb-1 block">
+                Empresa
+              </Label>
+              <Select value={filterCompany} onValueChange={setFilterCompany}>
+                <SelectTrigger id="filterCompany">
+                  <SelectValue placeholder="Todas las empresas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las empresas</SelectItem>
+                  {getUniqueCompanies().map((company) => (
+                    <SelectItem key={company} value={company}>
+                      {company}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Supplier Filter */}
+            <div>
+              <Label htmlFor="filterSupplier" className="text-sm font-medium mb-1 block">
+                Proveedor
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--canalco-neutral-400))]" />
+                <Input
+                  id="filterSupplier"
+                  type="text"
+                  placeholder="Buscar proveedor..."
+                  value={filterSupplier}
+                  onChange={(e) => setFilterSupplier(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            {/* Order Number Filter */}
+            <div>
+              <Label htmlFor="filterOrderNumber" className="text-sm font-medium mb-1 block">
+                Nº Orden
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--canalco-neutral-400))]" />
+                <Input
+                  id="filterOrderNumber"
+                  type="text"
+                  placeholder="Buscar orden..."
+                  value={filterOrderNumber}
+                  onChange={(e) => setFilterOrderNumber(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            {/* Clear Filters Button */}
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFilterCompany('all');
+                  setFilterSupplier('');
+                  setFilterOrderNumber('');
+                }}
+                className="w-full"
+              >
+                Limpiar Filtros
+              </Button>
+            </div>
+          </div>
+        </Card>
+
         {/* Tables Container */}
         {pendingOrders.length === 0 && receivedOrders.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))]">
@@ -262,12 +398,12 @@ const RecepcionContabilidadPage: React.FC = () => {
         ) : (
           <div className="space-y-6">
             {/* SECCIÓN: PENDIENTES DE RECIBIR */}
-            {pendingOrders.length > 0 && (
+            {filteredPendingOrders.length > 0 && (
               <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                 <div className="bg-orange-50 px-4 py-2 border-b border-orange-200">
                   <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    PENDIENTES DE RECIBIR ({pendingTotal})
+                    PENDIENTES DE RECIBIR ({filteredPendingOrders.length})
                   </p>
                 </div>
                 <Table>
@@ -280,13 +416,12 @@ const RecepcionContabilidadPage: React.FC = () => {
                       <TableHead className="font-semibold">Total OC</TableHead>
                       <TableHead className="font-semibold">Facturas</TableHead>
                       <TableHead className="font-semibold">Facturado</TableHead>
-                      <TableHead className="font-semibold">Progreso</TableHead>
                       <TableHead className="font-semibold">Estado</TableHead>
                       <TableHead className="font-semibold text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendingOrders.map((po) => {
+                    {filteredPendingOrders.map((po) => {
                       const progress = getInvoiceProgress(po);
                       return (
                         <TableRow key={po.purchaseOrderId} className="bg-white hover:bg-orange-50/30 transition-colors">
@@ -322,25 +457,6 @@ const RecepcionContabilidadPage: React.FC = () => {
                             <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                               Pendiente: {formatCurrency(progress.pending)}
                             </p>
-                          </TableCell>
-                          <TableCell>
-                            <div className="w-24">
-                              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full transition-all ${
-                                    progress.percentage >= 100
-                                      ? 'bg-green-500'
-                                      : progress.percentage > 0
-                                      ? 'bg-yellow-500'
-                                      : 'bg-red-500'
-                                  }`}
-                                  style={{ width: `${progress.percentage}%` }}
-                                />
-                              </div>
-                              <p className="text-xs text-center mt-1 font-medium">
-                                {Math.round(progress.percentage)}%
-                              </p>
-                            </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
                           <TableCell>
@@ -401,7 +517,6 @@ const RecepcionContabilidadPage: React.FC = () => {
                         <TableHead className="font-semibold">Total OC</TableHead>
                         <TableHead className="font-semibold">Facturas</TableHead>
                         <TableHead className="font-semibold">Facturado</TableHead>
-                        <TableHead className="font-semibold">Progreso</TableHead>
                         <TableHead className="font-semibold">Estado</TableHead>
                         <TableHead className="font-semibold text-center">Acciones</TableHead>
                       </TableRow>
@@ -443,25 +558,6 @@ const RecepcionContabilidadPage: React.FC = () => {
                               <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                                 Pendiente: {formatCurrency(progress.pending)}
                               </p>
-                            </TableCell>
-                            <TableCell>
-                              <div className="w-24">
-                                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full transition-all ${
-                                      progress.percentage >= 100
-                                        ? 'bg-green-500'
-                                        : progress.percentage > 0
-                                        ? 'bg-yellow-500'
-                                        : 'bg-red-500'
-                                    }`}
-                                    style={{ width: `${progress.percentage}%` }}
-                                  />
-                                </div>
-                                <p className="text-xs text-center mt-1 font-medium">
-                                  {Math.round(progress.percentage)}%
-                                </p>
-                              </div>
                             </TableCell>
                             <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
                             <TableCell>
