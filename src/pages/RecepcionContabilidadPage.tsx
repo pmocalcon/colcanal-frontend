@@ -145,6 +145,20 @@ const RecepcionContabilidadPage: React.FC = () => {
     );
   };
 
+  const getInvoiceProgress = (po: PurchaseOrderForInvoicing) => {
+    const invoiceCount = po.invoices?.length || 0;
+    const totalInvoiced = Number(po.totalInvoicedAmount) || 0;
+    const totalAmount = Number(po.totalAmount);
+    const percentage = totalAmount > 0 ? (totalInvoiced / totalAmount) * 100 : 0;
+
+    return {
+      count: invoiceCount,
+      percentage: Math.min(percentage, 100),
+      amount: totalInvoiced,
+      pending: totalAmount - totalInvoiced,
+    };
+  };
+
   if (loading && purchaseOrders.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -291,71 +305,97 @@ const RecepcionContabilidadPage: React.FC = () => {
                   <TableHead className="font-semibold">Proveedor</TableHead>
                   <TableHead className="font-semibold">Total OC</TableHead>
                   <TableHead className="font-semibold">Facturas</TableHead>
-                  <TableHead className="font-semibold">Total Facturado</TableHead>
+                  <TableHead className="font-semibold">Facturado</TableHead>
+                  <TableHead className="font-semibold">Progreso</TableHead>
                   <TableHead className="font-semibold">Estado</TableHead>
                   <TableHead className="font-semibold text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchaseOrders.map((po) => (
-                  <TableRow key={po.purchaseOrderId} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
-                    <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                      {po.purchaseOrderNumber}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {po.requisition?.requisitionNumber || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-medium text-sm">
-                        {po.requisition?.operationCenter?.company?.name || '-'}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-medium">{po.supplier?.name || '-'}</p>
-                      <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        {po.supplier?.nitCc || '-'}
-                      </p>
-                    </TableCell>
-                    <TableCell className="font-semibold text-[hsl(var(--canalco-primary))]">
-                      {formatCurrency(po.totalAmount)}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-semibold">
-                        {po.invoices?.length || 0}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-semibold text-green-600">
-                        {formatCurrency(Number(po.totalInvoicedAmount) || 0)}
-                      </p>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleViewDetails(po)}
-                          className="hover:bg-blue-50"
-                          title="Ver detalles"
-                        >
-                          <Eye className="w-4 h-4 text-blue-600" />
-                        </Button>
-                        {activeTab === 'pendientes' && isContabilidad && (
+                {purchaseOrders.map((po) => {
+                  const progress = getInvoiceProgress(po);
+                  return (
+                    <TableRow key={po.purchaseOrderId} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
+                      <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                        {po.purchaseOrderNumber}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {po.requisition?.requisitionNumber || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-medium text-sm">
+                          {po.requisition?.operationCenter?.company?.name || '-'}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm font-medium">{po.supplier?.name || '-'}</p>
+                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                          {po.supplier?.nitCc || '-'}
+                        </p>
+                      </TableCell>
+                      <TableCell className="font-semibold text-[hsl(var(--canalco-primary))]">
+                        {formatCurrency(po.totalAmount)}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm font-semibold">
+                          {progress.count}/3
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm font-semibold text-green-600">
+                          {formatCurrency(progress.amount)}
+                        </p>
+                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                          Pendiente: {formatCurrency(progress.pending)}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="w-24">
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${
+                                progress.percentage >= 100
+                                  ? 'bg-green-500'
+                                  : progress.percentage > 0
+                                  ? 'bg-yellow-500'
+                                  : 'bg-red-500'
+                              }`}
+                              style={{ width: `${progress.percentage}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-center mt-1 font-medium">
+                            {Math.round(progress.percentage)}%
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-2">
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleOpenReceiveModal(po)}
-                            className="hover:bg-green-50"
-                            title="Marcar como recibida"
+                            onClick={() => handleViewDetails(po)}
+                            className="hover:bg-blue-50"
+                            title="Ver detalles"
                           >
-                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <Eye className="w-4 h-4 text-blue-600" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {activeTab === 'pendientes' && isContabilidad && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenReceiveModal(po)}
+                              className="hover:bg-green-50"
+                              title="Marcar como recibida"
+                            >
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
 
