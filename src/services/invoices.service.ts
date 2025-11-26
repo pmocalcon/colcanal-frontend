@@ -124,6 +124,10 @@ export interface SendToAccountingDto {
   sentToAccountingDate: string; // YYYY-MM-DD
 }
 
+export interface MarkAsReceivedDto {
+  receivedDate: string; // YYYY-MM-DD
+}
+
 // ============================================
 // API CALLS
 // ============================================
@@ -187,6 +191,50 @@ export const sendInvoicesToAccounting = async (
 ) => {
   const response = await api.post(
     `/invoices/send-to-accounting/${purchaseOrderId}`,
+    data,
+  );
+  return response.data;
+};
+
+// ============================================
+// CONTABILIDAD - RECEPCIÓN DE FACTURAS
+// ============================================
+
+/**
+ * Obtener facturas pendientes de recibir por contabilidad
+ */
+export const getAccountingPendingInvoices = async (
+  page: number = 1,
+  limit: number = 10,
+) => {
+  const response = await api.get(
+    `/invoices/accounting/pending?page=${page}&limit=${limit}`,
+  );
+  return response.data;
+};
+
+/**
+ * Obtener facturas ya recibidas por contabilidad
+ */
+export const getAccountingReceivedInvoices = async (
+  page: number = 1,
+  limit: number = 10,
+) => {
+  const response = await api.get(
+    `/invoices/accounting/received?page=${page}&limit=${limit}`,
+  );
+  return response.data;
+};
+
+/**
+ * Marcar facturas como recibidas por contabilidad
+ */
+export const markInvoicesAsReceived = async (
+  purchaseOrderId: number,
+  data: MarkAsReceivedDto,
+) => {
+  const response = await api.post(
+    `/invoices/accounting/mark-received/${purchaseOrderId}`,
     data,
   );
   return response.data;

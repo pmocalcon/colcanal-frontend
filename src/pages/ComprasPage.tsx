@@ -93,6 +93,10 @@ export default function ComprasPage() {
         // Everyone who can create can also receive materials
         return canCreateRoles.includes(userRole);
 
+      case 'recepcion-contabilidad':
+        // Only Contabilidad can access this module
+        return userRole === 'Contabilidad';
+
       default:
         return false;
     }
@@ -163,6 +167,13 @@ export default function ComprasPage() {
       icono: 'PackageCheck',
       hasAccess: getSubModuleAccess('recepciones'),
     },
+    {
+      gestionId: 110,
+      nombre: 'Recepción Contabilidad',
+      slug: 'recepcion-contabilidad',
+      icono: 'Calculator',
+      hasAccess: getSubModuleAccess('recepcion-contabilidad'),
+    },
   ];
 
   const handleSubModuleClick = (subModule: typeof comprasModules[0]) => {
@@ -189,6 +200,8 @@ export default function ComprasPage() {
       navigate('/dashboard/compras/facturas');
     } else if (subModule.slug === 'recepciones') {
       navigate('/dashboard/compras/recepciones');
+    } else if (subModule.slug === 'recepcion-contabilidad') {
+      navigate('/dashboard/compras/recepcion-contabilidad');
     } else {
       // TODO: Implementar navegación a las otras sub-páginas
       alert(`Navegando a ${subModule.nombre}. Esta funcionalidad estará disponible próximamente.`);

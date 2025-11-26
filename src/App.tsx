@@ -21,6 +21,7 @@ import AuditoriasComprasDetallePage from './pages/AuditoriasComprasDetallePage'
 import AprobarOrdenesCompraPage from './pages/AprobarOrdenesCompraPage'
 import GestionFacturasPage from './pages/GestionFacturasPage'
 import FacturasOrdenCompraPage from './pages/FacturasOrdenCompraPage'
+import RecepcionContabilidadPage from './pages/RecepcionContabilidadPage'
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/dashboard/compras/recepciones/:id/registrar" element={<RegistrarRecepcionPage />} />
           <Route path="/dashboard/compras/facturas" element={<GestionFacturasPage />} />
           <Route path="/dashboard/compras/facturas/:purchaseOrderId" element={<FacturasOrdenCompraPage />} />
+          <Route path="/dashboard/compras/recepcion-contabilidad" element={<RecepcionContabilidadPage />} />
           <Route path="/dashboard/auditorias" element={<AuditoriasPage />} />
           <Route path="/dashboard/auditorias/compras" element={<AuditoriasComprasPage />} />
           <Route path="/dashboard/auditorias/compras/detalle/:requisitionId" element={<AuditoriasComprasDetallePage />} />
