@@ -296,6 +296,25 @@ const RecepcionContabilidadPage: React.FC = () => {
           </div>
         ) : (
           <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+            {/* Section Header */}
+            <div className={`border-b px-4 py-2 ${
+              activeTab === 'pendientes'
+                ? 'bg-orange-50 border-orange-200'
+                : 'bg-green-50 border-green-200'
+            }`}>
+              <p className={`text-sm font-semibold flex items-center gap-2 ${
+                activeTab === 'pendientes' ? 'text-orange-800' : 'text-green-800'
+              }`}>
+                {activeTab === 'pendientes' ? (
+                  <AlertCircle className="h-4 w-4" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                {activeTab === 'pendientes'
+                  ? `PENDIENTES DE RECIBIR (${total})`
+                  : `FACTURAS RECIBIDAS (${total})`}
+              </p>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
