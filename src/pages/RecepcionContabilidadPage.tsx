@@ -34,18 +34,23 @@ import {
 } from '@/services/invoices.service';
 import { useAuth } from '@/contexts/AuthContext';
 
-type TabType = 'pendientes' | 'recibidas';
-
 const RecepcionContabilidadPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('pendientes');
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderForInvoicing[]>([]);
+
+  // Data states for both sections
+  const [pendingOrders, setPendingOrders] = useState<PurchaseOrderForInvoicing[]>([]);
+  const [receivedOrders, setReceivedOrders] = useState<PurchaseOrderForInvoicing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+
+  // Totals
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [receivedTotal, setReceivedTotal] = useState(0);
+
+  // Pagination for received section (internal pagination)
+  const [receivedPage, setReceivedPage] = useState(1);
+  const receivedLimit = 10;
 
   // Detail modal state
   const [selectedPO, setSelectedPO] = useState<PurchaseOrderForInvoicing | null>(null);
@@ -60,35 +65,30 @@ const RecepcionContabilidadPage: React.FC = () => {
   const isContabilidad = user?.nombreRol === 'Contabilidad';
 
   useEffect(() => {
-    loadData();
-  }, [activeTab, page]);
+    loadAllData();
+  }, []);
 
-  const loadData = async () => {
+  const loadAllData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      let response;
-      if (activeTab === 'pendientes') {
-        response = await getAccountingPendingInvoices(page, 10);
-      } else {
-        response = await getAccountingReceivedInvoices(page, 10);
-      }
+      // Fetch both pending and received data
+      const [pendingResponse, receivedResponse] = await Promise.all([
+        getAccountingPendingInvoices(1, 100), // Get all pending
+        getAccountingReceivedInvoices(1, 100), // Get all received
+      ]);
 
-      setPurchaseOrders(response.data);
-      setTotalPages(response.totalPages);
-      setTotal(response.total);
+      setPendingOrders(pendingResponse.data);
+      setPendingTotal(pendingResponse.total);
+      setReceivedOrders(receivedResponse.data);
+      setReceivedTotal(receivedResponse.total);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError(err.response?.data?.message || 'Error al cargar los datos');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    setPage(1);
   };
 
   const handleViewDetails = (po: PurchaseOrderForInvoicing) => {
@@ -110,7 +110,7 @@ const RecepcionContabilidadPage: React.FC = () => {
       await markInvoicesAsReceived(selectedPO.purchaseOrderId, {
         receivedDate,
       });
-      await loadData();
+      await loadAllData();
       setShowReceiveModal(false);
       setSelectedPO(null);
       alert('Facturas marcadas como recibidas exitosamente');
@@ -159,7 +159,7 @@ const RecepcionContabilidadPage: React.FC = () => {
     };
   };
 
-  if (loading && purchaseOrders.length === 0) {
+  if (loading && pendingOrders.length === 0 && receivedOrders.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--canalco-primary))]" />
@@ -208,50 +208,19 @@ const RecepcionContabilidadPage: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Tabs */}
-        <div className="mb-6 flex border-b border-[hsl(var(--canalco-neutral-200))]">
-          <button
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'pendientes'
-                ? 'border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))]'
-                : 'border-transparent text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-neutral-900))]'
-            }`}
-            onClick={() => handleTabChange('pendientes')}
-          >
-            Pendientes de Recibir
-          </button>
-          <button
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'recibidas'
-                ? 'border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))]'
-                : 'border-transparent text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-neutral-900))]'
-            }`}
-            onClick={() => handleTabChange('recibidas')}
-          >
-            Recibidas
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Total</p>
-            <p className="text-2xl font-bold text-[hsl(var(--canalco-primary))]">{total}</p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-              {activeTab === 'pendientes' ? 'Pendientes de Recibir' : 'Facturas Recibidas'}
-            </p>
-            <p className={`text-2xl font-bold ${activeTab === 'pendientes' ? 'text-orange-600' : 'text-green-600'}`}>
-              {purchaseOrders.length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Rol Actual</p>
-            <p className={`text-lg font-bold ${isContabilidad ? 'text-green-600' : 'text-gray-600'}`}>
-              {user?.nombreRol || 'Sin rol'}
-            </p>
-          </Card>
+        {/* Stats Summary Bar */}
+        <div className="mb-6 p-4 bg-[hsl(var(--canalco-neutral-100))] rounded-lg">
+          <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+            Total: <span className="font-semibold text-[hsl(var(--canalco-primary))]">{pendingTotal + receivedTotal}</span> órdenes con facturas (
+            <span className="text-orange-600 font-semibold">
+              {pendingTotal} pendientes
+            </span>
+            {' y '}
+            <span className="text-green-600 font-semibold">
+              {receivedTotal} recibidas
+            </span>
+            )
+          </p>
         </div>
 
         {/* Error Message */}
@@ -279,176 +248,275 @@ const RecepcionContabilidadPage: React.FC = () => {
           </div>
         )}
 
-        {/* Table */}
-        {purchaseOrders.length === 0 ? (
+        {/* Tables Container */}
+        {pendingOrders.length === 0 && receivedOrders.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))]">
             <FileText className="h-16 w-16 mx-auto text-[hsl(var(--canalco-neutral-400))] mb-4" />
             <p className="text-lg font-medium text-[hsl(var(--canalco-neutral-700))]">
-              {activeTab === 'pendientes'
-                ? 'No hay facturas pendientes de recibir'
-                : 'No hay facturas recibidas'}
+              No hay facturas registradas
             </p>
             <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-2">
-              {activeTab === 'pendientes'
-                ? 'Las facturas enviadas por compras aparecerán aquí'
-                : 'Las facturas confirmadas aparecerán aquí'}
+              Las facturas enviadas por compras aparecerán aquí
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
-            {/* Section Header */}
-            <div className={`border-b px-4 py-2 ${
-              activeTab === 'pendientes'
-                ? 'bg-orange-50 border-orange-200'
-                : 'bg-green-50 border-green-200'
-            }`}>
-              <p className={`text-sm font-semibold flex items-center gap-2 ${
-                activeTab === 'pendientes' ? 'text-orange-800' : 'text-green-800'
-              }`}>
-                {activeTab === 'pendientes' ? (
-                  <AlertCircle className="h-4 w-4" />
-                ) : (
-                  <CheckCircle className="h-4 w-4" />
-                )}
-                {activeTab === 'pendientes'
-                  ? `PENDIENTES DE RECIBIR (${total})`
-                  : `FACTURAS RECIBIDAS (${total})`}
-              </p>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
-                  <TableHead className="font-semibold">Nº Orden</TableHead>
-                  <TableHead className="font-semibold">Requisición</TableHead>
-                  <TableHead className="font-semibold">Empresa</TableHead>
-                  <TableHead className="font-semibold">Proveedor</TableHead>
-                  <TableHead className="font-semibold">Total OC</TableHead>
-                  <TableHead className="font-semibold">Facturas</TableHead>
-                  <TableHead className="font-semibold">Facturado</TableHead>
-                  <TableHead className="font-semibold">Progreso</TableHead>
-                  <TableHead className="font-semibold">Estado</TableHead>
-                  <TableHead className="font-semibold text-center">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {purchaseOrders.map((po) => {
-                  const progress = getInvoiceProgress(po);
-                  return (
-                    <TableRow key={po.purchaseOrderId} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
-                      <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                        {po.purchaseOrderNumber}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {po.requisition?.requisitionNumber || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <p className="font-medium text-sm">
-                          {po.requisition?.operationCenter?.company?.name || '-'}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <p className="text-sm font-medium">{po.supplier?.name || '-'}</p>
-                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                          {po.supplier?.nitCc || '-'}
-                        </p>
-                      </TableCell>
-                      <TableCell className="font-semibold text-[hsl(var(--canalco-primary))]">
-                        {formatCurrency(po.totalAmount)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm font-semibold">
-                          {progress.count}/3
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <p className="text-sm font-semibold text-green-600">
-                          {formatCurrency(progress.amount)}
-                        </p>
-                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                          Pendiente: {formatCurrency(progress.pending)}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <div className="w-24">
-                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all ${
-                                progress.percentage >= 100
-                                  ? 'bg-green-500'
-                                  : progress.percentage > 0
-                                  ? 'bg-yellow-500'
-                                  : 'bg-red-500'
-                              }`}
-                              style={{ width: `${progress.percentage}%` }}
-                            />
-                          </div>
-                          <p className="text-xs text-center mt-1 font-medium">
-                            {Math.round(progress.percentage)}%
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleViewDetails(po)}
-                            className="hover:bg-blue-50"
-                            title="Ver detalles"
-                          >
-                            <Eye className="w-4 h-4 text-blue-600" />
-                          </Button>
-                          {activeTab === 'pendientes' && isContabilidad && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenReceiveModal(po)}
-                              className="hover:bg-green-50"
-                              title="Marcar como recibida"
-                            >
-                              <CheckCircle className="w-4 h-4 text-green-600" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="border-t border-[hsl(var(--canalco-neutral-200))] px-4 py-3 flex items-center justify-between">
-                <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-                  Mostrando {(page - 1) * 10 + 1} - {Math.min(page * 10, total)} de {total}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="h-8 text-xs"
-                  >
-                    Anterior
-                  </Button>
-                  <span className="text-xs text-[hsl(var(--canalco-neutral-700))]">
-                    Página {page} de {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="h-8 text-xs"
-                  >
-                    Siguiente
-                  </Button>
+          <div className="space-y-6">
+            {/* SECCIÓN: PENDIENTES DE RECIBIR */}
+            {pendingOrders.length > 0 && (
+              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                <div className="bg-orange-50 px-4 py-2 border-b border-orange-200">
+                  <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    PENDIENTES DE RECIBIR ({pendingTotal})
+                  </p>
                 </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
+                      <TableHead className="font-semibold">Nº Orden</TableHead>
+                      <TableHead className="font-semibold">Requisición</TableHead>
+                      <TableHead className="font-semibold">Empresa</TableHead>
+                      <TableHead className="font-semibold">Proveedor</TableHead>
+                      <TableHead className="font-semibold">Total OC</TableHead>
+                      <TableHead className="font-semibold">Facturas</TableHead>
+                      <TableHead className="font-semibold">Facturado</TableHead>
+                      <TableHead className="font-semibold">Progreso</TableHead>
+                      <TableHead className="font-semibold">Estado</TableHead>
+                      <TableHead className="font-semibold text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingOrders.map((po) => {
+                      const progress = getInvoiceProgress(po);
+                      return (
+                        <TableRow key={po.purchaseOrderId} className="bg-white hover:bg-orange-50/30 transition-colors">
+                          <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                            {po.purchaseOrderNumber}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {po.requisition?.requisitionNumber || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <p className="font-medium text-sm">
+                              {po.requisition?.operationCenter?.company?.name || '-'}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm font-medium">{po.supplier?.name || '-'}</p>
+                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                              {po.supplier?.nitCc || '-'}
+                            </p>
+                          </TableCell>
+                          <TableCell className="font-semibold text-[hsl(var(--canalco-primary))]">
+                            {formatCurrency(po.totalAmount)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm font-semibold">
+                              {progress.count}/3
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm font-semibold text-green-600">
+                              {formatCurrency(progress.amount)}
+                            </p>
+                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                              Pendiente: {formatCurrency(progress.pending)}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            <div className="w-24">
+                              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${
+                                    progress.percentage >= 100
+                                      ? 'bg-green-500'
+                                      : progress.percentage > 0
+                                      ? 'bg-yellow-500'
+                                      : 'bg-red-500'
+                                  }`}
+                                  style={{ width: `${progress.percentage}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-center mt-1 font-medium">
+                                {Math.round(progress.percentage)}%
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleViewDetails(po)}
+                                className="hover:bg-blue-50"
+                                title="Ver detalles"
+                              >
+                                <Eye className="w-4 h-4 text-blue-600" />
+                              </Button>
+                              {isContabilidad && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenReceiveModal(po)}
+                                  className="hover:bg-green-50"
+                                  title="Marcar como recibida"
+                                >
+                                  <CheckCircle className="w-4 h-4 text-green-600" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             )}
+
+            {/* SECCIÓN: YA RECIBIDAS */}
+            {receivedOrders.length > 0 && (() => {
+              // Paginación interna
+              const receivedTotalPages = Math.ceil(receivedTotal / receivedLimit);
+              const receivedStartIndex = (receivedPage - 1) * receivedLimit;
+              const receivedEndIndex = receivedStartIndex + receivedLimit;
+              const paginatedReceivedOrders = receivedOrders.slice(receivedStartIndex, receivedEndIndex);
+
+              return (
+                <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                  <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                    <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      YA RECIBIDAS ({receivedTotal})
+                    </p>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
+                        <TableHead className="font-semibold">Nº Orden</TableHead>
+                        <TableHead className="font-semibold">Requisición</TableHead>
+                        <TableHead className="font-semibold">Empresa</TableHead>
+                        <TableHead className="font-semibold">Proveedor</TableHead>
+                        <TableHead className="font-semibold">Total OC</TableHead>
+                        <TableHead className="font-semibold">Facturas</TableHead>
+                        <TableHead className="font-semibold">Facturado</TableHead>
+                        <TableHead className="font-semibold">Progreso</TableHead>
+                        <TableHead className="font-semibold">Estado</TableHead>
+                        <TableHead className="font-semibold text-center">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedReceivedOrders.map((po) => {
+                        const progress = getInvoiceProgress(po);
+                        return (
+                          <TableRow key={po.purchaseOrderId} className="bg-white hover:bg-green-50/30 transition-colors">
+                            <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                              {po.purchaseOrderNumber}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {po.requisition?.requisitionNumber || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-sm">
+                                {po.requisition?.operationCenter?.company?.name || '-'}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm font-medium">{po.supplier?.name || '-'}</p>
+                              <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                {po.supplier?.nitCc || '-'}
+                              </p>
+                            </TableCell>
+                            <TableCell className="font-semibold text-[hsl(var(--canalco-primary))]">
+                              {formatCurrency(po.totalAmount)}
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm font-semibold">
+                                {progress.count}/3
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm font-semibold text-green-600">
+                                {formatCurrency(progress.amount)}
+                              </p>
+                              <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                Pendiente: {formatCurrency(progress.pending)}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              <div className="w-24">
+                                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      progress.percentage >= 100
+                                        ? 'bg-green-500'
+                                        : progress.percentage > 0
+                                        ? 'bg-yellow-500'
+                                        : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${progress.percentage}%` }}
+                                  />
+                                </div>
+                                <p className="text-xs text-center mt-1 font-medium">
+                                  {Math.round(progress.percentage)}%
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>{getStatusBadge(po.invoiceStatus)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewDetails(po)}
+                                  className="hover:bg-blue-50"
+                                  title="Ver detalles"
+                                >
+                                  <Eye className="w-4 h-4 text-blue-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+
+                  {/* Paginación de sección recibidas */}
+                  {receivedTotalPages > 1 && (
+                    <div className="border-t border-[hsl(var(--canalco-neutral-200))] px-4 py-3 flex items-center justify-between bg-green-50/30">
+                      <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                        Mostrando {receivedStartIndex + 1} - {Math.min(receivedEndIndex, receivedTotal)} de {receivedTotal} recibidas
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReceivedPage((p) => Math.max(1, p - 1))}
+                          disabled={receivedPage === 1}
+                          className="h-8 text-xs"
+                        >
+                          Anterior
+                        </Button>
+                        <span className="text-xs text-[hsl(var(--canalco-neutral-700))]">
+                          Página {receivedPage} de {receivedTotalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReceivedPage((p) => Math.min(receivedTotalPages, p + 1))}
+                          disabled={receivedPage === receivedTotalPages}
+                          className="h-8 text-xs"
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -629,7 +697,7 @@ const RecepcionContabilidadPage: React.FC = () => {
                 >
                   Cerrar
                 </Button>
-                {activeTab === 'pendientes' && isContabilidad && (
+                {pendingOrders.some(po => po.purchaseOrderId === selectedPO.purchaseOrderId) && isContabilidad && (
                   <Button
                     onClick={() => {
                       setShowDetailModal(false);
