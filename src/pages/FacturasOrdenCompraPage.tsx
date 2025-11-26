@@ -104,11 +104,20 @@ const FacturasOrdenCompraPage: React.FC = () => {
       });
     } else {
       setEditingInvoice(null);
+      // Pre-llenar con valores por defecto de la OC (pendiente por facturar)
+      const defaultAmount = summary?.pendingAmount || purchaseOrder?.defaultInvoiceValues?.amount || purchaseOrder?.totalAmount || 0;
+      const totalExpectedQuantity = purchaseOrder?.items?.reduce(
+        (sum, item) => sum + Number(item.quantity),
+        0
+      ) || 0;
+      const defaultQuantity = purchaseOrder?.defaultInvoiceValues?.materialQuantity
+        || (totalExpectedQuantity - (summary?.totalInvoicedQuantity || 0));
+
       setFormData({
         invoiceNumber: '',
         issueDate: new Date().toISOString().split('T')[0],
-        amount: '',
-        materialQuantity: '',
+        amount: defaultAmount > 0 ? defaultAmount.toString() : '',
+        materialQuantity: defaultQuantity > 0 ? defaultQuantity.toString() : '',
       });
     }
     setFormError(null);
@@ -130,51 +139,61 @@ const FacturasOrdenCompraPage: React.FC = () => {
       setFormError('El número de factura es requerido');
       return;
     }
-    if (!formData.amount || Number(formData.amount) <= 0) {
+
+    // Obtener valores (pueden ser vacíos si se usarán los por defecto del backend)
+    const amountValue = formData.amount ? Number(formData.amount) : null;
+    const quantityValue = formData.materialQuantity ? Number(formData.materialQuantity) : null;
+
+    // Solo validar si se proporcionaron valores
+    if (amountValue !== null && amountValue <= 0) {
       setFormError('El monto debe ser mayor a 0');
       return;
     }
-    if (!formData.materialQuantity || Number(formData.materialQuantity) <= 0) {
+    if (quantityValue !== null && quantityValue <= 0) {
       setFormError('La cantidad debe ser mayor a 0');
       return;
     }
 
-    // Validar que no se exceda el monto total de la orden de compra
-    const currentInvoicedAmount = invoices
-      .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
-      .reduce((sum, inv) => sum + Number(inv.amount), 0);
+    // Validar que no se exceda el monto total de la orden de compra (solo si se proporcionó monto)
+    if (amountValue !== null) {
+      const currentInvoicedAmount = invoices
+        .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
+        .reduce((sum, inv) => sum + Number(inv.amount), 0);
 
-    const newTotalInvoiced = currentInvoicedAmount + Number(formData.amount);
-    const totalOrderAmount = Number(purchaseOrder?.totalAmount || 0);
+      const newTotalInvoiced = currentInvoicedAmount + amountValue;
+      const totalOrderAmount = Number(purchaseOrder?.totalAmount || 0);
 
-    if (newTotalInvoiced > totalOrderAmount) {
-      const remainingAmount = totalOrderAmount - currentInvoicedAmount;
-      setFormError(
-        `El monto excede el total de la orden de compra. ` +
-        `Monto disponible: ${formatCurrency(remainingAmount)}`
-      );
-      return;
+      if (newTotalInvoiced > totalOrderAmount) {
+        const remainingAmount = totalOrderAmount - currentInvoicedAmount;
+        setFormError(
+          `El monto excede el total de la orden de compra. ` +
+          `Monto disponible: ${formatCurrency(remainingAmount)}`
+        );
+        return;
+      }
     }
 
-    // Validar que no se exceda la cantidad total de materiales
-    const totalExpectedQuantity = purchaseOrder?.items?.reduce(
-      (sum, item) => sum + Number(item.quantity),
-      0
-    ) || 0;
+    // Validar que no se exceda la cantidad total de materiales (solo si se proporcionó cantidad)
+    if (quantityValue !== null) {
+      const totalExpectedQuantity = purchaseOrder?.items?.reduce(
+        (sum, item) => sum + Number(item.quantity),
+        0
+      ) || 0;
 
-    const currentInvoicedQuantity = invoices
-      .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
-      .reduce((sum, inv) => sum + Number(inv.materialQuantity), 0);
+      const currentInvoicedQuantity = invoices
+        .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
+        .reduce((sum, inv) => sum + Number(inv.materialQuantity), 0);
 
-    const newTotalInvoicedQuantity = currentInvoicedQuantity + Number(formData.materialQuantity);
+      const newTotalInvoicedQuantity = currentInvoicedQuantity + quantityValue;
 
-    if (newTotalInvoicedQuantity > totalExpectedQuantity) {
-      const remainingQuantity = totalExpectedQuantity - currentInvoicedQuantity;
-      setFormError(
-        `La cantidad excede el total esperado de la orden de compra. ` +
-        `Cantidad disponible: ${remainingQuantity}`
-      );
-      return;
+      if (newTotalInvoicedQuantity > totalExpectedQuantity) {
+        const remainingQuantity = totalExpectedQuantity - currentInvoicedQuantity;
+        setFormError(
+          `La cantidad excede el total esperado de la orden de compra. ` +
+          `Cantidad disponible: ${remainingQuantity}`
+        );
+        return;
+      }
     }
 
     try {
@@ -185,18 +204,19 @@ const FacturasOrdenCompraPage: React.FC = () => {
         const updateData: UpdateInvoiceDto = {
           invoiceNumber: formData.invoiceNumber,
           issueDate: formData.issueDate,
-          amount: Number(formData.amount),
-          materialQuantity: Number(formData.materialQuantity),
+          amount: amountValue !== null ? amountValue : undefined,
+          materialQuantity: quantityValue !== null ? quantityValue : undefined,
         };
         await updateInvoice(editingInvoice.invoiceId, updateData);
       } else {
-        // Create invoice
+        // Create invoice - amount y materialQuantity son opcionales
+        // Si no se envían, el backend usa los valores por defecto de la OC
         const createData: CreateInvoiceDto = {
           purchaseOrderId: Number(purchaseOrderId),
           invoiceNumber: formData.invoiceNumber,
           issueDate: formData.issueDate,
-          amount: Number(formData.amount),
-          materialQuantity: Number(formData.materialQuantity),
+          ...(amountValue !== null && { amount: amountValue }),
+          ...(quantityValue !== null && { materialQuantity: quantityValue }),
         };
         await createInvoice(createData);
       }
@@ -720,7 +740,9 @@ const FacturasOrdenCompraPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="amount" className="text-xs">Monto (COP) *</Label>
+                  <Label htmlFor="amount" className="text-xs">
+                    Monto (COP) <span className="text-[hsl(var(--canalco-neutral-500))]">(pre-llenado)</span>
+                  </Label>
                   <Input
                     id="amount"
                     type="number"
@@ -728,14 +750,18 @@ const FacturasOrdenCompraPage: React.FC = () => {
                     min="0.01"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    placeholder="0.00"
+                    placeholder="Usa valor de la OC"
                     className="text-sm"
-                    required
                   />
+                  <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] mt-1">
+                    Si se deja vacío, usará el monto pendiente de la OC
+                  </p>
                 </div>
 
                 <div>
-                  <Label htmlFor="materialQuantity" className="text-xs">Cantidad de Material *</Label>
+                  <Label htmlFor="materialQuantity" className="text-xs">
+                    Cantidad de Material <span className="text-[hsl(var(--canalco-neutral-500))]">(pre-llenado)</span>
+                  </Label>
                   <Input
                     id="materialQuantity"
                     type="number"
@@ -743,10 +769,12 @@ const FacturasOrdenCompraPage: React.FC = () => {
                     min="0.01"
                     value={formData.materialQuantity}
                     onChange={(e) => setFormData({ ...formData, materialQuantity: e.target.value })}
-                    placeholder="0.00"
+                    placeholder="Usa cantidad de la OC"
                     className="text-sm"
-                    required
                   />
+                  <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] mt-1">
+                    Si se deja vacío, usará la cantidad pendiente de la OC
+                  </p>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3">

@@ -125,7 +125,7 @@ const GestionFacturasPage: React.FC = () => {
                 Gestión de Facturas
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                Registrar facturas de órdenes de compra aprobadas
+                Registrar facturas de órdenes con recepción completa
               </p>
             </div>
 
@@ -188,7 +188,7 @@ const GestionFacturasPage: React.FC = () => {
               No hay órdenes de compra para facturar
             </p>
             <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-2">
-              Las órdenes aprobadas por Gerencia aparecerán aquí
+              Las órdenes con recepción de materiales completa aparecerán aquí
             </p>
           </div>
         ) : (

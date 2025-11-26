@@ -65,6 +65,11 @@ export interface PurchaseOrderForInvoicing {
   requisition?: {
     requisitionId: number;
     requisitionNumber: string;
+    status?: {
+      statusId: number;
+      code: string;
+      name: string;
+    };
     operationCenter?: {
       centerId: number;
       code: string;
@@ -91,6 +96,11 @@ export interface PurchaseOrderForInvoicing {
     };
   }[];
   invoices?: Invoice[];
+  // Valores por defecto sugeridos para crear factura
+  defaultInvoiceValues?: {
+    amount: number;
+    materialQuantity: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -99,8 +109,8 @@ export interface CreateInvoiceDto {
   purchaseOrderId: number;
   invoiceNumber: string;
   issueDate: string; // YYYY-MM-DD
-  amount: number;
-  materialQuantity: number;
+  amount?: number; // Opcional - si no se envía, usa el total de la OC
+  materialQuantity?: number; // Opcional - si no se envía, usa la cantidad total de la OC
 }
 
 export interface UpdateInvoiceDto {
