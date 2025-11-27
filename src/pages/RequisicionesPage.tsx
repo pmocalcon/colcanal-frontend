@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { requisitionsService } from '@/services/requisitions.service';
+import { modulesService } from '@/services/modules.service';
 import type { Requisition, FilterRequisitionsParams } from '@/services/requisitions.service';
+import type { ModulePermissions } from '@/services/modules.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle } from 'lucide-react';
@@ -43,6 +45,9 @@ export default function RequisicionesPage() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Permisos del módulo de compras
+  const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
+
   // Pagination state
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -78,10 +83,24 @@ export default function RequisicionesPage() {
     { code: 'pendiente_recepcion', name: 'Pendiente de Recepción' },
   ];
 
-  // Check user permissions
-  // Roles que NO pueden crear requisiciones
-  const restrictedRoles = ['Gerencia', 'Compras'];
-  const canCreateRequisitions = user ? !restrictedRoles.includes(user.nombreRol) : false;
+  // Permisos dinámicos desde el backend
+  const canCreateRequisitions = permissions?.crear ?? false;
+
+  // Cargar permisos del módulo al montar
+  useEffect(() => {
+    const loadPermissions = async () => {
+      try {
+        const modules = await modulesService.getUserModules();
+        const comprasModule = modules.find(m => m.slug === 'compras');
+        if (comprasModule?.permisos) {
+          setPermissions(comprasModule.permisos);
+        }
+      } catch (err) {
+        console.error('Error loading permissions:', err);
+      }
+    };
+    loadPermissions();
+  }, []);
 
   useEffect(() => {
     loadRequisitions();
@@ -134,13 +153,7 @@ export default function RequisicionesPage() {
 
   const handleCreateNew = () => {
     if (!canCreateRequisitions) {
-      // Show info message for restricted roles
-      const message = user?.nombreRol === 'Compras'
-        ? 'Su rol (Compras) no tiene permisos para crear requisiciones. Puede gestionar cotizaciones y órdenes de compra.'
-        : user?.nombreRol === 'Gerencia'
-        ? 'Su rol (Gerencia) no tiene permisos para crear requisiciones. Puede aprobar requisiciones previamente revisadas.'
-        : 'Su rol no tiene permisos para crear requisiciones.';
-      alert(message);
+      alert('Su rol no tiene permisos para crear requisiciones.');
       return;
     }
     // Navigate to create view
@@ -310,7 +323,7 @@ export default function RequisicionesPage() {
             size="lg"
             title={
               !canCreateRequisitions
-                ? `Su rol (${user?.nombreRol}) no tiene permisos para crear requisiciones`
+                ? 'Su rol no tiene permisos para crear requisiciones'
                 : 'Crear nueva requisición'
             }
           >

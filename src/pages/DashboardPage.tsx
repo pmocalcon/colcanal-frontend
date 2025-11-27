@@ -146,30 +146,6 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Quick Access for Gerencia de Proyectos */}
-        {user?.nombreRol === 'Gerencia de Proyectos' && (
-          <div className="mb-8">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-amber-900 mb-2">
-                    Autorización de Requisiciones
-                  </h3>
-                  <p className="text-sm text-amber-700">
-                    Revisa y autoriza requisiciones pendientes de autorización
-                  </p>
-                </div>
-                <Button
-                  onClick={() => navigate('/dashboard/compras/requisiciones/autorizar')}
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  Ver Requisiciones
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Modules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {modules.map((module) => (
