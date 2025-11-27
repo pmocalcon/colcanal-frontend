@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -12,7 +12,7 @@ import { suppliersService, type Supplier } from '@/services/suppliers.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Home, Save, X, Search, ArrowLeft, Copy } from 'lucide-react';
+import { Home, Save, X, Search, ArrowLeft, Copy, AlertCircle } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -423,6 +423,21 @@ export default function GestionarCotizacionPage() {
     return !NON_EDITABLE_STATUSES.includes(requisition.status.code);
   };
 
+  const assignedSuppliers = useMemo(() => {
+    if (!requisition) return [];
+    const map = new Map<number, Supplier>();
+
+    requisition.items.forEach((item) => {
+      (item.quotations || []).forEach((quotation) => {
+        if (quotation.supplier) {
+          map.set(quotation.supplier.supplierId, quotation.supplier);
+        }
+      });
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [requisition]);
+
   if (!isCompras) {
     return null;
   }
@@ -576,6 +591,63 @@ export default function GestionarCotizacionPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Vistas simplificadas por proveedor */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-[hsl(var(--canalco-neutral-200))]">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide">
+                Solicitud de cotización (solo visualización)
+              </p>
+              <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                Genera la vista limpia por proveedor para compartir la requisición.
+              </p>
+            </div>
+            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+              Requisición {requisition.requisitionNumber}
+            </p>
+          </div>
+
+          {assignedSuppliers.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-[hsl(var(--canalco-neutral-600))]">
+              <AlertCircle className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
+              Asigna al menos un proveedor a los ítems para habilitar esta vista.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {assignedSuppliers.map((supplier) => (
+                <div
+                  key={supplier.supplierId}
+                  className="border border-[hsl(var(--canalco-neutral-200))] rounded-lg p-4 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      {supplier.name}
+                    </p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">NIT: {supplier.nitCc}</p>
+                    {(supplier.email || supplier.contactPerson) && (
+                      <p className="text-xs text-[hsl(var(--canalco-neutral-600))] mt-1">
+                        {[supplier.contactPerson, supplier.email].filter(Boolean).join(' • ')}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      navigate(
+                        `/dashboard/compras/cotizaciones/solicitud/${requisition.requisitionId}/proveedor/${supplier.supplierId}`
+                      )
+                    }
+                    className="whitespace-nowrap border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))]"
+                  >
+                    Ver solicitud
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Progress Bar */}

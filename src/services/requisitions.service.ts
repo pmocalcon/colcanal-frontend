@@ -13,6 +13,7 @@ export interface RequisitionItem {
   itemNumber: number;
   materialId: number;
   quantity: number;
+  unit?: string;
   observation?: string;
   material: Material;
 }

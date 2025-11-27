@@ -22,6 +22,7 @@ import AprobarOrdenesCompraPage from './pages/AprobarOrdenesCompraPage'
 import GestionFacturasPage from './pages/GestionFacturasPage'
 import FacturasOrdenCompraPage from './pages/FacturasOrdenCompraPage'
 import RecepcionContabilidadPage from './pages/RecepcionContabilidadPage'
+import SolicitudCotizacionProveedorPage from './pages/SolicitudCotizacionProveedorPage'
 
 export default function App() {
   return (
@@ -40,6 +41,10 @@ export default function App() {
           <Route path="/dashboard/compras/ordenes-compra/aprobar" element={<AprobarOrdenesCompraPage />} />
           <Route path="/dashboard/compras/cotizaciones" element={<CotizacionesPage />} />
           <Route path="/dashboard/compras/cotizaciones/gestionar/:requisitionId" element={<GestionarCotizacionPage />} />
+          <Route
+            path="/dashboard/compras/cotizaciones/solicitud/:requisitionId/proveedor/:supplierId"
+            element={<SolicitudCotizacionProveedorPage />}
+          />
           <Route path="/dashboard/compras/ordenes" element={<OrdenesDeCompraPage />} />
           <Route path="/dashboard/compras/ordenes/:requisitionId/ver" element={<GestionarCotizacionPage />} />
           <Route path="/dashboard/compras/ordenes/:requisitionId/asignar-precios" element={<AsignarPreciosPage />} />
