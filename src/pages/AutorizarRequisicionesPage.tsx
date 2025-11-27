@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, CheckCircle, XCircle, AlertCircle, Loader2, ArrowLeft, Check, X } from 'lucide-react';
+import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -60,33 +60,29 @@ const AutorizarRequisicionesPage: React.FC = () => {
     status: '',
   });
 
-  // Cargar requisiciones pendientes de autorización
+  // Cargar requisiciones para autorización (pendientes y ya procesadas)
   const loadPendingRequisitions = async () => {
     try {
       setLoading(true);
       setError(null);
       const response = await getPendingActions({ page, limit: 100 });
 
-      // DEBUG: Log para ver qué está devolviendo la API
-      console.log('🔍 getPendingActions response:', response);
-      console.log('🔍 Total requisitions returned:', response.data.length);
-      console.log('🔍 All statuses:', response.data.map(r => r.status?.code));
-
-      // Filtrar solo las que están pendientes de autorización
-      const pendingAuth = response.data.filter(
-        (req) => req.status?.code === 'pendiente_autorizacion'
+      // Filtrar requisiciones relevantes para el autorizador:
+      // - pendiente_autorizacion (pendientes de autorizar)
+      // - autorizado (ya autorizadas)
+      // - aprobada_gerencia (ya pasaron por autorización y aprobación)
+      // - rechazada_revisor (rechazadas después de autorización)
+      const relevantStatuses = ['pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'rechazada_revisor'];
+      const authRequisitions = response.data.filter(
+        (req) => relevantStatuses.includes(req.status?.code || '')
       );
 
-      console.log('🔍 Filtered pendiente_autorizacion:', pendingAuth.length);
-      console.log('🔍 Pending auth requisitions:', pendingAuth);
-
-      setRequisitions(pendingAuth);
+      setRequisitions(authRequisitions);
       setTotalPages(response.totalPages);
-      setTotal(pendingAuth.length);
+      setTotal(authRequisitions.length);
     } catch (err: any) {
-      console.error('❌ Error loading pending requisitions:', err);
-      console.error('❌ Error details:', err.response?.data);
-      setError(err.response?.data?.message || 'Error al cargar las requisiciones pendientes');
+      console.error('Error loading requisitions:', err);
+      setError(err.response?.data?.message || 'Error al cargar las requisiciones');
     } finally {
       setLoading(false);
     }
@@ -322,15 +318,16 @@ const AutorizarRequisicionesPage: React.FC = () => {
 
         {/* Dashboard de Estado */}
         {!showDetail && (() => {
-          // Calcular vencidos
-          const overdueCount = requisitions.filter(req => req.isOverdue).length;
+          // Calcular pendientes (solo pendiente_autorizacion)
+          const pendingReqs = requisitions.filter(req => req.status?.code === 'pendiente_autorizacion');
+          const overdueCount = pendingReqs.filter(req => req.isOverdue).length;
 
           const statusCounts: StatusCount[] = [];
-          if (requisitions.length > 0) {
+          if (pendingReqs.length > 0) {
             statusCounts.push({
               status: 'pendiente_autorizacion',
-              statusLabel: 'Pendiente de Autorización',
-              count: requisitions.length,
+              statusLabel: 'Pendiente',
+              count: pendingReqs.length,
             });
           }
 
@@ -363,110 +360,217 @@ const AutorizarRequisicionesPage: React.FC = () => {
                 <CheckCircle className="h-16 w-16 mx-auto text-[hsl(var(--canalco-neutral-400))] mb-4" />
                 <p className="text-lg font-medium text-[hsl(var(--canalco-neutral-700))]">
                   {requisitions.length === 0
-                    ? 'No hay requisiciones pendientes de autorización'
+                    ? 'No hay requisiciones para mostrar'
                     : 'No se encontraron requisiciones con los filtros aplicados'}
                 </p>
                 <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-2">
                   {requisitions.length === 0
-                    ? 'Todas las requisiciones asignadas han sido procesadas.'
+                    ? 'Aún no tienes requisiciones asignadas para autorizar.'
                     : 'Intenta ajustar los filtros para ver más resultados.'}
                 </p>
               </div>
             ) : (
               <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
-                      <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
-                      <TableHead className="font-semibold">Empresa</TableHead>
-                      <TableHead className="font-semibold">Proyecto/Obra</TableHead>
-                      <TableHead className="font-semibold w-[80px]">Ítems</TableHead>
-                      <TableHead className="font-semibold">Solicitado por</TableHead>
-                      <TableHead className="font-semibold">Última Actualización</TableHead>
-                      <TableHead className="font-semibold">Estado</TableHead>
-                      <TableHead className="font-semibold">Plazo</TableHead>
-                      <TableHead className="font-semibold text-center">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRequisitions.map((req) => (
-                      <TableRow key={req.requisitionId} className="bg-white hover:bg-orange-50/30">
-                        <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                          {req.requisitionNumber}
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {req.company.name}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          {req.project ? (
-                            <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">{req.project.name}</p>
-                          ) : req.obra ? (
-                            <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">{req.obra}</p>
-                          ) : (
-                            <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</p>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] font-semibold text-sm">
-                            {req.items?.length || 0}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
-                              {req.creator.nombre}
-                            </p>
-                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                              {req.creator.role?.nombreRol || 'Sin rol'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-                          {formatDate(req.createdAt)}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                              req.status?.code || 'pendiente'
-                            )}`}
-                          >
-                            {req.status?.name || 'Pendiente'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {req.isOverdue ? (
-                            <div className="text-sm flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1">
-                                <span className="text-red-600">❌</span>
-                                <span className="text-red-600 font-medium">Vencida</span>
+                {/* Sección PENDIENTES */}
+                {filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').length > 0 && (
+                  <div>
+                    <div className="bg-orange-50 border-b border-orange-200 px-4 py-2">
+                      <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        PENDIENTES ({filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').length})
+                      </p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
+                          <TableHead className="font-semibold">Empresa</TableHead>
+                          <TableHead className="font-semibold">Proyecto/Obra</TableHead>
+                          <TableHead className="font-semibold w-[80px]">Ítems</TableHead>
+                          <TableHead className="font-semibold">Solicitado por</TableHead>
+                          <TableHead className="font-semibold">Última Actualización</TableHead>
+                          <TableHead className="font-semibold">Estado</TableHead>
+                          <TableHead className="font-semibold">Plazo</TableHead>
+                          <TableHead className="font-semibold text-center">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').map((req) => (
+                          <TableRow key={req.requisitionId} className="bg-white hover:bg-orange-50/30">
+                            <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                              {req.requisitionNumber}
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                                {req.company.name}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              {req.project ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">{req.project.name}</p>
+                              ) : req.obra ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">{req.obra}</p>
+                              ) : (
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</p>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] font-semibold text-sm">
+                                {req.items?.length || 0}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                                  {req.creator.nombre}
+                                </p>
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                  {req.creator.role?.nombreRol || 'Sin rol'}
+                                </p>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-green-600">✅</span>
-                              <span className="text-green-600 font-medium">A tiempo</span>
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleViewDetail(req)}
-                              className="hover:bg-blue-50"
-                              title="Autorizar"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                            </TableCell>
+                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                              {formatDate(req.createdAt)}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                  req.status?.code || 'pendiente'
+                                )}`}
+                              >
+                                {req.status?.name || 'Pendiente'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {req.isOverdue ? (
+                                <div className="text-sm flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-red-600">❌</span>
+                                    <span className="text-red-600 font-medium">Vencida</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-green-600">✅</span>
+                                  <span className="text-green-600 font-medium">A tiempo</span>
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewDetail(req)}
+                                  className="hover:bg-blue-50"
+                                  title="Autorizar"
+                                >
+                                  <Eye className="h-4 w-4 text-blue-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {/* Sección YA AUTORIZADAS */}
+                {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').length > 0 && (
+                  <div className={filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                    <div className="bg-green-50 border-b border-green-200 px-4 py-2">
+                      <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        YA AUTORIZADAS ({filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').length})
+                      </p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
+                          <TableHead className="font-semibold">Empresa</TableHead>
+                          <TableHead className="font-semibold">Proyecto/Obra</TableHead>
+                          <TableHead className="font-semibold w-[80px]">Ítems</TableHead>
+                          <TableHead className="font-semibold">Solicitado por</TableHead>
+                          <TableHead className="font-semibold">Última Actualización</TableHead>
+                          <TableHead className="font-semibold">Estado</TableHead>
+                          <TableHead className="font-semibold">Plazo</TableHead>
+                          <TableHead className="font-semibold text-center">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').map((req) => (
+                          <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30">
+                            <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
+                              {req.requisitionNumber}
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-[hsl(var(--canalco-neutral-700))]">
+                                {req.company.name}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              {req.project ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">{req.project.name}</p>
+                              ) : req.obra ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">{req.obra}</p>
+                              ) : (
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</p>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-600))] font-semibold text-sm">
+                                {req.items?.length || 0}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                                  {req.creator.nombre}
+                                </p>
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                  {req.creator.role?.nombreRol || 'Sin rol'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                              <div>
+                                <p className="font-medium">{req.lastActionLabel || 'Autorizada'}</p>
+                                <p className="text-xs">{formatDate(req.lastActionDate || req.updatedAt)}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                  req.status?.code || 'pendiente'
+                                )}`}
+                              >
+                                {req.status?.name || 'Pendiente'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => navigate(`/dashboard/compras/requisiciones/detalle/${req.requisitionId}`)}
+                                  className="hover:bg-blue-50"
+                                  title="Ver detalles"
+                                >
+                                  <Eye className="w-4 h-4 text-blue-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -489,7 +593,7 @@ const AutorizarRequisicionesPage: React.FC = () => {
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mb-4">
                     Creada el {formatDate(selectedRequisition.createdAt)}
                   </p>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <div>
                       <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                         Empresa
@@ -504,6 +608,22 @@ const AutorizarRequisicionesPage: React.FC = () => {
                       </Label>
                       <p className="font-medium">
                         {selectedRequisition.project?.name || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Obra
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.obra || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Código de Obra
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.codigoObra || 'N/A'}
                       </p>
                     </div>
                     <div>
@@ -655,66 +775,69 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         {selectedRequisition.creator.nombre}
                       </p>
                       <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
+                        {selectedRequisition.creator.cargo || 'Sin cargo'}
                       </p>
                     </div>
 
-                    {/* Revisado por - solo si existe */}
-                    {selectedRequisition.logs?.find(
-                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                    ) && (
-                      <div className="border-l-4 border-blue-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Revisado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                          )?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                          )?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Revisado por - actions: revisar_aprobar, revisar_aprobar_pendiente_autorizacion, revisar_rechazar */}
+                    {(() => {
+                      const reviewLog = selectedRequisition.logs?.find(
+                        (log) => log.action?.startsWith('revisar_')
+                      );
+                      return reviewLog ? (
+                        <div className="border-l-4 border-blue-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Revisado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {reviewLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {reviewLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
 
-                    {/* Autorizado por - solo si existe */}
-                    {selectedRequisition.logs?.find((log) => log.action === 'autorizar') && (
-                      <div className="border-l-4 border-amber-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Autorizado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Autorizado por - actions: autorizar_aprobar (newStatus = autorizado) */}
+                    {(() => {
+                      const authorizeLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'autorizar_aprobar' || log.newStatus === 'autorizado'
+                      );
+                      return authorizeLog ? (
+                        <div className="border-l-4 border-amber-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Autorizado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {authorizeLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {authorizeLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
 
-                    {/* Aprobado por - solo si existe */}
-                    {selectedRequisition.logs?.find(
-                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                    ) && (
-                      <div className="border-l-4 border-green-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Aprobado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                          )?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                          )?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Aprobado por (Gerencia) - action: aprobar_gerencia (newStatus = aprobada_gerencia) */}
+                    {(() => {
+                      const approveLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                      );
+                      return approveLog ? (
+                        <div className="border-l-4 border-green-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Aprobado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {approveLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {approveLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </Card>
               </>

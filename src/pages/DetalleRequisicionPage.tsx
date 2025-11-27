@@ -6,7 +6,7 @@ import type { Requisition } from '@/services/requisitions.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Package, Calendar, User, Building2, FolderOpen, MapPin, FileText, Clock, Home } from 'lucide-react';
+import { ArrowLeft, Package, Home } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -176,46 +176,36 @@ export default function DetalleRequisicionPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {/* Empresa */}
-              <div className="flex items-start space-x-3">
-                <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Empresa</p>
-                  <p className="text-sm">{requisition.company.name}</p>
-                </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500">Empresa</p>
+                <p className="text-sm font-medium">{requisition.company.name}</p>
               </div>
 
               {/* Proyecto */}
-              {requisition.project && (
-                <div className="flex items-start space-x-3">
-                  <FolderOpen className="h-5 w-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Proyecto</p>
-                    <p className="text-sm">{requisition.project.name}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Centro de Operación */}
-              <div className="flex items-start space-x-3">
-                <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Centro de Operación</p>
-                  <p className="text-sm">Código: {requisition.operationCenter.code}</p>
-                </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500">Proyecto</p>
+                <p className="text-sm font-medium">{requisition.project?.name || 'N/A'}</p>
               </div>
 
-              {/* Código de Proyecto */}
-              {requisition.projectCode && (
-                <div className="flex items-start space-x-3">
-                  <FileText className="h-5 w-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Código de Proyecto</p>
-                    <p className="text-sm">{requisition.projectCode.code}</p>
-                  </div>
-                </div>
-              )}
+              {/* Obra */}
+              <div>
+                <p className="text-xs font-medium text-gray-500">Obra</p>
+                <p className="text-sm font-medium">{requisition.obra || 'N/A'}</p>
+              </div>
+
+              {/* Código de Obra */}
+              <div>
+                <p className="text-xs font-medium text-gray-500">Código de Obra</p>
+                <p className="text-sm font-medium">{requisition.codigoObra || 'N/A'}</p>
+              </div>
+
+              {/* Centro de Operación */}
+              <div>
+                <p className="text-xs font-medium text-gray-500">Centro de Operación</p>
+                <p className="text-sm font-medium">{requisition.operationCenter.code}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -278,66 +268,69 @@ export default function DetalleRequisicionPage() {
                   {requisition.creator.nombre}
                 </p>
                 <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                  {requisition.creator.role?.nombreRol || 'Sin rol'}
+                  {requisition.creator.cargo || 'Sin cargo'}
                 </p>
               </div>
 
-              {/* Revisado por - solo si existe */}
-              {requisition.logs?.find(
-                (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-              ) && (
-                <div className="border-l-4 border-blue-500 pl-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    Revisado por
-                  </p>
-                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                    )?.user.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                    )?.user.role?.nombreRol || 'Sin rol'}
-                  </p>
-                </div>
-              )}
+              {/* Revisado por - actions: revisar_aprobar, revisar_aprobar_pendiente_autorizacion, revisar_rechazar */}
+              {(() => {
+                const reviewLog = requisition.logs?.find(
+                  (log) => log.action?.startsWith('revisar_')
+                );
+                return reviewLog ? (
+                  <div className="border-l-4 border-blue-500 pl-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                      Revisado por
+                    </p>
+                    <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {reviewLog.user.nombre}
+                    </p>
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      {reviewLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
 
-              {/* Autorizado por - solo si existe */}
-              {requisition.logs?.find((log) => log.action === 'autorizar') && (
-                <div className="border-l-4 border-amber-500 pl-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    Autorizado por
-                  </p>
-                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
-                  </p>
-                </div>
-              )}
+              {/* Autorizado por - actions: autorizar_aprobar (newStatus = autorizado) */}
+              {(() => {
+                const authorizeLog = requisition.logs?.find(
+                  (log) => log.action === 'autorizar_aprobar' || log.newStatus === 'autorizado'
+                );
+                return authorizeLog ? (
+                  <div className="border-l-4 border-amber-500 pl-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                      Autorizado por
+                    </p>
+                    <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {authorizeLog.user.nombre}
+                    </p>
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      {authorizeLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
 
-              {/* Aprobado por - solo si existe */}
-              {requisition.logs?.find(
-                (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-              ) && (
-                <div className="border-l-4 border-green-500 pl-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    Aprobado por
-                  </p>
-                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                    )?.user.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.logs.find(
-                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                    )?.user.role?.nombreRol || 'Sin rol'}
-                  </p>
-                </div>
-              )}
+              {/* Aprobado por (Gerencia) - action: aprobar_gerencia (newStatus = aprobada_gerencia) */}
+              {(() => {
+                const approveLog = requisition.logs?.find(
+                  (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                );
+                return approveLog ? (
+                  <div className="border-l-4 border-green-500 pl-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                      Aprobado por
+                    </p>
+                    <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {approveLog.user.nombre}
+                    </p>
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      {approveLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
             </div>
           </CardContent>
         </Card>

@@ -58,6 +58,7 @@ export interface Requisition {
     userId: number;
     nombre: string;
     email: string;
+    cargo?: string;
     role: {
       rolId: number;
       nombreRol: string;
@@ -107,6 +108,7 @@ export interface RequisitionLog {
     userId: number;
     nombre: string;
     email: string;
+    cargo?: string;
     role: {
       rolId: number;
       nombreRol: string;

@@ -858,7 +858,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mb-4">
                     Creada el {formatDate(selectedRequisition.createdAt)}
                   </p>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <div>
                       <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                         Empresa
@@ -873,6 +873,22 @@ const RevisarRequisicionesPage: React.FC = () => {
                       </Label>
                       <p className="font-medium">
                         {selectedRequisition.project?.name || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Obra
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.obra || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Código de Obra
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.codigoObra || 'N/A'}
                       </p>
                     </div>
                     <div>
@@ -1150,66 +1166,69 @@ const RevisarRequisicionesPage: React.FC = () => {
                         {selectedRequisition.creator.nombre}
                       </p>
                       <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                        {selectedRequisition.creator.role?.nombreRol || 'Sin rol'}
+                        {selectedRequisition.creator.cargo || 'Sin cargo'}
                       </p>
                     </div>
 
-                    {/* Revisado por - solo si existe */}
-                    {selectedRequisition.logs?.find(
-                      (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                    ) && (
-                      <div className="border-l-4 border-blue-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Revisado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                          )?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'revisar_aprobar' && log.newStatus === 'aprobada_revisor'
-                          )?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Revisado por - actions: revisar_aprobar, revisar_aprobar_pendiente_autorizacion, revisar_rechazar */}
+                    {(() => {
+                      const reviewLog = selectedRequisition.logs?.find(
+                        (log) => log.action?.startsWith('revisar_')
+                      );
+                      return reviewLog ? (
+                        <div className="border-l-4 border-blue-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Revisado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {reviewLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {reviewLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
 
-                    {/* Autorizado por - solo si existe */}
-                    {selectedRequisition.logs?.find((log) => log.action === 'autorizar') && (
-                      <div className="border-l-4 border-amber-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Autorizado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find((log) => log.action === 'autorizar')?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Autorizado por - actions: autorizar_aprobar (newStatus = autorizado) */}
+                    {(() => {
+                      const authorizeLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'autorizar_aprobar' || log.newStatus === 'autorizado'
+                      );
+                      return authorizeLog ? (
+                        <div className="border-l-4 border-amber-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Autorizado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {authorizeLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {authorizeLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
 
-                    {/* Aprobado por - solo si existe */}
-                    {selectedRequisition.logs?.find(
-                      (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                    ) && (
-                      <div className="border-l-4 border-green-500 pl-4">
-                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                          Aprobado por
-                        </p>
-                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                          )?.user.nombre}
-                        </p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.logs.find(
-                            (log) => log.action === 'aprobar_gerencia' && log.newStatus === 'aprobada_gerencia'
-                          )?.user.role?.nombreRol || 'Sin rol'}
-                        </p>
-                      </div>
-                    )}
+                    {/* Aprobado por (Gerencia) - action: aprobar_gerencia (newStatus = aprobada_gerencia) */}
+                    {(() => {
+                      const approveLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                      );
+                      return approveLog ? (
+                        <div className="border-l-4 border-green-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Aprobado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {approveLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {approveLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </Card>
 
