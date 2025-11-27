@@ -592,6 +592,87 @@ export default function GestionarCotizacionPage() {
               </p>
             </div>
           </div>
+
+          {/* Firmas de Aprobación */}
+          <div className="mt-6 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
+            <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-4">
+              Firmas de Aprobación
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Solicitado por */}
+              <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-3">
+                <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1">
+                  Solicitado por
+                </p>
+                <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                  {requisition.creator?.nombre || 'N/A'}
+                </p>
+                <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                  {requisition.creator?.cargo || 'Sin cargo'}
+                </p>
+              </div>
+
+              {/* Revisado por */}
+              {(() => {
+                const reviewLog = requisition.logs?.find(
+                  (log) => log.action?.startsWith('revisar_')
+                );
+                return reviewLog ? (
+                  <div className="border-l-4 border-blue-500 pl-3">
+                    <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1">
+                      Revisado por
+                    </p>
+                    <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {reviewLog.user.nombre}
+                    </p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                      {reviewLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Autorizado por */}
+              {(() => {
+                const authorizeLog = requisition.logs?.find(
+                  (log) => log.action === 'autorizar_aprobar' || log.newStatus === 'autorizado'
+                );
+                return authorizeLog ? (
+                  <div className="border-l-4 border-amber-500 pl-3">
+                    <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1">
+                      Autorizado por
+                    </p>
+                    <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {authorizeLog.user.nombre}
+                    </p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                      {authorizeLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Aprobado por (Gerencia) */}
+              {(() => {
+                const approveLog = requisition.logs?.find(
+                  (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                );
+                return approveLog ? (
+                  <div className="border-l-4 border-green-500 pl-3">
+                    <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1">
+                      Aprobado por
+                    </p>
+                    <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {approveLog.user.nombre}
+                    </p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                      {approveLog.user.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          </div>
         </div>
 
         {/* Progress Bar */}
