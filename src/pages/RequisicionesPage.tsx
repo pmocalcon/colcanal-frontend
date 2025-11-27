@@ -20,7 +20,10 @@ import { RequisitionFilters, type FilterValues } from '@/components/ui/requisiti
 // Mapeo de estados a colores
 const STATUS_COLORS: Record<string, string> = {
   pendiente: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
   aprobada_revisor: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  autorizado: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
   rechazada_revisor: 'bg-red-500/10 text-red-700 border-red-500/20',
   aprobada_gerencia: 'bg-green-500/10 text-green-700 border-green-500/20',
   rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
@@ -63,7 +66,10 @@ export default function RequisicionesPage() {
   // Available statuses for the filter dropdown
   const availableStatuses = [
     { code: 'pendiente', name: 'Pendiente' },
+    { code: 'en_revision', name: 'En Revisión' },
     { code: 'aprobada_revisor', name: 'Aprobada por Revisor' },
+    { code: 'pendiente_autorizacion', name: 'Pendiente de Autorización' },
+    { code: 'autorizado', name: 'Autorizado' },
     { code: 'rechazada_revisor', name: 'Rechazada por Revisor' },
     { code: 'aprobada_gerencia', name: 'Aprobada' },
     { code: 'rechazada_gerencia', name: 'Rechazada por Gerencia' },
@@ -144,7 +150,10 @@ export default function RequisicionesPage() {
   const getStatusLabel = (code: string) => {
     const labels: Record<string, string> = {
       pendiente: 'Pendiente',
+      en_revision: 'En Revisión',
       aprobada_revisor: 'Aprobada por Revisor',
+      pendiente_autorizacion: 'Pendiente de Autorización',
+      autorizado: 'Autorizado',
       rechazada_revisor: 'Rechazada por Revisor',
       aprobada_gerencia: 'Aprobada',
       rechazada_gerencia: 'Rechazada por Gerencia',
@@ -354,7 +363,7 @@ export default function RequisicionesPage() {
             {/* Pending Requisitions Section */}
             {(() => {
               const pendingRequisitions = requisitions.filter(r =>
-                ['pendiente', 'aprobada_revisor', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')
+                ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')
               );
 
               if (pendingRequisitions.length === 0) return null;
@@ -388,8 +397,14 @@ export default function RequisicionesPage() {
                         switch (req.status.code) {
                           case 'pendiente':
                             return { label: 'Creada', date: req.createdAt };
+                          case 'en_revision':
+                            return { label: 'En Revisión', date: req.updatedAt };
                           case 'aprobada_revisor':
                             return { label: 'Revisada', date: req.reviewedAt || req.updatedAt };
+                          case 'pendiente_autorizacion':
+                            return { label: 'Pendiente Autorización', date: req.reviewedAt || req.updatedAt };
+                          case 'autorizado':
+                            return { label: 'Autorizada', date: req.updatedAt };
                           case 'rechazada_revisor':
                             return { label: 'Rechazada (Revisor)', date: req.reviewedAt || req.updatedAt };
                           case 'aprobada_gerencia':
@@ -527,7 +542,7 @@ export default function RequisicionesPage() {
               const paginatedProcessedRequisitions = processedRequisitions.slice(processedStartIndex, processedEndIndex);
 
               return (
-                <div className={requisitions.filter(r => ['pendiente', 'aprobada_revisor', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                <div className={requisitions.filter(r => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                   <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                     <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
