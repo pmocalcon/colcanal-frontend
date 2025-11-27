@@ -6,7 +6,7 @@ import type { Requisition } from '@/services/requisitions.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Package, Home } from 'lucide-react';
+import { ArrowLeft, Package, Home, Calendar } from 'lucide-react';
 import {
   Table,
   TableBody,
