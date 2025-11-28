@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -12,6 +12,7 @@ import type {
   RequisitionWithQuotations,
   RequisitionItemQuotation,
 } from '@/services/quotation.service';
+import { companyContactsService, type CompanyContact } from '@/services/company-contacts.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -51,10 +52,16 @@ export default function AsignarPreciosPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [shippingContact, setShippingContact] = useState<CompanyContact | null>(null);
   const [itemPrices, setItemPrices] = useState<Map<number, ItemPriceState>>(new Map());
-  const [universalSupplierId, setUniversalSupplierId] = useState<number | null>(null);
+  const [selectedSuppliers, setSelectedSuppliers] = useState<Set<number>>(new Set());
 
   const isCompras = user?.nombreRol === 'Compras';
+
+  // Ítems que tienen cotizaciones activas para cotizar
+  const cotizarItems = requisition?.items.filter((item) =>
+    item.quotations.some((q) => q.action === 'cotizar' && q.isActive)
+  ) || [];
 
   useEffect(() => {
     if (!isCompras) {
@@ -64,6 +71,16 @@ export default function AsignarPreciosPage() {
     loadRequisition();
   }, [requisitionId, isCompras]);
 
+  const loadShippingContact = async (companyId: number, projectId?: number) => {
+    try {
+      const contact = await companyContactsService.getDefaultContact(companyId, projectId);
+      setShippingContact(contact);
+    } catch (err) {
+      console.error('Error loading shipping contact:', err);
+      setShippingContact(null);
+    }
+  };
+
   const loadRequisition = async () => {
     if (!requisitionId) return;
     try {
@@ -71,6 +88,14 @@ export default function AsignarPreciosPage() {
       setError(null);
       const data = await getRequisitionWithPrices(parseInt(requisitionId));
       setRequisition(data);
+      if (data.company?.companyId) {
+        await loadShippingContact(
+          data.company.companyId,
+          data.project?.projectId ?? data.projectId ?? undefined
+        );
+      } else {
+        setShippingContact(null);
+      }
       initializeItemPrices(data);
     } catch (err: any) {
       console.error('Error loading requisition:', err);
@@ -98,7 +123,7 @@ export default function AsignarPreciosPage() {
           // Fetch price history for this material + supplier
           let priceHistory: MaterialPriceHistory | null = null;
           let unitPrice = selectedQuotation.unitPrice?.toString() || '';
-          let hasIva = selectedQuotation.hasIva || false;
+          let hasIva = selectedQuotation.hasIva ?? true; // Default to true (IVA activated)
           let ivaPercentage = 19; // Default IVA percentage
           let discount = selectedQuotation.discount?.toString() || '0';
 
@@ -187,74 +212,6 @@ export default function AsignarPreciosPage() {
     });
   };
 
-  const handleSupplierChange = async (itemId: number, quotationId: number) => {
-    const item = requisition?.items.find((i) => i.itemId === itemId);
-    if (!item) return;
-
-    const selectedQuotation = item.quotations.find(
-      (q) => q.quotationId === quotationId
-    );
-    if (!selectedQuotation) return;
-
-    // Fetch price history for new supplier selection
-    let priceHistory: MaterialPriceHistory | null = null;
-    let unitPrice = '';
-    let hasIva = false;
-    let ivaPercentage = 19;
-    let discount = '0';
-
-    if (item.material?.materialId && selectedQuotation.supplierId) {
-      priceHistory = await getLatestMaterialPrice(
-        item.material.materialId,
-        selectedQuotation.supplierId
-      );
-
-      // Pre-populate from history if available
-      if (priceHistory) {
-        unitPrice = priceHistory.unitPrice.toString();
-        hasIva = priceHistory.hasIva;
-        ivaPercentage = priceHistory.ivaPercentage;
-        discount = priceHistory.discount.toString();
-      } else if (selectedQuotation.unitPrice) {
-        // Fallback to quotation price if available
-        unitPrice = selectedQuotation.unitPrice.toString();
-        hasIva = selectedQuotation.hasIva || false;
-        discount = selectedQuotation.discount?.toString() || '0';
-      }
-    }
-
-    // Calculate totals with new prices
-    const calculatedValues = calculateTotals(
-      parseFloat(unitPrice) || 0,
-      item.quantity,
-      hasIva,
-      ivaPercentage,
-      parseFloat(discount) || 0
-    );
-
-    setItemPrices((prev) => {
-      const newMap = new Map(prev);
-      const currentState = newMap.get(itemId);
-      if (!currentState) return prev;
-
-      const updated = {
-        ...currentState,
-        quotationId,
-        selectedSupplier: selectedQuotation,
-        quantity: item.quantity,
-        unitPrice,
-        hasIva,
-        ivaPercentage,
-        discount,
-        priceHistory,
-        ...calculatedValues,
-      };
-
-      newMap.set(itemId, updated);
-      return newMap;
-    });
-  };
-
   const validatePrices = (): boolean => {
     if (!requisition) return false;
 
@@ -302,9 +259,54 @@ export default function AsignarPreciosPage() {
     }
   };
 
+  // Manejar selección de proveedores
+  const handleToggleSupplier = (supplierId: number) => {
+    setSelectedSuppliers((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(supplierId)) {
+        newSet.delete(supplierId);
+      } else {
+        newSet.add(supplierId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllSuppliers = () => {
+    const allSupplierIds = itemsBySupplier.map((g) => g.supplier.supplierId);
+    setSelectedSuppliers(new Set(allSupplierIds));
+  };
+
+  const handleDeselectAllSuppliers = () => {
+    setSelectedSuppliers(new Set());
+  };
+
+  // Validar solo los proveedores seleccionados
+  const validateSelectedPrices = (): boolean => {
+    if (!requisition || selectedSuppliers.size === 0) return false;
+
+    for (const group of itemsBySupplier) {
+      if (!selectedSuppliers.has(group.supplier.supplierId)) continue;
+
+      for (const item of group.items) {
+        const priceState = itemPrices.get(item.itemId);
+        if (!priceState) return false;
+        if (!priceState.unitPrice || parseFloat(priceState.unitPrice) <= 0) return false;
+        if (!priceState.selectedSupplier) return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleGenerateOrders = async () => {
-    if (!requisition || !validatePrices()) {
-      setError('Por favor completa todos los precios antes de generar las órdenes');
+    if (!requisition || selectedSuppliers.size === 0) {
+      setError('Por favor selecciona al menos un proveedor para generar órdenes');
+      return;
+    }
+
+    if (!validateSelectedPrices()) {
+      setError('Por favor completa todos los precios de los proveedores seleccionados');
       return;
     }
 
@@ -312,23 +314,31 @@ export default function AsignarPreciosPage() {
       setGenerating(true);
       setError(null);
 
-      const items = Array.from(itemPrices.values()).map((state) => ({
-        itemId: state.itemId,
-        supplierId: state.selectedSupplier!.supplierId!,
-        unitPrice: parseFloat(state.unitPrice),
-        hasIVA: state.hasIva,
-        discount: parseFloat(state.discount) || 0,
-      }));
+      // Solo incluir ítems de proveedores seleccionados
+      const items = Array.from(itemPrices.values())
+        .filter((state) => state.selectedSupplier && selectedSuppliers.has(state.selectedSupplier.supplierId!))
+        .map((state) => ({
+          itemId: state.itemId,
+          supplierId: state.selectedSupplier!.supplierId!,
+          unitPrice: parseFloat(state.unitPrice),
+          discount: parseFloat(state.discount) || 0,
+        }));
 
       await createPurchaseOrders(requisition.requisitionId, {
         issueDate: new Date().toISOString().split('T')[0],
         items,
       });
 
-      setSuccess('Órdenes de compra generadas exitosamente');
+      const suppliersCount = selectedSuppliers.size;
+      setSuccess(`${suppliersCount} orden(es) de compra generada(s) exitosamente`);
+
+      // Limpiar selección
+      setSelectedSuppliers(new Set());
+
+      // Recargar datos para reflejar cambios
       setTimeout(() => {
-        navigate('/dashboard/compras/ordenes');
-      }, 2000);
+        loadRequisition();
+      }, 1500);
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al generar las órdenes de compra';
       setError(errorMessage);
@@ -353,52 +363,60 @@ export default function AsignarPreciosPage() {
     return { grandSubtotal, grandIva, grandDiscount, grandTotal };
   };
 
-  // Get all unique suppliers from all items (union)
-  const getAllSuppliers = () => {
-    if (!requisition) return [];
-
-    const suppliersMap = new Map<number, { supplierId: number; name: string; nitCc: string }>();
+  // Agrupar ítems por proveedor
+  const itemsBySupplier = useMemo(() => {
+    const groups: Map<number, {
+      supplier: { supplierId: number; name: string; nitCc: string };
+      items: typeof cotizarItems;
+      subtotal: number;
+      iva: number;
+      discount: number;
+      total: number;
+    }> = new Map();
 
     cotizarItems.forEach((item) => {
-      item.quotations
-        .filter((q) => q.action === 'cotizar' && q.isActive && q.supplier && q.supplierId)
-        .forEach((q) => {
-          if (q.supplierId && !suppliersMap.has(q.supplierId)) {
-            suppliersMap.set(q.supplierId, {
-              supplierId: q.supplierId,
-              name: q.supplier!.name,
-              nitCc: q.supplier!.nitCc,
-            });
-          }
-        });
-    });
-
-    return Array.from(suppliersMap.values());
-  };
-
-  // Apply universal supplier to items without a supplier
-  const handleApplyUniversalSupplier = async () => {
-    if (!universalSupplierId || !requisition) return;
-
-    // Find all items that don't have a supplier selected yet
-    const itemsToUpdate = cotizarItems.filter((item) => {
       const priceState = itemPrices.get(item.itemId);
-      // Apply to items without quotationId (no supplier selected)
-      return !priceState || !priceState.quotationId;
-    });
-
-    // Apply supplier to each item
-    for (const item of itemsToUpdate) {
-      // Find quotation for this supplier in this item
-      const quotationForSupplier = item.quotations.find(
-        (q) => q.action === 'cotizar' && q.isActive && q.supplierId === universalSupplierId
+      const selectedQuotation = item.quotations.find(
+        (q) => q.quotationId === priceState?.quotationId
       );
 
-      if (quotationForSupplier) {
-        await handleSupplierChange(item.itemId, quotationForSupplier.quotationId);
+      // Si no hay cotización seleccionada, usar la primera activa
+      const quotation = selectedQuotation || item.quotations.find(
+        (q) => q.action === 'cotizar' && q.isActive
+      );
+
+      if (quotation?.supplier && quotation.supplierId) {
+        const supplierId = quotation.supplierId;
+
+        if (!groups.has(supplierId)) {
+          groups.set(supplierId, {
+            supplier: {
+              supplierId,
+              name: quotation.supplier.name,
+              nitCc: quotation.supplier.nitCc,
+            },
+            items: [],
+            subtotal: 0,
+            iva: 0,
+            discount: 0,
+            total: 0,
+          });
+        }
+
+        const group = groups.get(supplierId)!;
+        group.items.push(item);
+
+        if (priceState) {
+          group.subtotal += priceState.subtotal;
+          group.iva += priceState.ivaAmount;
+          group.discount += parseFloat(priceState.discount) || 0;
+          group.total += priceState.total;
+        }
       }
-    }
-  };
+    });
+
+    return Array.from(groups.values());
+  }, [cotizarItems, itemPrices]);
 
   if (!isCompras) return null;
 
@@ -422,10 +440,6 @@ export default function AsignarPreciosPage() {
       </div>
     );
   }
-
-  const cotizarItems = requisition.items.filter((item) =>
-    item.quotations.some((q) => q.action === 'cotizar' && q.isActive)
-  );
 
   const totals = getGrandTotals();
   const allPricesValid = validatePrices();
@@ -530,235 +544,303 @@ export default function AsignarPreciosPage() {
                 {requisition.operationCenter?.name || 'No especificado'}
               </p>
             </div>
+            <div className="md:col-span-2 lg:col-span-3">
+              <div className="rounded-xl border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] p-4">
+                <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide mb-2">
+                  Información de envío / facturación
+                </p>
+                {shippingContact ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Razón social</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.businessName}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">NIT</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.nit}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Teléfono</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.phone || 'No registrado'}
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Dirección</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {[shippingContact.address, shippingContact.city]
+                          .filter(Boolean)
+                          .join(' • ') || 'No registrada'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Contacto</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {[shippingContact.contactPerson, shippingContact.email]
+                          .filter(Boolean)
+                          .join(' • ') || 'No registrado'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    No hay un contacto de envío/facturación por defecto definido para esta empresa y proyecto.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Universal Supplier Selector */}
-        {cotizarItems.length > 0 && getAllSuppliers().length > 1 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl shadow-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-2 text-blue-900">
-              Seleccionar Proveedor Universal
-            </h2>
-            <p className="text-sm text-blue-700 mb-4">
-              Selecciona un proveedor para aplicar a todos los ítems que aún NO tengan proveedor asignado
-            </p>
-            <div className="flex items-end gap-4">
-              <div className="flex-grow">
-                <label className="block text-sm font-medium mb-2 text-blue-900">
-                  Proveedor
-                </label>
-                <Select
-                  value={universalSupplierId?.toString() || ''}
-                  onValueChange={(value) => setUniversalSupplierId(value ? parseInt(value) : null)}
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Selecciona un proveedor..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getAllSuppliers().map((supplier) => (
-                      <SelectItem key={supplier.supplierId} value={supplier.supplierId.toString()}>
-                        {supplier.name} - NIT: {supplier.nitCc}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                onClick={handleApplyUniversalSupplier}
-                disabled={!universalSupplierId}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Aplicar a Ítems Sin Proveedor
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Items Table */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Ítems a Cotizar</h2>
-
-          {cotizarItems.length === 0 ? (
+        {/* Items Grouped by Supplier */}
+        {cotizarItems.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Ítems a Cotizar</h2>
             <p className="text-[hsl(var(--canalco-neutral-600))]">
               No hay ítems para asignar precios
             </p>
-          ) : (
-            <div className="space-y-6">
-              {cotizarItems.map((item) => {
-                const priceState = itemPrices.get(item.itemId);
-                const activeQuotations = item.quotations.filter(
-                  (q) => q.action === 'cotizar' && q.isActive
-                );
+          </div>
+        ) : (
+          <div className="space-y-6 mb-6">
+            {/* Selection Controls */}
+            <div className="bg-white rounded-xl shadow-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                  Seleccionar proveedores para generar OC:
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAllSuppliers}
+                  className="text-xs"
+                >
+                  Seleccionar todos
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeselectAllSuppliers}
+                  className="text-xs"
+                >
+                  Deseleccionar todos
+                </Button>
+              </div>
+              <div className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                <span className="font-semibold text-[hsl(var(--canalco-primary))]">{selectedSuppliers.size}</span> de {itemsBySupplier.length} proveedor(es) seleccionado(s)
+              </div>
+            </div>
 
-                return (
-                  <div
-                    key={item.itemId}
-                    className="border rounded-lg p-4 bg-gray-50"
-                  >
-                    {/* Item Header */}
-                    <div className="mb-4 pb-3 border-b border-[hsl(var(--canalco-neutral-300))]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] text-sm font-bold">
-                          #{item.itemNumber}
-                        </span>
-                        <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                          {item.material?.name || item.material?.description || 'Material sin nombre'}
-                        </h3>
+            {itemsBySupplier.map((group) => {
+              const isSelected = selectedSuppliers.has(group.supplier.supplierId);
+
+              return (
+              <div
+                key={group.supplier.supplierId}
+                className={`bg-white rounded-xl shadow-lg overflow-hidden transition-all ${
+                  isSelected ? 'ring-2 ring-[hsl(var(--canalco-primary))]' : 'opacity-75'
+                }`}
+              >
+                {/* Supplier Header */}
+                <div
+                  className={`px-6 py-4 cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-[hsl(var(--canalco-primary))] text-white'
+                      : 'bg-gray-400 text-white'
+                  }`}
+                  onClick={() => handleToggleSupplier(group.supplier.supplierId)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => handleToggleSupplier(group.supplier.supplierId)}
+                        className="border-white data-[state=checked]:bg-white data-[state=checked]:text-[hsl(var(--canalco-primary))]"
+                      />
+                      <div>
+                        <h2 className="text-lg font-semibold">{group.supplier.name}</h2>
+                        <p className="text-sm opacity-90">NIT: {group.supplier.nitCc}</p>
                       </div>
-                      <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                        <span className="font-medium">Cantidad:</span> {item.quantity}
-                      </p>
                     </div>
-
-                    {/* Supplier Selection (if multiple) */}
-                    {activeQuotations.length > 1 && (
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium mb-2">
-                          Seleccionar Proveedor
-                        </label>
-                        <select
-                          value={priceState?.quotationId || ''}
-                          onChange={(e) =>
-                            handleSupplierChange(item.itemId, parseInt(e.target.value))
-                          }
-                          className="w-full border rounded-lg p-2"
-                        >
-                          {activeQuotations.map((q) => (
-                            <option key={q.quotationId} value={q.quotationId}>
-                              {q.supplier?.name} - NIT: {q.supplier?.nitCc}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Supplier Display (if single) */}
-                    {activeQuotations.length === 1 && (
-                      <div className="mb-4">
-                        <p className="text-sm font-medium">Proveedor:</p>
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-                          {activeQuotations[0].supplier?.name} - NIT: {activeQuotations[0].supplier?.nitCc}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Price History Indicator */}
-                    {priceState?.priceHistory && (
-                      <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="flex items-center gap-2 text-xs text-blue-700">
-                          <History className="w-4 h-4" />
-                          <span className="font-medium">
-                            Último precio usado: {formatCurrency(priceState.priceHistory.unitPrice)}
-                          </span>
-                          {priceState.priceHistory.purchaseOrderNumber && (
-                            <span className="text-blue-600">
-                              (OC: {priceState.priceHistory.purchaseOrderNumber})
-                            </span>
-                          )}
-                          <span className="text-blue-600">
-                            - {formatDate(priceState.priceHistory.lastUsedDate)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Price Inputs */}
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Cantidad
-                        </label>
-                        <Input
-                          type="number"
-                          value={priceState?.quantity || 0}
-                          onChange={(e) =>
-                            handlePriceChange(item.itemId, 'quantity', e.target.value)
-                          }
-                          placeholder="0"
-                          min="1"
-                          step="1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Precio Unitario
-                        </label>
-                        <Input
-                          type="number"
-                          value={priceState?.unitPrice || ''}
-                          onChange={(e) =>
-                            handlePriceChange(item.itemId, 'unitPrice', e.target.value)
-                          }
-                          placeholder="0.00"
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          IVA
-                        </label>
-                        <div className="flex items-center h-10">
-                          <Checkbox
-                            checked={priceState?.hasIva || false}
-                            onCheckedChange={(checked) =>
-                              handlePriceChange(item.itemId, 'hasIva', checked)
-                            }
-                          />
-                          <span className="ml-2 text-sm">Sí</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          % IVA
-                        </label>
-                        <Select
-                          value={priceState?.ivaPercentage.toString() || '19'}
-                          onValueChange={(value) =>
-                            handlePriceChange(item.itemId, 'ivaPercentage', parseInt(value))
-                          }
-                          disabled={!priceState?.hasIva}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="19">19%</SelectItem>
-                            <SelectItem value="5">5%</SelectItem>
-                            <SelectItem value="0">0%</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Descuento
-                        </label>
-                        <Input
-                          type="number"
-                          value={priceState?.discount || '0'}
-                          onChange={(e) =>
-                            handlePriceChange(item.itemId, 'discount', e.target.value)
-                          }
-                          placeholder="0.00"
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Total Ítem
-                        </label>
-                        <p className="text-lg font-semibold text-[hsl(var(--canalco-primary))] h-10 flex items-center">
-                          {formatCurrency(priceState?.total || 0)}
-                        </p>
-                      </div>
+                    <div className="text-right">
+                      <p className="text-sm opacity-90">{group.items.length} ítem(s)</p>
+                      <p className="text-xl font-bold">{formatCurrency(group.total)}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                </div>
+
+                {/* Items for this supplier */}
+                <div className="p-6 space-y-4">
+                  {group.items.map((item) => {
+                    const priceState = itemPrices.get(item.itemId);
+
+                    return (
+                      <div
+                        key={item.itemId}
+                        className="border rounded-lg p-4 bg-gray-50"
+                      >
+                        {/* Item Header */}
+                        <div className="mb-4 pb-3 border-b border-[hsl(var(--canalco-neutral-300))]">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] text-sm font-bold">
+                              #{item.itemNumber}
+                            </span>
+                            <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                              {item.material?.name || item.material?.description || 'Material sin nombre'}
+                            </h3>
+                          </div>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            <span className="font-medium">Cantidad solicitada:</span> {item.quantity}
+                          </p>
+                        </div>
+
+                        {/* Price History Indicator */}
+                        {priceState?.priceHistory && (
+                          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center gap-2 text-xs text-blue-700">
+                              <History className="w-4 h-4" />
+                              <span className="font-medium">
+                                Último precio usado: {formatCurrency(priceState.priceHistory.unitPrice)}
+                              </span>
+                              {priceState.priceHistory.purchaseOrderNumber && (
+                                <span className="text-blue-600">
+                                  (OC: {priceState.priceHistory.purchaseOrderNumber})
+                                </span>
+                              )}
+                              <span className="text-blue-600">
+                                - {formatDate(priceState.priceHistory.lastUsedDate)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Price Inputs */}
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Cantidad
+                            </label>
+                            <Input
+                              type="number"
+                              value={priceState?.quantity || 0}
+                              onChange={(e) =>
+                                handlePriceChange(item.itemId, 'quantity', e.target.value)
+                              }
+                              placeholder="0"
+                              min="1"
+                              step="1"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Precio Unitario
+                            </label>
+                            <Input
+                              type="number"
+                              value={priceState?.unitPrice || ''}
+                              onChange={(e) =>
+                                handlePriceChange(item.itemId, 'unitPrice', e.target.value)
+                              }
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              IVA
+                            </label>
+                            <div className="flex items-center h-10">
+                              <Checkbox
+                                checked={priceState?.hasIva || false}
+                                onCheckedChange={(checked) =>
+                                  handlePriceChange(item.itemId, 'hasIva', checked)
+                                }
+                              />
+                              <span className="ml-2 text-sm">Sí</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              % IVA
+                            </label>
+                            <Select
+                              value={priceState?.ivaPercentage.toString() || '19'}
+                              onValueChange={(value) =>
+                                handlePriceChange(item.itemId, 'ivaPercentage', parseInt(value))
+                              }
+                              disabled={!priceState?.hasIva}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="19">19%</SelectItem>
+                                <SelectItem value="5">5%</SelectItem>
+                                <SelectItem value="0">0%</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Descuento
+                            </label>
+                            <Input
+                              type="number"
+                              value={priceState?.discount || '0'}
+                              onChange={(e) =>
+                                handlePriceChange(item.itemId, 'discount', e.target.value)
+                              }
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Total Ítem
+                            </label>
+                            <p className="text-lg font-semibold text-[hsl(var(--canalco-primary))] h-10 flex items-center">
+                              {formatCurrency(priceState?.total || 0)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Supplier Subtotals */}
+                <div className="bg-gray-100 px-6 py-4 border-t">
+                  <div className="flex justify-end gap-8 text-sm">
+                    <div>
+                      <span className="text-[hsl(var(--canalco-neutral-600))]">Subtotal:</span>
+                      <span className="ml-2 font-semibold">{formatCurrency(group.subtotal)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[hsl(var(--canalco-neutral-600))]">IVA:</span>
+                      <span className="ml-2 font-semibold">{formatCurrency(group.iva)}</span>
+                    </div>
+                    {group.discount > 0 && (
+                      <div>
+                        <span className="text-red-600">Descuento:</span>
+                        <span className="ml-2 font-semibold text-red-600">-{formatCurrency(group.discount)}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[hsl(var(--canalco-neutral-700))] font-medium">Total Proveedor:</span>
+                      <span className="ml-2 font-bold text-[hsl(var(--canalco-primary))]">{formatCurrency(group.total)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Grand Totals */}
         {cotizarItems.length > 0 && (
@@ -813,7 +895,7 @@ export default function AsignarPreciosPage() {
           </Button>
           <Button
             onClick={handleGenerateOrders}
-            disabled={!allPricesValid || generating}
+            disabled={selectedSuppliers.size === 0 || !validateSelectedPrices() || generating}
             className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90"
           >
             {generating ? (
@@ -821,7 +903,7 @@ export default function AsignarPreciosPage() {
             ) : (
               <>
                 <FileCheck className="w-4 h-4 mr-2" />
-                Generar Órdenes de Compra
+                Generar {selectedSuppliers.size > 0 ? `${selectedSuppliers.size} ` : ''}Orden{selectedSuppliers.size !== 1 ? 'es' : ''} de Compra
               </>
             )}
           </Button>

@@ -1,97 +1,84 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { modulesService, type ModulePermissions } from '@/services/modules.service';
 
 export default function ComprasPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch permissions from backend on mount
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      try {
+        const modules = await modulesService.getUserModules();
+        // Find the "Compras" module to get its permissions
+        const comprasModule = modules.find(
+          (m) => m.slug === 'compras' || m.nombre.toLowerCase().includes('compras')
+        );
+        if (comprasModule) {
+          setPermissions(comprasModule.permisos);
+        }
+      } catch (error) {
+        console.error('Error fetching permissions:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, []);
 
   /**
-   * Determines if a user has access to a specific sub-module based on their role.
-   * Permission rules from database seed:
-   * - Requisiciones: Roles with "Crear" permission (PQRS, Analistas, Coordinadores, Directors)
-   * - Revisión: Roles with "Revisar" permission (All Directors)
-   * - Aprobación: Only Gerencia (has "Aprobar" permission)
-   * - Cotizaciones: Only Compras (has "Cotizar" permission)
-   * - Órdenes de Compra: Only Compras
-   * - Recepciones: Everyone who can CREATE (user requirement: "todo el que puede crear puede recibir el material")
+   * Determines if a user has access to a specific sub-module based on backend permissions.
+   * Permission mapping:
+   * - Requisiciones: permisos.crear
+   * - Revisión: permisos.revisar
+   * - Autorización: permisos.autorizar
+   * - Aprobación: permisos.aprobar
+   * - Cotizaciones: permisos.cotizar
+   * - Órdenes de Compra: permisos.cotizar (same as cotizaciones)
+   * - Facturas: permisos.cotizar (same as cotizaciones)
+   * - Recepciones: permisos.crear (everyone who can create can receive)
+   * - Recepción Contabilidad: special role check for Contabilidad
    */
   const getSubModuleAccess = (slug: string): boolean => {
-    if (!user?.nombreRol) return false;
+    if (!permissions) return false;
 
-    const userRole = user.nombreRol;
-
-    // Roles that can CREATE requisitions
-    const canCreateRoles = [
-      'PQRS El Cerrito',
-      'PQRS Guacarí',
-      'PQRS Circasia',
-      'PQRS Quimbaya',
-      'PQRS Jericó',
-      'PQRS Ciudad Bolívar',
-      'PQRS Tarso',
-      'PQRS Pueblo Rico',
-      'PQRS Santa Bárbara',
-      'PQRS Puerto Asís',
-      'Analista PMO',
-      'Analista Comercial',
-      'Analista Jurídico',
-      'Analista Administrativo',
-      'Coordinador Financiero',
-      'Coordinador Jurídico',
-      'Director de Proyecto Antioquia',
-      'Director de Proyecto Quindío',
-      'Director de Proyecto Valle',
-      'Director de Proyecto Putumayo',
-      'Director PMO',
-      'Director Comercial',
-      'Director Jurídico',
-      'Director Financiero y Administrativo',
-      'Director Técnico',
-    ];
-
-    // Roles that can REVIEW requisitions (only Directors)
-    const canReviewRoles = [
-      'Director de Proyecto Antioquia',
-      'Director de Proyecto Quindío',
-      'Director de Proyecto Valle',
-      'Director de Proyecto Putumayo',
-      'Director PMO',
-      'Director Comercial',
-      'Director Jurídico',
-      'Director Financiero y Administrativo',
-      'Director Técnico',
-    ];
+    const userRole = user?.nombreRol;
 
     switch (slug) {
       case 'requisiciones':
         // Can create requisitions
-        return canCreateRoles.includes(userRole);
+        return permissions.crear === true;
 
       case 'revision':
-        // Can review requisitions (only Directors)
-        return canReviewRoles.includes(userRole);
+        // Can review requisitions
+        return permissions.revisar === true;
 
       case 'autorizacion':
-        // Only Gerencia de Proyectos can authorize requisitions
-        return userRole === 'Gerencia de Proyectos';
+        // Can authorize requisitions
+        return permissions.autorizar === true;
 
       case 'aprobacion':
       case 'aprobacion-ordenes':
-        // Only Gerencia can approve requisitions and purchase orders
-        return userRole === 'Gerencia';
+        // Can approve requisitions and purchase orders
+        return permissions.aprobar === true;
 
       case 'cotizaciones':
       case 'ordenes-compra':
       case 'facturas':
-        // Only Compras can quote, manage purchase orders, and manage invoices
-        return userRole === 'Compras';
+        // Can quote and manage purchase orders
+        return permissions.cotizar === true;
 
       case 'recepciones':
         // Everyone who can create can also receive materials
-        return canCreateRoles.includes(userRole);
+        return permissions.crear === true;
 
       case 'recepcion-contabilidad':
         // Only Contabilidad can access this module
@@ -207,6 +194,17 @@ export default function ComprasPage() {
       alert(`Navegando a ${subModule.nombre}. Esta funcionalidad estará disponible próximamente.`);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-[hsl(var(--canalco-neutral-600))]">Cargando permisos...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">

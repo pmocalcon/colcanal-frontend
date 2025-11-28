@@ -9,6 +9,7 @@ import {
   type SupplierQuotationDto,
 } from '@/services/quotation.service';
 import { suppliersService, type Supplier } from '@/services/suppliers.service';
+import { companyContactsService, type CompanyContact } from '@/services/company-contacts.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -66,6 +67,7 @@ export default function GestionarCotizacionPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [itemStates, setItemStates] = useState<Record<number, ItemQuotationState>>({});
+  const [shippingContact, setShippingContact] = useState<CompanyContact | null>(null);
 
   // Check if user is Compras
   const isCompras = user?.nombreRol === 'Compras';
@@ -82,12 +84,30 @@ export default function GestionarCotizacionPage() {
     loadRequisition();
   }, [requisitionId, isCompras, backPath]);
 
+  const loadShippingContact = async (companyId: number, projectId?: number) => {
+    try {
+      const contact = await companyContactsService.getDefaultContact(companyId, projectId);
+      setShippingContact(contact);
+    } catch (err) {
+      console.error('Error loading default company contact:', err);
+      setShippingContact(null);
+    }
+  };
+
   const loadRequisition = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await getRequisitionQuotation(Number(requisitionId));
       setRequisition(data);
+      if (data.company?.companyId) {
+        await loadShippingContact(
+          data.company.companyId,
+          data.project?.projectId ?? data.projectId ?? undefined
+        );
+      } else {
+        setShippingContact(null);
+      }
 
       // Initialize item states
       const states: Record<number, ItemQuotationState> = {};
@@ -589,6 +609,55 @@ export default function GestionarCotizacionPage() {
               <p className="text-sm text-[hsl(var(--canalco-neutral-900))]">
                 {requisition.codigoObra || 'No especificado'}
               </p>
+            </div>
+            <div className="md:col-span-2 lg:col-span-3">
+              <div className="mt-2 rounded-xl border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] p-4">
+                <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide mb-2">
+                  Información de envío / facturación
+                </p>
+                {shippingContact ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Razón social</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.businessName}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">NIT</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.nit}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Teléfono</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {shippingContact.phone || 'No registrado'}
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Dirección</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {[shippingContact.address, shippingContact.city]
+                          .filter(Boolean)
+                          .join(' • ') || 'No registrada'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[hsl(var(--canalco-neutral-500))] text-xs">Contacto</p>
+                      <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                        {[shippingContact.contactPerson, shippingContact.email]
+                          .filter(Boolean)
+                          .join(' • ') || 'No registrado'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                    No hay un contacto de facturación/envío por defecto configurado para esta combinación de empresa y proyecto.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

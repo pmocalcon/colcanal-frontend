@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Eye, CheckCircle, XCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Clock, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Eye, CheckCircle, XCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -34,6 +35,7 @@ interface ItemApprovalStatus {
 
 const AprobarOrdenesCompraPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,9 +59,9 @@ const AprobarOrdenesCompraPage: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [generalComments, setGeneralComments] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Usuario actual
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isGerencia = user?.nombreRol === 'Gerencia';
 
   // Cargar órdenes de compra pendientes
@@ -118,7 +120,7 @@ const AprobarOrdenesCompraPage: React.FC = () => {
       setRejectionReason('');
     } catch (err: any) {
       console.error('Error loading purchase order detail:', err);
-      alert('Error al cargar el detalle de la orden de compra');
+      setError('Error al cargar el detalle de la orden de compra');
       setShowDetail(false);
     } finally {
       setDetailLoading(false);
@@ -241,15 +243,19 @@ const AprobarOrdenesCompraPage: React.FC = () => {
 
       await approvePurchaseOrder(selectedPO.purchaseOrderId, approvalDto);
 
-      // Cerrar y recargar
-      handleCloseDetail();
-      loadPendingPurchaseOrders();
-
-      alert(
+      // Mostrar mensaje de éxito
+      setSuccessMessage(
         finalDecision === 'approve'
           ? 'Orden de compra aprobada exitosamente'
           : 'Orden de compra rechazada. El departamento de Compras podrá corregirla y reenviarla.'
       );
+
+      // Cerrar y recargar
+      handleCloseDetail();
+      loadPendingPurchaseOrders();
+
+      // Limpiar mensaje de éxito después de 5 segundos
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err: any) {
       console.error('Error processing action:', err);
       setActionError(
@@ -380,6 +386,17 @@ const AprobarOrdenesCompraPage: React.FC = () => {
             <div>
               <p className="font-semibold text-red-900">Error</p>
               <p className="text-sm text-red-700">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
+            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+            <div>
+              <p className="font-semibold text-green-900">Éxito</p>
+              <p className="text-sm text-green-700">{successMessage}</p>
             </div>
           </div>
         )}

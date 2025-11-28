@@ -57,6 +57,11 @@ export interface PurchaseOrder {
   deadline?: string;
   isOverdue?: boolean;
   daysOverdue?: number;
+  creator?: {
+    userId: number;
+    nombre: string;
+    email: string;
+  };
 }
 
 export interface PurchaseOrderItem {
@@ -79,6 +84,7 @@ export interface PurchaseOrderItem {
       materialId: number;
       code: string;
       name: string;
+      description?: string;
       unit: string;
       materialGroup?: {
         groupId: number;
@@ -108,7 +114,6 @@ export interface CreatePurchaseOrdersDto {
     itemId: number;
     supplierId: number;
     unitPrice: number;
-    hasIva: boolean;
     discount?: number;
   }[];
 }
@@ -237,15 +242,55 @@ export const createPurchaseOrders = async (
 };
 
 /**
+ * Get all purchase orders (global list)
+ */
+export const getAllPurchaseOrders = async (filters?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  supplierId?: number;
+  fromDate?: string;
+  toDate?: string;
+}): Promise<PaginatedResponse<PurchaseOrder>> => {
+  const response = await api.get<PaginatedResponse<PurchaseOrder>>(
+    '/purchases/requisitions/purchase-orders',
+    { params: { ...filters } }
+  );
+  return response.data;
+};
+
+/**
+ * Get a single purchase order by ID
+ */
+export const getPurchaseOrderById = async (
+  purchaseOrderId: number
+): Promise<PurchaseOrder> => {
+  const response = await api.get<PurchaseOrder>(
+    `/purchases/requisitions/purchase-orders/${purchaseOrderId}`
+  );
+  return response.data;
+};
+
+/**
  * Get purchase orders for a requisition
  */
 export const getPurchaseOrdersByRequisition = async (
   requisitionId: number
 ): Promise<PurchaseOrder[]> => {
-  const response = await api.get<PurchaseOrder[]>(
+  const response = await api.get<PurchaseOrder[] | { data: PurchaseOrder[] } | { data: PurchaseOrder[]; total: number }>(
     `/purchases/requisitions/${requisitionId}/purchase-orders`
   );
-  return response.data;
+  const payload = response.data;
+
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return Array.isArray(payload.data) ? payload.data : [];
+  }
+
+  return [];
 };
 
 /**

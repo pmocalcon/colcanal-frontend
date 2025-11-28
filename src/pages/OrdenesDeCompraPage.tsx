@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getRequisitionsForPurchaseOrders } from '@/services/purchase-orders.service';
@@ -57,15 +57,7 @@ export default function OrdenesDeCompraPage() {
   // Check if user is Compras
   const isCompras = user?.nombreRol === 'Compras';
 
-  useEffect(() => {
-    if (!isCompras) {
-      navigate('/dashboard');
-      return;
-    }
-    loadRequisitions();
-  }, [page, isCompras]);
-
-  const loadRequisitions = async () => {
+  const loadRequisitions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -79,7 +71,15 @@ export default function OrdenesDeCompraPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit]);
+
+  useEffect(() => {
+    if (!isCompras) {
+      navigate('/dashboard');
+      return;
+    }
+    loadRequisitions();
+  }, [isCompras, navigate, loadRequisitions]);
 
   const handleView = (requisition: Requisition) => {
     navigate(`/dashboard/compras/ordenes/${requisition.requisitionId}/ver`);
@@ -101,7 +101,9 @@ export default function OrdenesDeCompraPage() {
   }, [requisitions]);
 
   const availableCompanies = useMemo(() => {
-    const companies = requisitions.map((r) => r.company);
+    const companies = requisitions
+      .map((r) => r.company)
+      .filter((c): c is NonNullable<typeof c> => c != null);
     const uniqueCompanies = Array.from(
       new Map(companies.map((c) => [c.companyId, c])).values()
     );
@@ -174,6 +176,26 @@ export default function OrdenesDeCompraPage() {
       return true;
     });
   }, [requisitions, filters]);
+
+  const pendingRequisitions = useMemo(
+    () =>
+      filteredRequisitions.filter(
+        (req) => req.status?.code === 'cotizada' && (!req.purchaseOrders || req.purchaseOrders.length === 0)
+      ),
+    [filteredRequisitions]
+  );
+
+  const generatedRequisitions = useMemo(
+    () =>
+      filteredRequisitions.filter((req) => {
+        const statusCode = req.status?.code || '';
+        if (['en_orden_compra', 'pendiente_recepcion'].includes(statusCode)) {
+          return true;
+        }
+        return statusCode === 'cotizada' && (req.purchaseOrders?.length || 0) > 0;
+      }),
+    [filteredRequisitions]
+  );
 
   // Helper para obtener el badge de estado de facturación
   const getInvoiceStatusBadge = (purchaseOrders: any[]) => {
@@ -288,28 +310,25 @@ export default function OrdenesDeCompraPage() {
 
         {/* Dashboard de Estado */}
         {(() => {
-          // Calcular pendientes por estado
-          const statusCounts = requisitions.reduce((acc, req) => {
-            const statusCode = req.status?.code || '';
-            // Solo mostrar estados que requieren acción
-            if (['cotizada', 'en_orden_compra'].includes(statusCode)) {
-              const statusName = req.status?.name || '';
-              if (!acc[statusCode]) {
-                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
-              }
-              acc[statusCode].count++;
-            }
-            return acc;
-          }, {} as Record<string, StatusCount>);
+          // Solo contar como pendientes las requisiciones cotizadas SIN órdenes de compra
+          const pendingCount = requisitions.filter(req =>
+            req.status?.code === 'cotizada' && (!req.purchaseOrders || req.purchaseOrders.length === 0)
+          ).length;
 
-          // Calcular vencidos (órdenes de compra pendientes de crear o aprobar)
+          const statusCounts: StatusCount[] = pendingCount > 0
+            ? [{ status: 'cotizada', statusLabel: 'Pendiente de Generar OC', count: pendingCount }]
+            : [];
+
+          // Calcular vencidos (solo las que realmente están pendientes de crear OC)
           const overdueCount = requisitions.filter(req =>
-            req.isOverdue && ['cotizada', 'en_orden_compra'].includes(req.status?.code || '')
+            req.isOverdue &&
+            req.status?.code === 'cotizada' &&
+            (!req.purchaseOrders || req.purchaseOrders.length === 0)
           ).length;
 
           return (
             <StatusDashboard
-              pendingByStatus={Object.values(statusCounts)}
+              pendingByStatus={statusCounts}
               overdueCount={overdueCount}
             />
           );
@@ -344,12 +363,12 @@ export default function OrdenesDeCompraPage() {
         ) : (
           <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
             {/* Pending Purchase Orders Section */}
-            {filteredRequisitions.filter(r => r.status?.code === 'cotizada').length > 0 && (
+            {pendingRequisitions.length > 0 && (
               <div>
                 <div className="bg-orange-50 border-b border-orange-200 px-4 py-2">
                   <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    PENDIENTES DE GENERAR OC ({filteredRequisitions.filter(r => r.status?.code === 'cotizada').length})
+                    PENDIENTES DE GENERAR OC ({pendingRequisitions.length})
                   </p>
                 </div>
                 <Table>
@@ -367,7 +386,7 @@ export default function OrdenesDeCompraPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequisitions.filter(r => r.status?.code === 'cotizada').map((req) => {
+                {pendingRequisitions.map((req) => {
                   // Determinar última actualización según estado
                   const getLastAction = () => {
                     switch (req.status?.code) {
@@ -495,23 +514,21 @@ export default function OrdenesDeCompraPage() {
 
             {/* Generated Purchase Orders Section */}
             {(() => {
-              const generatedOrders = filteredRequisitions.filter(r => ['en_orden_compra', 'pendiente_recepcion'].includes(r.status?.code || ''));
-
-              if (generatedOrders.length === 0) return null;
+              if (generatedRequisitions.length === 0) return null;
 
               // Paginación interna: 10 por página
-              const totalGenerated = generatedOrders.length;
+              const totalGenerated = generatedRequisitions.length;
               const processedTotalPages = Math.ceil(totalGenerated / processedLimit);
               const processedStartIndex = (processedPage - 1) * processedLimit;
               const processedEndIndex = processedStartIndex + processedLimit;
-              const paginatedGeneratedOrders = generatedOrders.slice(processedStartIndex, processedEndIndex);
+              const paginatedGeneratedOrders = generatedRequisitions.slice(processedStartIndex, processedEndIndex);
 
               return (
-                <div className={filteredRequisitions.filter(r => r.status?.code === 'cotizada').length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                <div className={pendingRequisitions.length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                   <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                     <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
-                      OC YA GENERADAS ({generatedOrders.length})
+                      OC YA GENERADAS ({generatedRequisitions.length})
                     </p>
                   </div>
                   <Table>
@@ -642,6 +659,17 @@ export default function OrdenesDeCompraPage() {
                                 >
                                   <Eye className="w-4 h-4 text-blue-600" />
                                 </Button>
+                                {req.purchaseOrders?.length === 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEdit(req)}
+                                    className="hover:bg-orange-50"
+                                    title="Editar / Asignar precios"
+                                  >
+                                    <Edit className="w-4 h-4 text-orange-600" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>

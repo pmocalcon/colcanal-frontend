@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Eye, FileText, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -20,6 +21,7 @@ import { StatusDashboard } from '@/components/ui/status-dashboard';
 
 const GestionFacturasPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderForInvoicing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +29,9 @@ const GestionFacturasPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    loadPurchaseOrders();
-  }, [page]);
+  const isCompras = user?.nombreRol === 'Compras';
 
-  const loadPurchaseOrders = async () => {
+  const loadPurchaseOrders = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -45,7 +45,15 @@ const GestionFacturasPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
+
+  useEffect(() => {
+    if (!isCompras) {
+      navigate('/dashboard');
+      return;
+    }
+    loadPurchaseOrders();
+  }, [isCompras, navigate, loadPurchaseOrders]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -85,6 +93,10 @@ const GestionFacturasPage: React.FC = () => {
       pending: totalAmount - totalInvoiced,
     };
   };
+
+  if (!isCompras) {
+    return null;
+  }
 
   if (loading && purchaseOrders.length === 0) {
     return (
@@ -235,7 +247,7 @@ const GestionFacturasPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm font-semibold">
-                          {progress.count}/3
+                          {progress.count}
                         </span>
                       </TableCell>
                       <TableCell>

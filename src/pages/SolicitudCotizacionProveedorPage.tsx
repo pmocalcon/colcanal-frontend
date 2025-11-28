@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getRequisitionQuotation, type RequisitionWithQuotations } from '@/services/quotation.service';
+import { companyContactsService, type CompanyContact } from '@/services/company-contacts.service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -21,8 +22,19 @@ export default function SolicitudCotizacionProveedorPage() {
   const [requisition, setRequisition] = useState<RequisitionWithQuotations | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shippingContact, setShippingContact] = useState<CompanyContact | null>(null);
 
   const supplierIdNumber = supplierId ? Number(supplierId) : null;
+
+  const loadShippingContact = async (companyId: number, projectId?: number) => {
+    try {
+      const contact = await companyContactsService.getDefaultContact(companyId, projectId);
+      setShippingContact(contact);
+    } catch (err) {
+      console.error('Error loading shipping contact:', err);
+      setShippingContact(null);
+    }
+  };
 
   useEffect(() => {
     if (!requisitionId || !supplierIdNumber) {
@@ -37,6 +49,14 @@ export default function SolicitudCotizacionProveedorPage() {
         setError(null);
         const data = await getRequisitionQuotation(Number(requisitionId));
         setRequisition(data);
+        if (data.company?.companyId) {
+          await loadShippingContact(
+            data.company.companyId,
+            data.project?.projectId ?? data.projectId ?? undefined
+          );
+        } else {
+          setShippingContact(null);
+        }
       } catch (err) {
         console.error('Error loading quotation view:', err);
         setError('No se pudo cargar la solicitud de cotización');
@@ -140,7 +160,7 @@ export default function SolicitudCotizacionProveedorPage() {
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {/* Encabezado de datos */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-6 space-y-3">
               <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide">
@@ -201,6 +221,50 @@ export default function SolicitudCotizacionProveedorPage() {
                   </p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-1">
+            <CardContent className="p-6 space-y-3">
+              <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide">
+                Información de envío
+              </p>
+              {shippingContact ? (
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <p className="text-[hsl(var(--canalco-neutral-600))]">Razón social</p>
+                    <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      {shippingContact.businessName}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[hsl(var(--canalco-neutral-600))]">NIT</p>
+                    <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      {shippingContact.nit}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[hsl(var(--canalco-neutral-600))]">Dirección</p>
+                    <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      {[shippingContact.address, shippingContact.city]
+                        .filter(Boolean)
+                        .join(' • ') || 'No registrada'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[hsl(var(--canalco-neutral-600))]">Teléfono / Contacto</p>
+                    <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      {[shippingContact.phone, shippingContact.contactPerson]
+                        .filter(Boolean)
+                        .join(' • ') || 'No registrado'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                  No hay contacto de envío configurado para esta empresa/proyecto. Solicita a Compras definir uno por defecto.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
