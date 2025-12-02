@@ -17,11 +17,22 @@ import {
 import { formatDateShort } from '@/utils/dateUtils';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
-// Mapeo de estados a colores
+// Mapeo de estados a colores (14 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
-  pendiente_recepcion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-  en_recepcion: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  recepcion_completa: 'bg-green-500/10 text-green-700 border-green-500/20',
+  pendiente: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
+  en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  aprobada_revisor: 'bg-green-500/10 text-green-700 border-green-500/20',
+  pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  autorizado: 'bg-lime-500/10 text-lime-700 border-lime-500/20',
+  aprobada_gerencia: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+  en_cotizacion: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
+  rechazada_revisor: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
+  cotizada: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  en_orden_compra: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
+  pendiente_recepcion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+  en_recepcion: 'bg-violet-500/10 text-violet-700 border-violet-500/20',
+  recepcion_completa: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
 };
 
 export default function RecepcionesPage() {
@@ -72,9 +83,20 @@ export default function RecepcionesPage() {
 
   const getStatusLabel = (code: string) => {
     const labels: Record<string, string> = {
-      pendiente_recepcion: 'Pendiente de Recepción',
-      en_recepcion: 'En Recepción',
-      recepcion_completa: 'Recepción Completa',
+      pendiente: 'Pendiente',
+      en_revision: 'En revisión',
+      aprobada_revisor: 'Aprobada por revisor',
+      pendiente_autorizacion: 'Pendiente de autorización',
+      autorizado: 'Autorizado',
+      aprobada_gerencia: 'Aprobada por gerencia',
+      en_cotizacion: 'En cotización',
+      rechazada_revisor: 'Rechazada por revisor',
+      rechazada_gerencia: 'Rechazada por gerencia',
+      cotizada: 'Cotizada',
+      en_orden_compra: 'En orden de compra',
+      pendiente_recepcion: 'Pendiente de recepción',
+      en_recepcion: 'En recepción',
+      recepcion_completa: 'Recepción completa',
     };
     return labels[code] || code;
   };

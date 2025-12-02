@@ -19,23 +19,27 @@ import {
 import { formatDateShort } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 
-// Mapeo de estados a colores
+// Mapeo de estados a colores (15 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
-  pendiente: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  pendiente: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
   en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  aprobada_revisor: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+  aprobada_revisor: 'bg-green-500/10 text-green-700 border-green-500/20',
   pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-  autorizado: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
-  rechazada_revisor: 'bg-red-500/10 text-red-700 border-red-500/20',
-  aprobada_gerencia: 'bg-green-500/10 text-green-700 border-green-500/20',
+  autorizado: 'bg-lime-500/10 text-lime-700 border-lime-500/20',
+  aprobada_gerencia: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+  en_cotizacion: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
+  rechazada_revisor: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  rechazada_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
-  cotizada: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
-  en_orden_compra: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
-  pendiente_recepcion: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
+  cotizada: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  en_orden_compra: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
+  pendiente_recepcion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+  en_recepcion: 'bg-violet-500/10 text-violet-700 border-violet-500/20',
+  recepcion_completa: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
 };
 
 // Estados que permiten edición
-const EDITABLE_STATUSES = ['pendiente', 'rechazada_revisor', 'rechazada_gerencia'];
+const EDITABLE_STATUSES = ['pendiente', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
 
 export default function RequisicionesPage() {
   const navigate = useNavigate();
@@ -68,19 +72,23 @@ export default function RequisicionesPage() {
     status: '',
   });
 
-  // Available statuses for the filter dropdown
+  // Available statuses for the filter dropdown (15 estados según backend)
   const availableStatuses = [
     { code: 'pendiente', name: 'Pendiente' },
-    { code: 'en_revision', name: 'En Revisión' },
-    { code: 'aprobada_revisor', name: 'Aprobada por Revisor' },
-    { code: 'pendiente_autorizacion', name: 'Pendiente de Autorización' },
+    { code: 'en_revision', name: 'En revisión' },
+    { code: 'aprobada_revisor', name: 'Aprobada por revisor' },
+    { code: 'pendiente_autorizacion', name: 'Pendiente de autorización' },
     { code: 'autorizado', name: 'Autorizado' },
-    { code: 'rechazada_revisor', name: 'Rechazada por Revisor' },
-    { code: 'aprobada_gerencia', name: 'Aprobada' },
-    { code: 'rechazada_gerencia', name: 'Rechazada por Gerencia' },
+    { code: 'aprobada_gerencia', name: 'Aprobada por gerencia' },
+    { code: 'en_cotizacion', name: 'En cotización' },
+    { code: 'rechazada_revisor', name: 'Rechazada por revisor' },
+    { code: 'rechazada_autorizador', name: 'Rechazada por autorizador' },
+    { code: 'rechazada_gerencia', name: 'Rechazada por gerencia' },
     { code: 'cotizada', name: 'Cotizada' },
-    { code: 'en_orden_compra', name: 'En Orden de Compra' },
-    { code: 'pendiente_recepcion', name: 'Pendiente de Recepción' },
+    { code: 'en_orden_compra', name: 'En orden de compra' },
+    { code: 'pendiente_recepcion', name: 'Pendiente de recepción' },
+    { code: 'en_recepcion', name: 'En recepción' },
+    { code: 'recepcion_completa', name: 'Recepción completa' },
   ];
 
   // Permisos dinámicos desde el backend
@@ -163,16 +171,20 @@ export default function RequisicionesPage() {
   const getStatusLabel = (code: string) => {
     const labels: Record<string, string> = {
       pendiente: 'Pendiente',
-      en_revision: 'En Revisión',
-      aprobada_revisor: 'Aprobada por Revisor',
-      pendiente_autorizacion: 'Pendiente de Autorización',
+      en_revision: 'En revisión',
+      aprobada_revisor: 'Aprobada por revisor',
+      pendiente_autorizacion: 'Pendiente de autorización',
       autorizado: 'Autorizado',
-      rechazada_revisor: 'Rechazada por Revisor',
-      aprobada_gerencia: 'Aprobada',
-      rechazada_gerencia: 'Rechazada por Gerencia',
+      aprobada_gerencia: 'Aprobada por gerencia',
+      en_cotizacion: 'En cotización',
+      rechazada_revisor: 'Rechazada por revisor',
+      rechazada_autorizador: 'Rechazada por autorizador',
+      rechazada_gerencia: 'Rechazada por gerencia',
       cotizada: 'Cotizada',
-      en_orden_compra: 'En Orden de Compra',
-      pendiente_recepcion: 'Pendiente de Recepción',
+      en_orden_compra: 'En orden de compra',
+      pendiente_recepcion: 'Pendiente de recepción',
+      en_recepcion: 'En recepción',
+      recepcion_completa: 'Recepción completa',
     };
     return labels[code] || code;
   };
@@ -376,7 +388,7 @@ export default function RequisicionesPage() {
             {/* Pending Requisitions Section */}
             {(() => {
               const pendingRequisitions = requisitions.filter(r =>
-                ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')
+                ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')
               );
 
               if (pendingRequisitions.length === 0) return null;
@@ -411,25 +423,33 @@ export default function RequisicionesPage() {
                           case 'pendiente':
                             return { label: 'Creada', date: req.createdAt };
                           case 'en_revision':
-                            return { label: 'En Revisión', date: req.updatedAt };
+                            return { label: 'En revisión', date: req.updatedAt };
                           case 'aprobada_revisor':
                             return { label: 'Revisada', date: req.reviewedAt || req.updatedAt };
                           case 'pendiente_autorizacion':
-                            return { label: 'Pendiente Autorización', date: req.reviewedAt || req.updatedAt };
+                            return { label: 'Pendiente autorización', date: req.reviewedAt || req.updatedAt };
                           case 'autorizado':
                             return { label: 'Autorizada', date: req.updatedAt };
-                          case 'rechazada_revisor':
-                            return { label: 'Rechazada (Revisor)', date: req.reviewedAt || req.updatedAt };
                           case 'aprobada_gerencia':
                             return { label: 'Aprobada (Gerencia)', date: req.approvedAt || req.updatedAt };
+                          case 'en_cotizacion':
+                            return { label: 'En cotización', date: req.updatedAt };
+                          case 'rechazada_revisor':
+                            return { label: 'Rechazada (Revisor)', date: req.reviewedAt || req.updatedAt };
+                          case 'rechazada_autorizador':
+                            return { label: 'Rechazada (Autorizador)', date: req.updatedAt };
                           case 'rechazada_gerencia':
                             return { label: 'Rechazada (Gerencia)', date: req.approvedAt || req.updatedAt };
                           case 'cotizada':
                             return { label: 'Cotizada', date: req.updatedAt };
                           case 'en_orden_compra':
-                            return { label: 'En Orden de Compra', date: req.updatedAt };
+                            return { label: 'En orden de compra', date: req.updatedAt };
                           case 'pendiente_recepcion':
-                            return { label: 'Pendiente de Recepción', date: req.updatedAt };
+                            return { label: 'Pendiente de recepción', date: req.updatedAt };
+                          case 'en_recepcion':
+                            return { label: 'En recepción', date: req.updatedAt };
+                          case 'recepcion_completa':
+                            return { label: 'Recepción completa', date: req.updatedAt };
                           default:
                             return { label: 'Actualizada', date: req.updatedAt };
                         }
@@ -486,7 +506,7 @@ export default function RequisicionesPage() {
                                 {getStatusLabel(req.status.code)}
                               </Badge>
                               {/* Mostrar preview del último comentario de rechazo */}
-                              {(req.status.code === 'rechazada_revisor' || req.status.code === 'rechazada_gerencia') && req.logs && req.logs.length > 0 && (() => {
+                              {(req.status.code === 'rechazada_revisor' || req.status.code === 'rechazada_autorizador' || req.status.code === 'rechazada_gerencia') && req.logs && req.logs.length > 0 && (() => {
                                 const lastRejectionLog = [...req.logs]
                                   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                                   .find(log => log.comments && (log.action?.includes('rechazar') || log.newStatus?.includes('rechazada')));
@@ -542,7 +562,7 @@ export default function RequisicionesPage() {
             {/* Processed Requisitions Section */}
             {(() => {
               const processedRequisitions = requisitions.filter(r =>
-                ['aprobada_gerencia', 'cotizada', 'en_orden_compra', 'pendiente_recepcion'].includes(r.status?.code || '')
+                ['cotizada', 'en_orden_compra', 'pendiente_recepcion', 'en_recepcion', 'recepcion_completa'].includes(r.status?.code || '')
               );
 
               if (processedRequisitions.length === 0) return null;
@@ -555,7 +575,7 @@ export default function RequisicionesPage() {
               const paginatedProcessedRequisitions = processedRequisitions.slice(processedStartIndex, processedEndIndex);
 
               return (
-                <div className={requisitions.filter(r => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'rechazada_revisor', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                <div className={requisitions.filter(r => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                   <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                     <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
@@ -581,14 +601,16 @@ export default function RequisicionesPage() {
                           // Determinar la última acción según el estado
                           const getLastAction = () => {
                             switch (req.status.code) {
-                              case 'aprobada_gerencia':
-                                return { label: 'Aprobada (Gerencia)', date: req.approvedAt || req.updatedAt };
                               case 'cotizada':
                                 return { label: 'Cotizada', date: req.updatedAt };
                               case 'en_orden_compra':
-                                return { label: 'En Orden de Compra', date: req.updatedAt };
+                                return { label: 'En orden de compra', date: req.updatedAt };
                               case 'pendiente_recepcion':
-                                return { label: 'Pendiente de Recepción', date: req.updatedAt };
+                                return { label: 'Pendiente de recepción', date: req.updatedAt };
+                              case 'en_recepcion':
+                                return { label: 'En recepción', date: req.updatedAt };
+                              case 'recepcion_completa':
+                                return { label: 'Recepción completa', date: req.updatedAt };
                               default:
                                 return { label: 'Actualizada', date: req.updatedAt };
                             }

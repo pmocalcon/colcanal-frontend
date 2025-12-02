@@ -18,15 +18,22 @@ import { formatDate } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
-// Mapeo de estados a colores (siguiendo el formato de RevisarRequisicionesPage)
+// Mapeo de estados a colores (14 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
+  pendiente: 'bg-gray-100 text-gray-800',
+  en_revision: 'bg-blue-100 text-blue-800',
+  aprobada_revisor: 'bg-green-100 text-green-800',
+  pendiente_autorizacion: 'bg-amber-100 text-amber-800',
+  autorizado: 'bg-lime-100 text-lime-800',
   aprobada_gerencia: 'bg-emerald-100 text-emerald-800',
-  en_cotizacion: 'bg-blue-100 text-blue-800',
-  cotizada: 'bg-indigo-100 text-indigo-800',
-  en_orden_compra: 'bg-purple-100 text-purple-800',
-  pendiente_recepcion: 'bg-cyan-100 text-cyan-800',
-  en_recepcion: 'bg-teal-100 text-teal-800',
-  recepcion_completa: 'bg-green-100 text-green-800',
+  en_cotizacion: 'bg-cyan-100 text-cyan-800',
+  rechazada_revisor: 'bg-orange-100 text-orange-800',
+  rechazada_gerencia: 'bg-red-100 text-red-800',
+  cotizada: 'bg-yellow-100 text-yellow-800',
+  en_orden_compra: 'bg-indigo-100 text-indigo-800',
+  pendiente_recepcion: 'bg-purple-100 text-purple-800',
+  en_recepcion: 'bg-violet-100 text-violet-800',
+  recepcion_completa: 'bg-teal-100 text-teal-800',
 };
 
 // Estados que permiten gestionar cotización
@@ -98,13 +105,20 @@ export default function CotizacionesPage() {
 
   const getStatusLabel = (code: string) => {
     const labels: Record<string, string> = {
-      aprobada_gerencia: 'Lista para Cotizar',
-      en_cotizacion: 'En Cotización',
+      pendiente: 'Pendiente',
+      en_revision: 'En revisión',
+      aprobada_revisor: 'Aprobada por revisor',
+      pendiente_autorizacion: 'Pendiente de autorización',
+      autorizado: 'Autorizado',
+      aprobada_gerencia: 'Lista para cotizar',
+      en_cotizacion: 'En cotización',
+      rechazada_revisor: 'Rechazada por revisor',
+      rechazada_gerencia: 'Rechazada por gerencia',
       cotizada: 'Cotizada',
-      en_orden_compra: 'Con Orden de Compra',
-      pendiente_recepcion: 'Pendiente Recepción',
-      en_recepcion: 'En Recepción',
-      recepcion_completa: 'Recepción Completa',
+      en_orden_compra: 'En orden de compra',
+      pendiente_recepcion: 'Pendiente de recepción',
+      en_recepcion: 'En recepción',
+      recepcion_completa: 'Recepción completa',
     };
     return labels[code] || code;
   };

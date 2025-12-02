@@ -132,7 +132,7 @@ export interface ItemApprovalResponse {
   observation?: string;
   requisitionItemId?: number;
   userId: number;
-  approvalLevel: 'reviewer' | 'management';
+  approvalLevel: 'reviewer' | 'authorizer' | 'management';
   status: 'approved' | 'rejected';
   comments?: string;
   isValid: boolean;
@@ -209,7 +209,7 @@ export const requisitionsService = {
    */
   async getItemApprovals(
     requisitionId: number,
-    approvalLevel?: 'reviewer' | 'management',
+    approvalLevel?: 'reviewer' | 'authorizer' | 'management',
   ): Promise<ItemApprovalResponse[]> {
     const response = await api.get<ItemApprovalResponse[]>(
       `/purchases/requisitions/${requisitionId}/item-approvals`,

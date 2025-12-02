@@ -145,7 +145,7 @@ export interface RejectRequisitionDto {
 }
 
 export interface AuthorizeRequisitionDto {
-  decision: 'authorize' | 'reject';
+  decision: 'approve' | 'reject';
   comments?: string;
 }
 

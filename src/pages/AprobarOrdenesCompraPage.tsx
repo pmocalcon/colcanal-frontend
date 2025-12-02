@@ -58,7 +58,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generalComments, setGeneralComments] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Usuario actual
@@ -117,7 +116,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
       }));
       setItemApprovals(initialApprovals);
       setGeneralComments('');
-      setRejectionReason('');
     } catch (err: any) {
       console.error('Error loading purchase order detail:', err);
       setError('Error al cargar el detalle de la orden de compra');
@@ -135,7 +133,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
     setItemApprovals([]);
     setActionError(null);
     setGeneralComments('');
-    setRejectionReason('');
   };
 
   // Aprobar un ítem
@@ -185,12 +182,19 @@ const AprobarOrdenesCompraPage: React.FC = () => {
     return itemApprovals.every((approval) => approval.status !== 'pending');
   };
 
-  // Validar que ítems rechazados tengan comentarios o que haya razón de rechazo general
+  // Validar que ítems rechazados tengan comentarios
   const validateRejections = (): string | null => {
-    const hasRejected = itemApprovals.some((approval) => approval.status === 'rejected');
+    const rejectedItems = itemApprovals.filter((approval) => approval.status === 'rejected');
 
-    if (hasRejected && !rejectionReason.trim()) {
-      return 'Debe proporcionar una razón de rechazo cuando se rechaza algún ítem';
+    if (rejectedItems.length === 0) {
+      return null;
+    }
+
+    // Verificar que TODOS los ítems rechazados tengan comentarios
+    const itemsWithoutComments = rejectedItems.filter((item) => !item.comments.trim());
+
+    if (itemsWithoutComments.length > 0) {
+      return 'Todos los ítems rechazados deben tener un comentario explicando el motivo';
     }
 
     return null;
@@ -238,7 +242,6 @@ const AprobarOrdenesCompraPage: React.FC = () => {
           comments: approval.comments || undefined,
         })),
         generalComments: generalComments || undefined,
-        rejectionReason: finalDecision === 'reject' ? rejectionReason : undefined,
       };
 
       await approvePurchaseOrder(selectedPO.purchaseOrderId, approvalDto);
@@ -887,35 +890,17 @@ const AprobarOrdenesCompraPage: React.FC = () => {
               </div>
             </Card>
 
-            {/* Comentarios generales y razón de rechazo */}
+            {/* Comentarios generales */}
             <Card className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="generalComments">Comentarios Generales (Opcional)</Label>
-                  <Textarea
-                    id="generalComments"
-                    placeholder="Agrega comentarios generales sobre esta orden de compra..."
-                    value={generalComments}
-                    onChange={(e) => setGeneralComments(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                {getFinalDecision() === 'reject' && (
-                  <div>
-                    <Label htmlFor="rejectionReason" className="text-red-700">
-                      Razón de Rechazo (Obligatorio) *
-                    </Label>
-                    <Textarea
-                      id="rejectionReason"
-                      placeholder="Explica por qué se rechaza esta orden de compra..."
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      rows={3}
-                      className="border-red-300 focus:border-red-500"
-                    />
-                  </div>
-                )}
+              <div>
+                <Label htmlFor="generalComments">Comentarios Generales (Opcional)</Label>
+                <Textarea
+                  id="generalComments"
+                  placeholder="Agrega comentarios generales sobre esta orden de compra..."
+                  value={generalComments}
+                  onChange={(e) => setGeneralComments(e.target.value)}
+                  rows={3}
+                />
               </div>
             </Card>
 

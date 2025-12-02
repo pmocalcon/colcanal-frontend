@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X } from 'lucide-react';
+import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, CheckCheck, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,6 +25,13 @@ import {
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
+// Estado de aprobación por ítem
+interface ItemReviewStatus {
+  itemId: number;
+  status: 'pending' | 'approved' | 'rejected';
+  comments: string;
+}
+
 const AutorizarRequisicionesPage: React.FC = () => {
   const navigate = useNavigate();
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -39,12 +46,11 @@ const AutorizarRequisicionesPage: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
 
-  // Estados de autorización
+  // Estados de autorización por ítem
+  const [itemReviews, setItemReviews] = useState<ItemReviewStatus[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [actionType, setActionType] = useState<'authorize' | 'reject'>('authorize');
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [comments, setComments] = useState('');
 
   // Usuario actual
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -69,10 +75,10 @@ const AutorizarRequisicionesPage: React.FC = () => {
 
       // Filtrar requisiciones relevantes para el autorizador:
       // - pendiente_autorizacion (pendientes de autorizar)
-      // - autorizado (ya autorizadas)
+      // - autorizado (ya autorizadas por el autorizador)
       // - aprobada_gerencia (ya pasaron por autorización y aprobación)
-      // - rechazada_revisor (rechazadas después de autorización)
-      const relevantStatuses = ['pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'rechazada_revisor'];
+      // NO incluir rechazada_revisor porque esas van al creador, no al autorizador
+      const relevantStatuses = ['pendiente_autorizacion', 'autorizado', 'aprobada_gerencia'];
       const authRequisitions = response.data.filter(
         (req) => relevantStatuses.includes(req.status?.code || '')
       );
@@ -113,7 +119,14 @@ const AutorizarRequisicionesPage: React.FC = () => {
       }
 
       setSelectedRequisition(fullRequisition);
-      setComments('');
+
+      // Inicializar estados de revisión para cada ítem
+      const initialReviews: ItemReviewStatus[] = fullRequisition.items.map((item) => ({
+        itemId: item.itemId,
+        status: 'pending',
+        comments: '',
+      }));
+      setItemReviews(initialReviews);
       setActionError(null);
     } catch (err: any) {
       console.error('Error loading requisition:', err);
@@ -128,13 +141,125 @@ const AutorizarRequisicionesPage: React.FC = () => {
     setShowDetail(false);
     setSelectedRequisition(null);
     setShowConfirmation(false);
-    setComments('');
+    setItemReviews([]);
     setActionError(null);
   };
 
+  // Aprobar un ítem
+  const handleApproveItem = (itemId: number) => {
+    setItemReviews((prev) =>
+      prev.map((review) =>
+        review.itemId === itemId
+          ? { ...review, status: 'approved', comments: '' }
+          : review
+      )
+    );
+  };
+
+  // Rechazar un ítem
+  const handleRejectItem = (itemId: number) => {
+    setItemReviews((prev) =>
+      prev.map((review) =>
+        review.itemId === itemId
+          ? { ...review, status: 'rejected' }
+          : review
+      )
+    );
+  };
+
+  // Actualizar comentarios de un ítem
+  const handleUpdateItemComments = (itemId: number, comments: string) => {
+    setItemReviews((prev) =>
+      prev.map((review) =>
+        review.itemId === itemId ? { ...review, comments } : review
+      )
+    );
+  };
+
+  // Aprobar todos los ítems pendientes
+  const handleApproveAll = () => {
+    setItemReviews((prev) =>
+      prev.map((review) =>
+        review.status === 'pending'
+          ? { ...review, status: 'approved', comments: '' }
+          : review
+      )
+    );
+  };
+
+  // Validar que todos los ítems tengan una decisión
+  const areAllItemsReviewed = () => {
+    return itemReviews.every((review) => review.status !== 'pending');
+  };
+
+  // Validar que ítems rechazados tengan comentarios
+  const validateRejectedItems = (): string | null => {
+    const rejectedWithoutComments = itemReviews.filter(
+      (review) => review.status === 'rejected' && !review.comments.trim()
+    );
+
+    if (rejectedWithoutComments.length > 0) {
+      return 'Los ítems rechazados deben tener comentarios explicando el motivo';
+    }
+
+    return null;
+  };
+
+  // Calcular decisión final
+  const getFinalDecision = (): 'approve' | 'reject' => {
+    const hasRejected = itemReviews.some((review) => review.status === 'rejected');
+    return hasRejected ? 'reject' : 'approve';
+  };
+
+  // Consolidar comentarios
+  const consolidateComments = (): string => {
+    const decision = getFinalDecision();
+
+    if (decision === 'approve') {
+      return 'Todos los ítems autorizados';
+    }
+
+    // Requisición rechazada: consolidar comentarios de ítems rechazados
+    const rejectedItems = itemReviews.filter((review) => review.status === 'rejected');
+
+    if (rejectedItems.length === 0) return '';
+
+    const itemsWithComments = rejectedItems.map((review, index) => {
+      const item = selectedRequisition?.items.find((i) => i.itemId === review.itemId);
+      return `Ítem ${item?.itemNumber || index + 1} (${item?.material.code}): ${review.comments}`;
+    });
+
+    return `Requisición rechazada. Motivos:\n${itemsWithComments.join('\n')}`;
+  };
+
+  // Obtener estado de revisión de un ítem
+  const getItemReviewStatus = (itemId: number) => {
+    return itemReviews.find((review) => review.itemId === itemId);
+  };
+
+  // Contar ítems por estado
+  const getItemsCount = () => {
+    const approved = itemReviews.filter((r) => r.status === 'approved').length;
+    const rejected = itemReviews.filter((r) => r.status === 'rejected').length;
+    const pending = itemReviews.filter((r) => r.status === 'pending').length;
+    return { approved, rejected, pending };
+  };
+
   // Abrir confirmación
-  const handleOpenConfirmation = (action: 'authorize' | 'reject') => {
-    setActionType(action);
+  const handleOpenConfirmation = () => {
+    // Validar que todos los ítems estén revisados
+    if (!areAllItemsReviewed()) {
+      setActionError('Debes revisar todos los ítems antes de continuar');
+      return;
+    }
+
+    // Validar que ítems rechazados tengan comentarios
+    const validationError = validateRejectedItems();
+    if (validationError) {
+      setActionError(validationError);
+      return;
+    }
+
     setActionError(null);
     setShowConfirmation(true);
   };
@@ -147,10 +272,21 @@ const AutorizarRequisicionesPage: React.FC = () => {
       setActionLoading(true);
       setActionError(null);
 
+      const finalDecision = getFinalDecision();
+      const consolidatedComments = consolidateComments();
+
       const data: AuthorizeRequisitionDto = {
-        decision: actionType,
-        comments: comments.trim() || undefined,
+        decision: finalDecision,
+        comments: consolidatedComments,
       };
+
+      // DEBUG: Log para ver qué se está enviando
+      console.log('🔑 Authorize Request:', {
+        requisitionId: selectedRequisition.requisitionId,
+        requisitionNumber: selectedRequisition.requisitionNumber,
+        currentStatus: selectedRequisition.status?.code,
+        data,
+      });
 
       await authorizeRequisition(selectedRequisition.requisitionId, data);
 
@@ -159,12 +295,14 @@ const AutorizarRequisicionesPage: React.FC = () => {
       loadPendingRequisitions();
 
       alert(
-        actionType === 'authorize'
+        finalDecision === 'approve'
           ? 'Requisición autorizada exitosamente'
           : 'Requisición rechazada. El creador podrá corregirla y reenviarla.'
       );
     } catch (err: any) {
-      console.error('Error processing action:', err);
+      console.error('❌ Error processing action:', err);
+      console.error('❌ Error response:', err.response?.data);
+      console.error('❌ Error status:', err.response?.status);
       setActionError(
         err.response?.data?.message || 'Error al procesar la acción'
       );
@@ -183,6 +321,7 @@ const AutorizarRequisicionesPage: React.FC = () => {
       autorizado: 'bg-lime-100 text-lime-800',
       aprobada_gerencia: 'bg-emerald-100 text-emerald-800',
       rechazada_revisor: 'bg-orange-100 text-orange-800',
+      rechazada_autorizador: 'bg-amber-100 text-amber-800',
       rechazada_gerencia: 'bg-red-100 text-red-800',
     };
     return colors[statusCode] || 'bg-gray-100 text-gray-800';
@@ -637,7 +776,49 @@ const AutorizarRequisicionesPage: React.FC = () => {
                   </div>
                 </Card>
 
-                {/* Card de Elementos Solicitados */}
+                {/* Card de Progreso */}
+                {!showConfirmation && (
+                  <Card className="p-4 bg-amber-50 border-amber-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">
+                          Progreso de Autorización
+                        </p>
+                        <p className="text-xs text-amber-700 mt-1">
+                          Autoriza cada ítem individualmente o autoriza todos de una vez
+                        </p>
+                      </div>
+                      <div className="flex gap-4 text-sm">
+                        <div className="text-center">
+                          <p className="font-bold text-green-700">{getItemsCount().approved}</p>
+                          <p className="text-xs text-green-600">Autorizados</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-bold text-red-700">{getItemsCount().rejected}</p>
+                          <p className="text-xs text-red-600">Rechazados</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-bold text-gray-700">{getItemsCount().pending}</p>
+                          <p className="text-xs text-gray-600">Pendientes</p>
+                        </div>
+                      </div>
+                    </div>
+                    {getItemsCount().pending > 0 && (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={handleApproveAll}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCheck className="h-4 w-4 mr-1" />
+                          Autorizar Todo ({getItemsCount().pending})
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                )}
+
+                {/* Card de Elementos Solicitados con Autorización por Ítem */}
                 {!showConfirmation ? (
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">
@@ -645,10 +826,17 @@ const AutorizarRequisicionesPage: React.FC = () => {
                     </h3>
                     <div className="space-y-4">
                       {selectedRequisition.items.map((item) => {
+                        const reviewStatus = getItemReviewStatus(item.itemId);
                         return (
                           <div
                             key={item.itemId}
-                            className="border rounded-lg p-4 border-[hsl(var(--canalco-neutral-300))] bg-white"
+                            className={`border rounded-lg p-4 ${
+                              reviewStatus?.status === 'approved'
+                                ? 'border-green-300 bg-green-50'
+                                : reviewStatus?.status === 'rejected'
+                                ? 'border-red-300 bg-red-50'
+                                : 'border-[hsl(var(--canalco-neutral-300))] bg-white'
+                            }`}
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-grow">
@@ -656,6 +844,12 @@ const AutorizarRequisicionesPage: React.FC = () => {
                                   <span className="font-bold text-lg text-[hsl(var(--canalco-primary))]">
                                     #{item.itemNumber}
                                   </span>
+                                  {reviewStatus?.status === 'approved' && (
+                                    <CheckCircle className="h-5 w-5 text-green-600" />
+                                  )}
+                                  {reviewStatus?.status === 'rejected' && (
+                                    <XCircle className="h-5 w-5 text-red-600" />
+                                  )}
                                   <span className="font-mono text-sm font-semibold">
                                     {item.material.code}
                                   </span>
@@ -676,6 +870,53 @@ const AutorizarRequisicionesPage: React.FC = () => {
                                     </span>
                                   )}
                                 </div>
+
+                                {/* Comentarios si está rechazado */}
+                                {reviewStatus?.status === 'rejected' && (
+                                  <div className="mt-3">
+                                    <Label className="text-xs text-red-700 font-semibold">
+                                      Motivo del rechazo *
+                                    </Label>
+                                    <textarea
+                                      placeholder="Explica por qué rechazas este ítem..."
+                                      value={reviewStatus.comments}
+                                      onChange={(e) =>
+                                        handleUpdateItemComments(item.itemId, e.target.value)
+                                      }
+                                      rows={2}
+                                      className="mt-1 w-full px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Botones de acción */}
+                              <div className="flex flex-col gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApproveItem(item.itemId)}
+                                  className={`${
+                                    reviewStatus?.status === 'approved'
+                                      ? 'bg-green-600 hover:bg-green-700'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-green-600 hover:text-white'
+                                  }`}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Autorizar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleRejectItem(item.itemId)}
+                                  className={`${
+                                    reviewStatus?.status === 'rejected'
+                                      ? 'bg-red-600 hover:bg-red-700'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-red-600 hover:text-white'
+                                  }`}
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Rechazar
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -683,79 +924,106 @@ const AutorizarRequisicionesPage: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Botones de acción */}
-                    <div className="flex gap-4 mt-6">
-                      <Button
-                        onClick={() => handleOpenConfirmation('authorize')}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <Check className="h-4 w-4 mr-2" />
-                        Autorizar
+                    {/* Error de validación */}
+                    {actionError && (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-700">{actionError}</p>
+                      </div>
+                    )}
+
+                    {/* Botones de navegación */}
+                    <div className="flex gap-3 justify-end mt-6">
+                      <Button variant="outline" onClick={handleCloseDetail}>
+                        Cancelar
                       </Button>
                       <Button
-                        onClick={() => handleOpenConfirmation('reject')}
-                        variant="outline"
-                        className="flex-1 border-red-600 text-red-600 hover:bg-red-50"
+                        onClick={handleOpenConfirmation}
+                        disabled={!areAllItemsReviewed()}
+                        className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-dark))]"
                       >
-                        <X className="h-4 w-4 mr-2" />
-                        Rechazar
+                        Finalizar Autorización
                       </Button>
                     </div>
                   </Card>
                 ) : (
+                  /* Confirmación Final */
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">
-                      {actionType === 'authorize' ? '✓ Autorizar Requisición' : '✗ Rechazar Requisición'}
+                      Confirmar Autorización
                     </h3>
 
-                    {actionError && (
-                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                        {actionError}
+                    <div className="space-y-4">
+                      <div className={`p-4 rounded-lg ${
+                        getFinalDecision() === 'approve'
+                          ? 'bg-green-50 border border-green-200'
+                          : 'bg-red-50 border border-red-200'
+                      }`}>
+                        <p className="font-semibold mb-2">
+                          {getFinalDecision() === 'approve' ? (
+                            <span className="text-green-800">Todos los ítems autorizados</span>
+                          ) : (
+                            <span className="text-red-800">Requisición será rechazada</span>
+                          )}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                          {getFinalDecision() === 'approve'
+                            ? 'La requisición pasará al siguiente nivel de aprobación (Gerencia).'
+                            : `${getItemsCount().rejected} ítem(es) rechazado(s). El creador podrá editar y volver a enviar la requisición.`}
+                        </p>
                       </div>
-                    )}
 
-                    <div className="mb-4">
-                      <Label>Comentarios {actionType === 'reject' ? '(requerido)' : '(opcional)'}</Label>
-                      <Textarea
-                        value={comments}
-                        onChange={(e) => setComments(e.target.value)}
-                        placeholder={
-                          actionType === 'authorize'
-                            ? 'Agregar comentarios opcionales...'
-                            : 'Explica por qué rechazas esta requisición...'
-                        }
-                        rows={4}
-                        className="mt-1"
-                      />
-                    </div>
+                      {/* Resumen de comentarios */}
+                      {getFinalDecision() === 'reject' && (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                          <Label className="text-sm font-semibold mb-2 block">
+                            Comentarios que se enviarán:
+                          </Label>
+                          <pre className="text-sm text-[hsl(var(--canalco-neutral-700))] whitespace-pre-wrap">
+                            {consolidateComments()}
+                          </pre>
+                        </div>
+                      )}
 
-                    <div className="flex gap-4">
-                      <Button
-                        onClick={() => setShowConfirmation(false)}
-                        variant="outline"
-                        className="flex-1"
-                        disabled={actionLoading}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={handleConfirmAction}
-                        className={`flex-1 ${
-                          actionType === 'authorize'
-                            ? 'bg-green-600 hover:bg-green-700'
-                            : 'bg-red-600 hover:bg-red-700'
-                        } text-white`}
-                        disabled={actionLoading || (actionType === 'reject' && !comments.trim())}
-                      >
-                        {actionLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : actionType === 'authorize' ? (
-                          <Check className="h-4 w-4 mr-2" />
-                        ) : (
-                          <X className="h-4 w-4 mr-2" />
-                        )}
-                        Confirmar {actionType === 'authorize' ? 'Autorización' : 'Rechazo'}
-                      </Button>
+                      {actionError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-sm text-red-700">{actionError}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowConfirmation(false)}
+                          disabled={actionLoading}
+                        >
+                          Volver
+                        </Button>
+                        <Button
+                          onClick={handleConfirmAction}
+                          disabled={actionLoading}
+                          className={
+                            getFinalDecision() === 'approve'
+                              ? 'bg-green-600 hover:bg-green-700'
+                              : 'bg-red-600 hover:bg-red-700'
+                          }
+                        >
+                          {actionLoading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Procesando...
+                            </>
+                          ) : (
+                            <>
+                              {getFinalDecision() === 'approve' ? (
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                              ) : (
+                                <XCircle className="h-4 w-4 mr-2" />
+                              )}
+                              Confirmar {getFinalDecision() === 'approve' ? 'Autorización' : 'Rechazo'}
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 )}

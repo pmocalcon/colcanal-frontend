@@ -17,17 +17,23 @@ import {
 } from '@/components/ui/table';
 import { formatDate } from '@/utils/dateUtils';
 
-// Mapeo de estados a colores
+// Mapeo de estados a colores (15 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
-  pendiente: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  pendiente: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
   en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  aprobada_revisor: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  rechazada_revisor: 'bg-red-500/10 text-red-700 border-red-500/20',
-  aprobada_gerencia: 'bg-green-500/10 text-green-700 border-green-500/20',
+  aprobada_revisor: 'bg-green-500/10 text-green-700 border-green-500/20',
+  pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  autorizado: 'bg-lime-500/10 text-lime-700 border-lime-500/20',
+  aprobada_gerencia: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+  en_cotizacion: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
+  rechazada_revisor: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  rechazada_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
-  cotizada: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
-  en_orden_compra: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
-  pendiente_recepcion: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
+  cotizada: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  en_orden_compra: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
+  pendiente_recepcion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+  en_recepcion: 'bg-violet-500/10 text-violet-700 border-violet-500/20',
+  recepcion_completa: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
 };
 
 export default function DetalleRequisicionPage() {
@@ -148,11 +154,7 @@ export default function DetalleRequisicionPage() {
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Back Button and Badge */}
         <div className="flex items-center justify-between mb-6">
-          <Button onClick={() => {
-            // Si es revisor o gerencia, volver a la página de revisar
-            const isReviewerOrManager = user?.nombreRol?.includes('Director') || user?.nombreRol === 'Gerencia';
-            navigate(isReviewerOrManager ? '/dashboard/compras/requisiciones/revisar' : '/dashboard/compras/requisiciones');
-          }} variant="outline" size="sm">
+          <Button onClick={() => navigate(-1)} variant="outline" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver
           </Button>

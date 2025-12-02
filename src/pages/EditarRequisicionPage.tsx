@@ -63,8 +63,6 @@ const EditarRequisicionPage: React.FC = () => {
   // Form data
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-  const [obra, setObra] = useState('');
-  const [codigoObra, setCodigoObra] = useState('');
   const [items, setItems] = useState<ItemForm[]>([]);
 
   // Material search
@@ -86,25 +84,14 @@ const EditarRequisicionPage: React.FC = () => {
       console.log('Requisition loaded:', requisition);
 
       // Validar que se pueda editar
-      // Estados editables: pendiente (1), rechazada_revisor (6), rechazada_gerencia (7)
-      // Nota: El backend getRequisitionById retorna solo statusId (número), no el objeto status completo
-      const editableStatusIds = [1, 6, 7];
-      const currentStatusId = requisition.statusId as number;
+      // Estados editables: pendiente, rechazada_revisor, rechazada_autorizador, rechazada_gerencia
+      const EDITABLE_STATUSES = ['pendiente', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
+      const currentStatusCode = requisition.status?.code || '';
 
-      if (!editableStatusIds.includes(currentStatusId)) {
-        const statusNames: Record<number, string> = {
-          1: 'Pendiente',
-          2: 'En Revisión',
-          3: 'Aprobada por Revisor',
-          4: 'Aprobada por Gerencia',
-          5: 'En Cotización',
-          6: 'Rechazada por Revisor',
-          7: 'Rechazada por Gerencia',
-          8: 'Cotizada',
-        };
+      if (!EDITABLE_STATUSES.includes(currentStatusCode)) {
         setError(
           `Esta requisición no puede ser editada porque su estado es: ${
-            statusNames[currentStatusId] || `Estado ${currentStatusId}`
+            requisition.status?.name || currentStatusCode
           }`
         );
         return;
@@ -113,11 +100,12 @@ const EditarRequisicionPage: React.FC = () => {
       setOriginalRequisition(requisition);
 
       // Determinar nivel de aprobación para cargar rechazos
-      // Estados: 6 = rechazada_revisor, 7 = rechazada_gerencia
-      let approvalLevel: 'reviewer' | 'management' | undefined;
-      if (currentStatusId === 6) {
+      let approvalLevel: 'reviewer' | 'authorizer' | 'management' | undefined;
+      if (currentStatusCode === 'rechazada_revisor') {
         approvalLevel = 'reviewer';
-      } else if (currentStatusId === 7) {
+      } else if (currentStatusCode === 'rechazada_autorizador') {
+        approvalLevel = 'authorizer';
+      } else if (currentStatusCode === 'rechazada_gerencia') {
         approvalLevel = 'management';
       }
 
@@ -156,8 +144,6 @@ const EditarRequisicionPage: React.FC = () => {
       // Establecer valores del formulario
       setSelectedCompanyId(requisition.companyId);
       setSelectedProjectId(requisition.projectId || null);
-      setObra(requisition.obra || '');
-      setCodigoObra(requisition.codigoObra || '');
 
       // Convertir ítems existentes al formato del formulario
       const formItems: ItemForm[] = requisition.items.map((item) => ({
@@ -273,8 +259,6 @@ const EditarRequisicionPage: React.FC = () => {
       const updateData = {
         companyId: selectedCompanyId!,
         projectId: selectedProjectId || undefined,
-        obra: obra || undefined,
-        codigoObra: codigoObra || undefined,
         items: itemsDto,
       };
 
@@ -397,21 +381,7 @@ const EditarRequisicionPage: React.FC = () => {
             <div>
               <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Estado</Label>
               <p className="font-medium">
-                {originalRequisition?.statusId
-                  ? (() => {
-                      const statusNames: Record<number, string> = {
-                        1: 'Pendiente',
-                        2: 'En Revisión',
-                        3: 'Aprobada por Revisor',
-                        4: 'Aprobada por Gerencia',
-                        5: 'En Cotización',
-                        6: 'Rechazada por Revisor',
-                        7: 'Rechazada por Gerencia',
-                        8: 'Cotizada',
-                      };
-                      return statusNames[originalRequisition.statusId] || `Estado ${originalRequisition.statusId}`;
-                    })()
-                  : 'N/A'}
+                {originalRequisition?.status?.name || 'N/A'}
               </p>
             </div>
             <div>
@@ -564,7 +534,7 @@ const EditarRequisicionPage: React.FC = () => {
                                 <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                                 <div className="flex-grow">
                                   <p className="font-semibold text-red-900 text-sm">
-                                    Ítem rechazado por {rejection.approvalLevel === 'reviewer' ? 'Director' : 'Gerencia'}
+                                    Ítem rechazado por {rejection.approvalLevel === 'reviewer' ? 'Director' : rejection.approvalLevel === 'authorizer' ? 'Autorizador' : 'Gerencia'}
                                   </p>
                                   {rejection.comments && (
                                     <p className="text-sm text-red-800 mt-1">
