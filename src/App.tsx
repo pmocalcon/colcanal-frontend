@@ -25,6 +25,9 @@ import RecepcionContabilidadPage from './pages/RecepcionContabilidadPage'
 import SolicitudCotizacionProveedorPage from './pages/SolicitudCotizacionProveedorPage'
 import VerOrdenCompraPage from './pages/VerOrdenCompraPage'
 import VerOrdenCompraIndividualPage from './pages/VerOrdenCompraIndividualPage'
+import MaterialesPage from './pages/MaterialesPage'
+import GruposMaterialesPage from './pages/GruposMaterialesPage'
+import MaterialesListPage from './pages/MaterialesListPage'
 
 export default function App() {
   return (
@@ -59,6 +62,10 @@ export default function App() {
           <Route path="/dashboard/auditorias" element={<AuditoriasPage />} />
           <Route path="/dashboard/auditorias/compras" element={<AuditoriasComprasPage />} />
           <Route path="/dashboard/auditorias/compras/detalle/:requisitionId" element={<AuditoriasComprasDetallePage />} />
+          {/* Materiales */}
+          <Route path="/dashboard/materiales" element={<MaterialesPage />} />
+          <Route path="/dashboard/materiales/grupos" element={<GruposMaterialesPage />} />
+          <Route path="/dashboard/materiales/lista" element={<MaterialesListPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
