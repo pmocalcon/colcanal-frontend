@@ -94,11 +94,15 @@ export default function GruposMaterialesPage() {
       setLoading(true);
       setError(null);
       const data = await materialsService.getGroups();
-      setGroups(data);
-      setFilteredGroups(data);
+      // Validar que sea un array
+      const groupsArray = Array.isArray(data) ? data : [];
+      setGroups(groupsArray);
+      setFilteredGroups(groupsArray);
     } catch (err: any) {
       console.error('Error loading groups:', err);
       setError('Error al cargar los grupos de materiales');
+      setGroups([]);
+      setFilteredGroups([]);
     } finally {
       setLoading(false);
     }

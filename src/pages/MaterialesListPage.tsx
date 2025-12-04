@@ -134,12 +134,18 @@ export default function MaterialesListPage() {
         materialsService.getMaterials(),
         materialsService.getGroups(),
       ]);
-      setMaterials(materialsData);
-      setFilteredMaterials(materialsData);
-      setGroups(groupsData);
+      // Validar que sean arrays
+      const materialsArray = Array.isArray(materialsData) ? materialsData : [];
+      const groupsArray = Array.isArray(groupsData) ? groupsData : [];
+      setMaterials(materialsArray);
+      setFilteredMaterials(materialsArray);
+      setGroups(groupsArray);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError('Error al cargar los datos');
+      setMaterials([]);
+      setFilteredMaterials([]);
+      setGroups([]);
     } finally {
       setLoading(false);
     }
