@@ -237,7 +237,7 @@ export default function CrearRequisicionPage() {
     const newItem: RequisitionItem = {
       tempId: `temp-${Date.now()}`,
       materialId,
-      quantity: 1,
+      quantity: 0, // Inicia en 0 para mostrar placeholder
       observation: '',
       material,
     };
@@ -287,8 +287,8 @@ export default function CrearRequisicionPage() {
     }
 
     for (const item of items) {
-      if (item.quantity <= 0) {
-        alert('La cantidad de todos los ítems debe ser mayor a 0');
+      if (item.quantity < 1) {
+        alert('La cantidad de todos los ítems debe ser al menos 1');
         return false;
       }
     }
@@ -710,12 +710,13 @@ export default function CrearRequisicionPage() {
                             <TableCell>
                               <Input
                                 type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={item.quantity}
+                                min="1"
+                                step="1"
+                                value={item.quantity || ''}
                                 onChange={(e) =>
-                                  handleUpdateQuantity(item.tempId, parseFloat(e.target.value) || 0)
+                                  handleUpdateQuantity(item.tempId, parseInt(e.target.value) || 0)
                                 }
+                                placeholder="0"
                                 className="w-full"
                               />
                             </TableCell>
