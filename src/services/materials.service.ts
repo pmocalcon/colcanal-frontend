@@ -86,8 +86,8 @@ export const materialsService = {
    * Obtener todos los grupos de materiales
    */
   async getGroups(): Promise<MaterialGroup[]> {
-    const response = await api.get<MaterialGroup[]>(`${BASE_URL}/material-groups`);
-    return response.data;
+    const response = await api.get<{ data: MaterialGroup[]; total: number }>(`${BASE_URL}/material-groups`);
+    return response.data.data;
   },
 
   /**
@@ -131,8 +131,8 @@ export const materialsService = {
    * Obtener todos los materiales
    */
   async getMaterials(): Promise<Material[]> {
-    const response = await api.get<Material[]>(`${BASE_URL}/materials`);
-    return response.data;
+    const response = await api.get<{ data: Material[]; total: number }>(`${BASE_URL}/materials`);
+    return response.data.data;
   },
 
   /**
