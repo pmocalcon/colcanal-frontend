@@ -199,11 +199,15 @@ export default function MaterialesListPage() {
         setSuccessMessage('Material actualizado correctamente');
       } else {
         // Al crear, el backend genera el código automáticamente
-        await materialsService.createMaterial({
+        // Solo enviar force: true si el usuario confirmó después del error 409
+        const createData: { description: string; groupId: number; force?: boolean } = {
           description: formData.description,
           groupId: formData.groupId,
-          force,
-        });
+        };
+        if (force) {
+          createData.force = true;
+        }
+        await materialsService.createMaterial(createData);
         setSuccessMessage('Material creado correctamente');
       }
 
