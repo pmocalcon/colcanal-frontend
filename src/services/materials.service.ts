@@ -37,7 +37,7 @@ export interface Material {
 }
 
 export interface CreateMaterialDto {
-  code: string;
+  code?: string; // Opcional - el backend lo genera automáticamente
   description: string;
   groupId: number;
   force?: boolean; // Para forzar creación cuando hay similares

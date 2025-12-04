@@ -177,10 +177,6 @@ export default function MaterialesListPage() {
   };
 
   const handleSubmit = async (force: boolean = false) => {
-    if (!formData.code.trim()) {
-      setFormError('El código es obligatorio');
-      return;
-    }
     if (!formData.description.trim()) {
       setFormError('La descripción es obligatoria');
       return;
@@ -194,17 +190,20 @@ export default function MaterialesListPage() {
       setFormLoading(true);
       setFormError(null);
 
-      const dataToSend = { ...formData, force };
-
       if (editingMaterial) {
+        // Al editar, enviar solo descripción y grupo (el código no se puede cambiar)
         await materialsService.updateMaterial(editingMaterial.materialId, {
-          code: formData.code,
           description: formData.description,
           groupId: formData.groupId,
         });
         setSuccessMessage('Material actualizado correctamente');
       } else {
-        await materialsService.createMaterial(dataToSend);
+        // Al crear, el backend genera el código automáticamente
+        await materialsService.createMaterial({
+          description: formData.description,
+          groupId: formData.groupId,
+          force,
+        });
         setSuccessMessage('Material creado correctamente');
       }
 
@@ -484,7 +483,7 @@ export default function MaterialesListPage() {
             <DialogDescription>
               {editingMaterial
                 ? 'Modifica los datos del material'
-                : 'Ingresa los datos del nuevo material. El código y descripción se guardarán en mayúsculas automáticamente.'}
+                : 'Ingresa los datos del nuevo material. El código se genera automáticamente.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -496,16 +495,18 @@ export default function MaterialesListPage() {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="materialCode">Código *</Label>
-              <Input
-                id="materialCode"
-                placeholder="Ej: 4001, MAT-001..."
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="uppercase"
-              />
-            </div>
+            {/* Código - solo mostrar al editar (readonly) */}
+            {editingMaterial && (
+              <div className="space-y-2">
+                <Label htmlFor="materialCode">Código</Label>
+                <Input
+                  id="materialCode"
+                  value={formData.code}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="materialDescription">Descripción *</Label>
