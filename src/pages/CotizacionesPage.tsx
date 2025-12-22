@@ -468,7 +468,14 @@ export default function CotizacionesPage() {
                       return (
                         <TableRow key={req.requisitionId}>
                           <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                            {req.requisitionNumber}
+                            <div className="flex items-center gap-2">
+                              {req.requisitionNumber}
+                              {req.priority === 'alta' && (
+                                <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                  URGENTE
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
@@ -628,7 +635,14 @@ export default function CotizacionesPage() {
                             return (
                               <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30">
                                 <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                                  {req.requisitionNumber}
+                                  <div className="flex items-center gap-2">
+                                    {req.requisitionNumber}
+                                    {req.priority === 'alta' && (
+                                      <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                        URGENTE
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell>
                                   <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">

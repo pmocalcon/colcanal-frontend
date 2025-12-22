@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Eye, FileText, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
   Table,
@@ -229,7 +230,14 @@ const GestionFacturasPage: React.FC = () => {
                         {po.purchaseOrderNumber}
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {po.requisition?.requisitionNumber || '-'}
+                        <div className="flex items-center gap-2">
+                          {po.requisition?.requisitionNumber || '-'}
+                          {po.requisition?.priority === 'alta' && (
+                            <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                              URGENTE
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <p className="font-medium text-sm">

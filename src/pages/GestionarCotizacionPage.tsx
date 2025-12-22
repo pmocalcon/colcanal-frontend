@@ -542,9 +542,16 @@ export default function GestionarCotizacionPage() {
               <p className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1">
                 Número de Requisición
               </p>
-              <p className="text-sm font-semibold text-[hsl(var(--canalco-primary))]">
-                {requisition.requisitionNumber}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-[hsl(var(--canalco-primary))]">
+                  {requisition.requisitionNumber}
+                </p>
+                {requisition.priority === 'alta' && (
+                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                    URGENTE
+                  </Badge>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1">

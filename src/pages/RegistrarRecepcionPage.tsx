@@ -373,9 +373,16 @@ export default function RegistrarRecepcionPage() {
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
                 Registrar Recepción de Materiales
               </h1>
-              <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                Requisición {requisition.requisitionNumber}
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
+                  Requisición {requisition.requisitionNumber}
+                </p>
+                {requisition.priority === 'alta' && (
+                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                    URGENTE
+                  </Badge>
+                )}
+              </div>
             </div>
 
           </div>
@@ -407,7 +414,14 @@ export default function RegistrarRecepcionPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Requisición</p>
-              <p className="font-semibold">{requisition.requisitionNumber}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold">{requisition.requisitionNumber}</p>
+                {requisition.priority === 'alta' && (
+                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                    URGENTE
+                  </Badge>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Proyecto/Obra</p>

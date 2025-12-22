@@ -43,6 +43,7 @@ export interface PurchaseOrder {
   requisition?: {
     requisitionId: number;
     requisitionNumber: string;
+    priority?: 'alta' | 'normal';
     operationCenter?: {
       centerId: number;
       code: string;

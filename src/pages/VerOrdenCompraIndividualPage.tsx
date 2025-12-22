@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -142,9 +143,16 @@ export default function VerOrdenCompraIndividualPage() {
               <h1 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))]">
                 {purchaseOrder.purchaseOrderNumber}
               </h1>
-              <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                Ref: {purchaseOrder.requisition?.requisitionNumber || `REQ-${purchaseOrder.requisitionId}`}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                  Ref: {purchaseOrder.requisition?.requisitionNumber || `REQ-${purchaseOrder.requisitionId}`}
+                </p>
+                {purchaseOrder.requisition?.priority === 'alta' && (
+                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                    URGENTE
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
           <div className="text-right">

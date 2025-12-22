@@ -169,9 +169,16 @@ export default function VerOrdenCompraPage() {
               <p className="text-xs text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide">
                 Órdenes de Compra
               </p>
-              <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Requisición {requisition.requisitionNumber}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
+                  Requisición {requisition.requisitionNumber}
+                </h1>
+                {requisition.priority === 'alta' && (
+                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                    URGENTE
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
           <Badge className="bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] border border-[hsl(var(--canalco-primary))]/20">
