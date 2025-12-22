@@ -665,10 +665,20 @@ const RevisarRequisicionesPage: React.FC = () => {
                                       )}
                                     </>
                                   ) : (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-green-600">✅</span>
-                                      <span className="text-green-600 font-medium">A tiempo</span>
-                                    </div>
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-green-600">✅</span>
+                                        <span className="text-green-600 font-medium">A tiempo</span>
+                                      </div>
+                                      {(() => {
+                                        const daysRemaining = Math.ceil((new Date(req.slaDeadline!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                                        return daysRemaining > 0 ? (
+                                          <span className="text-xs text-green-600">
+                                            {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}
+                                          </span>
+                                        ) : null;
+                                      })()}
+                                    </>
                                   )}
                                 </div>
                               ) : (
@@ -797,10 +807,20 @@ const RevisarRequisicionesPage: React.FC = () => {
                                       )}
                                     </>
                                   ) : (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-green-600">✅</span>
-                                      <span className="text-green-600 font-medium">A tiempo</span>
-                                    </div>
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-green-600">✅</span>
+                                        <span className="text-green-600 font-medium">A tiempo</span>
+                                      </div>
+                                      {(() => {
+                                        const daysRemaining = Math.ceil((new Date(req.slaDeadline!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                                        return daysRemaining > 0 ? (
+                                          <span className="text-xs text-green-600">
+                                            {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}
+                                          </span>
+                                        ) : null;
+                                      })()}
+                                    </>
                                   )}
                                 </div>
                               ) : (
