@@ -13,11 +13,15 @@ import {
   Users,
   Shield,
   GitBranch,
+  Trash2,
+  Key,
+  Layout,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -41,6 +45,9 @@ import {
   type User,
   type Role,
   type HierarchyEntry,
+  type Permission,
+  type Gestion,
+  type CreateRoleDto,
 } from '@/services/users.service';
 
 export default function AdminUsuariosPage() {
@@ -50,6 +57,8 @@ export default function AdminUsuariosPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [gestiones, setGestiones] = useState<Gestion[]>([]);
   const [hierarchy, setHierarchy] = useState<HierarchyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +69,41 @@ export default function AdminUsuariosPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [activeTab, setActiveTab] = useState('usuarios');
 
-  // Estados del modal de confirmación
+  // Estados del modal de confirmación de usuario
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'activate' | 'deactivate';
     user: User | null;
   }>({ type: 'activate', user: null });
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Estados para gestión de roles
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [roleFormData, setRoleFormData] = useState<CreateRoleDto>({
+    nombreRol: '',
+    descripcion: '',
+    category: '',
+    defaultModule: '',
+  });
+  const [roleLoading, setRoleLoading] = useState(false);
+
+  // Estados para modal de permisos
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [selectedRoleForPermissions, setSelectedRoleForPermissions] = useState<Role | null>(null);
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+  // Estados para modal de gestiones
+  const [showGestionesModal, setShowGestionesModal] = useState(false);
+  const [selectedRoleForGestiones, setSelectedRoleForGestiones] = useState<Role | null>(null);
+  const [selectedGestionIds, setSelectedGestionIds] = useState<number[]>([]);
+  const [gestionesLoading, setGestionesLoading] = useState(false);
+
+  // Estados para eliminar rol
+  const [showDeleteRoleModal, setShowDeleteRoleModal] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
+  const [deleteRoleLoading, setDeleteRoleLoading] = useState(false);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -103,18 +140,24 @@ export default function AdminUsuariosPage() {
     try {
       setLoading(true);
       setError(null);
-      const [usersData, rolesData, hierarchyData] = await Promise.all([
+      const [usersData, rolesData, hierarchyData, permissionsData, gestionesData] = await Promise.all([
         usersService.getAll(showInactive),
         usersService.getRoles(),
         usersService.getHierarchy(),
+        usersService.getPermissions(),
+        usersService.getGestiones(),
       ]);
       const usersArray = Array.isArray(usersData) ? usersData : [];
       const rolesArray = Array.isArray(rolesData) ? rolesData : [];
       const hierarchyArray = Array.isArray(hierarchyData) ? hierarchyData : [];
+      const permissionsArray = Array.isArray(permissionsData) ? permissionsData : [];
+      const gestionesArray = Array.isArray(gestionesData) ? gestionesData : [];
       setUsers(usersArray);
       setFilteredUsers(usersArray);
       setRoles(rolesArray);
       setHierarchy(hierarchyArray);
+      setPermissions(permissionsArray);
+      setGestiones(gestionesArray);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError('Error al cargar los datos. Verifica que tienes permisos de administrador.');
@@ -123,6 +166,7 @@ export default function AdminUsuariosPage() {
     }
   };
 
+  // ========== FUNCIONES DE USUARIO ==========
   const handleToggleStatus = (user: User) => {
     setConfirmAction({
       type: user.estado ? 'deactivate' : 'activate',
@@ -154,6 +198,148 @@ export default function AdminUsuariosPage() {
     }
   };
 
+  // ========== FUNCIONES DE ROLES ==========
+  const handleCreateRole = () => {
+    setEditingRole(null);
+    setRoleFormData({
+      nombreRol: '',
+      descripcion: '',
+      category: '',
+      defaultModule: '',
+    });
+    setShowRoleModal(true);
+  };
+
+  const handleEditRole = (role: Role) => {
+    setEditingRole(role);
+    setRoleFormData({
+      nombreRol: role.nombreRol,
+      descripcion: role.descripcion || '',
+      category: role.category || '',
+      defaultModule: role.defaultModule || '',
+    });
+    setShowRoleModal(true);
+  };
+
+  const handleSaveRole = async () => {
+    if (!roleFormData.nombreRol.trim()) {
+      setError('El nombre del rol es obligatorio');
+      return;
+    }
+
+    try {
+      setRoleLoading(true);
+      setError(null);
+
+      if (editingRole) {
+        await usersService.updateRole(editingRole.rolId, {
+          nombreRol: roleFormData.nombreRol,
+          descripcion: roleFormData.descripcion || undefined,
+          category: roleFormData.category || undefined,
+          defaultModule: roleFormData.defaultModule || undefined,
+        });
+        setSuccessMessage(`Rol "${roleFormData.nombreRol}" actualizado correctamente`);
+      } else {
+        await usersService.createRole(roleFormData);
+        setSuccessMessage(`Rol "${roleFormData.nombreRol}" creado correctamente`);
+      }
+
+      setShowRoleModal(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error saving role:', err);
+      setError(err.response?.data?.message || 'Error al guardar el rol');
+    } finally {
+      setRoleLoading(false);
+    }
+  };
+
+  const handleDeleteRole = (role: Role) => {
+    setRoleToDelete(role);
+    setShowDeleteRoleModal(true);
+  };
+
+  const confirmDeleteRole = async () => {
+    if (!roleToDelete) return;
+
+    try {
+      setDeleteRoleLoading(true);
+      await usersService.deleteRole(roleToDelete.rolId);
+      setSuccessMessage(`Rol "${roleToDelete.nombreRol}" eliminado correctamente`);
+      setShowDeleteRoleModal(false);
+      setRoleToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error deleting role:', err);
+      setError(err.response?.data?.message || 'Error al eliminar el rol. Verifica que no tenga usuarios asignados.');
+    } finally {
+      setDeleteRoleLoading(false);
+    }
+  };
+
+  // ========== FUNCIONES DE PERMISOS ==========
+  const handleManagePermissions = (role: Role) => {
+    setSelectedRoleForPermissions(role);
+    const currentPermissionIds = role.rolePermissions?.map((rp) => rp.permisoId) || [];
+    setSelectedPermissionIds(currentPermissionIds);
+    setShowPermissionsModal(true);
+  };
+
+  const togglePermission = (permisoId: number) => {
+    setSelectedPermissionIds((prev) =>
+      prev.includes(permisoId) ? prev.filter((id) => id !== permisoId) : [...prev, permisoId]
+    );
+  };
+
+  const handleSavePermissions = async () => {
+    if (!selectedRoleForPermissions) return;
+
+    try {
+      setPermissionsLoading(true);
+      await usersService.assignPermissionsToRole(selectedRoleForPermissions.rolId, selectedPermissionIds);
+      setSuccessMessage(`Permisos actualizados para "${selectedRoleForPermissions.nombreRol}"`);
+      setShowPermissionsModal(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error saving permissions:', err);
+      setError(err.response?.data?.message || 'Error al guardar los permisos');
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
+
+  // ========== FUNCIONES DE GESTIONES ==========
+  const handleManageGestiones = (role: Role) => {
+    setSelectedRoleForGestiones(role);
+    const currentGestionIds = role.roleGestiones?.map((rg) => rg.gestionId) || [];
+    setSelectedGestionIds(currentGestionIds);
+    setShowGestionesModal(true);
+  };
+
+  const toggleGestion = (gestionId: number) => {
+    setSelectedGestionIds((prev) =>
+      prev.includes(gestionId) ? prev.filter((id) => id !== gestionId) : [...prev, gestionId]
+    );
+  };
+
+  const handleSaveGestiones = async () => {
+    if (!selectedRoleForGestiones) return;
+
+    try {
+      setGestionesLoading(true);
+      await usersService.assignGestionesToRole(selectedRoleForGestiones.rolId, selectedGestionIds);
+      setSuccessMessage(`Módulos actualizados para "${selectedRoleForGestiones.nombreRol}"`);
+      setShowGestionesModal(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error saving gestiones:', err);
+      setError(err.response?.data?.message || 'Error al guardar los módulos');
+    } finally {
+      setGestionesLoading(false);
+    }
+  };
+
+  // ========== HELPERS ==========
   const getRoleBadgeColor = (roleName: string) => {
     const name = roleName.toLowerCase();
     if (name.includes('gerencia')) return 'bg-purple-100 text-purple-800';
@@ -444,49 +630,109 @@ export default function AdminUsuariosPage() {
 
           {/* Tab: Roles */}
           <TabsContent value="roles">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Gestión de Roles</h3>
+              <Button
+                onClick={handleCreateRole}
+                className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nuevo Rol
+              </Button>
+            </div>
             <Card>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Permisos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {roles.map((role) => (
-                    <TableRow key={role.rolId}>
-                      <TableCell className="font-medium">
-                        <Badge className={getRoleBadgeColor(role.nombreRol)}>
-                          {role.nombreRol}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-[hsl(var(--canalco-neutral-600))]">
-                        {role.descripcion || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {role.rolePermissions?.map((rp) => (
-                            <Badge
-                              key={rp.permisoId}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {rp.permission.nombrePermiso}
-                            </Badge>
-                          )) || <span className="text-[hsl(var(--canalco-neutral-500))]">-</span>}
-                        </div>
-                      </TableCell>
+              {roles.length === 0 ? (
+                <div className="text-center py-12">
+                  <Shield className="w-12 h-12 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
+                  <p className="text-[hsl(var(--canalco-neutral-600))]">No hay roles registrados</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead className="text-center">Permisos</TableHead>
+                      <TableHead className="text-center">Módulos</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {roles.map((role) => (
+                      <TableRow key={role.rolId}>
+                        <TableCell className="font-medium">
+                          <Badge className={getRoleBadgeColor(role.nombreRol)}>
+                            {role.nombreRol}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {role.category || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))] max-w-xs truncate">
+                          {role.descripcion || '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">
+                            {role.rolePermissions?.length || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">
+                            {role.roleGestiones?.length || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditRole(role)}
+                              className="hover:bg-blue-100 hover:text-blue-600"
+                              title="Editar rol"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleManagePermissions(role)}
+                              className="hover:bg-amber-100 hover:text-amber-600"
+                              title="Gestionar permisos"
+                            >
+                              <Key className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleManageGestiones(role)}
+                              className="hover:bg-purple-100 hover:text-purple-600"
+                              title="Gestionar módulos"
+                            >
+                              <Layout className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteRole(role)}
+                              className="hover:bg-red-100 hover:text-red-600"
+                              title="Eliminar rol"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </Card>
           </TabsContent>
         </Tabs>
       </main>
 
-      {/* Modal de Confirmación */}
+      {/* Modal de Confirmación de Usuario */}
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
         <DialogContent>
           <DialogHeader>
@@ -518,6 +764,215 @@ export default function AdminUsuariosPage() {
             >
               {actionLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {confirmAction.type === 'activate' ? 'Activar' : 'Desactivar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Crear/Editar Rol */}
+      <Dialog open={showRoleModal} onOpenChange={setShowRoleModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingRole ? 'Editar Rol' : 'Crear Nuevo Rol'}</DialogTitle>
+            <DialogDescription>
+              {editingRole
+                ? 'Modifica los datos del rol'
+                : 'Ingresa los datos para el nuevo rol'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="nombreRol">Nombre del Rol *</Label>
+              <Input
+                id="nombreRol"
+                value={roleFormData.nombreRol}
+                onChange={(e) =>
+                  setRoleFormData({ ...roleFormData, nombreRol: e.target.value })
+                }
+                placeholder="Ej: Supervisor de Compras"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="descripcion">Descripción</Label>
+              <Input
+                id="descripcion"
+                value={roleFormData.descripcion}
+                onChange={(e) =>
+                  setRoleFormData({ ...roleFormData, descripcion: e.target.value })
+                }
+                placeholder="Descripción del rol"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Categoría</Label>
+              <Input
+                id="category"
+                value={roleFormData.category}
+                onChange={(e) =>
+                  setRoleFormData({ ...roleFormData, category: e.target.value })
+                }
+                placeholder="Ej: Compras, Administración"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="defaultModule">Módulo por Defecto</Label>
+              <Input
+                id="defaultModule"
+                value={roleFormData.defaultModule}
+                onChange={(e) =>
+                  setRoleFormData({ ...roleFormData, defaultModule: e.target.value })
+                }
+                placeholder="Ej: compras"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRoleModal(false)} disabled={roleLoading}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveRole}
+              disabled={roleLoading}
+              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+            >
+              {roleLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {editingRole ? 'Guardar Cambios' : 'Crear Rol'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Eliminar Rol */}
+      <Dialog open={showDeleteRoleModal} onOpenChange={setShowDeleteRoleModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar Rol</DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar el rol "{roleToDelete?.nombreRol}"? Esta acción no
+              se puede deshacer. El rol solo se puede eliminar si no tiene usuarios asignados.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteRoleModal(false)} disabled={deleteRoleLoading}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmDeleteRole}
+              disabled={deleteRoleLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteRoleLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Gestionar Permisos */}
+      <Dialog open={showPermissionsModal} onOpenChange={setShowPermissionsModal}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gestionar Permisos</DialogTitle>
+            <DialogDescription>
+              Selecciona los permisos para el rol "{selectedRoleForPermissions?.nombreRol}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {permissions.length === 0 ? (
+              <p className="text-center text-[hsl(var(--canalco-neutral-600))]">
+                No hay permisos disponibles
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {permissions.map((permission) => (
+                  <label
+                    key={permission.permisoId}
+                    className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPermissionIds.includes(permission.permisoId)}
+                      onChange={() => togglePermission(permission.permisoId)}
+                      className="mt-1 rounded border-gray-300"
+                    />
+                    <div>
+                      <p className="font-medium text-sm">{permission.nombrePermiso}</p>
+                      {permission.descripcion && (
+                        <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                          {permission.descripcion}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPermissionsModal(false)} disabled={permissionsLoading}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSavePermissions}
+              disabled={permissionsLoading}
+              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+            >
+              {permissionsLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Guardar Permisos ({selectedPermissionIds.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Gestionar Módulos/Gestiones */}
+      <Dialog open={showGestionesModal} onOpenChange={setShowGestionesModal}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gestionar Módulos</DialogTitle>
+            <DialogDescription>
+              Selecciona los módulos a los que tendrá acceso el rol "{selectedRoleForGestiones?.nombreRol}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {gestiones.length === 0 ? (
+              <p className="text-center text-[hsl(var(--canalco-neutral-600))]">
+                No hay módulos disponibles
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {gestiones.map((gestion) => (
+                  <label
+                    key={gestion.gestionId}
+                    className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedGestionIds.includes(gestion.gestionId)}
+                      onChange={() => toggleGestion(gestion.gestionId)}
+                      className="rounded border-gray-300"
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{gestion.nombre}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {gestion.slug}
+                      </Badge>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGestionesModal(false)} disabled={gestionesLoading}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveGestiones}
+              disabled={gestionesLoading}
+              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+            >
+              {gestionesLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Guardar Módulos ({selectedGestionIds.length})
             </Button>
           </DialogFooter>
         </DialogContent>

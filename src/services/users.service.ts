@@ -6,7 +6,32 @@ export interface Role {
   rolId: number;
   nombreRol: string;
   descripcion?: string;
+  category?: string;
+  defaultModule?: string;
   rolePermissions?: RolePermission[];
+  roleGestiones?: RoleGestion[];
+  users?: User[];
+}
+
+export interface RoleGestion {
+  gestionId: number;
+  gestion: Gestion;
+}
+
+export interface CreateRoleDto {
+  nombreRol: string;
+  descripcion?: string;
+  category?: string;
+  defaultModule?: string;
+  permisoIds?: number[];
+  gestionIds?: number[];
+}
+
+export interface UpdateRoleDto {
+  nombreRol?: string;
+  descripcion?: string;
+  category?: string;
+  defaultModule?: string;
 }
 
 export interface Permission {
@@ -165,6 +190,62 @@ export const usersService = {
    */
   async getRoles(): Promise<Role[]> {
     const response = await api.get<Role[]>('/users/roles');
+    return response.data;
+  },
+
+  /**
+   * Obtener un rol por ID con permisos y gestiones
+   */
+  async getRoleById(rolId: number): Promise<Role> {
+    const response = await api.get<Role>(`/users/roles/${rolId}`);
+    return response.data;
+  },
+
+  /**
+   * Crear un nuevo rol
+   */
+  async createRole(data: CreateRoleDto): Promise<Role> {
+    const response = await api.post<Role>('/users/roles', data);
+    return response.data;
+  },
+
+  /**
+   * Actualizar un rol
+   */
+  async updateRole(rolId: number, data: UpdateRoleDto): Promise<Role> {
+    const response = await api.patch<Role>(`/users/roles/${rolId}`, data);
+    return response.data;
+  },
+
+  /**
+   * Eliminar un rol (solo si no tiene usuarios)
+   */
+  async deleteRole(rolId: number): Promise<{ message: string }> {
+    const response = await api.delete<{ message: string }>(`/users/roles/${rolId}`);
+    return response.data;
+  },
+
+  /**
+   * Asignar permisos a un rol (reemplaza los existentes)
+   */
+  async assignPermissionsToRole(rolId: number, permisoIds: number[]): Promise<Role> {
+    const response = await api.put<Role>(`/users/roles/${rolId}/permissions`, { permisoIds });
+    return response.data;
+  },
+
+  /**
+   * Asignar gestiones/módulos a un rol (reemplaza los existentes)
+   */
+  async assignGestionesToRole(rolId: number, gestionIds: number[]): Promise<Role> {
+    const response = await api.put<Role>(`/users/roles/${rolId}/gestiones`, { gestionIds });
+    return response.data;
+  },
+
+  /**
+   * Obtener gestiones de un rol
+   */
+  async getRoleGestiones(rolId: number): Promise<Gestion[]> {
+    const response = await api.get<Gestion[]>(`/users/roles/${rolId}/gestiones`);
     return response.data;
   },
 
