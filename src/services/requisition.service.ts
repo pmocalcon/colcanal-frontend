@@ -94,6 +94,7 @@ export interface Requisition {
   isOverdue?: boolean;
   slaDeadline?: string;
   daysOverdue?: number;
+  daysRemaining?: number;
 }
 
 export interface RequisitionLog {

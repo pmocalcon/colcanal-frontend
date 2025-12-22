@@ -85,6 +85,8 @@ export interface Requisition {
   // SLA fields
   slaDeadline?: string;
   isOverdue?: boolean;
+  daysOverdue?: number;
+  daysRemaining?: number;
 }
 
 export interface RequisitionsListResponse {

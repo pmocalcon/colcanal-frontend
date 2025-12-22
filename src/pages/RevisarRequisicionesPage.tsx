@@ -670,14 +670,11 @@ const RevisarRequisicionesPage: React.FC = () => {
                                         <span className="text-green-600">✅</span>
                                         <span className="text-green-600 font-medium">A tiempo</span>
                                       </div>
-                                      {(() => {
-                                        const daysRemaining = Math.ceil((new Date(req.slaDeadline!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                                        return daysRemaining > 0 ? (
-                                          <span className="text-xs text-green-600">
-                                            {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}
-                                          </span>
-                                        ) : null;
-                                      })()}
+                                      {req.daysRemaining !== undefined && req.daysRemaining > 0 && (
+                                        <span className="text-xs text-green-600">
+                                          {req.daysRemaining} día{req.daysRemaining !== 1 ? 's' : ''} hábil{req.daysRemaining !== 1 ? 'es' : ''} restante{req.daysRemaining !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
                                     </>
                                   )}
                                 </div>
@@ -812,14 +809,11 @@ const RevisarRequisicionesPage: React.FC = () => {
                                         <span className="text-green-600">✅</span>
                                         <span className="text-green-600 font-medium">A tiempo</span>
                                       </div>
-                                      {(() => {
-                                        const daysRemaining = Math.ceil((new Date(req.slaDeadline!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                                        return daysRemaining > 0 ? (
-                                          <span className="text-xs text-green-600">
-                                            {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}
-                                          </span>
-                                        ) : null;
-                                      })()}
+                                      {req.daysRemaining !== undefined && req.daysRemaining > 0 && (
+                                        <span className="text-xs text-green-600">
+                                          {req.daysRemaining} día{req.daysRemaining !== 1 ? 's' : ''} hábil{req.daysRemaining !== 1 ? 'es' : ''} restante{req.daysRemaining !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
                                     </>
                                   )}
                                 </div>
