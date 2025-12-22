@@ -70,9 +70,9 @@ export default function App() {
           <Route path="/dashboard/materiales/grupos" element={<GruposMaterialesPage />} />
           <Route path="/dashboard/materiales/lista" element={<MaterialesListPage />} />
           {/* Administración de Usuarios */}
-          <Route path="/dashboard/admin/usuarios" element={<AdminUsuariosPage />} />
-          <Route path="/dashboard/admin/usuarios/crear" element={<CrearUsuarioPage />} />
-          <Route path="/dashboard/admin/usuarios/:id" element={<DetalleUsuarioPage />} />
+          <Route path="/dashboard/usuarios" element={<AdminUsuariosPage />} />
+          <Route path="/dashboard/usuarios/crear" element={<CrearUsuarioPage />} />
+          <Route path="/dashboard/usuarios/:id" element={<DetalleUsuarioPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

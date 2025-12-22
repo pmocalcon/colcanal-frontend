@@ -87,7 +87,7 @@ export default function CrearUsuarioPage() {
       setSaving(true);
       setError(null);
       await usersService.create(formData);
-      navigate('/dashboard/admin/usuarios', {
+      navigate('/dashboard/usuarios', {
         state: { message: 'Usuario creado correctamente' },
       });
     } catch (err: any) {
@@ -127,7 +127,7 @@ export default function CrearUsuarioPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/dashboard/admin/usuarios')}
+                onClick={() => navigate('/dashboard/usuarios')}
                 className="hover:bg-[hsl(var(--canalco-neutral-200))] flex-shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -264,7 +264,7 @@ export default function CrearUsuarioPage() {
           <div className="flex justify-end gap-4 mt-8 pt-6 border-t">
             <Button
               variant="outline"
-              onClick={() => navigate('/dashboard/admin/usuarios')}
+              onClick={() => navigate('/dashboard/usuarios')}
               disabled={saving}
             >
               Cancelar

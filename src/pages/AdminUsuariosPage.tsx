@@ -221,7 +221,7 @@ export default function AdminUsuariosPage() {
             </div>
 
             <Button
-              onClick={() => navigate('/dashboard/admin/usuarios/crear')}
+              onClick={() => navigate('/dashboard/usuarios/crear')}
               className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -346,7 +346,7 @@ export default function AdminUsuariosPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() =>
-                                navigate(`/dashboard/admin/usuarios/${user.userId}`)
+                                navigate(`/dashboard/usuarios/${user.userId}`)
                               }
                               className="hover:bg-blue-100 hover:text-blue-600"
                               title="Ver detalle"

@@ -249,7 +249,7 @@ export default function DetalleUsuarioPage() {
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <p className="text-[hsl(var(--canalco-neutral-900))] font-semibold">Usuario no encontrado</p>
           <Button
-            onClick={() => navigate('/dashboard/admin/usuarios')}
+            onClick={() => navigate('/dashboard/usuarios')}
             className="mt-4"
           >
             Volver a la lista
@@ -277,7 +277,7 @@ export default function DetalleUsuarioPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/dashboard/admin/usuarios')}
+                onClick={() => navigate('/dashboard/usuarios')}
                 className="hover:bg-[hsl(var(--canalco-neutral-200))] flex-shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
