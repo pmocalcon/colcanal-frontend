@@ -535,7 +535,13 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').map((req) => (
+                        {filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').sort((a, b) => {
+                          // Urgentes primero
+                          if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                          if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                          // Luego por fecha de creación (más recientes primero)
+                          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                        }).map((req) => (
                           <TableRow key={req.requisitionId} className="bg-white hover:bg-orange-50/30">
                             <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
                               <div className="flex items-center gap-2">
@@ -647,7 +653,13 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').map((req) => (
+                        {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').sort((a, b) => {
+                          // Urgentes primero
+                          if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                          if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                          // Luego por fecha de creación (más recientes primero)
+                          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                        }).map((req) => (
                           <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30">
                             <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
                               <div className="flex items-center gap-2">

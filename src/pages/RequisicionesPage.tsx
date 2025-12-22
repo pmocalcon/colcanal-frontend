@@ -389,7 +389,13 @@ export default function RequisicionesPage() {
             {(() => {
               const pendingRequisitions = requisitions.filter(r =>
                 ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')
-              );
+              ).sort((a, b) => {
+                // Urgentes primero
+                if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                // Luego por fecha de creación (más recientes primero)
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              });
 
               if (pendingRequisitions.length === 0) return null;
 
@@ -570,7 +576,13 @@ export default function RequisicionesPage() {
             {(() => {
               const processedRequisitions = requisitions.filter(r =>
                 ['cotizada', 'en_orden_compra', 'pendiente_recepcion', 'en_recepcion', 'recepcion_completa'].includes(r.status?.code || '')
-              );
+              ).sort((a, b) => {
+                // Urgentes primero
+                if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                // Luego por fecha de creación (más recientes primero)
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              });
 
               if (processedRequisitions.length === 0) return null;
 
