@@ -805,14 +805,21 @@ export default function AdminUsuariosPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="category">Categoría</Label>
-              <Input
+              <select
                 id="category"
                 value={roleFormData.category}
                 onChange={(e) =>
                   setRoleFormData({ ...roleFormData, category: e.target.value })
                 }
-                placeholder="Ej: Compras, Administración"
-              />
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="">Seleccionar categoría...</option>
+                {gestiones.map((gestion) => (
+                  <option key={gestion.gestionId} value={gestion.nombre}>
+                    {gestion.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="defaultModule">Módulo por Defecto</Label>
