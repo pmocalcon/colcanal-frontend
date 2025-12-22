@@ -816,14 +816,21 @@ export default function AdminUsuariosPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="defaultModule">Módulo por Defecto</Label>
-              <Input
+              <select
                 id="defaultModule"
                 value={roleFormData.defaultModule}
                 onChange={(e) =>
                   setRoleFormData({ ...roleFormData, defaultModule: e.target.value })
                 }
-                placeholder="Ej: compras"
-              />
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="">Seleccionar módulo...</option>
+                {gestiones.map((gestion) => (
+                  <option key={gestion.gestionId} value={gestion.slug}>
+                    {gestion.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <DialogFooter>
