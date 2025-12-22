@@ -6,6 +6,13 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -63,6 +70,7 @@ const EditarRequisicionPage: React.FC = () => {
   // Form data
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [priority, setPriority] = useState<'alta' | 'normal'>('normal');
   const [items, setItems] = useState<ItemForm[]>([]);
 
   // Material search
@@ -144,6 +152,7 @@ const EditarRequisicionPage: React.FC = () => {
       // Establecer valores del formulario
       setSelectedCompanyId(requisition.companyId);
       setSelectedProjectId(requisition.projectId || null);
+      setPriority(requisition.priority || 'normal');
 
       // Convertir ítems existentes al formato del formulario
       const formItems: ItemForm[] = requisition.items.map((item) => ({
@@ -259,6 +268,7 @@ const EditarRequisicionPage: React.FC = () => {
       const updateData = {
         companyId: selectedCompanyId!,
         projectId: selectedProjectId || undefined,
+        priority,
         items: itemsDto,
       };
 
@@ -391,6 +401,21 @@ const EditarRequisicionPage: React.FC = () => {
                   ? formatDateShort(originalRequisition.createdAt)
                   : 'N/A'}
               </p>
+            </div>
+            <div>
+              <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Prioridad</Label>
+              <Select
+                value={priority}
+                onValueChange={(value: 'alta' | 'normal') => setPriority(value)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Seleccione prioridad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="alta">Alta (Urgente)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </Card>

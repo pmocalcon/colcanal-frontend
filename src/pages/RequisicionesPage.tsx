@@ -460,7 +460,14 @@ export default function RequisicionesPage() {
                       return (
                         <TableRow key={req.requisitionId} className="hover:bg-[hsl(var(--canalco-neutral-100))] transition-colors">
                           <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                            {req.requisitionNumber}
+                            <div className="flex items-center gap-2">
+                              {req.requisitionNumber}
+                              {req.priority === 'alta' && (
+                                <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                  URGENTE
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
@@ -621,7 +628,14 @@ export default function RequisicionesPage() {
                           return (
                             <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30 transition-colors">
                               <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                                {req.requisitionNumber}
+                                <div className="flex items-center gap-2">
+                                  {req.requisitionNumber}
+                                  {req.priority === 'alta' && (
+                                    <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                      URGENTE
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <p className="font-medium text-[hsl(var(--canalco-neutral-700))]">

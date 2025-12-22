@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, CheckCheck, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
   Table,
@@ -537,7 +538,14 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         {filteredRequisitions.filter(r => r.status?.code === 'pendiente_autorizacion').map((req) => (
                           <TableRow key={req.requisitionId} className="bg-white hover:bg-orange-50/30">
                             <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                              {req.requisitionNumber}
+                              <div className="flex items-center gap-2">
+                                {req.requisitionNumber}
+                                {req.priority === 'alta' && (
+                                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                    URGENTE
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
@@ -642,7 +650,14 @@ const AutorizarRequisicionesPage: React.FC = () => {
                         {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_autorizacion').map((req) => (
                           <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30">
                             <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                              {req.requisitionNumber}
+                              <div className="flex items-center gap-2">
+                                {req.requisitionNumber}
+                                {req.priority === 'alta' && (
+                                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                    URGENTE
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <p className="font-medium text-[hsl(var(--canalco-neutral-700))]">

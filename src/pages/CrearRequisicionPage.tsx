@@ -57,6 +57,7 @@ export default function CrearRequisicionPage() {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [obra, setObra] = useState('');
   const [codigoObra, setCodigoObra] = useState('');
+  const [priority, setPriority] = useState<'alta' | 'normal'>('normal');
   const [items, setItems] = useState<RequisitionItem[]>([]);
 
   // Success/Error state
@@ -309,6 +310,7 @@ export default function CrearRequisicionPage() {
         projectId: projectId || undefined,
         obra: obra || undefined,
         codigoObra: codigoObra || undefined,
+        priority,
         items: items.map(({ materialId, quantity, observation }) => ({
           materialId,
           quantity,
@@ -326,6 +328,7 @@ export default function CrearRequisicionPage() {
       setProjectId(null);
       setObra('');
       setCodigoObra('');
+      setPriority('normal');
       setItems([]);
       setMaterialSearch('');
 
@@ -571,6 +574,23 @@ export default function CrearRequisicionPage() {
                     onChange={(e) => setCodigoObra(e.target.value)}
                     placeholder="Ingrese el código de obra (opcional)"
                   />
+                </div>
+
+                {/* Prioridad */}
+                <div>
+                  <Label htmlFor="prioridad">Prioridad</Label>
+                  <Select
+                    value={priority}
+                    onValueChange={(value: 'alta' | 'normal') => setPriority(value)}
+                  >
+                    <SelectTrigger id="prioridad">
+                      <SelectValue placeholder="Seleccione prioridad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="alta">Alta (Urgente)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

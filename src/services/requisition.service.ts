@@ -30,6 +30,7 @@ export interface Requisition {
   projectCodeId?: number;
   obra?: string;
   codigoObra?: string;
+  priority?: 'alta' | 'normal';
   createdBy: number;
   statusId: number;
   reviewedBy?: number;

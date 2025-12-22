@@ -53,6 +53,7 @@ export interface Requisition {
   statusId?: number; // El backend retorna statusId directamente
   obra?: string;
   codigoObra?: string;
+  priority?: 'alta' | 'normal';
   createdAt: string;
   updatedAt?: string;
   reviewedBy?: number;
@@ -114,6 +115,7 @@ export interface CreateRequisitionDto {
   projectId?: number;
   obra?: string;
   codigoObra?: string;
+  priority?: 'alta' | 'normal';
   items: CreateRequisitionItemDto[];
 }
 
