@@ -104,6 +104,7 @@ export default function AdminUsuariosPage() {
   const [showDeleteRoleModal, setShowDeleteRoleModal] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
   const [deleteRoleLoading, setDeleteRoleLoading] = useState(false);
+  const [deleteRoleError, setDeleteRoleError] = useState<string | null>(null);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -256,6 +257,7 @@ export default function AdminUsuariosPage() {
 
   const handleDeleteRole = (role: Role) => {
     setRoleToDelete(role);
+    setDeleteRoleError(null);
     setShowDeleteRoleModal(true);
   };
 
@@ -264,6 +266,7 @@ export default function AdminUsuariosPage() {
 
     try {
       setDeleteRoleLoading(true);
+      setDeleteRoleError(null);
       await usersService.deleteRole(roleToDelete.rolId);
       setSuccessMessage(`Rol "${roleToDelete.nombreRol}" eliminado correctamente`);
       setShowDeleteRoleModal(false);
@@ -271,7 +274,8 @@ export default function AdminUsuariosPage() {
       await loadData();
     } catch (err: any) {
       console.error('Error deleting role:', err);
-      setError(err.response?.data?.message || 'Error al eliminar el rol. Verifica que no tenga usuarios asignados.');
+      const errorMsg = err.response?.data?.message || 'Error al eliminar el rol. Verifica que no tenga usuarios asignados.';
+      setDeleteRoleError(errorMsg);
     } finally {
       setDeleteRoleLoading(false);
     }
@@ -859,6 +863,12 @@ export default function AdminUsuariosPage() {
               se puede deshacer. El rol solo se puede eliminar si no tiene usuarios asignados.
             </DialogDescription>
           </DialogHeader>
+          {deleteRoleError && (
+            <Alert className="border-red-500 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-700">{deleteRoleError}</AlertDescription>
+            </Alert>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteRoleModal(false)} disabled={deleteRoleLoading}>
               Cancelar
