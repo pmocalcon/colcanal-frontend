@@ -28,6 +28,9 @@ import VerOrdenCompraIndividualPage from './pages/VerOrdenCompraIndividualPage'
 import MaterialesPage from './pages/MaterialesPage'
 import GruposMaterialesPage from './pages/GruposMaterialesPage'
 import MaterialesListPage from './pages/MaterialesListPage'
+import AdminUsuariosPage from './pages/AdminUsuariosPage'
+import CrearUsuarioPage from './pages/CrearUsuarioPage'
+import DetalleUsuarioPage from './pages/DetalleUsuarioPage'
 
 export default function App() {
   return (
@@ -66,6 +69,10 @@ export default function App() {
           <Route path="/dashboard/materiales" element={<MaterialesPage />} />
           <Route path="/dashboard/materiales/grupos" element={<GruposMaterialesPage />} />
           <Route path="/dashboard/materiales/lista" element={<MaterialesListPage />} />
+          {/* Administración de Usuarios */}
+          <Route path="/dashboard/admin/usuarios" element={<AdminUsuariosPage />} />
+          <Route path="/dashboard/admin/usuarios/crear" element={<CrearUsuarioPage />} />
+          <Route path="/dashboard/admin/usuarios/:id" element={<DetalleUsuarioPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
