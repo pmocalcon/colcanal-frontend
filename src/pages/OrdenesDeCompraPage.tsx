@@ -480,10 +480,17 @@ export default function OrdenesDeCompraPage() {
                                 )}
                               </>
                             ) : (
-                              <div className="flex items-center gap-1">
-                                <span className="text-green-600">✅</span>
-                                <span className="text-green-600 font-medium">A tiempo</span>
-                              </div>
+                              <>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-green-600">✅</span>
+                                  <span className="text-green-600 font-medium">A tiempo</span>
+                                </div>
+                                {req.daysRemaining !== undefined && req.daysRemaining > 0 && (
+                                  <span className="text-xs text-green-600">
+                                    {req.daysRemaining} día{req.daysRemaining !== 1 ? 's' : ''} hábil{req.daysRemaining !== 1 ? 'es' : ''} restante{req.daysRemaining !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         ) : (
@@ -653,10 +660,17 @@ export default function OrdenesDeCompraPage() {
                                       )}
                                     </>
                                   ) : (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-green-600">✅</span>
-                                      <span className="text-green-600 font-medium">A tiempo</span>
-                                    </div>
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-green-600">✅</span>
+                                        <span className="text-green-600 font-medium">A tiempo</span>
+                                      </div>
+                                      {req.daysRemaining !== undefined && req.daysRemaining > 0 && (
+                                        <span className="text-xs text-green-600">
+                                          {req.daysRemaining} día{req.daysRemaining !== 1 ? 's' : ''} hábil{req.daysRemaining !== 1 ? 'es' : ''} restante{req.daysRemaining !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               ) : (
