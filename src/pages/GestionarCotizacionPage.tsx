@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -13,7 +13,7 @@ import { companyContactsService, type CompanyContact } from '@/services/company-
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Home, Save, X, Search, ArrowLeft, Copy, AlertCircle } from 'lucide-react';
+import { Home, Save, X, Search, ArrowLeft, Copy, AlertCircle, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -69,8 +69,36 @@ export default function GestionarCotizacionPage() {
   const [itemStates, setItemStates] = useState<Record<number, ItemQuotationState>>({});
   const [shippingContact, setShippingContact] = useState<CompanyContact | null>(null);
 
+  // Suppliers cache for fast local filtering
+  const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Check if user is Compras
   const isCompras = user?.nombreRol === 'Compras';
+
+  // Load all suppliers on mount for fast local filtering
+  useEffect(() => {
+    const loadAllSuppliers = async () => {
+      try {
+        setSuppliersLoading(true);
+        const suppliers = await suppliersService.getAll(true);
+        setAllSuppliers(suppliers);
+      } catch (err) {
+        console.error('Error loading suppliers:', err);
+      } finally {
+        setSuppliersLoading(false);
+      }
+    };
+    loadAllSuppliers();
+
+    // Cleanup debounce timer on unmount
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isCompras) {
@@ -189,44 +217,105 @@ export default function GestionarCotizacionPage() {
     }));
   };
 
-  const handleSupplierSearch = async (itemId: number, order: 1 | 2, query: string) => {
+  // Filter suppliers locally for instant results
+  const filterSuppliersLocally = useCallback((query: string): Supplier[] => {
+    if (!query.trim()) {
+      return allSuppliers.slice(0, 50); // Show first 50 when no query
+    }
+    const lowerQuery = query.toLowerCase().trim();
+    return allSuppliers.filter(
+      supplier =>
+        supplier.name.toLowerCase().includes(lowerQuery) ||
+        supplier.nitCc.toLowerCase().includes(lowerQuery) ||
+        (supplier.contactPerson && supplier.contactPerson.toLowerCase().includes(lowerQuery))
+    ).slice(0, 50);
+  }, [allSuppliers]);
+
+  // Handle focus on supplier input - show all suppliers immediately
+  const handleSupplierFocus = (itemId: number, order: 1 | 2) => {
+    const resultsKey = order === 1 ? 'searchResults1' : 'searchResults2';
+    const showKey = order === 1 ? 'showResults1' : 'showResults2';
+    const searchKey = order === 1 ? 'searchQuery1' : 'searchQuery2';
+
+    const currentQuery = itemStates[itemId]?.[searchKey] || '';
+    const filteredResults = filterSuppliersLocally(currentQuery);
+
+    setItemStates(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        [resultsKey]: filteredResults,
+        [showKey]: true,
+      },
+    }));
+  };
+
+  // Handle blur on supplier input - hide results after a short delay (to allow click)
+  const handleSupplierBlur = (itemId: number, order: 1 | 2) => {
+    const showKey = order === 1 ? 'showResults1' : 'showResults2';
+
+    // Delay to allow click on result before hiding
+    setTimeout(() => {
+      setItemStates(prev => ({
+        ...prev,
+        [itemId]: {
+          ...prev[itemId],
+          [showKey]: false,
+        },
+      }));
+    }, 200);
+  };
+
+  const handleSupplierSearch = useCallback((itemId: number, order: 1 | 2, query: string) => {
     const searchKey = order === 1 ? 'searchQuery1' : 'searchQuery2';
     const resultsKey = order === 1 ? 'searchResults1' : 'searchResults2';
     const showKey = order === 1 ? 'showResults1' : 'showResults2';
+
+    // Immediately filter locally for instant feedback
+    const localResults = filterSuppliersLocally(query);
 
     setItemStates(prev => ({
       ...prev,
       [itemId]: {
         ...prev[itemId],
         [searchKey]: query,
-        [showKey]: query.length > 0,
+        [resultsKey]: localResults,
+        [showKey]: true,
       },
     }));
 
-    if (query.length < 2) {
-      setItemStates(prev => ({
-        ...prev,
-        [itemId]: {
-          ...prev[itemId],
-          [resultsKey]: [],
-        },
-      }));
-      return;
+    // Clear previous debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
 
-    try {
-      const results = await suppliersService.search(query);
-      setItemStates(prev => ({
-        ...prev,
-        [itemId]: {
-          ...prev[itemId],
-          [resultsKey]: results,
-        },
-      }));
-    } catch (err) {
-      console.error('Error searching suppliers:', err);
+    // Debounced API search for more complete results (if query is long enough)
+    if (query.length >= 2) {
+      debounceTimerRef.current = setTimeout(async () => {
+        try {
+          const apiResults = await suppliersService.search(query);
+          // Merge API results with local results, prioritizing API
+          const mergedResults = [...apiResults];
+          localResults.forEach(local => {
+            if (!mergedResults.some(api => api.supplierId === local.supplierId)) {
+              mergedResults.push(local);
+            }
+          });
+
+          setItemStates(prev => ({
+            ...prev,
+            [itemId]: {
+              ...prev[itemId],
+              [resultsKey]: mergedResults.slice(0, 50),
+            },
+          }));
+        } catch (err) {
+          console.error('Error searching suppliers:', err);
+          // Keep local results on error
+        }
+      }, 300); // 300ms debounce
     }
-  };
+  }, [filterSuppliersLocally]);
 
   const handleSupplierSelect = (itemId: number, order: 1 | 2, supplier: Supplier) => {
     const supplierIndex = order - 1;
@@ -869,28 +958,44 @@ export default function GestionarCotizacionPage() {
                                     onChange={(e) =>
                                       handleSupplierSearch(item.itemId, 1, e.target.value)
                                     }
+                                    onFocus={() => handleSupplierFocus(item.itemId, 1)}
+                                    onBlur={() => handleSupplierBlur(item.itemId, 1)}
                                     disabled={!editable}
                                     className="pl-10 text-sm"
+                                    autoComplete="off"
                                   />
                                 </div>
-                                {state.showResults1 && state.searchResults1.length > 0 && (
-                                  <div className="absolute z-10 w-full mt-1 bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                    {state.searchResults1.map((supplier) => (
-                                      <button
-                                        key={supplier.supplierId}
-                                        onClick={() =>
-                                          handleSupplierSelect(item.itemId, 1, supplier)
-                                        }
-                                        className="w-full text-left px-3 py-2 hover:bg-[hsl(var(--canalco-neutral-100))] border-b last:border-b-0"
-                                      >
-                                        <p className="font-medium text-sm text-[hsl(var(--canalco-neutral-900))]">
-                                          {supplier.name}
-                                        </p>
-                                        <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-                                          NIT: {supplier.nitCc}
-                                        </p>
-                                      </button>
-                                    ))}
+                                {state.showResults1 && (
+                                  <div className="absolute z-10 w-full mt-1 bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    {suppliersLoading && state.searchResults1.length === 0 ? (
+                                      <div className="flex items-center justify-center py-4 text-[hsl(var(--canalco-neutral-500))]">
+                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                        Cargando proveedores...
+                                      </div>
+                                    ) : state.searchResults1.length > 0 ? (
+                                      state.searchResults1.map((supplier) => (
+                                        <button
+                                          key={supplier.supplierId}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() =>
+                                            handleSupplierSelect(item.itemId, 1, supplier)
+                                          }
+                                          className="w-full text-left px-3 py-2 hover:bg-[hsl(var(--canalco-primary))]/10 border-b last:border-b-0 transition-colors"
+                                        >
+                                          <p className="font-medium text-sm text-[hsl(var(--canalco-neutral-900))]">
+                                            {supplier.name}
+                                          </p>
+                                          <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                            NIT: {supplier.nitCc}
+                                            {supplier.city && ` • ${supplier.city}`}
+                                          </p>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-4 text-sm text-[hsl(var(--canalco-neutral-500))] text-center">
+                                        No se encontraron proveedores
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -956,28 +1061,44 @@ export default function GestionarCotizacionPage() {
                                     onChange={(e) =>
                                       handleSupplierSearch(item.itemId, 2, e.target.value)
                                     }
+                                    onFocus={() => handleSupplierFocus(item.itemId, 2)}
+                                    onBlur={() => handleSupplierBlur(item.itemId, 2)}
                                     disabled={!editable}
                                     className="pl-10 text-sm"
+                                    autoComplete="off"
                                   />
                                 </div>
-                                {state.showResults2 && state.searchResults2.length > 0 && (
-                                  <div className="absolute z-10 w-full mt-1 bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                    {state.searchResults2.map((supplier) => (
-                                      <button
-                                        key={supplier.supplierId}
-                                        onClick={() =>
-                                          handleSupplierSelect(item.itemId, 2, supplier)
-                                        }
-                                        className="w-full text-left px-3 py-2 hover:bg-[hsl(var(--canalco-neutral-100))] border-b last:border-b-0"
-                                      >
-                                        <p className="font-medium text-sm text-[hsl(var(--canalco-neutral-900))]">
-                                          {supplier.name}
-                                        </p>
-                                        <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-                                          NIT: {supplier.nitCc}
-                                        </p>
-                                      </button>
-                                    ))}
+                                {state.showResults2 && (
+                                  <div className="absolute z-10 w-full mt-1 bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    {suppliersLoading && state.searchResults2.length === 0 ? (
+                                      <div className="flex items-center justify-center py-4 text-[hsl(var(--canalco-neutral-500))]">
+                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                        Cargando proveedores...
+                                      </div>
+                                    ) : state.searchResults2.length > 0 ? (
+                                      state.searchResults2.map((supplier) => (
+                                        <button
+                                          key={supplier.supplierId}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() =>
+                                            handleSupplierSelect(item.itemId, 2, supplier)
+                                          }
+                                          className="w-full text-left px-3 py-2 hover:bg-[hsl(var(--canalco-primary))]/10 border-b last:border-b-0 transition-colors"
+                                        >
+                                          <p className="font-medium text-sm text-[hsl(var(--canalco-neutral-900))]">
+                                            {supplier.name}
+                                          </p>
+                                          <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                            NIT: {supplier.nitCc}
+                                            {supplier.city && ` • ${supplier.city}`}
+                                          </p>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-4 text-sm text-[hsl(var(--canalco-neutral-500))] text-center">
+                                        No se encontraron proveedores
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

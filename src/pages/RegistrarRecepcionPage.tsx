@@ -91,9 +91,11 @@ export default function RegistrarRecepcionPage() {
 
     req.purchaseOrders?.forEach((po) => {
       po.items?.forEach((item) => {
+        const pending = item.quantityPending || 0;
         itemsMap.set(item.poItemId, {
           poItemId: item.poItemId,
-          quantityToReceive: '',
+          // Por defecto poner la cantidad pendiente para facilitar la recepción completa
+          quantityToReceive: pending > 0 ? pending.toString() : '',
           receivedDate: today,
           observations: '',
           overdeliveryJustification: '',
@@ -103,7 +105,7 @@ export default function RegistrarRecepcionPage() {
           materialDescription: item.requisitionItem?.material?.description || 'N/A',
           quantityOrdered: item.quantityOrdered || item.quantity || 0,
           quantityReceived: item.quantityReceived || 0,
-          quantityPending: item.quantityPending || 0,
+          quantityPending: pending,
         });
       });
     });
