@@ -101,13 +101,17 @@ export default function ProveedoresPage() {
       setLoading(true);
       setError(null);
 
-      const [allData, statsData, citiesData] = await Promise.all([
-        suppliersService.getAll(!showInactive),
+      // Usar getPaginated con un límite alto para obtener todos
+      const [suppliersResponse, statsData, citiesData] = await Promise.all([
+        suppliersService.getPaginated({
+          limit: 10000,
+          isActive: showInactive ? undefined : true,
+        }),
         suppliersService.getStats(),
         suppliersService.getCities(),
       ]);
 
-      setAllSuppliers(allData);
+      setAllSuppliers(suppliersResponse.data);
       setStats(statsData);
       setCities(citiesData);
     } catch (err: any) {
