@@ -68,6 +68,7 @@ export default function ProveedoresPage() {
 
   // Estados de búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); // Valor aplicado al buscar
   const [cityFilter, setCityFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
@@ -104,7 +105,7 @@ export default function ProveedoresPage() {
         suppliersService.getPaginated({
           page,
           limit,
-          search: searchTerm || undefined,
+          search: searchQuery || undefined,
           city: cityFilter || undefined,
           isActive: showInactive ? undefined : true,
         }),
@@ -124,7 +125,7 @@ export default function ProveedoresPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, searchTerm, cityFilter, showInactive]);
+  }, [page, limit, searchQuery, cityFilter, showInactive]);
 
   useEffect(() => {
     loadData();
@@ -140,8 +141,8 @@ export default function ProveedoresPage() {
 
   // Handlers
   const handleSearch = () => {
+    setSearchQuery(searchTerm); // Aplicar el término de búsqueda
     setPage(1);
-    loadData();
   };
 
   const handleCreate = () => {
@@ -445,7 +446,7 @@ export default function ProveedoresPage() {
             <div className="text-center py-12">
               <Building2 className="w-12 h-12 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
               <p className="text-[hsl(var(--canalco-neutral-600))]">
-                {searchTerm || cityFilter ? 'No se encontraron proveedores' : 'No hay proveedores registrados'}
+                {searchQuery || cityFilter ? 'No se encontraron proveedores' : 'No hay proveedores registrados'}
               </p>
               <Button onClick={handleCreate} variant="outline" className="mt-4">
                 <Plus className="w-4 h-4 mr-2" />
