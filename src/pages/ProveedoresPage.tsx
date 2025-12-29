@@ -101,22 +101,57 @@ export default function ProveedoresPage() {
       setLoading(true);
       setError(null);
 
-      const [suppliersResponse, statsData, citiesData] = await Promise.all([
-        suppliersService.getPaginated({
-          page,
-          limit,
-          search: searchQuery || undefined,
-          city: cityFilter || undefined,
-          isActive: showInactive ? undefined : true,
-        }),
+      const [statsData, citiesData] = await Promise.all([
         suppliersService.getStats(),
         suppliersService.getCities(),
       ]);
 
-      setSuppliers(suppliersResponse.data);
-      setFilteredSuppliers(suppliersResponse.data);
-      setTotal(suppliersResponse.meta.total);
-      setTotalPages(suppliersResponse.meta.totalPages);
+      // Si hay búsqueda, cargar todos y filtrar localmente
+      // porque el backend no implementa el filtro de búsqueda
+      let data: Supplier[] = [];
+      let totalItems = 0;
+      let totalPagesCount = 1;
+
+      if (searchQuery) {
+        // Cargar todos los proveedores para filtrar localmente
+        const allSuppliers = await suppliersService.getAll(!showInactive);
+        const query = searchQuery.toLowerCase();
+        const filtered = allSuppliers.filter(
+          (s) =>
+            s.name.toLowerCase().includes(query) ||
+            s.nitCc.toLowerCase().includes(query) ||
+            (s.contactPerson && s.contactPerson.toLowerCase().includes(query)) ||
+            (s.city && s.city.toLowerCase().includes(query))
+        );
+
+        // Aplicar filtro de ciudad si existe
+        const cityFiltered = cityFilter
+          ? filtered.filter((s) => s.city === cityFilter)
+          : filtered;
+
+        totalItems = cityFiltered.length;
+        totalPagesCount = Math.ceil(totalItems / limit) || 1;
+
+        // Paginación local
+        const startIndex = (page - 1) * limit;
+        data = cityFiltered.slice(startIndex, startIndex + limit);
+      } else {
+        // Sin búsqueda, usar la API paginada normal
+        const suppliersResponse = await suppliersService.getPaginated({
+          page,
+          limit,
+          city: cityFilter || undefined,
+          isActive: showInactive ? undefined : true,
+        });
+        data = suppliersResponse.data;
+        totalItems = suppliersResponse.meta.total;
+        totalPagesCount = suppliersResponse.meta.totalPages;
+      }
+
+      setSuppliers(data);
+      setFilteredSuppliers(data);
+      setTotal(totalItems);
+      setTotalPages(totalPagesCount);
       setStats(statsData);
       setCities(citiesData);
     } catch (err: any) {
