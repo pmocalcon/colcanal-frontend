@@ -68,9 +68,9 @@ export default function ProveedoresPage() {
 
   // Estados de búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchQuery, setSearchQuery] = useState(''); // Valor aplicado al buscar
   const [cityFilter, setCityFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]); // Cache de todos los proveedores
 
   // Estados del modal de crear/editar
   const [showModal, setShowModal] = useState(false);
@@ -95,63 +95,19 @@ export default function ProveedoresPage() {
   }>({ type: 'deactivate', supplier: null });
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Cargar datos
-  const loadData = useCallback(async () => {
+  // Cargar todos los proveedores una vez
+  const loadAllSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [statsData, citiesData] = await Promise.all([
+      const [allData, statsData, citiesData] = await Promise.all([
+        suppliersService.getAll(!showInactive),
         suppliersService.getStats(),
         suppliersService.getCities(),
       ]);
 
-      // Si hay búsqueda, cargar todos y filtrar localmente
-      // porque el backend no implementa el filtro de búsqueda
-      let data: Supplier[] = [];
-      let totalItems = 0;
-      let totalPagesCount = 1;
-
-      if (searchQuery) {
-        // Cargar todos los proveedores para filtrar localmente
-        const allSuppliers = await suppliersService.getAll(!showInactive);
-        const query = searchQuery.toLowerCase();
-        const filtered = allSuppliers.filter(
-          (s) =>
-            s.name.toLowerCase().includes(query) ||
-            s.nitCc.toLowerCase().includes(query) ||
-            (s.contactPerson && s.contactPerson.toLowerCase().includes(query)) ||
-            (s.city && s.city.toLowerCase().includes(query))
-        );
-
-        // Aplicar filtro de ciudad si existe
-        const cityFiltered = cityFilter
-          ? filtered.filter((s) => s.city === cityFilter)
-          : filtered;
-
-        totalItems = cityFiltered.length;
-        totalPagesCount = Math.ceil(totalItems / limit) || 1;
-
-        // Paginación local
-        const startIndex = (page - 1) * limit;
-        data = cityFiltered.slice(startIndex, startIndex + limit);
-      } else {
-        // Sin búsqueda, usar la API paginada normal
-        const suppliersResponse = await suppliersService.getPaginated({
-          page,
-          limit,
-          city: cityFilter || undefined,
-          isActive: showInactive ? undefined : true,
-        });
-        data = suppliersResponse.data;
-        totalItems = suppliersResponse.meta.total;
-        totalPagesCount = suppliersResponse.meta.totalPages;
-      }
-
-      setSuppliers(data);
-      setFilteredSuppliers(data);
-      setTotal(totalItems);
-      setTotalPages(totalPagesCount);
+      setAllSuppliers(allData);
       setStats(statsData);
       setCities(citiesData);
     } catch (err: any) {
@@ -160,11 +116,56 @@ export default function ProveedoresPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, searchQuery, cityFilter, showInactive]);
+  }, [showInactive]);
 
+  // Cargar datos al inicio y cuando cambia showInactive
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadAllSuppliers();
+  }, [loadAllSuppliers]);
+
+  // Filtrar y paginar localmente cuando cambian los filtros
+  useEffect(() => {
+    if (allSuppliers.length === 0) return;
+
+    let filtered = [...allSuppliers];
+
+    // Filtro por búsqueda
+    if (searchTerm) {
+      const query = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          s.nitCc.toLowerCase().includes(query) ||
+          (s.contactPerson && s.contactPerson.toLowerCase().includes(query)) ||
+          (s.city && s.city.toLowerCase().includes(query))
+      );
+    }
+
+    // Filtro por ciudad
+    if (cityFilter) {
+      filtered = filtered.filter((s) => s.city === cityFilter);
+    }
+
+    // Calcular paginación
+    const totalItems = filtered.length;
+    const totalPagesCount = Math.ceil(totalItems / limit) || 1;
+
+    // Ajustar página si es mayor al total
+    const currentPage = page > totalPagesCount ? 1 : page;
+
+    // Aplicar paginación
+    const startIndex = (currentPage - 1) * limit;
+    const paginatedData = filtered.slice(startIndex, startIndex + limit);
+
+    setSuppliers(paginatedData);
+    setFilteredSuppliers(paginatedData);
+    setTotal(totalItems);
+    setTotalPages(totalPagesCount);
+
+    if (page > totalPagesCount && totalPagesCount > 0) {
+      setPage(1);
+    }
+  }, [allSuppliers, searchTerm, cityFilter, page, limit]);
 
   // Limpiar mensaje de éxito
   useEffect(() => {
@@ -176,8 +177,7 @@ export default function ProveedoresPage() {
 
   // Handlers
   const handleSearch = () => {
-    setSearchQuery(searchTerm); // Aplicar el término de búsqueda
-    setPage(1);
+    setPage(1); // Solo resetear página, el filtro se aplica automáticamente
   };
 
   const handleCreate = () => {
@@ -252,7 +252,7 @@ export default function ProveedoresPage() {
       }
 
       setShowModal(false);
-      await loadData();
+      await loadAllSuppliers();
     } catch (err: any) {
       console.error('Error saving supplier:', err);
       setFormError(err.response?.data?.message || 'Error al guardar el proveedor');
@@ -296,7 +296,7 @@ export default function ProveedoresPage() {
 
       setShowConfirmModal(false);
       setConfirmAction({ type: 'deactivate', supplier: null });
-      await loadData();
+      await loadAllSuppliers();
     } catch (err: any) {
       console.error('Error performing action:', err);
       setError(err.response?.data?.message || 'Error al realizar la acción');
@@ -481,7 +481,7 @@ export default function ProveedoresPage() {
             <div className="text-center py-12">
               <Building2 className="w-12 h-12 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
               <p className="text-[hsl(var(--canalco-neutral-600))]">
-                {searchQuery || cityFilter ? 'No se encontraron proveedores' : 'No hay proveedores registrados'}
+                {searchTerm || cityFilter ? 'No se encontraron proveedores' : 'No hay proveedores registrados'}
               </p>
               <Button onClick={handleCreate} variant="outline" className="mt-4">
                 <Plus className="w-4 h-4 mr-2" />
