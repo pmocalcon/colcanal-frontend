@@ -31,6 +31,7 @@ import MaterialesListPage from './pages/MaterialesListPage'
 import AdminUsuariosPage from './pages/AdminUsuariosPage'
 import CrearUsuarioPage from './pages/CrearUsuarioPage'
 import DetalleUsuarioPage from './pages/DetalleUsuarioPage'
+import ProveedoresPage from './pages/ProveedoresPage'
 
 export default function App() {
   return (
@@ -73,6 +74,8 @@ export default function App() {
           <Route path="/dashboard/usuarios" element={<AdminUsuariosPage />} />
           <Route path="/dashboard/usuarios/crear" element={<CrearUsuarioPage />} />
           <Route path="/dashboard/usuarios/:id" element={<DetalleUsuarioPage />} />
+          {/* Proveedores */}
+          <Route path="/dashboard/proveedores" element={<ProveedoresPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
