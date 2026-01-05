@@ -25,6 +25,7 @@ import {
 import { requisitionsService, type ItemApprovalResponse } from '@/services/requisitions.service';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
+import { modulesService, type ModulePermissions } from '@/services/modules.service';
 
 // Estado de aprobación por ítem
 interface ItemReviewStatus {
@@ -56,6 +57,9 @@ const RevisarRequisicionesPage: React.FC = () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = user?.nombreRol || '';
 
+  // Permisos del usuario
+  const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
+
   // Filtros
   const [filters, setFilters] = useState<FilterValues>({
     company: '',
@@ -66,14 +70,52 @@ const RevisarRequisicionesPage: React.FC = () => {
     status: '',
   });
 
+  // Cargar permisos del usuario
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      try {
+        const modules = await modulesService.getUserModules();
+        const comprasModule = modules.find(
+          (m) => m.slug === 'compras' || m.nombre.toLowerCase().includes('compras')
+        );
+        if (comprasModule) {
+          setPermissions(comprasModule.permisos);
+        }
+      } catch (error) {
+        console.error('Error fetching permissions:', error);
+      }
+    };
+    fetchPermissions();
+  }, []);
+
   // Cargar requisiciones pendientes
   const loadPendingRequisitions = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await getPendingActions({ page, limit: 10 });
-      setRequisitions(response.data);
-      setTotalPages(response.totalPages);
+      const response = await getPendingActions({ page, limit: 100 });
+
+      // Filtrar según permisos del usuario
+      let filteredData = response.data;
+
+      if (permissions) {
+        // Si tiene permiso de aprobar pero NO de revisar: solo ve estado 'autorizado'
+        if (permissions.aprobar && !permissions.revisar) {
+          filteredData = response.data.filter(
+            (req) => req.status?.code === 'autorizado' || req.status?.code === 'aprobada_gerencia'
+          );
+        }
+        // Si tiene permiso de revisar pero NO de aprobar: solo ve estados pendiente/en_revision
+        else if (permissions.revisar && !permissions.aprobar) {
+          filteredData = response.data.filter(
+            (req) => ['pendiente', 'en_revision', 'aprobada_revisor', 'rechazada_revisor'].includes(req.status?.code || '')
+          );
+        }
+        // Si tiene ambos permisos: ve todo
+      }
+
+      setRequisitions(filteredData);
+      setTotalPages(Math.ceil(filteredData.length / 10));
     } catch (err: any) {
       console.error('Error loading pending requisitions:', err);
       setError(err.response?.data?.message || 'Error al cargar las requisiciones pendientes');
@@ -83,8 +125,10 @@ const RevisarRequisicionesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadPendingRequisitions();
-  }, [page]);
+    if (permissions !== null) {
+      loadPendingRequisitions();
+    }
+  }, [page, permissions]);
 
   // Ver detalle
   const handleViewDetail = async (requisition: Requisition) => {
@@ -484,10 +528,12 @@ const RevisarRequisicionesPage: React.FC = () => {
             {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Revisar Requisiciones
+                {permissions?.aprobar && !permissions?.revisar ? 'Aprobar Requisiciones' : 'Revisar Requisiciones'}
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                Requisiciones pendientes de revisión o aprobación
+                {permissions?.aprobar && !permissions?.revisar
+                  ? 'Requisiciones listas para aprobación'
+                  : 'Requisiciones pendientes de revisión o aprobación'}
               </p>
             </div>
 
