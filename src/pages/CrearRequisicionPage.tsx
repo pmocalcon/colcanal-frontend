@@ -557,12 +557,23 @@ export default function CrearRequisicionPage() {
                 {/* Obra (optional) */}
                 <div>
                   <Label htmlFor="obra">Obra</Label>
-                  <Input
-                    id="obra"
-                    value={obra}
-                    onChange={(e) => setObra(e.target.value)}
-                    placeholder="Ingrese el nombre de la obra (opcional)"
-                  />
+                  <Select
+                    value={obra || 'none'}
+                    onValueChange={(value) => setObra(value === 'none' ? '' : value)}
+                  >
+                    <SelectTrigger id="obra">
+                      <SelectValue placeholder="Seleccione tipo de obra (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin especificar</SelectItem>
+                      <SelectItem value="Modernización">Modernización</SelectItem>
+                      <SelectItem value="Expansión">Expansión</SelectItem>
+                      <SelectItem value="Operación y mantenimiento">Operación y mantenimiento</SelectItem>
+                      <SelectItem value="Inversión">Inversión</SelectItem>
+                      <SelectItem value="Donación">Donación</SelectItem>
+                      <SelectItem value="Otros">Otros</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Código de obra (optional) */}

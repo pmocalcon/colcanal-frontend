@@ -70,6 +70,8 @@ const EditarRequisicionPage: React.FC = () => {
   // Form data
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [obra, setObra] = useState('');
+  const [codigoObra, setCodigoObra] = useState('');
   const [priority, setPriority] = useState<'alta' | 'normal'>('normal');
   const [items, setItems] = useState<ItemForm[]>([]);
 
@@ -92,8 +94,8 @@ const EditarRequisicionPage: React.FC = () => {
       console.log('Requisition loaded:', requisition);
 
       // Validar que se pueda editar
-      // Estados editables: pendiente, rechazada_revisor, rechazada_autorizador, rechazada_gerencia
-      const EDITABLE_STATUSES = ['pendiente', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
+      // Estados editables: pendiente, rechazada_validador, rechazada_revisor, rechazada_autorizador, rechazada_gerencia
+      const EDITABLE_STATUSES = ['pendiente', 'rechazada_validador', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
       const currentStatusCode = requisition.status?.code || '';
 
       if (!EDITABLE_STATUSES.includes(currentStatusCode)) {
@@ -152,6 +154,8 @@ const EditarRequisicionPage: React.FC = () => {
       // Establecer valores del formulario
       setSelectedCompanyId(requisition.companyId);
       setSelectedProjectId(requisition.projectId || null);
+      setObra(requisition.obra || '');
+      setCodigoObra(requisition.codigoObra || '');
       setPriority(requisition.priority || 'normal');
 
       // Convertir ítems existentes al formato del formulario
@@ -268,6 +272,8 @@ const EditarRequisicionPage: React.FC = () => {
       const updateData = {
         companyId: selectedCompanyId!,
         projectId: selectedProjectId || undefined,
+        obra: obra || undefined,
+        codigoObra: codigoObra || undefined,
         priority,
         items: itemsDto,
       };
@@ -416,6 +422,35 @@ const EditarRequisicionPage: React.FC = () => {
                   <SelectItem value="alta">Alta (Urgente)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Obra</Label>
+              <Select
+                value={obra || 'none'}
+                onValueChange={(value) => setObra(value === 'none' ? '' : value)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Seleccione tipo de obra" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin especificar</SelectItem>
+                  <SelectItem value="Modernización">Modernización</SelectItem>
+                  <SelectItem value="Expansión">Expansión</SelectItem>
+                  <SelectItem value="Operación y mantenimiento">Operación y mantenimiento</SelectItem>
+                  <SelectItem value="Inversión">Inversión</SelectItem>
+                  <SelectItem value="Donación">Donación</SelectItem>
+                  <SelectItem value="Otros">Otros</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Código de Obra</Label>
+              <Input
+                value={codigoObra}
+                onChange={(e) => setCodigoObra(e.target.value)}
+                placeholder="Ingrese el código de obra (opcional)"
+                className="mt-1"
+              />
             </div>
           </div>
         </Card>
