@@ -151,6 +151,11 @@ export interface AuthorizeRequisitionDto {
   comments?: string;
 }
 
+export interface ValidateRequisitionDto {
+  decision: 'validate' | 'reject';
+  comments?: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -269,6 +274,21 @@ export const authorizeRequisition = async (
 ): Promise<Requisition> => {
   const response = await api.post(
     `/purchases/requisitions/${requisitionId}/authorize`,
+    data
+  );
+  return response.data;
+};
+
+/**
+ * Validar una requisición con obra (para Director de Proyecto)
+ * Solo aplica cuando el creador es PQRS o Coordinador Operativo y tiene obra diligenciada
+ */
+export const validateRequisition = async (
+  requisitionId: number,
+  data: ValidateRequisitionDto
+): Promise<Requisition> => {
+  const response = await api.post(
+    `/purchases/requisitions/${requisitionId}/validate`,
     data
   );
   return response.data;

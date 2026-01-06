@@ -19,15 +19,17 @@ import {
 import { formatDateShort } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 
-// Mapeo de estados a colores (15 estados según backend)
+// Mapeo de estados a colores (17 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
   pendiente: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
+  pendiente_validacion: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
   en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
   aprobada_revisor: 'bg-green-500/10 text-green-700 border-green-500/20',
   pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   autorizado: 'bg-lime-500/10 text-lime-700 border-lime-500/20',
   aprobada_gerencia: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
   en_cotizacion: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
+  rechazada_validador: 'bg-pink-500/10 text-pink-700 border-pink-500/20',
   rechazada_revisor: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
   rechazada_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
@@ -39,7 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 // Estados que permiten edición
-const EDITABLE_STATUSES = ['pendiente', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
+const EDITABLE_STATUSES = ['pendiente', 'pendiente_validacion', 'rechazada_validador', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'];
 
 export default function RequisicionesPage() {
   const navigate = useNavigate();
@@ -72,15 +74,17 @@ export default function RequisicionesPage() {
     status: '',
   });
 
-  // Available statuses for the filter dropdown (15 estados según backend)
+  // Available statuses for the filter dropdown (17 estados según backend)
   const availableStatuses = [
     { code: 'pendiente', name: 'Pendiente' },
+    { code: 'pendiente_validacion', name: 'Pendiente de validación' },
     { code: 'en_revision', name: 'En revisión' },
     { code: 'aprobada_revisor', name: 'Aprobada por revisor' },
     { code: 'pendiente_autorizacion', name: 'Pendiente de autorización' },
     { code: 'autorizado', name: 'Autorizado' },
     { code: 'aprobada_gerencia', name: 'Aprobada por gerencia' },
     { code: 'en_cotizacion', name: 'En cotización' },
+    { code: 'rechazada_validador', name: 'Rechazada por validador' },
     { code: 'rechazada_revisor', name: 'Rechazada por revisor' },
     { code: 'rechazada_autorizador', name: 'Rechazada por autorizador' },
     { code: 'rechazada_gerencia', name: 'Rechazada por gerencia' },
@@ -171,12 +175,14 @@ export default function RequisicionesPage() {
   const getStatusLabel = (code: string) => {
     const labels: Record<string, string> = {
       pendiente: 'Pendiente',
+      pendiente_validacion: 'Pendiente de validación',
       en_revision: 'En revisión',
       aprobada_revisor: 'Aprobada por revisor',
       pendiente_autorizacion: 'Pendiente de autorización',
       autorizado: 'Autorizado',
       aprobada_gerencia: 'Aprobada por gerencia',
       en_cotizacion: 'En cotización',
+      rechazada_validador: 'Rechazada por validador',
       rechazada_revisor: 'Rechazada por revisor',
       rechazada_autorizador: 'Rechazada por autorizador',
       rechazada_gerencia: 'Rechazada por gerencia',
@@ -388,7 +394,7 @@ export default function RequisicionesPage() {
             {/* Pending Requisitions Section */}
             {(() => {
               const pendingRequisitions = requisitions.filter(r =>
-                ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')
+                ['pendiente', 'pendiente_validacion', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_validador', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')
               ).sort((a, b) => {
                 // Urgentes primero
                 if (a.priority === 'alta' && b.priority !== 'alta') return -1;
@@ -519,7 +525,7 @@ export default function RequisicionesPage() {
                                 {getStatusLabel(req.status.code)}
                               </Badge>
                               {/* Mostrar preview del último comentario de rechazo */}
-                              {(req.status.code === 'rechazada_revisor' || req.status.code === 'rechazada_autorizador' || req.status.code === 'rechazada_gerencia') && req.logs && req.logs.length > 0 && (() => {
+                              {(req.status.code === 'rechazada_validador' || req.status.code === 'rechazada_revisor' || req.status.code === 'rechazada_autorizador' || req.status.code === 'rechazada_gerencia') && req.logs && req.logs.length > 0 && (() => {
                                 const lastRejectionLog = [...req.logs]
                                   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                                   .find(log => log.comments && (log.action?.includes('rechazar') || log.newStatus?.includes('rechazada')));
@@ -594,7 +600,7 @@ export default function RequisicionesPage() {
               const paginatedProcessedRequisitions = processedRequisitions.slice(processedStartIndex, processedEndIndex);
 
               return (
-                <div className={requisitions.filter(r => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                <div className={requisitions.filter(r => ['pendiente', 'pendiente_validacion', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'en_cotizacion', 'rechazada_validador', 'rechazada_revisor', 'rechazada_autorizador', 'rechazada_gerencia'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                   <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                     <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />

@@ -374,12 +374,15 @@ const RevisarRequisicionesPage: React.FC = () => {
   const getStatusColor = (statusCode: string) => {
     const colors: Record<string, string> = {
       pendiente: 'bg-gray-100 text-gray-800',
+      pendiente_validacion: 'bg-indigo-100 text-indigo-800',
       en_revision: 'bg-blue-100 text-blue-800',
       aprobada_revisor: 'bg-green-100 text-green-800',
       pendiente_autorizacion: 'bg-amber-100 text-amber-800',
       autorizado: 'bg-lime-100 text-lime-800',
       aprobada_gerencia: 'bg-emerald-100 text-emerald-800',
+      rechazada_validador: 'bg-pink-100 text-pink-800',
       rechazada_revisor: 'bg-orange-100 text-orange-800',
+      rechazada_autorizador: 'bg-amber-100 text-amber-800',
       rechazada_gerencia: 'bg-red-100 text-red-800',
     };
     return colors[statusCode] || 'bg-gray-100 text-gray-800';

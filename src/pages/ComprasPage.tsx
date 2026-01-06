@@ -38,6 +38,7 @@ export default function ComprasPage() {
    * Determines if a user has access to a specific sub-module based on backend permissions.
    * Permission mapping:
    * - Requisiciones: permisos.crear
+   * - Validación de Obra: permisos.autorizar (Director de Proyecto valida requisiciones con obra)
    * - Revisión: permisos.revisar
    * - Autorización: permisos.autorizar
    * - Aprobación: permisos.aprobar
@@ -56,6 +57,10 @@ export default function ComprasPage() {
       case 'requisiciones':
         // Can create requisitions
         return permissions.crear === true;
+
+      case 'validacion-obra':
+        // Director de Proyecto can validate requisitions with obra
+        return permissions.autorizar === true;
 
       case 'revision':
         // Can review requisitions
@@ -97,6 +102,13 @@ export default function ComprasPage() {
       slug: 'requisiciones',
       icono: 'FileText',
       hasAccess: getSubModuleAccess('requisiciones'),
+    },
+    {
+      gestionId: 111,
+      nombre: 'Validación de Obra',
+      slug: 'validacion-obra',
+      icono: 'Building2',
+      hasAccess: getSubModuleAccess('validacion-obra'),
     },
     {
       gestionId: 102,
@@ -173,6 +185,8 @@ export default function ComprasPage() {
     // Navigate to the sub-module
     if (subModule.slug === 'requisiciones') {
       navigate('/dashboard/compras/requisiciones');
+    } else if (subModule.slug === 'validacion-obra') {
+      navigate('/dashboard/compras/requisiciones/validar');
     } else if (subModule.slug === 'revision' || subModule.slug === 'aprobacion') {
       navigate('/dashboard/compras/requisiciones/revisar');
     } else if (subModule.slug === 'autorizacion') {

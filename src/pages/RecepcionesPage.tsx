@@ -17,16 +17,19 @@ import {
 import { formatDateShort } from '@/utils/dateUtils';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 
-// Mapeo de estados a colores (14 estados según backend)
+// Mapeo de estados a colores (17 estados según backend)
 const STATUS_COLORS: Record<string, string> = {
   pendiente: 'bg-gray-500/10 text-gray-700 border-gray-500/20',
+  pendiente_validacion: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
   en_revision: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
   aprobada_revisor: 'bg-green-500/10 text-green-700 border-green-500/20',
   pendiente_autorizacion: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   autorizado: 'bg-lime-500/10 text-lime-700 border-lime-500/20',
   aprobada_gerencia: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
   en_cotizacion: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
+  rechazada_validador: 'bg-pink-500/10 text-pink-700 border-pink-500/20',
   rechazada_revisor: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  rechazada_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   rechazada_gerencia: 'bg-red-500/10 text-red-700 border-red-500/20',
   cotizada: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
   en_orden_compra: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
