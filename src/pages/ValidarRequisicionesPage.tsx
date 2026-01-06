@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Building2, MapPin } from 'lucide-react';
+import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Building2, Edit } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,14 +23,9 @@ import {
   type ValidateRequisitionDto,
 } from '@/services/requisition.service';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
-import { StatusDashboard } from '@/components/ui/status-dashboard';
-
-// Mapeo de estados a colores
-const STATUS_COLORS: Record<string, string> = {
-  pendiente_validacion: 'bg-indigo-100 text-indigo-800',
-  rechazada_validador: 'bg-pink-100 text-pink-800',
-  pendiente: 'bg-gray-100 text-gray-800',
-};
+import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
+import { Footer } from '@/components/ui/footer';
+import { ErrorMessage } from '@/components/ui/error-message';
 
 const ValidarRequisicionesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -39,7 +34,6 @@ const ValidarRequisicionesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
 
   // Detalle de requisición
   const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
@@ -80,7 +74,6 @@ const ValidarRequisicionesPage: React.FC = () => {
 
       setRequisitions(validationRequisitions);
       setTotalPages(Math.ceil(validationRequisitions.length / 10) || 1);
-      setTotal(validationRequisitions.length);
     } catch (err: any) {
       console.error('Error loading requisitions:', err);
       setError(err.response?.data?.message || 'Error al cargar las requisiciones');
@@ -175,48 +168,126 @@ const ValidarRequisicionesPage: React.FC = () => {
     }
   };
 
+  // Color de estado
+  const getStatusColor = (statusCode: string) => {
+    const colors: Record<string, string> = {
+      pendiente_validacion: 'bg-indigo-100 text-indigo-800',
+      rechazada_validador: 'bg-pink-100 text-pink-800',
+      pendiente: 'bg-gray-100 text-gray-800',
+    };
+    return colors[statusCode] || 'bg-gray-100 text-gray-800';
+  };
+
+  // Extraer opciones únicas de filtros
+  const availableStatuses = useMemo(() => {
+    const statuses = requisitions
+      .map((r) => r.status)
+      .filter((s): s is NonNullable<typeof s> => s != null);
+    const uniqueStatuses = Array.from(
+      new Map(statuses.map((s) => [s.code, s])).values()
+    );
+    return uniqueStatuses;
+  }, [requisitions]);
+
+  const availableCompanies = useMemo(() => {
+    const companies = requisitions.map((r) => r.company);
+    const uniqueCompanies = Array.from(
+      new Map(companies.map((c) => [c.companyId, c])).values()
+    );
+    return uniqueCompanies;
+  }, [requisitions]);
+
+  const availableProjects = useMemo(() => {
+    const projects = requisitions.map((r) => r.project).filter(Boolean);
+    const uniqueProjects = Array.from(
+      new Map(projects.map((p) => [p.projectId, p])).values()
+    );
+    return uniqueProjects;
+  }, [requisitions]);
+
   // Filtrar requisiciones
   const filteredRequisitions = useMemo(() => {
     return requisitions.filter((req) => {
-      if (filters.company && !req.company?.name?.toLowerCase().includes(filters.company.toLowerCase())) {
+      // Filtro por número de requisición
+      if (
+        filters.requisitionNumber &&
+        !req.requisitionNumber
+          .toLowerCase()
+          .includes(filters.requisitionNumber.toLowerCase())
+      ) {
         return false;
       }
-      if (filters.project && !req.project?.name?.toLowerCase().includes(filters.project.toLowerCase())) {
+
+      // Filtro por fecha desde
+      if (filters.startDate) {
+        const reqDate = new Date(req.createdAt);
+        const startDate = new Date(filters.startDate);
+        if (reqDate < startDate) return false;
+      }
+
+      // Filtro por fecha hasta
+      if (filters.endDate) {
+        const reqDate = new Date(req.createdAt);
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        if (reqDate > endDate) return false;
+      }
+
+      // Filtro por empresa
+      if (
+        filters.company &&
+        filters.company !== 'all' &&
+        req.company.companyId.toString() !== filters.company
+      ) {
         return false;
       }
-      if (filters.requisitionNumber && !req.requisitionNumber?.toLowerCase().includes(filters.requisitionNumber.toLowerCase())) {
+
+      // Filtro por proyecto
+      if (
+        filters.project &&
+        filters.project !== 'all' &&
+        req.project?.projectId.toString() !== filters.project
+      ) {
         return false;
       }
+
       return true;
     });
   }, [requisitions, filters]);
 
-  // Estadísticas
-  const pendingCount = filteredRequisitions.length;
-
-  if (loading) {
+  if (loading && requisitions.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-[hsl(var(--canalco-primary))] mx-auto mb-4" />
-          <p className="text-[hsl(var(--canalco-neutral-600))]">Cargando requisiciones...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--canalco-primary))]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4">
-            {/* Left: Back button */}
-            <div className="flex items-center gap-4">
+            {/* Left: Logo + Back Button */}
+            <div className="flex items-center gap-3">
+              <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
+                <img
+                  src="/assets/images/logo-canalco.png"
+                  alt="Canales Contactos"
+                  className="w-full h-full object-contain"
+                />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/dashboard/compras')}
+                onClick={() => {
+                  if (showDetail) {
+                    handleCloseDetail();
+                  } else {
+                    navigate('/dashboard/compras');
+                  }
+                }}
                 className="hover:bg-[hsl(var(--canalco-neutral-200))]"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -233,314 +304,578 @@ const ValidarRequisicionesPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="w-10" /> {/* Spacer for balance */}
+            <div className="w-16" /> {/* Spacer for balance */}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Status Dashboard */}
-        {pendingCount > 0 && (
-          <StatusDashboard
-            totalPending={pendingCount}
-            title="Pendientes de Validación"
-          />
-        )}
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
+        {/* Error Message */}
+        {error && <ErrorMessage message={error} className="mb-6" />}
 
-        {/* Error */}
-        {error && (
-          <Card className="p-6 border-red-200 bg-red-50 mb-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-              <p className="text-red-800">{error}</p>
-            </div>
-          </Card>
-        )}
+        {/* Dashboard de Estado */}
+        {!showDetail && (() => {
+          const statusCounts = requisitions.reduce((acc, req) => {
+            if (req.isPending) {
+              const statusCode = req.status?.code || 'pendiente_validacion';
+              const statusName = req.status?.name || 'Pendiente de Validación';
+              if (!acc[statusCode]) {
+                acc[statusCode] = { status: statusCode, statusLabel: statusName, count: 0 };
+              }
+              acc[statusCode].count++;
+            }
+            return acc;
+          }, {} as Record<string, StatusCount>);
 
-        {/* Lista de requisiciones */}
-        {!showDetail ? (
-          <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+          const overdueCount = requisitions.filter(req => req.isPending && req.isOverdue).length;
+
+          return (
+            <StatusDashboard
+              pendingByStatus={Object.values(statusCounts)}
+              overdueCount={overdueCount}
+            />
+          );
+        })()}
+
+        {/* Vista de Lista */}
+        {!showDetail && (
+          <>
+            {/* Filtros */}
+            {requisitions.length > 0 && (
+              <div className="mb-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                <RequisitionFilters
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  availableStatuses={availableStatuses}
+                  availableCompanies={availableCompanies}
+                  availableProjects={availableProjects}
+                />
+              </div>
+            )}
+
             {filteredRequisitions.length === 0 ? (
-              <div className="text-center py-12">
-                <CheckCircle className="w-12 h-12 mx-auto mb-4 text-green-500" />
-                <p className="text-[hsl(var(--canalco-neutral-600))]">
-                  No hay requisiciones pendientes de validación
+              <div className="text-center py-12 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))]">
+                <CheckCircle className="h-16 w-16 mx-auto text-[hsl(var(--canalco-neutral-400))] mb-4" />
+                <p className="text-lg font-medium text-[hsl(var(--canalco-neutral-700))]">
+                  {requisitions.length === 0
+                    ? 'No hay requisiciones pendientes de validación'
+                    : 'No se encontraron requisiciones con los filtros aplicados'}
+                </p>
+                <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-2">
+                  {requisitions.length === 0
+                    ? 'Todas las requisiciones de obra han sido procesadas.'
+                    : 'Intenta ajustar los filtros para ver más resultados.'}
                 </p>
               </div>
             ) : (
-              <>
-                <div className="bg-indigo-50 border-b border-indigo-200 px-4 py-2">
-                  <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    PENDIENTES DE VALIDACIÓN ({filteredRequisitions.length})
-                  </p>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Requisición</TableHead>
-                      <TableHead>Empresa / Proyecto</TableHead>
-                      <TableHead>Obra</TableHead>
-                      <TableHead>Creador</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRequisitions.map((req) => (
-                      <TableRow key={req.requisitionId} className="hover:bg-indigo-50/50">
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium text-[hsl(var(--canalco-primary))]">
-                              {req.requisitionNumber}
-                            </span>
-                            {req.priority === 'alta' && (
-                              <Badge className="bg-red-100 text-red-800 text-xs">
-                                URGENTE
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{req.company?.name}</p>
-                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                              {req.project?.name || 'Sin proyecto'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-indigo-600" />
-                            <div>
-                              <p className="font-medium text-sm text-indigo-700">{req.obra || '-'}</p>
-                              {req.codigoObra && (
-                                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                                  Código: {req.codigoObra}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm font-medium">{req.creator?.nombre}</p>
-                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                              {req.creator?.role?.nombreRol || 'Sin rol'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm">{formatDate(req.createdAt)}</p>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleViewDetail(req)}
-                              className="hover:bg-indigo-100"
-                              title="Ver y validar"
-                            >
-                              <Eye className="w-4 h-4 text-indigo-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </>
-            )}
-          </div>
-        ) : (
-          /* Detalle de requisición */
-          <Card className="p-6">
-            {detailLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
-              </div>
-            ) : selectedRequisition ? (
-              <div className="space-y-6">
-                {/* Header del detalle */}
-                <div className="flex items-center justify-between">
+              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                {/* Pending Section */}
+                {filteredRequisitions.filter(r => r.isPending !== false).length > 0 && (
                   <div>
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                      {selectedRequisition.requisitionNumber}
-                      {selectedRequisition.priority === 'alta' && (
-                        <Badge className="bg-red-100 text-red-800">URGENTE</Badge>
-                      )}
-                    </h2>
-                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                      {selectedRequisition.company?.name} - {selectedRequisition.project?.name || 'Sin proyecto'}
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={handleCloseDetail}>
-                    Cerrar
-                  </Button>
-                </div>
-
-                {/* Información de obra */}
-                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-indigo-800 mb-3 flex items-center gap-2">
-                    <Building2 className="w-5 h-5" />
-                    Información de Obra
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-indigo-600">Obra</Label>
-                      <p className="font-medium">{selectedRequisition.obra || 'No especificada'}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-indigo-600">Código de Obra</Label>
-                      <p className="font-medium">{selectedRequisition.codigoObra || 'No especificado'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Información del creador */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Creado por</Label>
-                    <p className="font-medium">{selectedRequisition.creator?.nombre}</p>
-                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                      {selectedRequisition.creator?.role?.nombreRol}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Fecha de creación</Label>
-                    <p className="font-medium">{formatDate(selectedRequisition.createdAt)}</p>
-                  </div>
-                </div>
-
-                {/* Items de la requisición */}
-                <div>
-                  <h3 className="font-semibold mb-3">
-                    Items ({selectedRequisition.items?.length || 0})
-                  </h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>Material</TableHead>
-                        <TableHead>Grupo</TableHead>
-                        <TableHead className="text-center">Cantidad</TableHead>
-                        <TableHead>Observación</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedRequisition.items?.map((item, index) => (
-                        <TableRow key={item.itemId}>
-                          <TableCell className="font-mono text-sm">{index + 1}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{item.material?.description}</p>
-                              <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                                {item.material?.code}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {item.material?.materialGroup?.name || '-'}
-                          </TableCell>
-                          <TableCell className="text-center font-medium">
-                            {item.quantity}
-                          </TableCell>
-                          <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {item.observation || '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Área de validación */}
-                {!showConfirmation ? (
-                  <div className="flex items-center justify-center gap-4 pt-4 border-t">
-                    <Button
-                      onClick={handleStartValidate}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Check className="w-4 h-4 mr-2" />
-                      Validar Requisición
-                    </Button>
-                    <Button
-                      onClick={handleStartReject}
-                      variant="destructive"
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Rechazar
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="border-t pt-4 space-y-4">
-                    <div className={`p-4 rounded-lg ${decision === 'validate' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border`}>
-                      <h3 className={`font-semibold mb-2 ${decision === 'validate' ? 'text-green-800' : 'text-red-800'}`}>
-                        {decision === 'validate' ? 'Confirmar Validación' : 'Confirmar Rechazo'}
-                      </h3>
-                      <p className={`text-sm mb-4 ${decision === 'validate' ? 'text-green-700' : 'text-red-700'}`}>
-                        {decision === 'validate'
-                          ? 'La requisición será validada y pasará a revisión por el Director Técnico.'
-                          : 'La requisición será devuelta al creador para corrección.'}
+                    <div className="bg-indigo-50 border-b border-indigo-200 px-4 py-2">
+                      <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        PENDIENTES DE VALIDACIÓN ({filteredRequisitions.filter(r => r.isPending !== false).length})
                       </p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
+                          <TableHead className="font-semibold">Empresa</TableHead>
+                          <TableHead className="font-semibold">Proyecto/Obra</TableHead>
+                          <TableHead className="font-semibold w-[80px]">Ítems</TableHead>
+                          <TableHead className="font-semibold">Solicitado por</TableHead>
+                          <TableHead className="font-semibold">Fecha</TableHead>
+                          <TableHead className="font-semibold">Estado</TableHead>
+                          <TableHead className="font-semibold">Plazo</TableHead>
+                          <TableHead className="font-semibold text-center">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequisitions.filter(r => r.isPending !== false).sort((a, b) => {
+                          if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                          if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                        }).map((req) => (
+                          <TableRow key={req.requisitionId} className="bg-white hover:bg-indigo-50/30">
+                            <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                              <div className="flex items-center gap-2">
+                                {req.requisitionNumber}
+                                {req.priority === 'alta' && (
+                                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                    URGENTE
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                                {req.company.name}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-indigo-600" />
+                                <div>
+                                  {req.obra ? (
+                                    <>
+                                      <p className="text-sm font-medium text-indigo-700">{req.obra}</p>
+                                      {req.codigoObra && (
+                                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                          Código: {req.codigoObra}
+                                        </p>
+                                      )}
+                                    </>
+                                  ) : req.project ? (
+                                    <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">{req.project.name}</p>
+                                  ) : (
+                                    <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] font-semibold text-sm">
+                                {req.items?.length || 0}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
+                                  {req.creator.nombre}
+                                </p>
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                  {req.creator.role?.nombreRol || 'Sin rol'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                              {formatDate(req.createdAt)}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                  req.status?.code || 'pendiente_validacion'
+                                )}`}
+                              >
+                                {req.status?.name || 'Pendiente Validación'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {req.slaDeadline ? (
+                                <div className="text-sm flex flex-col gap-0.5">
+                                  {req.isOverdue ? (
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-red-600">❌</span>
+                                        <span className="text-red-600 font-medium">Vencida</span>
+                                      </div>
+                                      {req.daysOverdue && req.daysOverdue > 0 && (
+                                        <span className="text-xs text-red-500">
+                                          Hace {req.daysOverdue} día{req.daysOverdue !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-green-600">✅</span>
+                                        <span className="text-green-600 font-medium">A tiempo</span>
+                                      </div>
+                                      {req.daysRemaining !== undefined && req.daysRemaining > 0 && (
+                                        <span className="text-xs text-green-600">
+                                          {req.daysRemaining} día{req.daysRemaining !== 1 ? 's' : ''} restante{req.daysRemaining !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewDetail(req)}
+                                  className="hover:bg-indigo-50"
+                                  title="Validar"
+                                >
+                                  <Eye className="h-4 w-4 text-indigo-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
 
-                      <div className="space-y-2">
-                        <Label htmlFor="comments">
-                          {decision === 'validate' ? 'Comentarios (opcional)' : 'Motivo del rechazo *'}
-                        </Label>
-                        <Textarea
-                          id="comments"
-                          value={comments}
-                          onChange={(e) => setComments(e.target.value)}
-                          placeholder={decision === 'validate' ? 'Agregar comentarios...' : 'Explique el motivo del rechazo...'}
-                          rows={3}
-                        />
-                      </div>
-
-                      {actionError && (
-                        <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded text-red-800 text-sm">
-                          {actionError}
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-end gap-3 mt-4">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowConfirmation(false);
-                            setDecision(null);
-                            setComments('');
-                            setActionError(null);
-                          }}
-                          disabled={actionLoading}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button
-                          onClick={handleConfirmAction}
-                          disabled={actionLoading}
-                          className={decision === 'validate' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                        >
-                          {actionLoading ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : decision === 'validate' ? (
-                            <Check className="w-4 h-4 mr-2" />
-                          ) : (
-                            <X className="w-4 h-4 mr-2" />
-                          )}
-                          {decision === 'validate' ? 'Confirmar Validación' : 'Confirmar Rechazo'}
-                        </Button>
-                      </div>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="px-6 py-4 border-t border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between">
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      Página {page} de {totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                      >
+                        Siguiente
+                      </Button>
                     </div>
                   </div>
                 )}
               </div>
+            )}
+          </>
+        )}
+
+        {/* Vista de Detalle */}
+        {showDetail && (
+          <div className="space-y-6">
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+              </div>
+            ) : selectedRequisition ? (
+              <>
+                {/* Card de Información General */}
+                <Card className="p-6">
+                  <h2 className="text-xl font-bold mb-2 text-[hsl(var(--canalco-neutral-900))]">
+                    Requisición {selectedRequisition.requisitionNumber}
+                    {selectedRequisition.priority === 'alta' && (
+                      <Badge className="ml-2 bg-red-600 text-white">URGENTE</Badge>
+                    )}
+                  </h2>
+                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mb-4">
+                    Creada el {formatDate(selectedRequisition.createdAt)}
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Empresa
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.company.name}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Proyecto
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.project?.name || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Obra
+                      </Label>
+                      <p className="font-medium text-indigo-700">
+                        {selectedRequisition.obra || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Código de Obra
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.codigoObra || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        Centro de Operación
+                      </Label>
+                      <p className="font-medium">
+                        {selectedRequisition.operationCenter?.code || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Card de Materiales */}
+                {!showConfirmation && (
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">
+                      Elementos Solicitados ({selectedRequisition.items?.length || 0})
+                    </h3>
+                    <div className="border border-[hsl(var(--canalco-neutral-200))] rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                            <TableHead className="w-[50px]">#</TableHead>
+                            <TableHead>Código</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead>Grupo</TableHead>
+                            <TableHead className="text-center">Cantidad</TableHead>
+                            <TableHead>Observación</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedRequisition.items?.map((item, index) => (
+                            <TableRow key={item.itemId}>
+                              <TableCell className="font-bold text-[hsl(var(--canalco-primary))]">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {item.material?.code}
+                              </TableCell>
+                              <TableCell>
+                                {item.material?.description}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {item.material?.materialGroup?.name || '-'}
+                              </TableCell>
+                              <TableCell className="text-center font-semibold">
+                                {item.quantity}
+                              </TableCell>
+                              <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                                {item.observation || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Botones de acción */}
+                    <div className="flex gap-3 justify-end mt-6">
+                      <Button variant="outline" onClick={handleCloseDetail}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={handleStartReject}
+                        variant="destructive"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Rechazar
+                      </Button>
+                      <Button
+                        onClick={handleStartValidate}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Check className="h-4 w-4 mr-2" />
+                        Validar Requisición
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Confirmación */}
+                {showConfirmation && (
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">
+                      Confirmar {decision === 'validate' ? 'Validación' : 'Rechazo'}
+                    </h3>
+
+                    <div className={`p-4 rounded-lg ${
+                      decision === 'validate'
+                        ? 'bg-green-50 border border-green-200'
+                        : 'bg-red-50 border border-red-200'
+                    }`}>
+                      <p className="font-semibold mb-2">
+                        {decision === 'validate' ? (
+                          <span className="text-green-800">✅ Validar esta requisición</span>
+                        ) : (
+                          <span className="text-red-800">❌ Rechazar esta requisición</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                        {decision === 'validate'
+                          ? 'La requisición será validada y pasará a revisión por el Director Técnico.'
+                          : 'La requisición será devuelta al creador para corrección.'}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <Label htmlFor="comments">
+                        {decision === 'validate' ? 'Comentarios (opcional)' : 'Motivo del rechazo *'}
+                      </Label>
+                      <Textarea
+                        id="comments"
+                        value={comments}
+                        onChange={(e) => setComments(e.target.value)}
+                        placeholder={decision === 'validate' ? 'Agregar comentarios...' : 'Explique el motivo del rechazo...'}
+                        rows={3}
+                        className={decision === 'reject' && !comments.trim() ? 'border-red-300' : ''}
+                      />
+                    </div>
+
+                    {actionError && (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-700">{actionError}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 justify-end mt-6">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setShowConfirmation(false);
+                          setDecision(null);
+                          setComments('');
+                          setActionError(null);
+                        }}
+                        disabled={actionLoading}
+                      >
+                        Volver
+                      </Button>
+                      <Button
+                        onClick={handleConfirmAction}
+                        disabled={actionLoading}
+                        className={
+                          decision === 'validate'
+                            ? 'bg-green-600 hover:bg-green-700'
+                            : 'bg-red-600 hover:bg-red-700'
+                        }
+                      >
+                        {actionLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Procesando...
+                          </>
+                        ) : (
+                          <>
+                            {decision === 'validate' ? (
+                              <Check className="h-4 w-4 mr-2" />
+                            ) : (
+                              <X className="h-4 w-4 mr-2" />
+                            )}
+                            Confirmar {decision === 'validate' ? 'Validación' : 'Rechazo'}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Sección de Firmas */}
+                <Card className="p-6 bg-[hsl(var(--canalco-neutral-50))]">
+                  <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--canalco-neutral-900))]">
+                    Firmas
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    {/* Solicitado por */}
+                    <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
+                      <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                        Solicitado por
+                      </p>
+                      <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                        {selectedRequisition.creator.nombre}
+                      </p>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                        {selectedRequisition.creator.cargo || 'Sin cargo'}
+                      </p>
+                    </div>
+
+                    {/* Validado por */}
+                    {(() => {
+                      const validateLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'validar' ||
+                          log.action === 'validar_aprobar' ||
+                          (log.previousStatus === 'pendiente_validacion' && log.newStatus === 'pendiente')
+                      );
+                      return validateLog ? (
+                        <div className="border-l-4 border-indigo-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Validado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {validateLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {validateLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Revisado por */}
+                    {(() => {
+                      const reviewLog = selectedRequisition.logs?.find(
+                        (log) => log.action?.startsWith('revisar_')
+                      );
+                      return reviewLog ? (
+                        <div className="border-l-4 border-blue-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Revisado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {reviewLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {reviewLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Autorizado por */}
+                    {(() => {
+                      const authorizeLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'autorizar_aprobar' || log.newStatus === 'autorizado'
+                      );
+                      return authorizeLog ? (
+                        <div className="border-l-4 border-amber-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Autorizado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {authorizeLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {authorizeLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Aprobado por */}
+                    {(() => {
+                      const approveLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                      );
+                      return approveLog ? (
+                        <div className="border-l-4 border-green-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Aprobado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {approveLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {approveLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </Card>
+              </>
             ) : null}
-          </Card>
+          </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 };
