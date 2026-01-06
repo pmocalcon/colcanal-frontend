@@ -7,6 +7,7 @@ export interface ModulePermissions {
   revisar: boolean;
   aprobar: boolean;
   autorizar: boolean;
+  validar: boolean;
   cotizar: boolean;
   exportar: boolean;
 }

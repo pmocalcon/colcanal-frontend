@@ -38,7 +38,7 @@ export default function ComprasPage() {
    * Determines if a user has access to a specific sub-module based on backend permissions.
    * Permission mapping:
    * - Requisiciones: permisos.crear
-   * - Validación de Obra: permisos.autorizar (Director de Proyecto valida requisiciones con obra)
+   * - Validación de Obra: permisos.validar (Director de Proyecto valida requisiciones con obra)
    * - Revisión: permisos.revisar
    * - Autorización: permisos.autorizar
    * - Aprobación: permisos.aprobar
@@ -60,7 +60,7 @@ export default function ComprasPage() {
 
       case 'validacion-obra':
         // Director de Proyecto can validate requisitions with obra
-        return permissions.autorizar === true;
+        return permissions.validar === true;
 
       case 'revision':
         // Can review requisitions
