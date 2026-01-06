@@ -1081,6 +1081,28 @@ const AutorizarRequisicionesPage: React.FC = () => {
                       </p>
                     </div>
 
+                    {/* Validado por - action: validar or previousStatus='pendiente_validacion' and newStatus='pendiente' */}
+                    {(() => {
+                      const validateLog = selectedRequisition.logs?.find(
+                        (log) => log.action === 'validar' ||
+                          log.action === 'validar_aprobar' ||
+                          (log.previousStatus === 'pendiente_validacion' && log.newStatus === 'pendiente')
+                      );
+                      return validateLog ? (
+                        <div className="border-l-4 border-indigo-500 pl-4">
+                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                            Validado por
+                          </p>
+                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                            {validateLog.user.nombre}
+                          </p>
+                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            {validateLog.user.cargo || 'Sin cargo'}
+                          </p>
+                        </div>
+                      ) : null;
+                    })()}
+
                     {/* Revisado por - actions: revisar_aprobar, revisar_aprobar_pendiente_autorizacion, revisar_rechazar */}
                     {(() => {
                       const reviewLog = selectedRequisition.logs?.find(
