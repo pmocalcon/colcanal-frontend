@@ -1,6 +1,8 @@
 import api from './api';
 
 // Types
+// NOTA: Los tipos están siendo migrados a @/types/requisition.types.ts
+// Para nuevas funcionalidades, preferir importar desde @/types
 export interface Material {
   materialId: number;
   code: string;

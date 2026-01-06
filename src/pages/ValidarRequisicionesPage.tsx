@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Building2, Edit } from 'lucide-react';
+import { Eye, CheckCircle, AlertCircle, Loader2, ArrowLeft, Check, X, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,10 +22,13 @@ import {
   type Requisition,
   type ValidateRequisitionDto,
 } from '@/services/requisition.service';
-import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
-import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
+import { RequisitionFilters } from '@/components/ui/requisition-filters';
+import { StatusDashboard } from '@/components/ui/status-dashboard';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
+import { getStatusColor } from '@/constants/status';
+import { useRequisitionFilters } from '@/hooks/useRequisitionFilters';
+import type { StatusCount, FilterValues } from '@/types/common.types';
 
 const ValidarRequisicionesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -168,15 +171,7 @@ const ValidarRequisicionesPage: React.FC = () => {
     }
   };
 
-  // Color de estado
-  const getStatusColor = (statusCode: string) => {
-    const colors: Record<string, string> = {
-      pendiente_validacion: 'bg-indigo-100 text-indigo-800',
-      rechazada_validador: 'bg-pink-100 text-pink-800',
-      pendiente: 'bg-gray-100 text-gray-800',
-    };
-    return colors[statusCode] || 'bg-gray-100 text-gray-800';
-  };
+  // Color de estado - ahora usa la función centralizada de @/constants/status
 
   // Extraer opciones únicas de filtros
   const availableStatuses = useMemo(() => {

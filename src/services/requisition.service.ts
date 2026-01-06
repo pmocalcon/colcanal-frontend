@@ -3,6 +3,8 @@ import api from './api';
 // ============================================
 // INTERFACES
 // ============================================
+// NOTA: Los tipos están siendo migrados a @/types/requisition.types.ts
+// Para nuevas funcionalidades, preferir importar desde @/types
 
 export interface RequisitionItem {
   itemId: number;
