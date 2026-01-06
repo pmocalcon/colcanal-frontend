@@ -5,6 +5,7 @@ import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { modulesService, type ModulePermissions } from '@/services/modules.service';
+import { Footer } from '@/components/ui/footer';
 
 export default function ComprasPage() {
   const navigate = useNavigate();
@@ -221,7 +222,7 @@ export default function ComprasPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -260,7 +261,7 @@ export default function ComprasPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
         {/* Welcome Section */}
         <div className="mb-12 text-center">
           <h2 className="text-3xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-3">
@@ -360,6 +361,8 @@ export default function ComprasPage() {
           </div>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

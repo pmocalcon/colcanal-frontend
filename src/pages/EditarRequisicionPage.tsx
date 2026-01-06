@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, AlertCircle, Loader2, Save, XCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Loader2, Save, XCircle } from 'lucide-react';
+import { Footer } from '@/components/ui/footer';
+import { ErrorMessage } from '@/components/ui/error-message';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -300,7 +302,7 @@ const EditarRequisicionPage: React.FC = () => {
 
   if (error && !originalRequisition) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
         <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center gap-4">
@@ -317,21 +319,16 @@ const EditarRequisicionPage: React.FC = () => {
             </div>
           </div>
         </header>
-        <main className="max-w-7xl mx-auto px-6 py-8">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-            <div>
-              <p className="font-semibold text-red-900">Error</p>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
+        <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
+          <ErrorMessage message={error} />
         </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -370,17 +367,9 @@ const EditarRequisicionPage: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
         {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-            <div>
-              <p className="font-semibold text-red-900">Error</p>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        )}
+        {error && <ErrorMessage message={error} className="mb-6" />}
 
         {/* Info Card */}
         <Card className="p-6 mb-6">
@@ -646,6 +635,8 @@ const EditarRequisicionPage: React.FC = () => {
           </Button>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 };

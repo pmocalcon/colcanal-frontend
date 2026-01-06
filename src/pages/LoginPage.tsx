@@ -1,5 +1,6 @@
 import { LoginForm } from '@/components/auth/LoginForm';
 import { CarouselInstitutional } from '@/components/ui/carousel-institutional';
+import { Footer } from '@/components/ui/footer';
 
 // Institutional images for carousel
 const INSTITUTIONAL_IMAGES = [
@@ -59,6 +60,7 @@ export default function LoginPage() {
               <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                 © 2025 Canalcongroup. Todos los derechos reservados.
               </p>
+              <Footer />
             </div>
           </div>
         </div>

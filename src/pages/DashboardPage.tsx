@@ -5,8 +5,10 @@ import { modulesService } from '@/services/modules.service';
 import type { Module } from '@/services/modules.service';
 import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, AlertCircle } from 'lucide-react';
+import { LogOut, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Footer } from '@/components/ui/footer';
+import { ErrorMessage } from '@/components/ui/error-message';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -60,24 +62,25 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
-        <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-[hsl(var(--canalco-error))] mx-auto mb-4" />
-          <p className="text-[hsl(var(--canalco-neutral-900))] font-semibold text-xl mb-2">Error</p>
-          <p className="text-[hsl(var(--canalco-neutral-600))]">{error}</p>
-          <Button
-            onClick={() => window.location.reload()}
-            className="mt-4 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
-          >
-            Reintentar
-          </Button>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+        <div className="flex-grow flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <ErrorMessage message={error} className="mb-4" />
+            <Button
+              onClick={() => window.location.reload()}
+              className="mt-4 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+            >
+              Reintentar
+            </Button>
+          </div>
         </div>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -135,7 +138,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
         {/* Welcome Section */}
         <div className="mb-12 text-center">
           <h2 className="text-3xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-3">
@@ -167,6 +170,8 @@ export default function DashboardPage() {
           </p>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

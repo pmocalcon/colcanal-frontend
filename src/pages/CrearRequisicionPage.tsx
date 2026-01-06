@@ -30,7 +30,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Home, Menu, Save, Plus, Trash2, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Home, Menu, Save, Plus, Trash2, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Footer } from '@/components/ui/footer';
+import { ErrorMessage } from '@/components/ui/error-message';
 
 interface RequisitionItem extends CreateRequisitionItemDto {
   tempId: string; // Temporary ID for React key
@@ -346,7 +348,7 @@ export default function CrearRequisicionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -439,7 +441,7 @@ export default function CrearRequisicionPage() {
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
         {/* Success Message */}
         {success && createdRequisitionNumber && (
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
@@ -454,12 +456,7 @@ export default function CrearRequisicionPage() {
         )}
 
         {/* Error Message */}
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600" />
-            <p className="text-red-800">{error}</p>
-          </div>
-        )}
+        {error && <ErrorMessage message={error} className="mb-6" />}
 
         {/* Form */}
         <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6">
@@ -803,6 +800,8 @@ export default function CrearRequisicionPage() {
           )}
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

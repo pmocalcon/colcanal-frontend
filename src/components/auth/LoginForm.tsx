@@ -120,8 +120,9 @@ export function LoginForm() {
 
       {/* Global Error Message from API */}
       {error && (
-        <div className="bg-[hsl(var(--canalco-error))]/10 border border-[hsl(var(--canalco-error))] text-[hsl(var(--canalco-error))] px-4 py-3 rounded-full text-sm">
-          {error}
+        <div className="bg-[hsl(var(--canalco-error))]/10 border border-[hsl(var(--canalco-error))] text-[hsl(var(--canalco-error))] px-4 py-3 rounded-lg text-sm">
+          <p>{error}</p>
+          <p className="text-xs mt-1 opacity-80">Contactar a Alexsandra Ortiz para la solución.</p>
         </div>
       )}
 
