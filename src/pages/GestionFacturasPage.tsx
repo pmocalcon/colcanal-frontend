@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Eye, FileText, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Eye, FileText, AlertCircle, Loader2, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -19,6 +19,19 @@ import {
   type PurchaseOrderForInvoicing,
 } from '@/services/invoices.service';
 import { StatusDashboard } from '@/components/ui/status-dashboard';
+import { Footer } from '@/components/ui/footer';
+import { ErrorMessage } from '@/components/ui/error-message';
+
+// Tipos de estado de factura para filtro
+type InvoiceStatusFilter = 'todos' | 'sin_factura' | 'facturacion_parcial' | 'factura_completa' | 'enviada_contabilidad';
+
+// Orden de prioridad para ordenar (sin factura primero)
+const STATUS_PRIORITY: Record<string, number> = {
+  sin_factura: 1,
+  facturacion_parcial: 2,
+  factura_completa: 3,
+  enviada_contabilidad: 4,
+};
 
 const GestionFacturasPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,6 +42,9 @@ const GestionFacturasPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // Filtro de estado de factura
+  const [statusFilter, setStatusFilter] = useState<InvoiceStatusFilter>('todos');
 
   const isCompras = user?.nombreRol === 'Compras';
 
@@ -95,6 +111,41 @@ const GestionFacturasPage: React.FC = () => {
     };
   };
 
+  // Contadores por estado
+  const statusCounts = useMemo(() => {
+    const counts = {
+      todos: purchaseOrders.length,
+      sin_factura: 0,
+      facturacion_parcial: 0,
+      factura_completa: 0,
+      enviada_contabilidad: 0,
+    };
+    purchaseOrders.forEach(po => {
+      const status = po.invoiceStatus as keyof typeof counts;
+      if (status in counts) {
+        counts[status]++;
+      }
+    });
+    return counts;
+  }, [purchaseOrders]);
+
+  // Filtrar y ordenar órdenes (sin factura primero)
+  const filteredAndSortedOrders = useMemo(() => {
+    let filtered = purchaseOrders;
+
+    // Aplicar filtro de estado
+    if (statusFilter !== 'todos') {
+      filtered = purchaseOrders.filter(po => po.invoiceStatus === statusFilter);
+    }
+
+    // Ordenar: sin factura primero, luego parcial, luego completa, luego enviada
+    return [...filtered].sort((a, b) => {
+      const priorityA = STATUS_PRIORITY[a.invoiceStatus] || 99;
+      const priorityB = STATUS_PRIORITY[b.invoiceStatus] || 99;
+      return priorityA - priorityB;
+    });
+  }, [purchaseOrders, statusFilter]);
+
   if (!isCompras) {
     return null;
   }
@@ -108,7 +159,7 @@ const GestionFacturasPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -147,62 +198,116 @@ const GestionFacturasPage: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
         {/* Status Dashboard */}
         <StatusDashboard
-          totalPending={purchaseOrders.filter(
-            po => po.invoiceStatus === 'sin_factura' || po.invoiceStatus === 'facturacion_parcial'
-          ).length}
+          totalPending={statusCounts.sin_factura + statusCounts.facturacion_parcial}
           overdueCount={0}
         />
 
         {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-            <div>
-              <p className="font-semibold text-red-900">Error</p>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        )}
+        {error && <ErrorMessage message={error} className="mb-6" />}
 
-        {/* Stats */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Filter Buttons */}
+        <div className="mb-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+            <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+              Filtrar por estado:
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={statusFilter === 'todos' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('todos')}
+              className={statusFilter === 'todos' ? 'bg-[hsl(var(--canalco-primary))]' : ''}
+            >
+              Todos ({statusCounts.todos})
+            </Button>
+            <Button
+              variant={statusFilter === 'sin_factura' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('sin_factura')}
+              className={statusFilter === 'sin_factura' ? 'bg-red-600 hover:bg-red-700' : 'border-red-300 text-red-700 hover:bg-red-50'}
+            >
+              🔴 Sin Factura ({statusCounts.sin_factura})
+            </Button>
+            <Button
+              variant={statusFilter === 'facturacion_parcial' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('facturacion_parcial')}
+              className={statusFilter === 'facturacion_parcial' ? 'bg-yellow-600 hover:bg-yellow-700' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'}
+            >
+              🟡 Parcial ({statusCounts.facturacion_parcial})
+            </Button>
+            <Button
+              variant={statusFilter === 'factura_completa' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('factura_completa')}
+              className={statusFilter === 'factura_completa' ? 'bg-green-600 hover:bg-green-700' : 'border-green-300 text-green-700 hover:bg-green-50'}
+            >
+              🟢 Completa ({statusCounts.factura_completa})
+            </Button>
+            <Button
+              variant={statusFilter === 'enviada_contabilidad' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('enviada_contabilidad')}
+              className={statusFilter === 'enviada_contabilidad' ? 'bg-blue-600 hover:bg-blue-700' : 'border-blue-300 text-blue-700 hover:bg-blue-50'}
+            >
+              🔵 En Contabilidad ({statusCounts.enviada_contabilidad})
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Total Órdenes</p>
+            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Total</p>
             <p className="text-2xl font-bold text-[hsl(var(--canalco-primary))]">{total}</p>
           </Card>
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Sin Factura</p>
-            <p className="text-2xl font-bold text-red-600">
-              {purchaseOrders.filter(po => po.invoiceStatus === 'sin_factura').length}
-            </p>
+          <Card className="p-4 border-red-200 bg-red-50">
+            <p className="text-sm text-red-600">Sin Factura</p>
+            <p className="text-2xl font-bold text-red-700">{statusCounts.sin_factura}</p>
           </Card>
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Facturación Parcial</p>
-            <p className="text-2xl font-bold text-yellow-600">
-              {purchaseOrders.filter(po => po.invoiceStatus === 'facturacion_parcial').length}
-            </p>
+          <Card className="p-4 border-yellow-200 bg-yellow-50">
+            <p className="text-sm text-yellow-600">Parcial</p>
+            <p className="text-2xl font-bold text-yellow-700">{statusCounts.facturacion_parcial}</p>
           </Card>
-          <Card className="p-4">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">Completas</p>
-            <p className="text-2xl font-bold text-green-600">
-              {purchaseOrders.filter(po => po.invoiceStatus === 'factura_completa').length}
-            </p>
+          <Card className="p-4 border-green-200 bg-green-50">
+            <p className="text-sm text-green-600">Completas</p>
+            <p className="text-2xl font-bold text-green-700">{statusCounts.factura_completa}</p>
+          </Card>
+          <Card className="p-4 border-blue-200 bg-blue-50">
+            <p className="text-sm text-blue-600">En Contabilidad</p>
+            <p className="text-2xl font-bold text-blue-700">{statusCounts.enviada_contabilidad}</p>
           </Card>
         </div>
 
         {/* Table */}
-        {purchaseOrders.length === 0 ? (
+        {filteredAndSortedOrders.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))]">
             <FileText className="h-16 w-16 mx-auto text-[hsl(var(--canalco-neutral-400))] mb-4" />
             <p className="text-lg font-medium text-[hsl(var(--canalco-neutral-700))]">
-              No hay órdenes de compra para facturar
+              {statusFilter !== 'todos'
+                ? `No hay órdenes con estado "${statusFilter === 'sin_factura' ? 'Sin Factura' : statusFilter === 'facturacion_parcial' ? 'Parcial' : statusFilter === 'factura_completa' ? 'Completa' : 'En Contabilidad'}"`
+                : 'No hay órdenes de compra para facturar'}
             </p>
             <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-2">
-              Las órdenes con recepción de materiales completa aparecerán aquí
+              {statusFilter !== 'todos'
+                ? 'Intenta con otro filtro para ver más órdenes'
+                : 'Las órdenes con recepción de materiales completa aparecerán aquí'}
             </p>
+            {statusFilter !== 'todos' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStatusFilter('todos')}
+                className="mt-4"
+              >
+                Ver todas las órdenes
+              </Button>
+            )}
           </div>
         ) : (
           <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
@@ -222,7 +327,7 @@ const GestionFacturasPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchaseOrders.map((po) => {
+                {filteredAndSortedOrders.map((po) => {
                   const progress = getInvoiceProgress(po);
                   return (
                     <TableRow key={po.purchaseOrderId} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
@@ -339,6 +444,8 @@ const GestionFacturasPage: React.FC = () => {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 };
