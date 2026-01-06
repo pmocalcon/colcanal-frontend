@@ -262,7 +262,7 @@ export default function DetalleRequisicionPage() {
             <CardTitle>Firmas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               {/* Solicitado por - SIEMPRE se muestra */}
               <div className="border-l-4 border-[hsl(var(--canalco-primary))] pl-4">
                 <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
