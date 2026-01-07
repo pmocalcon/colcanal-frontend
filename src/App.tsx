@@ -34,6 +34,7 @@ import CrearUsuarioPage from './pages/CrearUsuarioPage'
 import DetalleUsuarioPage from './pages/DetalleUsuarioPage'
 import ProveedoresPage from './pages/ProveedoresPage'
 import CrearObraPage from './pages/CrearObraPage'
+import LevantamientoObrasPage from './pages/LevantamientoObrasPage'
 
 export default function App() {
   return (
@@ -80,6 +81,7 @@ export default function App() {
           {/* Proveedores */}
           <Route path="/dashboard/proveedores" element={<ProveedoresPage />} />
           {/* Levantamiento de Obras */}
+          <Route path="/dashboard/levantamiento-obras" element={<LevantamientoObrasPage />} />
           <Route path="/dashboard/levantamiento-obras/obras/crear" element={<CrearObraPage />} />
           <Route path="/dashboard/levantamiento-obras/obras/editar/:id" element={<CrearObraPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
