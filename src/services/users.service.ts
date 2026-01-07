@@ -144,6 +144,14 @@ export const usersService = {
   },
 
   /**
+   * Obtener usuarios por IDs de roles
+   */
+  async getByRoles(roleIds: number[]): Promise<User[]> {
+    const allUsers = await this.getAll();
+    return allUsers.filter((user) => roleIds.includes(user.rolId) && user.estado);
+  },
+
+  /**
    * Obtener un usuario por ID
    */
   async getById(userId: number): Promise<User> {
