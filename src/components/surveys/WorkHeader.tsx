@@ -34,6 +34,11 @@ interface Company {
   abbreviation?: string;
 }
 
+interface Project {
+  projectId: number;
+  name: string;
+}
+
 interface WorkHeaderProps {
   // Modo de operación
   mode: 'view' | 'create' | 'edit';
@@ -52,6 +57,7 @@ interface WorkHeaderProps {
   // Para crear/editar - valores del formulario
   formData?: {
     companyId: number | null;
+    projectId: number | null;
     name: string;
     address: string;
     neighborhood: string;
@@ -75,6 +81,12 @@ interface WorkHeaderProps {
 
   // Empresa seleccionada (para mostrar código)
   selectedCompany?: Company;
+
+  // Lista de proyectos (solo para Canales & Contactos)
+  projects?: Project[];
+
+  // Indica si la empresa seleccionada es Canales & Contactos
+  isCanalesContactos?: boolean;
 }
 
 export function WorkHeader({
@@ -85,6 +97,8 @@ export function WorkHeader({
   onFormChange,
   companies = [],
   selectedCompany,
+  projects = [],
+  isCanalesContactos = false,
 }: WorkHeaderProps) {
   const isEditable = mode === 'create' || mode === 'edit';
 
@@ -235,6 +249,30 @@ export function WorkHeader({
               value={getCompanyCode()}
               readOnly
             />
+
+            {/* Proyecto (solo para Canales & Contactos) */}
+            {isEditable && isCanalesContactos && (
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                  Proyecto <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData?.projectId?.toString() || ''}
+                  onValueChange={(val) => onFormChange?.('projectId', parseInt(val))}
+                >
+                  <SelectTrigger className="h-8 text-sm bg-white">
+                    <SelectValue placeholder="Seleccione un proyecto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.projectId} value={project.projectId.toString()}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <Field
               label="Nombre de la Obra"

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto } from '@/services/surveys.service';
-import { masterDataService, type Company } from '@/services/master-data.service';
+import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
@@ -10,6 +10,7 @@ import { ErrorMessage } from '@/components/ui/error-message';
 
 interface FormData {
   companyId: number | null;
+  projectId: number | null;
   name: string;
   address: string;
   neighborhood: string;
@@ -27,6 +28,7 @@ interface FormData {
 
 const INITIAL_FORM_DATA: FormData = {
   companyId: null,
+  projectId: null,
   name: '',
   address: '',
   neighborhood: '',
@@ -50,16 +52,47 @@ export default function CrearObraPage() {
   // State
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [createdWorkCode, setCreatedWorkCode] = useState<string | null>(null);
 
+  // Check if company is "Canales & Contactos"
+  const isCanalesContactos = useMemo(() => {
+    if (!Array.isArray(companies) || !formData.companyId) return false;
+    const company = companies.find((c) => c.companyId === formData.companyId);
+    return company?.name === 'Canales & Contactos';
+  }, [formData.companyId, companies]);
+
   // Cargar datos iniciales
   useEffect(() => {
     loadInitialData();
   }, [id]);
+
+  // Cargar proyectos cuando cambia la empresa
+  useEffect(() => {
+    if (formData.companyId && isCanalesContactos) {
+      loadProjects(formData.companyId);
+    } else {
+      setProjects([]);
+      // Limpiar proyecto si cambia a empresa que no es Canales & Contactos
+      if (formData.projectId) {
+        setFormData((prev) => ({ ...prev, projectId: null }));
+      }
+    }
+  }, [formData.companyId, isCanalesContactos]);
+
+  const loadProjects = async (companyId: number) => {
+    try {
+      const projectsData = await masterDataService.getProjects(companyId);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
+    } catch (err) {
+      console.error('Error loading projects:', err);
+      setProjects([]);
+    }
+  };
 
   const loadInitialData = async () => {
     try {
@@ -113,6 +146,10 @@ export default function CrearObraPage() {
   const validateForm = (): boolean => {
     if (!formData.companyId) {
       setError('Debe seleccionar una empresa');
+      return false;
+    }
+    if (isCanalesContactos && !formData.projectId) {
+      setError('Debe seleccionar un proyecto para Canales & Contactos');
       return false;
     }
     if (!formData.name.trim()) {
@@ -277,6 +314,8 @@ export default function CrearObraPage() {
               onFormChange={handleFormChange}
               companies={companies}
               selectedCompany={selectedCompany}
+              projects={projects}
+              isCanalesContactos={isCanalesContactos}
             />
 
             {/* Submit Button */}
