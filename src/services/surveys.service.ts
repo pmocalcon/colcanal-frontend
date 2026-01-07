@@ -255,32 +255,32 @@ export const surveysService = {
   // ---- UCAPS ----
 
   async getUcaps(companyId?: number, projectId?: number): Promise<Ucap[]> {
+    if (!companyId) return [];
     const params: Record<string, any> = {};
-    if (companyId) params.companyId = companyId;
     if (projectId) params.projectId = projectId;
-    const response = await api.get('/surveys/ucaps', { params });
-    // Map snake_case from backend to camelCase for frontend
+    const response = await api.get(`/surveys/ucaps/${companyId}`, { params });
+    // Map response to frontend interface
     return (response.data || []).map((ucap: any) => ({
-      ucapId: ucap.ucapId || ucap.ucap_id,
+      ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
-      value: ucap.value ?? ucap.rounded_value ?? 0,
-      initialIpp: ucap.initialIpp ?? ucap.initial_ipp ?? 0,
+      value: ucap.roundedValue ?? ucap.value ?? 0,
+      initialIpp: ucap.initialIpp ?? 0,
     }));
   },
 
   async searchUcaps(search: string, companyId?: number, projectId?: number): Promise<Ucap[]> {
+    if (!companyId) return [];
     const params: Record<string, any> = { search };
-    if (companyId) params.companyId = companyId;
     if (projectId) params.projectId = projectId;
-    const response = await api.get('/surveys/ucaps/search', { params });
-    // Map snake_case from backend to camelCase for frontend
+    const response = await api.get(`/surveys/ucaps/${companyId}/search`, { params });
+    // Map response to frontend interface
     return (response.data || []).map((ucap: any) => ({
-      ucapId: ucap.ucapId || ucap.ucap_id,
+      ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
-      value: ucap.value ?? ucap.rounded_value ?? 0,
-      initialIpp: ucap.initialIpp ?? ucap.initial_ipp ?? 0,
+      value: ucap.roundedValue ?? ucap.value ?? 0,
+      initialIpp: ucap.initialIpp ?? 0,
     }));
   },
 
