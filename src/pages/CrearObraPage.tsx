@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
+import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -70,6 +71,12 @@ export default function CrearObraPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [createdWorkCode, setCreatedWorkCode] = useState<string | null>(null);
+
+  // Budget state
+  const [budgetItems, setBudgetItems] = useState<BudgetItemData[]>(createInitialBudgetItems());
+  const [selectedIppMonth, setSelectedIppMonth] = useState<number | null>(null);
+  const [selectedIppYear, setSelectedIppYear] = useState<number | null>(null);
+  const [ippValue, setIppValue] = useState<number | null>(null);
 
   // Check if company is "Canales & Contactos"
   const isCanalesContactos = useMemo(() => {
@@ -165,6 +172,17 @@ export default function CrearObraPage() {
   // Obtener empresa seleccionada
   const selectedCompany = companies.find((c) => c.companyId === formData.companyId);
 
+  // Handle IPP change
+  const handleIppChange = useCallback((month: number, year: number) => {
+    setSelectedIppMonth(month);
+    setSelectedIppYear(year);
+  }, []);
+
+  // Handle IPP value change
+  const handleIppValueChange = useCallback((value: number | null) => {
+    setIppValue(value);
+  }, []);
+
   // Validar formulario
   const validateForm = (): boolean => {
     if (!formData.companyId) {
@@ -232,6 +250,10 @@ export default function CrearObraPage() {
       // Limpiar formulario si es creación
       if (!isEditMode) {
         setFormData(INITIAL_FORM_DATA);
+        setBudgetItems(createInitialBudgetItems());
+        setSelectedIppMonth(null);
+        setSelectedIppYear(null);
+        setIppValue(null);
       }
 
       // Ocultar mensaje de éxito después de 5 segundos
@@ -341,6 +363,19 @@ export default function CrearObraPage() {
               isCanalesContactos={isCanalesContactos}
               receivers={receivers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
               reviewers={reviewers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
+            />
+
+            {/* Budget Section */}
+            <BudgetSection
+              workName={formData.name}
+              companyId={formData.companyId}
+              items={budgetItems}
+              onItemsChange={setBudgetItems}
+              selectedIppMonth={selectedIppMonth}
+              selectedIppYear={selectedIppYear}
+              onIppChange={handleIppChange}
+              ippValue={ippValue}
+              onIppValueChange={handleIppValueChange}
             />
 
             {/* Submit Button */}

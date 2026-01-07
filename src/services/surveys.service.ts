@@ -149,6 +149,36 @@ export interface Ucap {
   ucapId: number;
   code: string;
   description: string;
+  value: number;
+  initialIpp: number;
+}
+
+export interface IppData {
+  ippId: number;
+  month: number;
+  year: number;
+  value: number;
+  monthName?: string;
+}
+
+export interface BudgetItem {
+  itemNumber: number;
+  ucapId: number | null;
+  ucapCode?: string;
+  ucapDescription?: string;
+  unitValue: number;
+  quantity: number;
+  budgetedValue: number;
+}
+
+export interface WorkBudget {
+  workId: number;
+  items: BudgetItem[];
+  selectedIppMonth?: number;
+  selectedIppYear?: number;
+  ippValue?: number;
+  totalBudgeted: number;
+  totalAdjusted: number;
 }
 
 // ============================================
@@ -224,8 +254,29 @@ export const surveysService = {
 
   // ---- UCAPS ----
 
-  async getUcaps(companyId: number): Promise<Ucap[]> {
-    const response = await api.get(`/surveys/ucaps/${companyId}`);
+  async getUcaps(companyId?: number): Promise<Ucap[]> {
+    const params = companyId ? { companyId } : {};
+    const response = await api.get('/surveys/ucaps', { params });
+    return response.data;
+  },
+
+  async searchUcaps(search: string, companyId?: number): Promise<Ucap[]> {
+    const params: Record<string, any> = { search };
+    if (companyId) params.companyId = companyId;
+    const response = await api.get('/surveys/ucaps/search', { params });
+    return response.data;
+  },
+
+  // ---- IPP ----
+
+  async getIppData(year?: number): Promise<IppData[]> {
+    const params = year ? { year } : {};
+    const response = await api.get('/surveys/ipp', { params });
+    return response.data;
+  },
+
+  async getIppByMonth(month: number, year: number): Promise<IppData> {
+    const response = await api.get(`/surveys/ipp/${year}/${month}`);
     return response.data;
   },
 };
