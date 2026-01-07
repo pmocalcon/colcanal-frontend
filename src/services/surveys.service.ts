@@ -259,7 +259,14 @@ export const surveysService = {
     if (companyId) params.companyId = companyId;
     if (projectId) params.projectId = projectId;
     const response = await api.get('/surveys/ucaps', { params });
-    return response.data;
+    // Map snake_case from backend to camelCase for frontend
+    return (response.data || []).map((ucap: any) => ({
+      ucapId: ucap.ucapId || ucap.ucap_id,
+      code: ucap.code,
+      description: ucap.description,
+      value: ucap.value ?? ucap.rounded_value ?? 0,
+      initialIpp: ucap.initialIpp ?? ucap.initial_ipp ?? 0,
+    }));
   },
 
   async searchUcaps(search: string, companyId?: number, projectId?: number): Promise<Ucap[]> {
@@ -267,7 +274,14 @@ export const surveysService = {
     if (companyId) params.companyId = companyId;
     if (projectId) params.projectId = projectId;
     const response = await api.get('/surveys/ucaps/search', { params });
-    return response.data;
+    // Map snake_case from backend to camelCase for frontend
+    return (response.data || []).map((ucap: any) => ({
+      ucapId: ucap.ucapId || ucap.ucap_id,
+      code: ucap.code,
+      description: ucap.description,
+      value: ucap.value ?? ucap.rounded_value ?? 0,
+      initialIpp: ucap.initialIpp ?? ucap.initial_ipp ?? 0,
+    }));
   },
 
   // ---- IPP ----

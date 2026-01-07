@@ -184,6 +184,7 @@ export function BudgetSection({
 }: BudgetSectionProps) {
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
   const [loading, setLoading] = useState(false);
+  const [ucapError, setUcapError] = useState<string | null>(null);
 
   // Get available years (current year and previous 2 years)
   const currentYear = new Date().getFullYear();
@@ -194,15 +195,22 @@ export function BudgetSection({
     const loadUcaps = async () => {
       if (!companyId) {
         setUcaps([]);
+        setUcapError(null);
         return;
       }
       try {
         setLoading(true);
+        setUcapError(null);
         const data = await surveysService.getUcaps(companyId, projectId || undefined);
+        console.log('UCAPs loaded:', data.length, 'items for company:', companyId, 'project:', projectId);
         setUcaps(data);
-      } catch (error) {
+        if (data.length === 0) {
+          setUcapError('No se encontraron UCAPs para esta empresa/proyecto');
+        }
+      } catch (error: any) {
         console.error('Error loading UCAPs:', error);
         setUcaps([]);
+        setUcapError(error.response?.data?.message || 'Error al cargar UCAPs');
       } finally {
         setLoading(false);
       }
@@ -300,11 +308,34 @@ export function BudgetSection({
   return (
     <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden mt-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3">
+      <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3 flex items-center justify-between">
         <h2 className="text-lg font-bold text-white tracking-wide">
           I. PRESUPUESTO {workName ? workName.toUpperCase() : 'LEVANTAMIENTO'}
         </h2>
+        <div className="flex items-center gap-2 text-sm text-white/80">
+          {loading && (
+            <span className="flex items-center gap-1">
+              <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+              Cargando UCAPs...
+            </span>
+          )}
+          {!loading && ucaps.length > 0 && (
+            <span>{ucaps.length} UCAPs disponibles</span>
+          )}
+        </div>
       </div>
+
+      {/* Info/Error Message */}
+      {ucapError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-700">
+          ⚠️ {ucapError}
+        </div>
+      )}
+      {!companyId && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-2 text-sm text-blue-700">
+          ℹ️ Seleccione una empresa para cargar las UCAPs disponibles
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto">
