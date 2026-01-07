@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { modulesService } from '@/services/modules.service';
@@ -10,12 +10,51 @@ import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
+// Orden definido para el grid de módulos (3 columnas)
+// Fila 1: Dashboard, Usuarios, Auditorías
+// Fila 2: Compras, Proveedores, Notificaciones
+// Fila 3: Materiales, Levantamiento de Obras
+const MODULE_ORDER = [
+  'dashboard',
+  'usuarios',
+  'auditorias',
+  'compras',
+  'proveedores',
+  'notificaciones',
+  'materiales',
+  'levantamiento-obras',
+];
+
+// Mapeo de slugs antiguos a nuevos
+const SLUG_MAPPING: Record<string, string> = {
+  'inventarios': 'materiales',
+  'reportes': 'levantamiento-obras',
+};
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Procesar y ordenar módulos según el orden definido
+  const sortedModules = useMemo(() => {
+    return modules
+      .map((module) => ({
+        ...module,
+        // Mapear slugs antiguos a nuevos
+        slug: SLUG_MAPPING[module.slug] || module.slug,
+      }))
+      .sort((a, b) => {
+        const indexA = MODULE_ORDER.indexOf(a.slug);
+        const indexB = MODULE_ORDER.indexOf(b.slug);
+        // Módulos no listados van al final
+        const orderA = indexA === -1 ? MODULE_ORDER.length : indexA;
+        const orderB = indexB === -1 ? MODULE_ORDER.length : indexB;
+        return orderA - orderB;
+      });
+  }, [modules]);
 
   useEffect(() => {
     const fetchModules = async () => {
@@ -151,7 +190,7 @@ export default function DashboardPage() {
 
         {/* Modules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {modules.map((module) => (
+          {sortedModules.map((module) => (
             <ModuleCard
               key={module.gestionId}
               nombre={module.nombre}
