@@ -21,11 +21,19 @@ const AREA_TYPE_OPTIONS = [
   'Otro',
 ];
 const REQUEST_TYPE_OPTIONS = [
-  'Expansión',
   'Modernización',
-  'Mantenimiento',
-  'Nuevo proyecto',
-  'Reposición',
+  'Expansión',
+  'Operación y Mantenimiento',
+  'Inversión',
+  'Donación',
+  'Otros',
+];
+const REQUESTING_ENTITY_OPTIONS = [
+  'Usuario',
+  'Municipio',
+  'Interventoría',
+  'Concejo Municipal',
+  'Propia',
 ];
 
 interface Company {
@@ -37,6 +45,11 @@ interface Company {
 interface Project {
   projectId: number;
   name: string;
+}
+
+interface UserOption {
+  userId: number;
+  nombre: string;
 }
 
 interface WorkHeaderProps {
@@ -71,6 +84,8 @@ interface WorkHeaderProps {
     requestType: string;
     filingNumber: string;
     requestDate: string;
+    receivedById: number | null;
+    assignedReviewerId: number | null;
   };
 
   // Callbacks para cambios en el formulario
@@ -87,6 +102,12 @@ interface WorkHeaderProps {
 
   // Indica si la empresa seleccionada es Canales & Contactos
   isCanalesContactos?: boolean;
+
+  // Lista de usuarios que pueden recibir (PQRS y Coordinador Operativo)
+  receivers?: UserOption[];
+
+  // Lista de usuarios revisores
+  reviewers?: UserOption[];
 }
 
 export function WorkHeader({
@@ -99,6 +120,8 @@ export function WorkHeader({
   selectedCompany,
   projects = [],
   isCanalesContactos = false,
+  receivers = [],
+  reviewers = [],
 }: WorkHeaderProps) {
   const isEditable = mode === 'create' || mode === 'edit';
 
@@ -244,12 +267,6 @@ export function WorkHeader({
               <Field label="Empresa" value={getValue('companyId')} readOnly />
             )}
 
-            <Field
-              label="Cod. Empresa"
-              value={getCompanyCode()}
-              readOnly
-            />
-
             {/* Proyecto (solo para Canales & Contactos) */}
             {isEditable && isCanalesContactos && (
               <div className="flex flex-col gap-1">
@@ -305,6 +322,8 @@ export function WorkHeader({
               label="Solicitante Por Entidad O Institución"
               value={getValue('requestingEntity')}
               field="requestingEntity"
+              type="select"
+              options={REQUESTING_ENTITY_OPTIONS}
             />
 
             <Field
@@ -314,22 +333,57 @@ export function WorkHeader({
               type="date"
             />
 
-            {/* Campos de levantamiento (solo lectura) */}
-            {surveyData?.receivedBy && (
-              <Field
-                label="Recibe"
-                value={surveyData.receivedBy}
-                readOnly
-              />
-            )}
+            {/* Recibe - Select de usuarios PQRS y Coordinador Operativo */}
+            {isEditable ? (
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                  Recibe
+                </Label>
+                <Select
+                  value={formData?.receivedById?.toString() || ''}
+                  onValueChange={(val) => onFormChange?.('receivedById', parseInt(val))}
+                >
+                  <SelectTrigger className="h-8 text-sm bg-white">
+                    <SelectValue placeholder="Seleccione quien recibe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {receivers.map((user) => (
+                      <SelectItem key={user.userId} value={user.userId.toString()}>
+                        {user.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : surveyData?.receivedBy ? (
+              <Field label="Recibe" value={surveyData.receivedBy} readOnly />
+            ) : null}
 
-            {surveyData?.assignedReviewer && (
-              <Field
-                label="Revisor Designado"
-                value={surveyData.assignedReviewer}
-                readOnly
-              />
-            )}
+            {/* Revisor Designado - Select de usuarios revisores */}
+            {isEditable ? (
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                  Revisor Designado
+                </Label>
+                <Select
+                  value={formData?.assignedReviewerId?.toString() || ''}
+                  onValueChange={(val) => onFormChange?.('assignedReviewerId', parseInt(val))}
+                >
+                  <SelectTrigger className="h-8 text-sm bg-white">
+                    <SelectValue placeholder="Seleccione revisor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reviewers.map((user) => (
+                      <SelectItem key={user.userId} value={user.userId.toString()}>
+                        {user.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : surveyData?.assignedReviewer ? (
+              <Field label="Revisor Designado" value={surveyData.assignedReviewer} readOnly />
+            ) : null}
           </div>
 
           {/* Columna Derecha */}

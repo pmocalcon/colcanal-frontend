@@ -2,11 +2,17 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
+import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
+
+// IDs de roles para PQRS y Coordinador Operativo (recibedores)
+const RECEIVER_ROLE_IDS = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 32];
+// IDs de roles para revisores
+const REVIEWER_ROLE_IDS = [8, 9, 10, 11];
 
 interface FormData {
   companyId: number | null;
@@ -24,6 +30,8 @@ interface FormData {
   requestType: string;
   filingNumber: string;
   requestDate: string;
+  receivedById: number | null;
+  assignedReviewerId: number | null;
 }
 
 const INITIAL_FORM_DATA: FormData = {
@@ -42,6 +50,8 @@ const INITIAL_FORM_DATA: FormData = {
   requestType: '',
   filingNumber: '',
   requestDate: new Date().toISOString().split('T')[0],
+  receivedById: null,
+  assignedReviewerId: null,
 };
 
 export default function CrearObraPage() {
@@ -53,6 +63,8 @@ export default function CrearObraPage() {
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [receivers, setReceivers] = useState<User[]>([]);
+  const [reviewers, setReviewers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,11 +115,20 @@ export default function CrearObraPage() {
       const companiesData = await masterDataService.getCompanies();
       setCompanies(Array.isArray(companiesData) ? companiesData : []);
 
+      // Cargar usuarios recibedores (PQRS y Coordinador Operativo)
+      const receiversData = await usersService.getByRoles(RECEIVER_ROLE_IDS);
+      setReceivers(receiversData);
+
+      // Cargar usuarios revisores
+      const reviewersData = await usersService.getByRoles(REVIEWER_ROLE_IDS);
+      setReviewers(reviewersData);
+
       // Si es modo edición, cargar la obra
       if (isEditMode && id) {
         const work = await surveysService.getWorkById(parseInt(id));
         setFormData({
           companyId: work.companyId,
+          projectId: null, // TODO: Agregar projectId a Work si es necesario
           name: work.name,
           address: work.address,
           neighborhood: work.neighborhood,
@@ -121,6 +142,8 @@ export default function CrearObraPage() {
           requestType: work.requestType || '',
           filingNumber: work.filingNumber || '',
           requestDate: work.requestDate || '',
+          receivedById: null, // TODO: Cargar desde work si existe
+          assignedReviewerId: null, // TODO: Cargar desde work si existe
         });
       }
     } catch (err: any) {
@@ -316,6 +339,8 @@ export default function CrearObraPage() {
               selectedCompany={selectedCompany}
               projects={projects}
               isCanalesContactos={isCanalesContactos}
+              receivers={receivers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
+              reviewers={reviewers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
             />
 
             {/* Submit Button */}
