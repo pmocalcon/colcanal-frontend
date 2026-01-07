@@ -55,6 +55,7 @@ export interface BudgetItemData {
 interface BudgetSectionProps {
   workName: string;
   companyId: number | null;
+  projectId: number | null;
   items: BudgetItemData[];
   onItemsChange: (items: BudgetItemData[]) => void;
   selectedIppMonth: number | null;
@@ -172,6 +173,7 @@ function UcapCombobox({
 export function BudgetSection({
   workName,
   companyId,
+  projectId,
   items,
   onItemsChange,
   selectedIppMonth,
@@ -187,12 +189,16 @@ export function BudgetSection({
   const currentYear = new Date().getFullYear();
   const availableYears = [currentYear, currentYear - 1, currentYear - 2];
 
-  // Load UCAPs
+  // Load UCAPs when company or project changes
   useEffect(() => {
     const loadUcaps = async () => {
+      if (!companyId) {
+        setUcaps([]);
+        return;
+      }
       try {
         setLoading(true);
-        const data = await surveysService.getUcaps(companyId || undefined);
+        const data = await surveysService.getUcaps(companyId, projectId || undefined);
         setUcaps(data);
       } catch (error) {
         console.error('Error loading UCAPs:', error);
@@ -202,7 +208,7 @@ export function BudgetSection({
       }
     };
     loadUcaps();
-  }, [companyId]);
+  }, [companyId, projectId]);
 
   // Load IPP when month/year changes
   useEffect(() => {

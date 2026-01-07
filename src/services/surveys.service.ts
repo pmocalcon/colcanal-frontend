@@ -254,15 +254,18 @@ export const surveysService = {
 
   // ---- UCAPS ----
 
-  async getUcaps(companyId?: number): Promise<Ucap[]> {
-    const params = companyId ? { companyId } : {};
+  async getUcaps(companyId?: number, projectId?: number): Promise<Ucap[]> {
+    const params: Record<string, any> = {};
+    if (companyId) params.companyId = companyId;
+    if (projectId) params.projectId = projectId;
     const response = await api.get('/surveys/ucaps', { params });
     return response.data;
   },
 
-  async searchUcaps(search: string, companyId?: number): Promise<Ucap[]> {
+  async searchUcaps(search: string, companyId?: number, projectId?: number): Promise<Ucap[]> {
     const params: Record<string, any> = { search };
     if (companyId) params.companyId = companyId;
+    if (projectId) params.projectId = projectId;
     const response = await api.get('/surveys/ucaps/search', { params });
     return response.data;
   },

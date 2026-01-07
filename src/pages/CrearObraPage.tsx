@@ -369,6 +369,7 @@ export default function CrearObraPage() {
             <BudgetSection
               workName={formData.name}
               companyId={formData.companyId}
+              projectId={formData.projectId}
               items={budgetItems}
               onItemsChange={setBudgetItems}
               selectedIppMonth={selectedIppMonth}
