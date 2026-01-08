@@ -1,7 +1,6 @@
-import { useCallback } from 'react';
+import { memo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
@@ -63,7 +62,7 @@ export const createInitialInvestmentData = (): InvestmentSectionData => ({
   items: createInitialInvestmentItems(),
 });
 
-// Yes/No Toggle Component
+// Yes/No Toggle Component - Shows only the selected value
 function YesNoToggle({
   label,
   value,
@@ -75,31 +74,135 @@ function YesNoToggle({
 }) {
   return (
     <div className="flex items-center justify-between py-2 px-4 border-b border-[hsl(var(--canalco-neutral-200))] last:border-b-0">
-      <Label className="text-sm text-[hsl(var(--canalco-neutral-700))] cursor-pointer flex-1">
+      <Label className="text-sm text-[hsl(var(--canalco-neutral-700))] flex-1">
         {label}
       </Label>
-      <div className="flex items-center gap-3">
-        <span className={cn(
-          "text-sm font-medium transition-colors",
-          !value ? "text-[hsl(var(--canalco-neutral-800))]" : "text-[hsl(var(--canalco-neutral-400))]"
-        )}>
-          No
-        </span>
-        <Switch
-          checked={value}
-          onCheckedChange={onChange}
-          className="data-[state=checked]:bg-cyan-600"
-        />
-        <span className={cn(
-          "text-sm font-medium transition-colors",
-          value ? "text-cyan-700" : "text-[hsl(var(--canalco-neutral-400))]"
-        )}>
-          Si
-        </span>
-      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={cn(
+          "px-4 py-1 rounded-full text-sm font-semibold transition-colors min-w-[50px]",
+          value
+            ? "bg-cyan-600 text-white hover:bg-cyan-700"
+            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+        )}
+      >
+        {value ? 'Si' : 'No'}
+      </button>
     </div>
   );
 }
+
+// Memoized table row component to prevent unnecessary re-renders
+interface InvestmentRowProps {
+  item: InvestmentItemData;
+  index: number;
+  onFieldChange: (index: number, field: keyof InvestmentItemData, value: string) => void;
+}
+
+const InvestmentRow = memo(function InvestmentRow({
+  item,
+  index,
+  onFieldChange,
+}: InvestmentRowProps) {
+  return (
+    <tr
+      className={cn(
+        'border-b border-[hsl(var(--canalco-neutral-200))]',
+        index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'
+      )}
+    >
+      {/* ITEM - Read Only */}
+      <td className="px-2 py-1 text-center font-medium text-[hsl(var(--canalco-neutral-700))]">
+        {item.itemNumber}
+      </td>
+      {/* No Orden */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          defaultValue={item.orderNumber}
+          onBlur={(e) => onFieldChange(index, 'orderNumber', e.target.value)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* Puntos - Read Only */}
+      <td className="px-2 py-1 text-center font-medium text-cyan-700">
+        {item.point}
+      </td>
+      {/* Descripción */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          defaultValue={item.description}
+          onBlur={(e) => onFieldChange(index, 'description', e.target.value)}
+          className="h-7 text-xs"
+          placeholder="Descripción..."
+        />
+      </td>
+      {/* Cant. Lum */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          defaultValue={item.lumQuantity}
+          onBlur={(e) => onFieldChange(index, 'lumQuantity', e.target.value)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* Cant. Lum. Reubicada */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          defaultValue={item.lumRelocatedQuantity}
+          onBlur={(e) => onFieldChange(index, 'lumRelocatedQuantity', e.target.value)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* Cant Poste */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          defaultValue={item.poleQuantity}
+          onBlur={(e) => onFieldChange(index, 'poleQuantity', e.target.value)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* Red Trenzada */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          defaultValue={item.twistedNetwork}
+          onBlur={(e) => onFieldChange(index, 'twistedNetwork', e.target.value)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* Latitud */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          defaultValue={item.latitude}
+          onBlur={(e) => onFieldChange(index, 'latitude', e.target.value)}
+          className="h-7 text-xs text-center"
+          placeholder="Ej: 10.9878"
+        />
+      </td>
+      {/* Longitud */}
+      <td className="px-1 py-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          defaultValue={item.longitude}
+          onBlur={(e) => onFieldChange(index, 'longitude', e.target.value)}
+          className="h-7 text-xs text-center"
+          placeholder="Ej: -74.7889"
+        />
+      </td>
+    </tr>
+  );
+});
 
 export function InvestmentSection({
   data,
@@ -130,7 +233,7 @@ export function InvestmentSection({
     [data, onDataChange]
   );
 
-  // Handle item field change
+  // Handle item field change - updates on blur to prevent focus loss
   const handleItemChange = useCallback(
     (index: number, field: keyof InvestmentItemData, value: string) => {
       const newItems = [...data.items];
@@ -241,102 +344,12 @@ export function InvestmentSection({
           </thead>
           <tbody>
             {data.items.map((item, index) => (
-              <tr
+              <InvestmentRow
                 key={item.itemNumber}
-                className={cn(
-                  'border-b border-[hsl(var(--canalco-neutral-200))]',
-                  index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'
-                )}
-              >
-                {/* ITEM - Read Only */}
-                <td className="px-2 py-1 text-center font-medium text-[hsl(var(--canalco-neutral-700))]">
-                  {item.itemNumber}
-                </td>
-                {/* No Orden */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    value={item.orderNumber}
-                    onChange={(e) => handleItemChange(index, 'orderNumber', e.target.value)}
-                    className="h-7 text-xs text-center"
-                  />
-                </td>
-                {/* Puntos - Read Only */}
-                <td className="px-2 py-1 text-center font-medium text-cyan-700">
-                  {item.point}
-                </td>
-                {/* Descripción */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    value={item.description}
-                    onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                    className="h-7 text-xs"
-                    placeholder="Descripción..."
-                  />
-                </td>
-                {/* Cant. Lum */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={item.lumQuantity}
-                    onChange={(e) => handleItemChange(index, 'lumQuantity', e.target.value)}
-                    className="h-7 text-xs text-center"
-                  />
-                </td>
-                {/* Cant. Lum. Reubicada */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={item.lumRelocatedQuantity}
-                    onChange={(e) => handleItemChange(index, 'lumRelocatedQuantity', e.target.value)}
-                    className="h-7 text-xs text-center"
-                  />
-                </td>
-                {/* Cant Poste */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={item.poleQuantity}
-                    onChange={(e) => handleItemChange(index, 'poleQuantity', e.target.value)}
-                    className="h-7 text-xs text-center"
-                  />
-                </td>
-                {/* Red Trenzada */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    value={item.twistedNetwork}
-                    onChange={(e) => handleItemChange(index, 'twistedNetwork', e.target.value)}
-                    className="h-7 text-xs text-center"
-                  />
-                </td>
-                {/* Latitud */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={item.latitude}
-                    onChange={(e) => handleItemChange(index, 'latitude', e.target.value)}
-                    className="h-7 text-xs text-center"
-                    placeholder="Ej: 10.9878"
-                  />
-                </td>
-                {/* Longitud */}
-                <td className="px-1 py-1">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={item.longitude}
-                    onChange={(e) => handleItemChange(index, 'longitude', e.target.value)}
-                    className="h-7 text-xs text-center"
-                    placeholder="Ej: -74.7889"
-                  />
-                </td>
-              </tr>
+                item={item}
+                index={index}
+                onFieldChange={handleItemChange}
+              />
             ))}
           </tbody>
         </table>
