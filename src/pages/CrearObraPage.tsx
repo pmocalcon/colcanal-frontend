@@ -234,15 +234,15 @@ export default function CrearObraPage() {
         address: formData.address.trim(),
         neighborhood: formData.neighborhood.trim(),
         userName: formData.userName.trim() || '',
-        requestingEntity: formData.requestingEntity.trim() || '',
+        requestingEntity: formData.requestingEntity || '',
         recordNumber: formData.recordNumber.trim() || '',
         sectorVillage: formData.sectorVillage.trim() || '',
         zone: formData.zone || '',
         userAddress: formData.userAddress.trim() || '',
-        areaType: formData.areaType || '',
+        areaType: formData.areaType.trim() || '',
         requestType: formData.requestType,
         filingNumber: formData.filingNumber.trim() || '',
-        requestDate: formData.requestDate || undefined,
+        // requestDate belongs to Survey, not Work
       };
 
       let result;

@@ -11,15 +11,6 @@ import type { Work } from '@/services/surveys.service';
 
 // Opciones para los selects
 const ZONE_OPTIONS = ['Urbano', 'Rural'];
-const AREA_TYPE_OPTIONS = [
-  'Plazoleta',
-  'Parque',
-  'Vía pública',
-  'Zona residencial',
-  'Zona comercial',
-  'Zona industrial',
-  'Otro',
-];
 const REQUEST_TYPE_OPTIONS = [
   'Modernización',
   'Expansión',
@@ -437,8 +428,6 @@ export function WorkHeader({
               label="Tipo De Área A Iluminar"
               value={getValue('areaType')}
               field="areaType"
-              type="select"
-              options={AREA_TYPE_OPTIONS}
             />
 
             <Field
