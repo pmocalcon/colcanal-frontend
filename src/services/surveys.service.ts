@@ -153,6 +153,17 @@ export interface Ucap {
   initialIpp: number;
 }
 
+export interface IppConfig {
+  baseYear: number;
+  baseMonth: number;
+  initialValue: number;
+}
+
+export interface UcapsResponse {
+  ippConfig: IppConfig;
+  ucaps: Ucap[];
+}
+
 export interface IppData {
   ippId: number;
   month: number;
@@ -254,19 +265,35 @@ export const surveysService = {
 
   // ---- UCAPS ----
 
-  async getUcaps(companyId?: number, projectId?: number): Promise<Ucap[]> {
-    if (!companyId) return [];
+  async getUcaps(companyId?: number, projectId?: number): Promise<UcapsResponse> {
+    if (!companyId) {
+      return {
+        ippConfig: { baseYear: 2015, baseMonth: 1, initialValue: 100 },
+        ucaps: [],
+      };
+    }
     const params: Record<string, any> = {};
     if (projectId) params.projectId = projectId;
     const response = await api.get(`/surveys/ucaps/${companyId}`, { params });
-    // Map response to frontend interface, ensuring numeric values
-    return (response.data || []).map((ucap: any) => ({
+
+    // Handle new response structure with ippConfig
+    const data = response.data;
+    const ippConfig: IppConfig = {
+      baseYear: data.ippConfig?.baseYear ?? 2015,
+      baseMonth: data.ippConfig?.baseMonth ?? 1,
+      initialValue: parseFloat(data.ippConfig?.initialValue ?? 100) || 100,
+    };
+
+    // Map ucaps to frontend interface, ensuring numeric values
+    const ucaps = (data.ucaps || []).map((ucap: any) => ({
       ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));
+
+    return { ippConfig, ucaps };
   },
 
   async searchUcaps(search: string, companyId?: number, projectId?: number): Promise<Ucap[]> {

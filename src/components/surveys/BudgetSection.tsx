@@ -16,7 +16,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { surveysService, type Ucap } from '@/services/surveys.service';
+import { surveysService, type Ucap, type IppConfig } from '@/services/surveys.service';
+
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
 
 export interface BudgetItemData {
   itemNumber: number;
@@ -37,7 +42,6 @@ interface BudgetSectionProps {
   onItemsChange: (items: BudgetItemData[]) => void;
   ippValue: number | null;
   onIppValueChange: (value: number | null) => void;
-  ippBaseYear?: number; // Year of the initial IPP (e.g., 2015, 2018)
 }
 
 // Initialize 30 empty items
@@ -153,9 +157,9 @@ export function BudgetSection({
   onItemsChange,
   ippValue,
   onIppValueChange,
-  ippBaseYear = 2015,
 }: BudgetSectionProps) {
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
+  const [ippConfig, setIppConfig] = useState<IppConfig>({ baseYear: 2015, baseMonth: 1, initialValue: 100 });
   const [loading, setLoading] = useState(false);
   const [ucapError, setUcapError] = useState<string | null>(null);
 
@@ -164,16 +168,19 @@ export function BudgetSection({
     const loadUcaps = async () => {
       if (!companyId) {
         setUcaps([]);
+        setIppConfig({ baseYear: 2015, baseMonth: 1, initialValue: 100 });
         setUcapError(null);
         return;
       }
       try {
         setLoading(true);
         setUcapError(null);
-        const data = await surveysService.getUcaps(companyId, projectId || undefined);
-        console.log('UCAPs loaded:', data.length, 'items for company:', companyId, 'project:', projectId);
-        setUcaps(data);
-        if (data.length === 0) {
+        const response = await surveysService.getUcaps(companyId, projectId || undefined);
+        console.log('UCAPs loaded:', response.ucaps.length, 'items for company:', companyId, 'project:', projectId);
+        console.log('IPP Config:', response.ippConfig);
+        setUcaps(response.ucaps);
+        setIppConfig(response.ippConfig);
+        if (response.ucaps.length === 0) {
           setUcapError('No se encontraron UCAPs para esta empresa/proyecto');
         }
       } catch (error: any) {
@@ -245,11 +252,14 @@ export function BudgetSection({
     return items.reduce((sum, item) => sum + item.budgetedValue, 0);
   }, [items]);
 
-  // Get initial IPP from the first item with a value (all UCAPs from same company share the same initial IPP)
-  const initialIpp = useMemo(() => {
-    const itemWithIpp = items.find((item) => item.initialIpp > 0);
-    return itemWithIpp?.initialIpp ?? 0;
-  }, [items]);
+  // Get initial IPP from ippConfig (comes from backend based on company/project)
+  const initialIpp = ippConfig.initialValue;
+
+  // Generate dynamic label for IPP initial (e.g., "IPP Julio 2015")
+  const ippLabel = useMemo(() => {
+    const monthName = MONTH_NAMES[ippConfig.baseMonth - 1] || 'Enero';
+    return `IPP ${monthName} ${ippConfig.baseYear}`;
+  }, [ippConfig.baseMonth, ippConfig.baseYear]);
 
   // Calculate adjusted total: (IPP mes / IPP inicial) * total presupuestado
   const totalAdjusted = useMemo(() => {
@@ -388,7 +398,7 @@ export function BudgetSection({
         {/* IPP Inicial Row */}
         <div className="flex justify-between items-center px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
           <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-            ÍNDICE DE PRECIOS AL PRODUCTOR INICIAL (IPP {ippBaseYear})
+            ÍNDICE DE PRECIOS AL PRODUCTOR INICIAL ({ippLabel})
           </span>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[hsl(var(--canalco-neutral-600))]">
