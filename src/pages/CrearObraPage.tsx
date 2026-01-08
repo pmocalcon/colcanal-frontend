@@ -6,6 +6,7 @@ import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
 import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
+import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksData } from '@/components/surveys/DocumentLinksSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -79,6 +80,9 @@ export default function CrearObraPage() {
 
   // Investment section state
   const [investmentData, setInvestmentData] = useState<InvestmentSectionData>(createInitialInvestmentData());
+
+  // Document links state (croquis and mapa URLs)
+  const [documentLinks, setDocumentLinks] = useState<DocumentLinksData>(createInitialDocumentLinks());
 
   // Check if company is "Canales & Contactos"
   const isCanalesContactos = useMemo(() => {
@@ -249,6 +253,7 @@ export default function CrearObraPage() {
         setBudgetItems(createInitialBudgetItems());
         setIppValue(null);
         setInvestmentData(createInitialInvestmentData());
+        setDocumentLinks(createInitialDocumentLinks());
       }
 
       // Ocultar mensaje de éxito después de 5 segundos
@@ -375,6 +380,12 @@ export default function CrearObraPage() {
             <InvestmentSection
               data={investmentData}
               onDataChange={setInvestmentData}
+            />
+
+            {/* Document Links Section (Croquis y Mapa) */}
+            <DocumentLinksSection
+              data={documentLinks}
+              onDataChange={setDocumentLinks}
             />
 
             {/* Submit Button */}
