@@ -293,8 +293,8 @@ export default function CrearObraPage() {
             latitude: item.latitude || undefined,
             longitude: item.longitude || undefined,
           })),
-        // Materials (filter only items with materialId)
-        materials: materialItems
+        // Material items (filter only items with materialId)
+        materialItems: materialItems
           .filter((item) => item.materialId !== null && parseFloat(item.quantity) > 0)
           .map((item) => ({
             materialId: item.materialId!,

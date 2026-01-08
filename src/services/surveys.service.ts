@@ -131,8 +131,8 @@ export interface CreateSurveyDto {
     latitude?: string;
     longitude?: string;
   }[];
-  // Materials (not materialItems)
-  materials?: {
+  // Material items
+  materialItems?: {
     materialId: number;
     unitOfMeasure: string;
     quantity: number;
