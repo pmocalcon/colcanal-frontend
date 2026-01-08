@@ -474,7 +474,9 @@ export default function CrearObraPage() {
       }, 5000);
     } catch (err: any) {
       console.error('Error saving work/survey:', err);
-      setError(err.response?.data?.message || 'Error al guardar la obra y levantamiento');
+      // Handle both API errors and regular Error objects
+      const errorMessage = err.message || err.response?.data?.message || 'Error al guardar la obra y levantamiento';
+      setError(errorMessage);
     } finally {
       setSaving(false);
     }
