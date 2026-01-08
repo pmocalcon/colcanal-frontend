@@ -7,6 +7,7 @@ import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
 import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
 import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksData } from '@/components/surveys/DocumentLinksSection';
+import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -83,6 +84,9 @@ export default function CrearObraPage() {
 
   // Document links state (croquis and mapa URLs)
   const [documentLinks, setDocumentLinks] = useState<DocumentLinksData>(createInitialDocumentLinks());
+
+  // Materials state
+  const [materialItems, setMaterialItems] = useState<MaterialItemData[]>(createInitialMaterialItems());
 
   // Check if company is "Canales & Contactos"
   const isCanalesContactos = useMemo(() => {
@@ -254,6 +258,7 @@ export default function CrearObraPage() {
         setIppValue(null);
         setInvestmentData(createInitialInvestmentData());
         setDocumentLinks(createInitialDocumentLinks());
+        setMaterialItems(createInitialMaterialItems());
       }
 
       // Ocultar mensaje de éxito después de 5 segundos
@@ -374,6 +379,12 @@ export default function CrearObraPage() {
               onItemsChange={setBudgetItems}
               ippValue={ippValue}
               onIppValueChange={handleIppValueChange}
+            />
+
+            {/* Materials Section */}
+            <MaterialsSection
+              items={materialItems}
+              onItemsChange={setMaterialItems}
             />
 
             {/* Investment Section */}
