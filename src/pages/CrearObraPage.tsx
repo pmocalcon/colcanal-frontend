@@ -235,13 +235,16 @@ export default function CrearObraPage() {
               const loadedBudgetItems = createInitialBudgetItems();
               surveyData.budgetItems.forEach((item: any, index: number) => {
                 if (index < loadedBudgetItems.length) {
+                  const quantity = parseFloat(item.quantity) || 0;
+                  const unitValue = parseFloat(item.unitValue) || 0;
                   loadedBudgetItems[index] = {
                     ...loadedBudgetItems[index],
                     ucapId: item.ucapId || null,
                     ucapCode: item.ucap?.code || '',
                     ucapDescription: item.ucap?.description || '',
-                    unitValue: item.unitValue || 0,
-                    quantity: item.quantity?.toString() || '',
+                    unitValue: unitValue,
+                    quantity: quantity,
+                    budgetedValue: quantity * unitValue,
                   };
                 }
               });
