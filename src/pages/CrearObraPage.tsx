@@ -277,19 +277,15 @@ export default function CrearObraPage() {
           .map((item) => ({
             ucapId: item.ucapId!,
             quantity: parseFloat(item.quantity) || 0,
-            unitValue: item.unitValue || 0,
           })),
         // Investment items (filter only items with data)
         investmentItems: investmentData.items
-          .filter((item) => item.description || item.lumQuantity || item.poleQuantity || item.latitude)
+          .filter((item) => item.description || item.poleQuantity || item.latitude)
           .map((item) => ({
             orderNumber: item.orderNumber || undefined,
             point: item.point,
             description: item.description || undefined,
-            lumQuantity: parseFloat(item.lumQuantity) || undefined,
-            lumRelocatedQuantity: parseFloat(item.lumRelocatedQuantity) || undefined,
             poleQuantity: parseFloat(item.poleQuantity) || undefined,
-            twistedNetwork: item.twistedNetwork || undefined,
             latitude: item.latitude || undefined,
             longitude: item.longitude || undefined,
           })),

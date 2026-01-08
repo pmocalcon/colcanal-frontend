@@ -117,17 +117,13 @@ export interface CreateSurveyDto {
   budgetItems?: {
     ucapId: number;
     quantity: number;
-    unitValue: number;
   }[];
   // Investment items (points)
   investmentItems?: {
     orderNumber?: string;
     point: string;
     description?: string;
-    lumQuantity?: number;
-    lumRelocatedQuantity?: number;
     poleQuantity?: number;
-    twistedNetwork?: string;
     latitude?: string;
     longitude?: string;
   }[];
