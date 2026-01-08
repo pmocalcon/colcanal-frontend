@@ -74,8 +74,6 @@ export default function CrearObraPage() {
 
   // Budget state
   const [budgetItems, setBudgetItems] = useState<BudgetItemData[]>(createInitialBudgetItems());
-  const [selectedIppMonth, setSelectedIppMonth] = useState<number | null>(null);
-  const [selectedIppYear, setSelectedIppYear] = useState<number | null>(null);
   const [ippValue, setIppValue] = useState<number | null>(null);
 
   // Check if company is "Canales & Contactos"
@@ -172,12 +170,6 @@ export default function CrearObraPage() {
   // Obtener empresa seleccionada
   const selectedCompany = companies.find((c) => c.companyId === formData.companyId);
 
-  // Handle IPP change
-  const handleIppChange = useCallback((month: number, year: number) => {
-    setSelectedIppMonth(month);
-    setSelectedIppYear(year);
-  }, []);
-
   // Handle IPP value change
   const handleIppValueChange = useCallback((value: number | null) => {
     setIppValue(value);
@@ -251,8 +243,6 @@ export default function CrearObraPage() {
       if (!isEditMode) {
         setFormData(INITIAL_FORM_DATA);
         setBudgetItems(createInitialBudgetItems());
-        setSelectedIppMonth(null);
-        setSelectedIppYear(null);
         setIppValue(null);
       }
 
@@ -372,9 +362,6 @@ export default function CrearObraPage() {
               projectId={formData.projectId}
               items={budgetItems}
               onItemsChange={setBudgetItems}
-              selectedIppMonth={selectedIppMonth}
-              selectedIppYear={selectedIppYear}
-              onIppChange={handleIppChange}
               ippValue={ippValue}
               onIppValueChange={handleIppValueChange}
             />

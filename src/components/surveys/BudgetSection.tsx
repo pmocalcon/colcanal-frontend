@@ -1,13 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Command,
   CommandEmpty,
@@ -22,24 +14,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown, Calculator } from 'lucide-react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { surveysService, type Ucap, type IppData } from '@/services/surveys.service';
-
-const MONTHS = [
-  { value: 1, label: 'Enero' },
-  { value: 2, label: 'Febrero' },
-  { value: 3, label: 'Marzo' },
-  { value: 4, label: 'Abril' },
-  { value: 5, label: 'Mayo' },
-  { value: 6, label: 'Junio' },
-  { value: 7, label: 'Julio' },
-  { value: 8, label: 'Agosto' },
-  { value: 9, label: 'Septiembre' },
-  { value: 10, label: 'Octubre' },
-  { value: 11, label: 'Noviembre' },
-  { value: 12, label: 'Diciembre' },
-];
+import { surveysService, type Ucap } from '@/services/surveys.service';
 
 export interface BudgetItemData {
   itemNumber: number;
@@ -58,9 +35,6 @@ interface BudgetSectionProps {
   projectId: number | null;
   items: BudgetItemData[];
   onItemsChange: (items: BudgetItemData[]) => void;
-  selectedIppMonth: number | null;
-  selectedIppYear: number | null;
-  onIppChange: (month: number, year: number) => void;
   ippValue: number | null;
   onIppValueChange: (value: number | null) => void;
 }
@@ -176,19 +150,12 @@ export function BudgetSection({
   projectId,
   items,
   onItemsChange,
-  selectedIppMonth,
-  selectedIppYear,
-  onIppChange,
   ippValue,
   onIppValueChange,
 }: BudgetSectionProps) {
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
   const [loading, setLoading] = useState(false);
   const [ucapError, setUcapError] = useState<string | null>(null);
-
-  // Get available years (current year and previous 2 years)
-  const currentYear = new Date().getFullYear();
-  const availableYears = [currentYear, currentYear - 1, currentYear - 2];
 
   // Load UCAPs when company or project changes
   useEffect(() => {
@@ -217,22 +184,6 @@ export function BudgetSection({
     };
     loadUcaps();
   }, [companyId, projectId]);
-
-  // Load IPP when month/year changes
-  useEffect(() => {
-    const loadIpp = async () => {
-      if (selectedIppMonth && selectedIppYear) {
-        try {
-          const data = await surveysService.getIppByMonth(selectedIppMonth, selectedIppYear);
-          onIppValueChange(data.value);
-        } catch (error) {
-          console.error('Error loading IPP:', error);
-          onIppValueChange(null);
-        }
-      }
-    };
-    loadIpp();
-  }, [selectedIppMonth, selectedIppYear, onIppValueChange]);
 
   // Handle UCAP selection for a row
   const handleUcapSelect = useCallback(
@@ -283,18 +234,17 @@ export function BudgetSection({
     return items.reduce((sum, item) => sum + item.budgetedValue, 0);
   }, [items]);
 
-  // Calculate average initial IPP from items with values
-  const averageInitialIpp = useMemo(() => {
-    const itemsWithIpp = items.filter((item) => item.initialIpp > 0);
-    if (itemsWithIpp.length === 0) return 0;
-    return itemsWithIpp.reduce((sum, item) => sum + item.initialIpp, 0) / itemsWithIpp.length;
+  // Get initial IPP from the first item with a value (all UCAPs from same company share the same initial IPP)
+  const initialIpp = useMemo(() => {
+    const itemWithIpp = items.find((item) => item.initialIpp > 0);
+    return itemWithIpp?.initialIpp ?? 0;
   }, [items]);
 
-  // Calculate adjusted total: (IPP mes anterior / IPP inicial) * total presupuestado
+  // Calculate adjusted total: (IPP mes / IPP inicial) * total presupuestado
   const totalAdjusted = useMemo(() => {
-    if (!ippValue || averageInitialIpp === 0) return totalBudgeted;
-    return (ippValue / averageInitialIpp) * totalBudgeted;
-  }, [ippValue, averageInitialIpp, totalBudgeted]);
+    if (!ippValue || initialIpp === 0) return totalBudgeted;
+    return (ippValue / initialIpp) * totalBudgeted;
+  }, [ippValue, initialIpp, totalBudgeted]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -386,8 +336,9 @@ export function BudgetSection({
                   <Input
                     type="number"
                     min="0"
+                    step="0.01"
                     value={item.quantity || ''}
-                    onChange={(e) => handleQuantityChange(index, parseInt(e.target.value) || 0)}
+                    onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
                     className="h-8 text-sm text-center w-20 mx-auto"
                     disabled={!item.ucapId}
                   />
@@ -401,95 +352,63 @@ export function BudgetSection({
         </table>
       </div>
 
-      {/* IPP Section */}
-      <div className="bg-gradient-to-r from-amber-50 to-amber-100 border-t border-amber-200 p-6">
-        <div className="flex flex-col lg:flex-row lg:items-end gap-6">
-          {/* IPP Selector */}
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-3">
-              <Calculator className="w-5 h-5 text-amber-600" />
-              <h3 className="text-sm font-semibold text-amber-800">
-                Ajuste por IPP (Índice de Precios al Productor)
-              </h3>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-medium text-amber-700">Mes</Label>
-                <Select
-                  value={selectedIppMonth?.toString() || ''}
-                  onValueChange={(val) =>
-                    onIppChange(parseInt(val), selectedIppYear || currentYear)
-                  }
-                >
-                  <SelectTrigger className="w-[140px] h-8 text-sm bg-white">
-                    <SelectValue placeholder="Seleccione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MONTHS.map((month) => (
-                      <SelectItem key={month.value} value={month.value.toString()}>
-                        {month.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-medium text-amber-700">Año</Label>
-                <Select
-                  value={selectedIppYear?.toString() || ''}
-                  onValueChange={(val) =>
-                    onIppChange(selectedIppMonth || 1, parseInt(val))
-                  }
-                >
-                  <SelectTrigger className="w-[100px] h-8 text-sm bg-white">
-                    <SelectValue placeholder="Año" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableYears.map((year) => (
-                      <SelectItem key={year} value={year.toString()}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-medium text-amber-700">IPP Seleccionado</Label>
-                <div className="h-8 px-3 py-1.5 text-sm bg-white border border-amber-300 rounded-md flex items-center font-mono">
-                  {ippValue ? ippValue.toFixed(2) : '-'}
-                </div>
-              </div>
-            </div>
-            {averageInitialIpp > 0 && (
-              <p className="text-xs text-amber-600 mt-2">
-                IPP Inicial (promedio): <span className="font-mono font-semibold">{averageInitialIpp.toFixed(2)}</span>
-              </p>
-            )}
-          </div>
+      {/* Totals and IPP Section */}
+      <div className="border-t border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-50))]">
+        {/* Total Obra Row */}
+        <div className="flex justify-between items-center px-6 py-3 border-b border-[hsl(var(--canalco-neutral-200))] bg-cyan-100">
+          <span className="text-sm font-bold text-cyan-800">
+            TOTAL OBRA {workName ? workName.toUpperCase() : ''}
+          </span>
+          <span className="font-mono font-bold text-cyan-800 text-lg">
+            {formatCurrency(totalBudgeted)}
+          </span>
+        </div>
 
-          {/* Totals */}
-          <div className="flex flex-col gap-2 lg:min-w-[280px]">
-            <div className="flex justify-between items-center bg-white rounded-md px-4 py-2 border border-[hsl(var(--canalco-neutral-300))]">
-              <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                Total Presupuestado:
-              </span>
-              <span className="font-mono font-bold text-[hsl(var(--canalco-neutral-800))]">
-                {formatCurrency(totalBudgeted)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center bg-gradient-to-r from-cyan-600 to-cyan-500 rounded-md px-4 py-3 shadow-md">
-              <span className="text-sm font-semibold text-white">Valor Total Ajustado:</span>
-              <span className="font-mono font-bold text-white text-lg">
-                {formatCurrency(totalAdjusted)}
-              </span>
-            </div>
-            {ippValue && averageInitialIpp > 0 && (
-              <p className="text-xs text-[hsl(var(--canalco-neutral-500))] text-right">
-                Fórmula: (IPP Mes / IPP Inicial) × Total = ({ippValue.toFixed(2)} / {averageInitialIpp.toFixed(2)}) × {formatCurrency(totalBudgeted)}
-              </p>
-            )}
+        {/* IPP Inicial Row */}
+        <div className="flex justify-between items-center px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
+          <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+            ÍNDICE DE PRECIOS AL PRODUCTOR INICIAL (IPP 2015)
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[hsl(var(--canalco-neutral-600))]">
+              {initialIpp > 0 ? initialIpp.toFixed(2) : '100.00'}
+            </span>
           </div>
         </div>
+
+        {/* IPP Actual Row */}
+        <div className="flex justify-between items-center px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
+          <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+            ÍNDICE DE PRECIOS AL PRODUCTOR DEL MES
+          </span>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Ej: 185.51"
+              value={ippValue || ''}
+              onChange={(e) => onIppValueChange(parseFloat(e.target.value) || null)}
+              className="h-8 w-28 text-sm text-right font-mono"
+            />
+          </div>
+        </div>
+
+        {/* Valor Total Row */}
+        <div className="flex justify-between items-center px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500">
+          <span className="text-sm font-bold text-white">
+            VALOR TOTAL
+          </span>
+          <span className="font-mono font-bold text-white text-lg">
+            {formatCurrency(totalAdjusted)}
+          </span>
+        </div>
+
+        {/* Formula explanation */}
+        {ippValue && initialIpp > 0 && (
+          <div className="px-6 py-2 bg-amber-50 text-xs text-amber-700">
+            Fórmula: (IPP Mes / IPP Inicial) × Total = ({ippValue.toFixed(2)} / {initialIpp.toFixed(2)}) × {formatCurrency(totalBudgeted)} = {formatCurrency(totalAdjusted)}
+          </div>
+        )}
       </div>
     </div>
   );
