@@ -69,10 +69,20 @@ export interface Survey {
   workId: number;
   ucapId?: number;
   surveyDate: string;
+  requestDate?: string;
   receivedBy: number;
   assignedReviewer?: number;
   statusId: number;
   projectCode?: string;
+  // Document links
+  sketchUrl?: string;
+  mapUrl?: string;
+  // Requirements flags
+  requiresPhotometricStudies?: boolean;
+  requiresRetieCertification?: boolean;
+  requiresRetilapCertification?: boolean;
+  requiresCivilWork?: boolean;
+  description?: string;
   createdAt: string;
   updatedAt: string;
   work?: Work;
@@ -97,6 +107,45 @@ export interface Survey {
     code: string;
     description: string;
   };
+  // Nested items from backend
+  budgetItems?: Array<{
+    budgetItemId?: number;
+    ucapId: number;
+    quantity: number;
+    unitValue?: number;
+    ucap?: {
+      ucapId: number;
+      code: string;
+      description: string;
+    };
+  }>;
+  investmentItems?: Array<{
+    investmentItemId?: number;
+    orderNumber?: string;
+    point: string;
+    description?: string;
+    poleQuantity?: number;
+    latitude?: string;
+    longitude?: string;
+  }>;
+  materialItems?: Array<{
+    materialItemId?: number;
+    materialId: number;
+    unitOfMeasure: string;
+    quantity: number;
+    observations?: string;
+    material?: {
+      materialId: number;
+      code: string;
+      description: string;
+    };
+  }>;
+  travelExpenses?: Array<{
+    travelExpenseId?: number;
+    expenseType: string;
+    quantity: number;
+    observations?: string;
+  }>;
 }
 
 export interface CreateSurveyDto {

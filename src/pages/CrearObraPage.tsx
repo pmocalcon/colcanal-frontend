@@ -173,13 +173,115 @@ export default function CrearObraPage() {
         try {
           const surveysResponse = await surveysService.getSurveys({ workId });
           if (surveysResponse.data && surveysResponse.data.length > 0) {
-            const existingSurvey = surveysResponse.data[0]; // Tomar el primer levantamiento
-            setExistingSurveyId(existingSurvey.surveyId);
-            console.log('Found existing survey:', existingSurvey.surveyId);
-            // TODO: Cargar los datos del survey en los formularios (budgetItems, investmentData, etc.)
+            const surveyId = surveysResponse.data[0].surveyId;
+            setExistingSurveyId(surveyId);
+            console.log('Found existing survey:', surveyId);
+
+            // Cargar el survey completo con todos sus datos
+            const fullSurvey = await surveysService.getSurveyById(surveyId);
+            console.log('Full survey data:', fullSurvey);
+
+            // Cargar fecha de solicitud si existe
+            if (fullSurvey.requestDate) {
+              setFormData((prev) => ({
+                ...prev,
+                requestDate: fullSurvey.requestDate || '',
+              }));
+            }
+
+            // Cargar document links
+            if (fullSurvey.sketchUrl || fullSurvey.mapUrl) {
+              setDocumentLinks({
+                sketchUrl: fullSurvey.sketchUrl || '',
+                mapUrl: fullSurvey.mapUrl || '',
+              });
+            }
+
+            // Cargar investment data (flags y descripción)
+            const surveyData = fullSurvey as any;
+            setInvestmentData((prev) => ({
+              ...prev,
+              description: surveyData.description || '',
+              questions: {
+                requiresPhotometricStudies: surveyData.requiresPhotometricStudies || false,
+                requiresRetieCertification: surveyData.requiresRetieCertification || false,
+                requiresRetilapCertification: surveyData.requiresRetilapCertification || false,
+                requiresCivilWork: surveyData.requiresCivilWork || false,
+              },
+              // Cargar investment items si existen
+              items: surveyData.investmentItems?.length > 0
+                ? surveyData.investmentItems.map((item: any, index: number) => ({
+                    itemNumber: index + 1,
+                    orderNumber: item.orderNumber || '',
+                    point: item.point || `P${index + 1}`,
+                    description: item.description || '',
+                    lumQuantity: item.lumQuantity?.toString() || '',
+                    lumRelocatedQuantity: item.lumRelocatedQuantity?.toString() || '',
+                    poleQuantity: item.poleQuantity?.toString() || '',
+                    twistedNetwork: item.twistedNetwork || '',
+                    latitude: item.latitude || '',
+                    longitude: item.longitude || '',
+                  }))
+                : prev.items,
+            }));
+
+            // Cargar budget items si existen
+            if (surveyData.budgetItems?.length > 0) {
+              const loadedBudgetItems = createInitialBudgetItems();
+              surveyData.budgetItems.forEach((item: any, index: number) => {
+                if (index < loadedBudgetItems.length) {
+                  loadedBudgetItems[index] = {
+                    ...loadedBudgetItems[index],
+                    ucapId: item.ucapId || null,
+                    ucapCode: item.ucap?.code || '',
+                    ucapDescription: item.ucap?.description || '',
+                    unitValue: item.unitValue || 0,
+                    quantity: item.quantity?.toString() || '',
+                  };
+                }
+              });
+              setBudgetItems(loadedBudgetItems);
+            }
+
+            // Cargar material items si existen
+            if (surveyData.materialItems?.length > 0) {
+              const loadedMaterialItems = createInitialMaterialItems();
+              surveyData.materialItems.forEach((item: any, index: number) => {
+                if (index < loadedMaterialItems.length) {
+                  loadedMaterialItems[index] = {
+                    ...loadedMaterialItems[index],
+                    materialId: item.materialId || null,
+                    materialCode: item.material?.code || '',
+                    description: item.material?.description || '',
+                    unitOfMeasure: item.unitOfMeasure || 'Unidad',
+                    quantity: item.quantity?.toString() || '',
+                    observations: item.observations || '',
+                  };
+                }
+              });
+              setMaterialItems(loadedMaterialItems);
+            }
+
+            // Cargar travel expenses si existen
+            if (surveyData.travelExpenses?.length > 0) {
+              const loadedTravelExpenses = createInitialTravelExpenses();
+              surveyData.travelExpenses.forEach((expense: any) => {
+                const expenseIndex = loadedTravelExpenses.findIndex(
+                  (e) => e.expenseType === expense.expenseType
+                );
+                if (expenseIndex !== -1) {
+                  loadedTravelExpenses[expenseIndex] = {
+                    ...loadedTravelExpenses[expenseIndex],
+                    quantity: expense.quantity?.toString() || '',
+                    observations: expense.observations || '',
+                  };
+                }
+              });
+              setTravelExpenses(loadedTravelExpenses);
+            }
           }
         } catch (surveyErr) {
-          console.log('No existing survey found for this work');
+          console.log('No existing survey found for this work or error loading:', surveyErr);
         }
       }
     } catch (err: any) {
