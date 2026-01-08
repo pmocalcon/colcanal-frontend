@@ -99,10 +99,13 @@ const RevisarRequisicionesPage: React.FC = () => {
       let filteredData = response.data;
 
       if (permissions) {
-        // Si tiene permiso de aprobar pero NO de revisar: solo ve estado 'autorizado'
+        // Si tiene permiso de aprobar pero NO de revisar: ve estados que llegan a gerencia
+        // - aprobada_revisor: cuando va directo de revisor a gerencia (ej: Director de área crea)
+        // - autorizado: cuando pasó por autorizador
+        // - aprobada_gerencia: ya aprobadas por gerencia
         if (permissions.aprobar && !permissions.revisar) {
           filteredData = response.data.filter(
-            (req) => req.status?.code === 'autorizado' || req.status?.code === 'aprobada_gerencia'
+            (req) => ['aprobada_revisor', 'autorizado', 'aprobada_gerencia'].includes(req.status?.code || '')
           );
         }
         // Si tiene permiso de revisar pero NO de aprobar: ve estados pendientes y ya revisados

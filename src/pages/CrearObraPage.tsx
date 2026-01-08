@@ -225,9 +225,9 @@ export default function CrearObraPage() {
                 : prev.items,
             }));
 
-            // Cargar IPP value si existe
-            if (surveyData.ippValue) {
-              setIppValue(surveyData.ippValue);
+            // Cargar IPP del mes anterior si existe
+            if (surveyData.previousMonthIpp) {
+              setIppValue(surveyData.previousMonthIpp);
             }
 
             // Cargar budget items si existen
@@ -396,8 +396,8 @@ export default function CrearObraPage() {
         requiresRetieCertification: investmentData.questions.requiresRetieCertification,
         requiresRetilapCertification: investmentData.questions.requiresRetilapCertification,
         requiresCivilWork: investmentData.questions.requiresCivilWork,
-        // IPP value for budget calculation
-        ippValue: ippValue || undefined,
+        // IPP del mes anterior (ingresado por Director Técnico)
+        previousMonthIpp: ippValue || undefined,
         // Budget items (filter only items with ucapId)
         budgetItems: budgetItems
           .filter((item) => item.ucapId !== null && item.quantity > 0)

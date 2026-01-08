@@ -82,8 +82,8 @@ export interface Survey {
   requiresRetieCertification?: boolean;
   requiresRetilapCertification?: boolean;
   requiresCivilWork?: boolean;
-  // IPP value
-  ippValue?: number;
+  // IPP del mes anterior (ingresado por Director Técnico)
+  previousMonthIpp?: number;
   description?: string;
   createdAt: string;
   updatedAt: string;
@@ -167,8 +167,8 @@ export interface CreateSurveyDto {
   requiresRetieCertification?: boolean;
   requiresRetilapCertification?: boolean;
   requiresCivilWork?: boolean;
-  // IPP value for budget calculation
-  ippValue?: number;
+  // IPP del mes anterior (ingresado por Director Técnico)
+  previousMonthIpp?: number;
   // Budget items
   budgetItems?: {
     ucapId: number;
