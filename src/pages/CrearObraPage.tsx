@@ -8,6 +8,7 @@ import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/
 import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
 import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksData } from '@/components/surveys/DocumentLinksSection';
 import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
+import { TravelExpensesSection, createInitialTravelExpenses, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -87,6 +88,9 @@ export default function CrearObraPage() {
 
   // Materials state
   const [materialItems, setMaterialItems] = useState<MaterialItemData[]>(createInitialMaterialItems());
+
+  // Travel expenses state
+  const [travelExpenses, setTravelExpenses] = useState<TravelExpenseItemData[]>(createInitialTravelExpenses());
 
   // Check if company is "Canales & Contactos"
   const isCanalesContactos = useMemo(() => {
@@ -259,6 +263,7 @@ export default function CrearObraPage() {
         setInvestmentData(createInitialInvestmentData());
         setDocumentLinks(createInitialDocumentLinks());
         setMaterialItems(createInitialMaterialItems());
+        setTravelExpenses(createInitialTravelExpenses());
       }
 
       // Ocultar mensaje de éxito después de 5 segundos
@@ -397,6 +402,12 @@ export default function CrearObraPage() {
             <MaterialsSection
               items={materialItems}
               onItemsChange={setMaterialItems}
+            />
+
+            {/* Travel Expenses Section */}
+            <TravelExpensesSection
+              items={travelExpenses}
+              onItemsChange={setTravelExpenses}
             />
 
             {/* Submit Button */}

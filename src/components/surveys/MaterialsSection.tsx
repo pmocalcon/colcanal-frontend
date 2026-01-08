@@ -1,6 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -17,6 +24,9 @@ import { Button } from '@/components/ui/button';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { materialsService, type Material } from '@/services/materials.service';
+
+// Opciones de unidad de medida
+const UNIT_OPTIONS = ['Unidad', 'Metro', 'Centímetro'];
 
 export interface MaterialItemData {
   itemNumber: number;
@@ -40,7 +50,7 @@ export const createInitialMaterialItems = (): MaterialItemData[] => {
     materialId: null,
     materialCode: '',
     description: '',
-    unitOfMeasure: '',
+    unitOfMeasure: 'Unidad',
     quantity: '',
     observations: '',
   }));
@@ -196,19 +206,29 @@ const MaterialRow = memo(function MaterialRow({
       </td>
       {/* UNIDAD DE MEDIDA */}
       <td className="px-1 py-1 w-28">
-        <Input
-          type="text"
-          defaultValue={item.unitOfMeasure}
-          onBlur={(e) => onFieldChange(index, 'unitOfMeasure', e.target.value)}
-          className="h-7 text-xs text-center"
-          placeholder="Unidad"
-        />
+        <Select
+          value={item.unitOfMeasure || 'Unidad'}
+          onValueChange={(val) => onFieldChange(index, 'unitOfMeasure', val)}
+          disabled={loading}
+        >
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {UNIT_OPTIONS.map((unit) => (
+              <SelectItem key={unit} value={unit}>
+                {unit}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </td>
       {/* CANTIDAD */}
       <td className="px-1 py-1 w-20">
         <Input
-          type="text"
-          inputMode="decimal"
+          type="number"
+          step="0.01"
+          min="0"
           defaultValue={item.quantity}
           onBlur={(e) => onFieldChange(index, 'quantity', e.target.value)}
           className="h-7 text-xs text-center"
