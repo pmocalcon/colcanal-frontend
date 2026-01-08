@@ -11,18 +11,18 @@ import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
 // Orden definido para el grid de módulos (3 columnas)
-// Fila 1: Dashboard, Usuarios, Auditorías
-// Fila 2: Compras, Proveedores, Notificaciones
-// Fila 3: Materiales, Levantamiento de Obras
+// Fila 1: Compras, Proveedores, Usuarios
+// Fila 2: Materiales, Levantamiento de Obras, Dashboard
+// Fila 3: Auditorías, Notificaciones
 const MODULE_ORDER = [
-  'dashboard',
-  'usuarios',
-  'auditorias',
   'compras',
   'proveedores',
-  'notificaciones',
+  'usuarios',
   'materiales',
   'levantamiento-obras',
+  'dashboard',
+  'auditorias',
+  'notificaciones',
 ];
 
 // Mapeo de slugs antiguos a nuevos
