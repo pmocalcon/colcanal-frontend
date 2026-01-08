@@ -381,12 +381,6 @@ export default function CrearObraPage() {
               onIppValueChange={handleIppValueChange}
             />
 
-            {/* Materials Section */}
-            <MaterialsSection
-              items={materialItems}
-              onItemsChange={setMaterialItems}
-            />
-
             {/* Investment Section */}
             <InvestmentSection
               data={investmentData}
@@ -397,6 +391,12 @@ export default function CrearObraPage() {
             <DocumentLinksSection
               data={documentLinks}
               onDataChange={setDocumentLinks}
+            />
+
+            {/* Materials Section */}
+            <MaterialsSection
+              items={materialItems}
+              onItemsChange={setMaterialItems}
             />
 
             {/* Submit Button */}

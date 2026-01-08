@@ -296,7 +296,7 @@ export function MaterialsSection({
       {/* Header */}
       <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3 flex items-center justify-between">
         <h2 className="text-lg font-bold text-white tracking-wide">
-          II. MATERIALES
+          III. MATERIALES
         </h2>
         <div className="flex items-center gap-2 text-sm text-white/80">
           {loading && (
