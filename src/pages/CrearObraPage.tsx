@@ -215,10 +215,10 @@ export default function CrearObraPage() {
                     orderNumber: item.orderNumber || '',
                     point: item.point || `P${index + 1}`,
                     description: item.description || '',
-                    lumQuantity: item.lumQuantity?.toString() || '',
-                    lumRelocatedQuantity: item.lumRelocatedQuantity?.toString() || '',
+                    lumQuantity: item.luminaireQuantity?.toString() || '',
+                    lumRelocatedQuantity: item.relocatedLuminaireQuantity?.toString() || '',
                     poleQuantity: item.poleQuantity?.toString() || '',
-                    twistedNetwork: item.twistedNetwork || '',
+                    twistedNetwork: item.braidedNetwork || '',
                     latitude: item.latitude || '',
                     longitude: item.longitude || '',
                   }))

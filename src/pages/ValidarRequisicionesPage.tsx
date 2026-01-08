@@ -27,7 +27,6 @@ import { StatusDashboard } from '@/components/ui/status-dashboard';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { getStatusColor } from '@/constants/status';
-import { useRequisitionFilters } from '@/hooks/useRequisitionFilters';
 import type { StatusCount, FilterValues } from '@/types/common.types';
 
 const ValidarRequisicionesPage: React.FC = () => {
@@ -50,9 +49,6 @@ const ValidarRequisicionesPage: React.FC = () => {
   const [comments, setComments] = useState('');
   const [decision, setDecision] = useState<'validate' | 'reject' | null>(null);
 
-  // Usuario actual
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-
   // Filtros
   const [filters, setFilters] = useState<FilterValues>({
     company: '',
@@ -63,16 +59,28 @@ const ValidarRequisicionesPage: React.FC = () => {
     status: '',
   });
 
-  // Cargar requisiciones pendientes de validación
+  // Cargar requisiciones para validación (pendientes y ya validadas)
   const loadPendingRequisitions = async () => {
     try {
       setLoading(true);
       setError(null);
       const response = await getPendingActions({ page, limit: 100 });
 
-      // Filtrar solo requisiciones en estado pendiente_validacion
+      // Filtrar requisiciones relevantes para el validador:
+      // - pendiente_validacion (pendientes de validar)
+      // - en_revision, aprobada_revisor, pendiente_autorizacion, autorizado, aprobada_gerencia (ya validadas, en proceso)
+      // - rechazada_validador (rechazadas por el validador)
+      const relevantStatuses = [
+        'pendiente_validacion',
+        'en_revision',
+        'aprobada_revisor',
+        'pendiente_autorizacion',
+        'autorizado',
+        'aprobada_gerencia',
+        'rechazada_validador'
+      ];
       const validationRequisitions = response.data.filter(
-        (req) => req.status?.code === 'pendiente_validacion'
+        (req) => relevantStatuses.includes(req.status?.code || '')
       );
 
       setRequisitions(validationRequisitions);
@@ -366,12 +374,12 @@ const ValidarRequisicionesPage: React.FC = () => {
             ) : (
               <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                 {/* Pending Section */}
-                {filteredRequisitions.filter(r => r.isPending !== false).length > 0 && (
+                {filteredRequisitions.filter(r => r.status?.code === 'pendiente_validacion').length > 0 && (
                   <div>
                     <div className="bg-indigo-50 border-b border-indigo-200 px-4 py-2">
                       <p className="text-sm font-semibold text-indigo-800 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        PENDIENTES DE VALIDACIÓN ({filteredRequisitions.filter(r => r.isPending !== false).length})
+                        PENDIENTES DE VALIDACIÓN ({filteredRequisitions.filter(r => r.status?.code === 'pendiente_validacion').length})
                       </p>
                     </div>
                     <Table>
@@ -389,7 +397,7 @@ const ValidarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => r.isPending !== false).sort((a, b) => {
+                        {filteredRequisitions.filter(r => r.status?.code === 'pendiente_validacion').sort((a, b) => {
                           if (a.priority === 'alta' && b.priority !== 'alta') return -1;
                           if (a.priority !== 'alta' && b.priority === 'alta') return 1;
                           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -501,6 +509,121 @@ const ValidarRequisicionesPage: React.FC = () => {
                                   title="Validar"
                                 >
                                   <Eye className="h-4 w-4 text-indigo-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {/* Already Validated Section */}
+                {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_validacion').length > 0 && (
+                  <div className={filteredRequisitions.filter(r => r.status?.code === 'pendiente_validacion').length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                    <div className="bg-green-50 border-b border-green-200 px-4 py-2">
+                      <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        YA VALIDADAS ({filteredRequisitions.filter(r => r.status?.code !== 'pendiente_validacion').length})
+                      </p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
+                          <TableHead className="font-semibold">Empresa</TableHead>
+                          <TableHead className="font-semibold">Proyecto/Obra</TableHead>
+                          <TableHead className="font-semibold w-[80px]">Ítems</TableHead>
+                          <TableHead className="font-semibold">Solicitado por</TableHead>
+                          <TableHead className="font-semibold">Última Actualización</TableHead>
+                          <TableHead className="font-semibold">Estado</TableHead>
+                          <TableHead className="font-semibold text-center">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequisitions.filter(r => r.status?.code !== 'pendiente_validacion').sort((a, b) => {
+                          if (a.priority === 'alta' && b.priority !== 'alta') return -1;
+                          if (a.priority !== 'alta' && b.priority === 'alta') return 1;
+                          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                        }).map((req) => (
+                          <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30">
+                            <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
+                              <div className="flex items-center gap-2">
+                                {req.requisitionNumber}
+                                {req.priority === 'alta' && (
+                                  <Badge className="bg-red-600 text-white text-xs px-1.5 py-0.5">
+                                    URGENTE
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium text-[hsl(var(--canalco-neutral-700))]">
+                                {req.company.name}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-green-600" />
+                                <div>
+                                  {req.obra ? (
+                                    <>
+                                      <p className="text-sm font-medium text-green-700">{req.obra}</p>
+                                      {req.codigoObra && (
+                                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                          Código: {req.codigoObra}
+                                        </p>
+                                      )}
+                                    </>
+                                  ) : req.project ? (
+                                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">{req.project.name}</p>
+                                  ) : (
+                                    <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-600))] font-semibold text-sm">
+                                {req.items?.length || 0}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                                  {req.creator.nombre}
+                                </p>
+                                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                  {req.creator.role?.nombreRol || 'Sin rol'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                              <div>
+                                <p className="font-medium">{req.lastActionLabel || 'Validada'}</p>
+                                <p className="text-xs">{formatDate(req.lastActionDate || req.updatedAt)}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                                  req.status?.code || 'pendiente'
+                                )}`}
+                              >
+                                {req.status?.name || 'Validada'}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => navigate(`/dashboard/compras/requisiciones/detalle/${req.requisitionId}`)}
+                                  className="hover:bg-blue-50"
+                                  title="Ver detalles"
+                                >
+                                  <Eye className="w-4 h-4 text-blue-600" />
                                 </Button>
                               </div>
                             </TableCell>
