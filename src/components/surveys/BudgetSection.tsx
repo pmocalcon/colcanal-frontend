@@ -371,7 +371,7 @@ export function BudgetSection({
           </span>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[hsl(var(--canalco-neutral-600))]">
-              {initialIpp > 0 ? initialIpp.toFixed(2) : '100.00'}
+              {initialIpp > 0 ? Number(initialIpp).toFixed(2) : '100.00'}
             </span>
           </div>
         </div>
@@ -406,7 +406,7 @@ export function BudgetSection({
         {/* Formula explanation */}
         {ippValue && initialIpp > 0 && (
           <div className="px-6 py-2 bg-amber-50 text-xs text-amber-700">
-            Fórmula: (IPP Mes / IPP Inicial) × Total = ({ippValue.toFixed(2)} / {initialIpp.toFixed(2)}) × {formatCurrency(totalBudgeted)} = {formatCurrency(totalAdjusted)}
+            Fórmula: (IPP Mes / IPP Inicial) × Total = ({Number(ippValue).toFixed(2)} / {Number(initialIpp).toFixed(2)}) × {formatCurrency(totalBudgeted)} = {formatCurrency(totalAdjusted)}
           </div>
         )}
       </div>

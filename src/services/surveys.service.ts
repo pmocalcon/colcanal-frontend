@@ -259,13 +259,13 @@ export const surveysService = {
     const params: Record<string, any> = {};
     if (projectId) params.projectId = projectId;
     const response = await api.get(`/surveys/ucaps/${companyId}`, { params });
-    // Map response to frontend interface
+    // Map response to frontend interface, ensuring numeric values
     return (response.data || []).map((ucap: any) => ({
       ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
-      value: ucap.roundedValue ?? ucap.value ?? 0,
-      initialIpp: ucap.initialIpp ?? 0,
+      value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
+      initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));
   },
 
@@ -274,13 +274,13 @@ export const surveysService = {
     const params: Record<string, any> = { search };
     if (projectId) params.projectId = projectId;
     const response = await api.get(`/surveys/ucaps/${companyId}/search`, { params });
-    // Map response to frontend interface
+    // Map response to frontend interface, ensuring numeric values
     return (response.data || []).map((ucap: any) => ({
       ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
-      value: ucap.roundedValue ?? ucap.value ?? 0,
-      initialIpp: ucap.initialIpp ?? 0,
+      value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
+      initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));
   },
 
