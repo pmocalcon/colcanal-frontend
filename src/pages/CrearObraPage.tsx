@@ -75,6 +75,7 @@ export default function CrearObraPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [createdWorkCode, setCreatedWorkCode] = useState<string | null>(null);
+  const [existingSurveyId, setExistingSurveyId] = useState<number | null>(null);
 
   // Budget state
   const [budgetItems, setBudgetItems] = useState<BudgetItemData[]>(createInitialBudgetItems());
@@ -144,9 +145,10 @@ export default function CrearObraPage() {
       const reviewersData = await usersService.getByRoles(REVIEWER_ROLE_IDS);
       setReviewers(reviewersData);
 
-      // Si es modo edición, cargar la obra
+      // Si es modo edición, cargar la obra y su levantamiento
       if (isEditMode && id) {
-        const work = await surveysService.getWorkById(parseInt(id));
+        const workId = parseInt(id);
+        const work = await surveysService.getWorkById(workId);
         setFormData({
           companyId: work.companyId,
           projectId: null, // TODO: Agregar projectId a Work si es necesario
@@ -166,6 +168,19 @@ export default function CrearObraPage() {
           receivedById: null, // TODO: Cargar desde work si existe
           assignedReviewerId: null, // TODO: Cargar desde work si existe
         });
+
+        // Cargar el levantamiento existente para esta obra
+        try {
+          const surveysResponse = await surveysService.getSurveys({ workId });
+          if (surveysResponse.data && surveysResponse.data.length > 0) {
+            const existingSurvey = surveysResponse.data[0]; // Tomar el primer levantamiento
+            setExistingSurveyId(existingSurvey.surveyId);
+            console.log('Found existing survey:', existingSurvey.surveyId);
+            // TODO: Cargar los datos del survey en los formularios (budgetItems, investmentData, etc.)
+          }
+        } catch (surveyErr) {
+          console.log('No existing survey found for this work');
+        }
       }
     } catch (err: any) {
       console.error('Error loading data:', err);
@@ -309,20 +324,28 @@ export default function CrearObraPage() {
       };
 
       // Debug: Log the survey data being sent
-      console.log('Creating survey with data:', JSON.stringify(surveyData, null, 2));
+      console.log(`${existingSurveyId ? 'Updating' : 'Creating'} survey with data:`, JSON.stringify(surveyData, null, 2));
 
       try {
-        const surveyResult = await surveysService.createSurvey(surveyData);
-        console.log('Survey created successfully:', surveyResult);
+        let surveyResult;
+        if (existingSurveyId) {
+          // Actualizar levantamiento existente
+          surveyResult = await surveysService.updateSurvey(existingSurveyId, surveyData);
+          console.log('Survey updated successfully:', surveyResult);
+        } else {
+          // Crear nuevo levantamiento
+          surveyResult = await surveysService.createSurvey(surveyData);
+          console.log('Survey created successfully:', surveyResult);
+        }
       } catch (surveyErr: any) {
-        console.error('Survey creation failed:', surveyErr);
+        console.error('Survey operation failed:', surveyErr);
         console.error('Survey error response:', surveyErr.response?.data);
         // Show more detailed error for survey
         const surveyErrorMsg = surveyErr.response?.data?.message ||
           (Array.isArray(surveyErr.response?.data?.message)
             ? surveyErr.response.data.message.join(', ')
-            : 'Error al crear el levantamiento');
-        throw new Error(`Obra creada (${workResult.workCode}), pero falló el levantamiento: ${surveyErrorMsg}`);
+            : `Error al ${existingSurveyId ? 'actualizar' : 'crear'} el levantamiento`);
+        throw new Error(`Obra ${isEditMode ? 'actualizada' : 'creada'} (${workResult.workCode}), pero falló el levantamiento: ${surveyErrorMsg}`);
       }
 
       setSuccess(true);
