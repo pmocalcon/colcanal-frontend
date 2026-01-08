@@ -207,9 +207,10 @@ export function WorkHeader({
           </Select>
         ) : isFieldEditable ? (
           <Input
+            key={`${field}-${value}`}
             type={type}
-            value={value}
-            onChange={(e) => field && onFormChange?.(field, e.target.value)}
+            defaultValue={value}
+            onBlur={(e) => field && onFormChange?.(field, e.target.value)}
             className="h-8 text-sm bg-white"
             placeholder={`Ingrese ${label.toLowerCase()}`}
           />
