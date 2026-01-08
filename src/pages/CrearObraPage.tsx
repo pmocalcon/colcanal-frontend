@@ -10,7 +10,7 @@ import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksDat
 import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
 import { TravelExpensesSection, createInitialTravelExpenses, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
+import { Home, ArrowLeft, Save, CheckCircle, X, Loader2 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
@@ -637,6 +637,64 @@ export default function CrearObraPage() {
       </main>
 
       <Footer />
+
+      {/* Fixed Toast Notifications */}
+      {/* Saving Toast */}
+      {saving && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-blue-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 min-w-[300px]">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <div>
+              <p className="font-semibold">Guardando...</p>
+              <p className="text-sm text-blue-100">Por favor espere mientras se guardan los datos</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Toast */}
+      {success && createdWorkCode && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 min-w-[350px]">
+            <CheckCircle className="w-7 h-7 flex-shrink-0" />
+            <div className="flex-grow">
+              <p className="font-semibold text-lg">
+                {isEditMode ? '¡Obra actualizada!' : '¡Obra creada!'}
+              </p>
+              <p className="text-sm text-green-100">
+                Código: <span className="font-mono font-bold">{createdWorkCode}</span>
+              </p>
+            </div>
+            <button
+              onClick={() => setSuccess(false)}
+              className="p-1 hover:bg-green-500 rounded-full transition-colors"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      {error && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-red-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 min-w-[350px] max-w-[500px]">
+            <X className="w-7 h-7 flex-shrink-0" />
+            <div className="flex-grow">
+              <p className="font-semibold text-lg">Error</p>
+              <p className="text-sm text-red-100">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="p-1 hover:bg-red-500 rounded-full transition-colors"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
