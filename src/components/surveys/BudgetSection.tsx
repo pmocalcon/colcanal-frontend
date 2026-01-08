@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { surveysService, type Ucap, type IppConfig } from '@/services/surveys.service';
 
@@ -88,25 +88,26 @@ function UcapCombobox({
   }, [ucaps, searchQuery]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="w-full justify-between h-8 text-xs font-normal"
-        >
-          {selectedUcap ? (
-            <span className="truncate">
-              {selectedUcap.code} - {selectedUcap.description}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">Buscar UCAP...</span>
-          )}
-          <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+    <div className="flex gap-1 w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className="flex-1 justify-between h-8 text-xs font-normal"
+          >
+            {selectedUcap ? (
+              <span className="truncate">
+                {selectedUcap.code} - {selectedUcap.description}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Buscar UCAP...</span>
+            )}
+            <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
       <PopoverContent className="w-[400px] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
@@ -146,6 +147,22 @@ function UcapCombobox({
         </Command>
       </PopoverContent>
     </Popover>
+    {/* Clear button - only show when there's a selection */}
+    {selectedUcap && !disabled && (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(null);
+        }}
+        title="Limpiar selección"
+      >
+        <X className="h-4 w-4" />
+      </Button>
+    )}
+    </div>
   );
 }
 
