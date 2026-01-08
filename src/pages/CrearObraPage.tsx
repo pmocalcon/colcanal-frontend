@@ -253,17 +253,20 @@ export default function CrearObraPage() {
       }
 
       // Step 2: Create Survey with the workId
+      // Get receiver name from receivers list
+      const receiverName = formData.receivedById
+        ? receivers.find((r) => r.userId === formData.receivedById)?.nombre
+        : undefined;
+
       const surveyData: CreateSurveyDto = {
         workId: workResult.workId,
         surveyDate: new Date().toISOString().split('T')[0],
         requestDate: formData.requestDate || undefined,
-        receivedById: formData.receivedById || undefined,
-        assignedReviewerId: formData.assignedReviewerId || undefined,
+        receivedBy: receiverName, // Send name, not ID
         // Document links
         sketchUrl: documentLinks.sketchUrl || undefined,
         mapUrl: documentLinks.mapUrl || undefined,
-        // Investment description
-        investmentDescription: investmentData.description || undefined,
+        // Requirements flags
         requiresPhotometricStudies: investmentData.questions.requiresPhotometricStudies,
         requiresRetieCertification: investmentData.questions.requiresRetieCertification,
         requiresRetilapCertification: investmentData.questions.requiresRetilapCertification,
@@ -290,8 +293,8 @@ export default function CrearObraPage() {
             latitude: item.latitude || undefined,
             longitude: item.longitude || undefined,
           })),
-        // Material items (filter only items with materialId)
-        materialItems: materialItems
+        // Materials (filter only items with materialId)
+        materials: materialItems
           .filter((item) => item.materialId !== null && parseFloat(item.quantity) > 0)
           .map((item) => ({
             materialId: item.materialId!,

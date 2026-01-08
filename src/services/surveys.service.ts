@@ -103,14 +103,12 @@ export interface CreateSurveyDto {
   workId: number;
   surveyDate: string;
   requestDate?: string;
-  receivedById?: number;
-  assignedReviewerId?: number;
+  receivedBy?: string; // Nombre de quien recibe (string, no ID)
   projectCode?: string;
   // Document links
   sketchUrl?: string;
   mapUrl?: string;
-  // Investment description
-  investmentDescription?: string;
+  // Requirements flags
   requiresPhotometricStudies?: boolean;
   requiresRetieCertification?: boolean;
   requiresRetilapCertification?: boolean;
@@ -133,8 +131,8 @@ export interface CreateSurveyDto {
     latitude?: string;
     longitude?: string;
   }[];
-  // Material items
-  materialItems?: {
+  // Materials (not materialItems)
+  materials?: {
     materialId: number;
     unitOfMeasure: string;
     quantity: number;
