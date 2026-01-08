@@ -5,6 +5,7 @@ import { masterDataService, type Company, type Project } from '@/services/master
 import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
+import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -75,6 +76,9 @@ export default function CrearObraPage() {
   // Budget state
   const [budgetItems, setBudgetItems] = useState<BudgetItemData[]>(createInitialBudgetItems());
   const [ippValue, setIppValue] = useState<number | null>(null);
+
+  // Investment section state
+  const [investmentData, setInvestmentData] = useState<InvestmentSectionData>(createInitialInvestmentData());
 
   // Check if company is "Canales & Contactos"
   const isCanalesContactos = useMemo(() => {
@@ -244,6 +248,7 @@ export default function CrearObraPage() {
         setFormData(INITIAL_FORM_DATA);
         setBudgetItems(createInitialBudgetItems());
         setIppValue(null);
+        setInvestmentData(createInitialInvestmentData());
       }
 
       // Ocultar mensaje de éxito después de 5 segundos
@@ -364,6 +369,12 @@ export default function CrearObraPage() {
               onItemsChange={setBudgetItems}
               ippValue={ippValue}
               onIppValueChange={handleIppValueChange}
+            />
+
+            {/* Investment Section */}
+            <InvestmentSection
+              data={investmentData}
+              onDataChange={setInvestmentData}
             />
 
             {/* Submit Button */}

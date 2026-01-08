@@ -241,12 +241,10 @@ export function BudgetSection({
     [items, onItemsChange]
   );
 
-  // Handle quantity change for a row (accepts comma as decimal separator)
+  // Handle quantity change for a row
   const handleQuantityChange = useCallback(
     (index: number, value: string) => {
-      // Replace comma with dot for decimal parsing
-      const normalizedValue = value.replace(',', '.');
-      const quantity = parseFloat(normalizedValue) || 0;
+      const quantity = parseFloat(value) || 0;
       const newItems = [...items];
       newItems[index] = {
         ...newItems[index],
@@ -258,10 +256,10 @@ export function BudgetSection({
     [items, onItemsChange]
   );
 
-  // Format quantity for display (use comma as decimal separator)
+  // Format quantity for display (use dot as decimal separator)
   const formatQuantity = (value: number): string => {
     if (value === 0) return '';
-    return value.toString().replace('.', ',');
+    return value.toString();
   };
 
   // Calculate totals
