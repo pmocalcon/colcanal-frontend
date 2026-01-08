@@ -37,6 +37,7 @@ interface BudgetSectionProps {
   onItemsChange: (items: BudgetItemData[]) => void;
   ippValue: number | null;
   onIppValueChange: (value: number | null) => void;
+  ippBaseYear?: number; // Year of the initial IPP (e.g., 2015, 2018)
 }
 
 // Initialize 30 empty items
@@ -152,6 +153,7 @@ export function BudgetSection({
   onItemsChange,
   ippValue,
   onIppValueChange,
+  ippBaseYear = 2015,
 }: BudgetSectionProps) {
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
   const [loading, setLoading] = useState(false);
@@ -215,9 +217,12 @@ export function BudgetSection({
     [items, onItemsChange]
   );
 
-  // Handle quantity change for a row
+  // Handle quantity change for a row (accepts comma as decimal separator)
   const handleQuantityChange = useCallback(
-    (index: number, quantity: number) => {
+    (index: number, value: string) => {
+      // Replace comma with dot for decimal parsing
+      const normalizedValue = value.replace(',', '.');
+      const quantity = parseFloat(normalizedValue) || 0;
       const newItems = [...items];
       newItems[index] = {
         ...newItems[index],
@@ -228,6 +233,12 @@ export function BudgetSection({
     },
     [items, onItemsChange]
   );
+
+  // Format quantity for display (use comma as decimal separator)
+  const formatQuantity = (value: number): string => {
+    if (value === 0) return '';
+    return value.toString().replace('.', ',');
+  };
 
   // Calculate totals
   const totalBudgeted = useMemo(() => {
@@ -334,11 +345,21 @@ export function BudgetSection({
                 </td>
                 <td className="px-3 py-2">
                   <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={item.quantity || ''}
-                    onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[,.]?[0-9]*"
+                    value={formatQuantity(item.quantity)}
+                    onChange={(e) => handleQuantityChange(index, e.target.value)}
+                    onKeyDown={(e) => {
+                      // Allow arrows to increment/decrement by 1
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleQuantityChange(index, String(Math.floor(item.quantity) + 1));
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleQuantityChange(index, String(Math.max(0, Math.floor(item.quantity) - 1)));
+                      }
+                    }}
                     className="h-8 text-sm text-center w-20 mx-auto"
                     disabled={!item.ucapId}
                   />
@@ -367,7 +388,7 @@ export function BudgetSection({
         {/* IPP Inicial Row */}
         <div className="flex justify-between items-center px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
           <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-            ÍNDICE DE PRECIOS AL PRODUCTOR INICIAL (IPP 2015)
+            ÍNDICE DE PRECIOS AL PRODUCTOR INICIAL (IPP {ippBaseYear})
           </span>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[hsl(var(--canalco-neutral-600))]">
@@ -402,13 +423,6 @@ export function BudgetSection({
             {formatCurrency(totalAdjusted)}
           </span>
         </div>
-
-        {/* Formula explanation */}
-        {ippValue && initialIpp > 0 && (
-          <div className="px-6 py-2 bg-amber-50 text-xs text-amber-700">
-            Fórmula: (IPP Mes / IPP Inicial) × Total = ({Number(ippValue).toFixed(2)} / {Number(initialIpp).toFixed(2)}) × {formatCurrency(totalBudgeted)} = {formatCurrency(totalAdjusted)}
-          </div>
-        )}
       </div>
     </div>
   );
