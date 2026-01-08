@@ -101,13 +101,50 @@ export interface Survey {
 
 export interface CreateSurveyDto {
   workId: number;
-  ucapId?: number;
   surveyDate: string;
+  requestDate?: string;
+  receivedById?: number;
+  assignedReviewerId?: number;
   projectCode?: string;
-  items: {
-    materialId: number;
+  // Document links
+  sketchUrl?: string;
+  mapUrl?: string;
+  // Investment description
+  investmentDescription?: string;
+  requiresPhotometricStudies?: boolean;
+  requiresRetieCertification?: boolean;
+  requiresRetilapCertification?: boolean;
+  requiresCivilWork?: boolean;
+  // Budget items
+  budgetItems?: {
+    ucapId: number;
     quantity: number;
-    observation?: string;
+    unitValue: number;
+  }[];
+  // Investment items (points)
+  investmentItems?: {
+    orderNumber?: string;
+    point: string;
+    description?: string;
+    lumQuantity?: number;
+    lumRelocatedQuantity?: number;
+    poleQuantity?: number;
+    twistedNetwork?: string;
+    latitude?: string;
+    longitude?: string;
+  }[];
+  // Material items
+  materialItems?: {
+    materialId: number;
+    unitOfMeasure: string;
+    quantity: number;
+    observations?: string;
+  }[];
+  // Travel expenses
+  travelExpenses?: {
+    expenseType: string;
+    quantity: number;
+    observations?: string;
   }[];
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { surveysService, type CreateWorkDto } from '@/services/surveys.service';
+import { surveysService, type CreateWorkDto, type CreateSurveyDto } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
@@ -228,6 +228,7 @@ export default function CrearObraPage() {
       setSaving(true);
       setError(null);
 
+      // Step 1: Create or update Work
       const workData: CreateWorkDto = {
         companyId: formData.companyId!,
         name: formData.name.trim(),
@@ -242,18 +243,76 @@ export default function CrearObraPage() {
         areaType: formData.areaType.trim() || '',
         requestType: formData.requestType,
         filingNumber: formData.filingNumber.trim() || '',
-        // requestDate belongs to Survey, not Work
       };
 
-      let result;
+      let workResult;
       if (isEditMode && id) {
-        result = await surveysService.updateWork(parseInt(id), workData);
+        workResult = await surveysService.updateWork(parseInt(id), workData);
       } else {
-        result = await surveysService.createWork(workData);
+        workResult = await surveysService.createWork(workData);
       }
 
+      // Step 2: Create Survey with the workId
+      const surveyData: CreateSurveyDto = {
+        workId: workResult.workId,
+        surveyDate: new Date().toISOString().split('T')[0],
+        requestDate: formData.requestDate || undefined,
+        receivedById: formData.receivedById || undefined,
+        assignedReviewerId: formData.assignedReviewerId || undefined,
+        // Document links
+        sketchUrl: documentLinks.sketchUrl || undefined,
+        mapUrl: documentLinks.mapUrl || undefined,
+        // Investment description
+        investmentDescription: investmentData.description || undefined,
+        requiresPhotometricStudies: investmentData.questions.requiresPhotometricStudies,
+        requiresRetieCertification: investmentData.questions.requiresRetieCertification,
+        requiresRetilapCertification: investmentData.questions.requiresRetilapCertification,
+        requiresCivilWork: investmentData.questions.requiresCivilWork,
+        // Budget items (filter only items with ucapId)
+        budgetItems: budgetItems
+          .filter((item) => item.ucapId !== null && parseFloat(item.quantity) > 0)
+          .map((item) => ({
+            ucapId: item.ucapId!,
+            quantity: parseFloat(item.quantity) || 0,
+            unitValue: item.unitValue || 0,
+          })),
+        // Investment items (filter only items with data)
+        investmentItems: investmentData.items
+          .filter((item) => item.description || item.lumQuantity || item.poleQuantity || item.latitude)
+          .map((item) => ({
+            orderNumber: item.orderNumber || undefined,
+            point: item.point,
+            description: item.description || undefined,
+            lumQuantity: parseFloat(item.lumQuantity) || undefined,
+            lumRelocatedQuantity: parseFloat(item.lumRelocatedQuantity) || undefined,
+            poleQuantity: parseFloat(item.poleQuantity) || undefined,
+            twistedNetwork: item.twistedNetwork || undefined,
+            latitude: item.latitude || undefined,
+            longitude: item.longitude || undefined,
+          })),
+        // Material items (filter only items with materialId)
+        materialItems: materialItems
+          .filter((item) => item.materialId !== null && parseFloat(item.quantity) > 0)
+          .map((item) => ({
+            materialId: item.materialId!,
+            unitOfMeasure: item.unitOfMeasure || 'Unidad',
+            quantity: parseFloat(item.quantity) || 0,
+            observations: item.observations || undefined,
+          })),
+        // Travel expenses (filter only items with quantity)
+        travelExpenses: travelExpenses
+          .filter((item) => parseFloat(item.quantity) > 0)
+          .map((item) => ({
+            expenseType: item.expenseType,
+            quantity: parseFloat(item.quantity) || 0,
+            observations: item.observations || undefined,
+          })),
+      };
+
+      await surveysService.createSurvey(surveyData);
+
       setSuccess(true);
-      setCreatedWorkCode(result.workCode);
+      setCreatedWorkCode(workResult.workCode);
 
       // Limpiar formulario si es creación
       if (!isEditMode) {
@@ -272,8 +331,8 @@ export default function CrearObraPage() {
         setCreatedWorkCode(null);
       }, 5000);
     } catch (err: any) {
-      console.error('Error saving work:', err);
-      setError(err.response?.data?.message || 'Error al guardar la obra');
+      console.error('Error saving work/survey:', err);
+      setError(err.response?.data?.message || 'Error al guardar la obra y levantamiento');
     } finally {
       setSaving(false);
     }
