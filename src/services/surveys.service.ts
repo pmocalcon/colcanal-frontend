@@ -124,7 +124,10 @@ export interface Survey {
     orderNumber?: string;
     point: string;
     description?: string;
+    luminaireQuantity?: number;
+    relocatedLuminaireQuantity?: number;
     poleQuantity?: number;
+    braidedNetwork?: string;
     latitude?: string;
     longitude?: string;
   }>;
@@ -172,7 +175,10 @@ export interface CreateSurveyDto {
     orderNumber?: string;
     point: string;
     description?: string;
+    luminaireQuantity?: number;
+    relocatedLuminaireQuantity?: number;
     poleQuantity?: number;
+    braidedNetwork?: string;
     latitude?: string;
     longitude?: string;
   }[];

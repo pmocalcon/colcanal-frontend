@@ -397,12 +397,15 @@ export default function CrearObraPage() {
           })),
         // Investment items (filter only items with data)
         investmentItems: investmentData.items
-          .filter((item) => item.description || item.poleQuantity || item.latitude)
+          .filter((item) => item.description || item.poleQuantity || item.lumQuantity || item.latitude)
           .map((item) => ({
             orderNumber: item.orderNumber || undefined,
             point: item.point,
             description: item.description || undefined,
+            luminaireQuantity: parseFloat(item.lumQuantity) || undefined,
+            relocatedLuminaireQuantity: parseFloat(item.lumRelocatedQuantity) || undefined,
             poleQuantity: parseFloat(item.poleQuantity) || undefined,
+            braidedNetwork: item.twistedNetwork || undefined,
             latitude: item.latitude || undefined,
             longitude: item.longitude || undefined,
           })),
