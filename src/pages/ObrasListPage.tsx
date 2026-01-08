@@ -40,9 +40,12 @@ export default function ObrasListPage() {
       setLoading(true);
       setError(null);
       const response = await surveysService.getWorks();
-      // getWorks returns { data: Work[], total, page, limit, totalPages }
-      setWorks(response.data || []);
-      setFilteredWorks(response.data || []);
+      console.log('API Response for works:', response);
+      // Handle both response structures: { data: Work[] } or Work[]
+      const worksData = Array.isArray(response) ? response : (response.data || []);
+      console.log('Works data:', worksData);
+      setWorks(worksData);
+      setFilteredWorks(worksData);
     } catch (err: any) {
       console.error('Error loading works:', err);
       setError(err.response?.data?.message || 'Error al cargar las obras');
