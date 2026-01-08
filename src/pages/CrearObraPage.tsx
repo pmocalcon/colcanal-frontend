@@ -308,7 +308,22 @@ export default function CrearObraPage() {
           })),
       };
 
-      await surveysService.createSurvey(surveyData);
+      // Debug: Log the survey data being sent
+      console.log('Creating survey with data:', JSON.stringify(surveyData, null, 2));
+
+      try {
+        const surveyResult = await surveysService.createSurvey(surveyData);
+        console.log('Survey created successfully:', surveyResult);
+      } catch (surveyErr: any) {
+        console.error('Survey creation failed:', surveyErr);
+        console.error('Survey error response:', surveyErr.response?.data);
+        // Show more detailed error for survey
+        const surveyErrorMsg = surveyErr.response?.data?.message ||
+          (Array.isArray(surveyErr.response?.data?.message)
+            ? surveyErr.response.data.message.join(', ')
+            : 'Error al crear el levantamiento');
+        throw new Error(`Obra creada (${workResult.workCode}), pero falló el levantamiento: ${surveyErrorMsg}`);
+      }
 
       setSuccess(true);
       setCreatedWorkCode(workResult.workCode);
