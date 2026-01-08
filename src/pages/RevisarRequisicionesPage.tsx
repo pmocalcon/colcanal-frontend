@@ -105,10 +105,10 @@ const RevisarRequisicionesPage: React.FC = () => {
             (req) => req.status?.code === 'autorizado' || req.status?.code === 'aprobada_gerencia'
           );
         }
-        // Si tiene permiso de revisar pero NO de aprobar: solo ve estados pendiente/en_revision
+        // Si tiene permiso de revisar pero NO de aprobar: ve estados pendientes y ya revisados
         else if (permissions.revisar && !permissions.aprobar) {
           filteredData = response.data.filter(
-            (req) => ['pendiente', 'en_revision', 'aprobada_revisor', 'rechazada_revisor'].includes(req.status?.code || '')
+            (req) => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'rechazada_revisor'].includes(req.status?.code || '')
           );
         }
         // Si tiene ambos permisos: ve todo
@@ -616,12 +616,12 @@ const RevisarRequisicionesPage: React.FC = () => {
             ) : (
               <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                 {/* Pending Requisitions Section */}
-                {filteredRequisitions.filter(r => r.isPending).length > 0 && (
+                {filteredRequisitions.filter(r => ['pendiente', 'en_revision'].includes(r.status?.code || '')).length > 0 && (
                   <div>
                     <div className="bg-orange-50 border-b border-orange-200 px-4 py-2">
                       <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        PENDIENTES ({filteredRequisitions.filter(r => r.isPending).length})
+                        PENDIENTES ({filteredRequisitions.filter(r => ['pendiente', 'en_revision'].includes(r.status?.code || '')).length})
                       </p>
                     </div>
                     <Table>
@@ -639,7 +639,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => r.isPending).sort((a, b) => {
+                        {filteredRequisitions.filter(r => ['pendiente', 'en_revision'].includes(r.status?.code || '')).sort((a, b) => {
                           // Urgentes primero
                           if (a.priority === 'alta' && b.priority !== 'alta') return -1;
                           if (a.priority !== 'alta' && b.priority === 'alta') return 1;
@@ -752,12 +752,12 @@ const RevisarRequisicionesPage: React.FC = () => {
                 )}
 
                 {/* Processed Requisitions Section */}
-                {filteredRequisitions.filter(r => !r.isPending).length > 0 && (
-                  <div className={filteredRequisitions.filter(r => r.isPending).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                {filteredRequisitions.filter(r => !['pendiente', 'en_revision'].includes(r.status?.code || '')).length > 0 && (
+                  <div className={filteredRequisitions.filter(r => ['pendiente', 'en_revision'].includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                     <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                       <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                         <CheckCircle className="h-4 w-4" />
-                        YA REVISADAS ({filteredRequisitions.filter(r => !r.isPending).length})
+                        YA REVISADAS ({filteredRequisitions.filter(r => !['pendiente', 'en_revision'].includes(r.status?.code || '')).length})
                       </p>
                     </div>
                     <Table>
@@ -775,7 +775,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => !r.isPending).sort((a, b) => {
+                        {filteredRequisitions.filter(r => !['pendiente', 'en_revision'].includes(r.status?.code || '')).sort((a, b) => {
                           // Urgentes primero
                           if (a.priority === 'alta' && b.priority !== 'alta') return -1;
                           if (a.priority !== 'alta' && b.priority === 'alta') return 1;
