@@ -82,6 +82,8 @@ export interface Survey {
   requiresRetieCertification?: boolean;
   requiresRetilapCertification?: boolean;
   requiresCivilWork?: boolean;
+  // IPP value
+  ippValue?: number;
   description?: string;
   createdAt: string;
   updatedAt: string;
@@ -165,6 +167,8 @@ export interface CreateSurveyDto {
   requiresRetieCertification?: boolean;
   requiresRetilapCertification?: boolean;
   requiresCivilWork?: boolean;
+  // IPP value for budget calculation
+  ippValue?: number;
   // Budget items
   budgetItems?: {
     ucapId: number;

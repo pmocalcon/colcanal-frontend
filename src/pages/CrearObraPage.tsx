@@ -225,6 +225,11 @@ export default function CrearObraPage() {
                 : prev.items,
             }));
 
+            // Cargar IPP value si existe
+            if (surveyData.ippValue) {
+              setIppValue(surveyData.ippValue);
+            }
+
             // Cargar budget items si existen
             if (surveyData.budgetItems?.length > 0) {
               const loadedBudgetItems = createInitialBudgetItems();
@@ -388,6 +393,8 @@ export default function CrearObraPage() {
         requiresRetieCertification: investmentData.questions.requiresRetieCertification,
         requiresRetilapCertification: investmentData.questions.requiresRetilapCertification,
         requiresCivilWork: investmentData.questions.requiresCivilWork,
+        // IPP value for budget calculation
+        ippValue: ippValue || undefined,
         // Budget items (filter only items with ucapId)
         budgetItems: budgetItems
           .filter((item) => item.ucapId !== null && parseFloat(item.quantity) > 0)
