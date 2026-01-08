@@ -171,10 +171,10 @@ export default function GestionarCotizacionPage() {
             showResults2: false,
           };
         } else {
-          // No quotations yet
+          // No quotations yet - default to 'cotizar'
           states[item.itemId] = {
             itemId: item.itemId,
-            action: '',
+            action: 'cotizar',
             suppliers: [
               { supplier: null, supplierOrder: 1, observations: '' },
               { supplier: null, supplierOrder: 2, observations: '' },
@@ -887,12 +887,12 @@ export default function GestionarCotizacionPage() {
                         }
                         disabled={!editable}
                       >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Seleccionar acción" />
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Cotizar" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cotizar">Cotizar</SelectItem>
-                          <SelectItem value="no_requiere">No Requiere Cotización</SelectItem>
+                          <SelectItem value="no_requiere">No requiere</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>
