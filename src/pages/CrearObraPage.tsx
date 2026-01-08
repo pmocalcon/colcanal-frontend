@@ -400,10 +400,10 @@ export default function CrearObraPage() {
         ippValue: ippValue || undefined,
         // Budget items (filter only items with ucapId)
         budgetItems: budgetItems
-          .filter((item) => item.ucapId !== null && parseFloat(item.quantity) > 0)
+          .filter((item) => item.ucapId !== null && item.quantity > 0)
           .map((item) => ({
             ucapId: item.ucapId!,
-            quantity: parseFloat(item.quantity) || 0,
+            quantity: item.quantity,
           })),
         // Investment items (filter only items with data)
         investmentItems: investmentData.items

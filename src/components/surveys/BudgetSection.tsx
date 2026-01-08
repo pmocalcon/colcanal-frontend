@@ -211,6 +211,37 @@ export function BudgetSection({
     loadUcaps();
   }, [companyId, projectId]);
 
+  // Update items with unitValue when UCAPs are loaded (for edit mode)
+  useEffect(() => {
+    if (ucaps.length === 0) return;
+
+    // Check if any item has ucapId but no unitValue (loaded from backend)
+    const needsUpdate = items.some(item => item.ucapId !== null && item.unitValue === 0);
+    if (!needsUpdate) return;
+
+    const updatedItems = items.map(item => {
+      if (item.ucapId !== null && item.unitValue === 0) {
+        const ucap = ucaps.find(u => u.ucapId === item.ucapId);
+        if (ucap) {
+          return {
+            ...item,
+            ucapCode: ucap.code,
+            ucapDescription: ucap.description,
+            unitValue: ucap.value,
+            initialIpp: ucap.initialIpp,
+            budgetedValue: item.quantity * ucap.value,
+          };
+        }
+      }
+      return item;
+    });
+
+    // Only update if there were changes
+    if (updatedItems !== items) {
+      onItemsChange(updatedItems);
+    }
+  }, [ucaps, items, onItemsChange]);
+
   // Handle UCAP selection for a row
   const handleUcapSelect = useCallback(
     (index: number, ucap: Ucap | null) => {
