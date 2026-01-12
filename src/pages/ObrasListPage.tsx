@@ -26,10 +26,7 @@ export default function ObrasListPage() {
       setFilteredWorks(
         works.filter(
           (w) =>
-            w.workCode?.toLowerCase().includes(term) ||
-            w.name.toLowerCase().includes(term) ||
-            w.address.toLowerCase().includes(term) ||
-            w.neighborhood.toLowerCase().includes(term)
+            w.recordNumber?.toLowerCase().includes(term)
         )
       );
     }
@@ -121,7 +118,7 @@ export default function ObrasListPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
             <Input
               type="text"
-              placeholder="Buscar por código, nombre, dirección..."
+              placeholder="Buscar por número de acta..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -149,7 +146,7 @@ export default function ObrasListPage() {
                 <thead className="bg-cyan-100 border-b border-cyan-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
-                      Código
+                      N° Acta
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
                       Nombre
@@ -182,7 +179,7 @@ export default function ObrasListPage() {
                         className={index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}
                       >
                         <td className="px-4 py-3 font-mono font-medium text-cyan-700">
-                          {work.workCode || '-'}
+                          {work.recordNumber || '-'}
                         </td>
                         <td className="px-4 py-3 font-medium">
                           {work.name}
