@@ -60,40 +60,24 @@ const RevisarRequisicionesPage: React.FC = () => {
   // Permisos del usuario
   const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
 
-  // Determinar estados pendientes y procesados según permisos
-  const { pendingStatuses, processedStatuses, sectionTitle } = useMemo(() => {
+  // Determinar títulos de sección según permisos
+  const sectionTitle = useMemo(() => {
     if (!permissions) {
-      return {
-        pendingStatuses: ['pendiente', 'en_revision'],
-        processedStatuses: ['aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia'],
-        sectionTitle: { pending: 'PENDIENTES', processed: 'YA REVISADAS' }
-      };
+      return { pending: 'PENDIENTES', processed: 'YA REVISADAS' };
     }
 
     // Gerencia: aprobar pero NO revisar
     if (permissions.aprobar && !permissions.revisar) {
-      return {
-        pendingStatuses: ['aprobada_revisor', 'autorizado'],
-        processedStatuses: ['aprobada_gerencia'],
-        sectionTitle: { pending: 'PENDIENTES DE APROBACIÓN', processed: 'YA APROBADAS' }
-      };
+      return { pending: 'PENDIENTES DE APROBACIÓN', processed: 'YA APROBADAS' };
     }
 
     // Revisor: revisar pero NO aprobar
     if (permissions.revisar && !permissions.aprobar) {
-      return {
-        pendingStatuses: ['pendiente', 'en_revision'],
-        processedStatuses: ['aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia'],
-        sectionTitle: { pending: 'PENDIENTES', processed: 'YA REVISADAS' }
-      };
+      return { pending: 'PENDIENTES', processed: 'YA REVISADAS' };
     }
 
     // Ambos permisos: ver todo
-    return {
-      pendingStatuses: ['pendiente', 'en_revision', 'aprobada_revisor', 'autorizado'],
-      processedStatuses: ['aprobada_gerencia'],
-      sectionTitle: { pending: 'PENDIENTES', processed: 'YA PROCESADAS' }
-    };
+    return { pending: 'PENDIENTES', processed: 'YA PROCESADAS' };
   }, [permissions]);
 
   // Filtros
@@ -655,12 +639,12 @@ const RevisarRequisicionesPage: React.FC = () => {
             ) : (
               <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                 {/* Pending Requisitions Section */}
-                {filteredRequisitions.filter(r => pendingStatuses.includes(r.status?.code || '')).length > 0 && (
+                {filteredRequisitions.filter(r => r.isPending).length > 0 && (
                   <div>
                     <div className="bg-orange-50 border-b border-orange-200 px-4 py-2">
                       <p className="text-sm font-semibold text-orange-800 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        {sectionTitle.pending} ({filteredRequisitions.filter(r => pendingStatuses.includes(r.status?.code || '')).length})
+                        {sectionTitle.pending} ({filteredRequisitions.filter(r => r.isPending).length})
                       </p>
                     </div>
                     <Table>
@@ -678,7 +662,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => pendingStatuses.includes(r.status?.code || '')).sort((a, b) => {
+                        {filteredRequisitions.filter(r => r.isPending).sort((a, b) => {
                           // Urgentes primero
                           if (a.priority === 'alta' && b.priority !== 'alta') return -1;
                           if (a.priority !== 'alta' && b.priority === 'alta') return 1;
@@ -791,12 +775,12 @@ const RevisarRequisicionesPage: React.FC = () => {
                 )}
 
                 {/* Processed Requisitions Section */}
-                {filteredRequisitions.filter(r => processedStatuses.includes(r.status?.code || '')).length > 0 && (
-                  <div className={filteredRequisitions.filter(r => pendingStatuses.includes(r.status?.code || '')).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
+                {filteredRequisitions.filter(r => !r.isPending).length > 0 && (
+                  <div className={filteredRequisitions.filter(r => r.isPending).length > 0 ? 'border-t-4 border-[hsl(var(--canalco-neutral-200))]' : ''}>
                     <div className="bg-green-50 border-b border-green-200 px-4 py-2">
                       <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
                         <CheckCircle className="h-4 w-4" />
-                        {sectionTitle.processed} ({filteredRequisitions.filter(r => processedStatuses.includes(r.status?.code || '')).length})
+                        {sectionTitle.processed} ({filteredRequisitions.filter(r => !r.isPending).length})
                       </p>
                     </div>
                     <Table>
@@ -814,7 +798,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRequisitions.filter(r => processedStatuses.includes(r.status?.code || '')).sort((a, b) => {
+                        {filteredRequisitions.filter(r => !r.isPending).sort((a, b) => {
                           // Urgentes primero
                           if (a.priority === 'alta' && b.priority !== 'alta') return -1;
                           if (a.priority !== 'alta' && b.priority === 'alta') return 1;
