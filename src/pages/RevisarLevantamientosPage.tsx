@@ -1,17 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { surveysService, type Survey } from '@/services/surveys.service';
-import { masterDataService, type Company, type Project } from '@/services/master-data.service';
+import { surveysService, type Survey, type AccessCompany, type AccessProject } from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Home, ArrowLeft, Building2, FolderOpen, ClipboardList, Eye, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
-
-// Companies to show (excluding 1 and 5)
-const COMPANY_IDS_TO_SHOW = [2, 3, 4, 6, 7, 8];
-// Projects from Company 1 to show
-const PROJECT_IDS_TO_SHOW = [2, 3, 4, 5];
-const CANALES_CONTACTOS_COMPANY_ID = 1;
 
 type ViewMode = 'cards' | 'obras' | 'levantamientos';
 
@@ -39,9 +32,9 @@ export default function RevisarLevantamientosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Data
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Reviewer access data from backend
+  const [accessCompanies, setAccessCompanies] = useState<AccessCompany[]>([]);
+  const [accessProjects, setAccessProjects] = useState<AccessProject[]>([]);
   const [allSurveys, setAllSurveys] = useState<Survey[]>([]);
 
   // View state
@@ -59,15 +52,14 @@ export default function RevisarLevantamientosPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch companies, projects, and surveys in parallel
-      const [companiesData, projectsData, surveysResponse] = await Promise.all([
-        masterDataService.getCompanies(),
-        masterDataService.getProjects(CANALES_CONTACTOS_COMPANY_ID),
+      // Fetch reviewer access and surveys in parallel
+      const [accessData, surveysResponse] = await Promise.all([
+        surveysService.getMyAccess(),
         surveysService.getSurveysForReview(),
       ]);
 
-      setCompanies(companiesData);
-      setProjects(projectsData);
+      setAccessCompanies(accessData.companies || []);
+      setAccessProjects(accessData.projects || []);
       setAllSurveys(surveysResponse.data || []);
     } catch (err: any) {
       console.error('Error loading data:', err);
@@ -77,49 +69,43 @@ export default function RevisarLevantamientosPage() {
     }
   };
 
-  // Build cards data
+  // Build cards data from backend access configuration
   const cardsData = useMemo((): CardData[] => {
     const cards: CardData[] = [];
 
-    // Add company cards (excluding 1 and 5)
-    COMPANY_IDS_TO_SHOW.forEach((companyId) => {
-      const company = companies.find((c) => c.companyId === companyId);
-      if (company) {
-        const pendingCount = allSurveys.filter(
-          (s) => s.work?.company?.companyId === companyId && s.status === 'pending'
-        ).length;
-        cards.push({
-          id: companyId,
-          name: company.name,
-          type: 'company',
-          companyId: companyId,
-          pendingCount,
-        });
-      }
+    // Add company cards from user's access
+    accessCompanies.forEach((company) => {
+      const pendingCount = allSurveys.filter(
+        (s) => s.work?.company?.companyId === company.companyId && s.status === 'pending'
+      ).length;
+      cards.push({
+        id: company.companyId,
+        name: company.name,
+        type: 'company',
+        companyId: company.companyId,
+        pendingCount,
+      });
     });
 
-    // Add project cards from Company 1
-    PROJECT_IDS_TO_SHOW.forEach((projectId) => {
-      const project = projects.find((p) => p.projectId === projectId);
-      if (project) {
-        const pendingCount = allSurveys.filter(
-          (s) => s.work?.company?.companyId === CANALES_CONTACTOS_COMPANY_ID &&
-                 (s as any).work?.project?.projectId === projectId &&
-                 s.status === 'pending'
-        ).length;
-        cards.push({
-          id: projectId,
-          name: project.name,
-          type: 'project',
-          companyId: CANALES_CONTACTOS_COMPANY_ID,
-          projectId: projectId,
-          pendingCount,
-        });
-      }
+    // Add project cards from user's access
+    accessProjects.forEach((project) => {
+      const pendingCount = allSurveys.filter(
+        (s) => s.work?.company?.companyId === project.companyId &&
+               (s as any).work?.project?.projectId === project.projectId &&
+               s.status === 'pending'
+      ).length;
+      cards.push({
+        id: project.projectId,
+        name: project.name,
+        type: 'project',
+        companyId: project.companyId,
+        projectId: project.projectId,
+        pendingCount,
+      });
     });
 
     return cards;
-  }, [companies, projects, allSurveys]);
+  }, [accessCompanies, accessProjects, allSurveys]);
 
   // Get obras for selected card
   const obrasForSelectedCard = useMemo((): WorkWithSurveys[] => {

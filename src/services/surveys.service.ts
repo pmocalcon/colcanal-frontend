@@ -413,6 +413,30 @@ export const surveysService = {
     const response = await api.get(`/surveys/ipp/${year}/${month}`);
     return response.data;
   },
+
+  // ---- REVIEWER ACCESS ----
+
+  async getMyAccess(): Promise<ReviewerAccess> {
+    const response = await api.get('/surveys/my-access');
+    return response.data;
+  },
 };
+
+// Reviewer Access Types
+export interface AccessCompany {
+  companyId: number;
+  name: string;
+}
+
+export interface AccessProject {
+  projectId: number;
+  name: string;
+  companyId: number;
+}
+
+export interface ReviewerAccess {
+  companies: AccessCompany[];
+  projects: AccessProject[];
+}
 
 export default surveysService;
