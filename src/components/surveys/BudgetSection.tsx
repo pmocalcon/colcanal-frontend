@@ -456,16 +456,17 @@ export function BudgetSection({
         {/* IPP Actual Row */}
         <div className="flex justify-between items-center px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
           <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-            ÍNDICE DE PRECIOS AL PRODUCTOR DEL MES
+            ÍNDICE DE PRECIOS AL PRODUCTOR DEL MES <span className="text-red-500">*</span>
           </span>
           <div className="flex items-center gap-2">
             <Input
               type="number"
               step="0.01"
-              placeholder="Ej: 185.51"
+              placeholder="Requerido"
               value={ippValue || ''}
               onChange={(e) => onIppValueChange(parseFloat(e.target.value) || null)}
-              className="h-8 w-28 text-sm text-right font-mono"
+              className={`h-8 w-28 text-sm text-right font-mono ${!ippValue ? 'border-red-300 focus:border-red-500' : ''}`}
+              required
             />
           </div>
         </div>

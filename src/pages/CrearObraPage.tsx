@@ -342,6 +342,10 @@ export default function CrearObraPage() {
       setError('Debe seleccionar el tipo de solicitud');
       return false;
     }
+    if (!ippValue || ippValue <= 0) {
+      setError('Debe ingresar el IPP del mes (Índice de Precios al Productor)');
+      return false;
+    }
     return true;
   };
 
