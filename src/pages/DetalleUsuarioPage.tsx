@@ -11,6 +11,8 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Building2,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +43,12 @@ import {
   type AuthorizationUser,
   type Authorization,
 } from '@/services/users.service';
+import {
+  surveysService,
+  type AccessCompany,
+  type AccessProject,
+} from '@/services/surveys.service';
+import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 
 export default function DetalleUsuarioPage() {
   const navigate = useNavigate();
@@ -79,6 +87,18 @@ export default function DetalleUsuarioPage() {
   const [deletingAuth, setDeletingAuth] = useState<Authorization | null>(null);
   const [deletingLoading, setDeletingLoading] = useState(false);
 
+  // Survey Access (Accesos de Levantamientos)
+  const [surveyAccessCompanies, setSurveyAccessCompanies] = useState<AccessCompany[]>([]);
+  const [surveyAccessProjects, setSurveyAccessProjects] = useState<AccessProject[]>([]);
+  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [showAddAccessModal, setShowAddAccessModal] = useState(false);
+  const [accessType, setAccessType] = useState<'company' | 'project'>('company');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number>(0);
+  const [selectedProjectId, setSelectedProjectId] = useState<number>(0);
+  const [addingAccess, setAddingAccess] = useState(false);
+  const [deletingAccessId, setDeletingAccessId] = useState<number | null>(null);
+
   // Cargar datos al montar
   useEffect(() => {
     if (userId) {
@@ -98,15 +118,19 @@ export default function DetalleUsuarioPage() {
     try {
       setLoading(true);
       setError(null);
-      const [userData, rolesData, authData] = await Promise.all([
+      const [userData, rolesData, authData, companiesData, projectsData] = await Promise.all([
         usersService.getById(userId),
         usersService.getRoles(),
         usersService.getUserAuthorizations(userId),
+        masterDataService.getCompanies(),
+        masterDataService.getProjects(),
       ]);
 
       setUser(userData);
       setRoles(Array.isArray(rolesData) ? rolesData : []);
       setAuthorizations(authData);
+      setAllCompanies(companiesData || []);
+      setAllProjects(projectsData || []);
 
       setFormData({
         nombre: userData.nombre,
@@ -115,8 +139,11 @@ export default function DetalleUsuarioPage() {
         password: '',
       });
 
-      // Cargar subordinados disponibles
-      await loadAvailableSubordinates();
+      // Cargar subordinados disponibles y accesos de surveys
+      await Promise.all([
+        loadAvailableSubordinates(),
+        loadSurveyAccess(),
+      ]);
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError('Error al cargar los datos del usuario');
@@ -133,6 +160,69 @@ export default function DetalleUsuarioPage() {
       console.error('Error loading available subordinates:', err);
     }
   };
+
+  const loadSurveyAccess = async () => {
+    try {
+      const accessData = await surveysService.getUserAccess(userId);
+      setSurveyAccessCompanies(accessData.companies || []);
+      setSurveyAccessProjects(accessData.projects || []);
+    } catch (err) {
+      console.error('Error loading survey access:', err);
+    }
+  };
+
+  const handleAddSurveyAccess = async () => {
+    if (accessType === 'company' && !selectedCompanyId) {
+      setError('Debe seleccionar una empresa');
+      return;
+    }
+    if (accessType === 'project' && !selectedProjectId) {
+      setError('Debe seleccionar un proyecto');
+      return;
+    }
+
+    try {
+      setAddingAccess(true);
+      setError(null);
+      await surveysService.addUserAccess({
+        userId,
+        companyId: accessType === 'company' ? selectedCompanyId : undefined,
+        projectId: accessType === 'project' ? selectedProjectId : undefined,
+      });
+      setSuccessMessage('Acceso agregado correctamente');
+      setShowAddAccessModal(false);
+      setSelectedCompanyId(0);
+      setSelectedProjectId(0);
+      await loadSurveyAccess();
+    } catch (err: any) {
+      console.error('Error adding survey access:', err);
+      setError(err.response?.data?.message || 'Error al agregar el acceso');
+    } finally {
+      setAddingAccess(false);
+    }
+  };
+
+  const handleDeleteSurveyAccess = async (accessId: number) => {
+    try {
+      setDeletingAccessId(accessId);
+      await surveysService.deleteUserAccess(accessId);
+      setSuccessMessage('Acceso eliminado correctamente');
+      await loadSurveyAccess();
+    } catch (err: any) {
+      console.error('Error deleting survey access:', err);
+      setError(err.response?.data?.message || 'Error al eliminar el acceso');
+    } finally {
+      setDeletingAccessId(null);
+    }
+  };
+
+  // Filtrar empresas/proyectos que ya tienen acceso
+  const availableCompaniesForAccess = allCompanies.filter(
+    (c) => !surveyAccessCompanies.some((ac) => ac.companyId === c.companyId)
+  );
+  const availableProjectsForAccess = allProjects.filter(
+    (p) => !surveyAccessProjects.some((ap) => ap.projectId === p.projectId)
+  );
 
   const handleSave = async () => {
     if (!formData.nombre.trim()) {
@@ -486,6 +576,98 @@ export default function DetalleUsuarioPage() {
                 </p>
               )}
             </Card>
+
+            {/* Accesos de Levantamientos */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Accesos de Levantamientos
+                </h3>
+                <Button
+                  size="sm"
+                  onClick={() => setShowAddAccessModal(true)}
+                  disabled={availableCompaniesForAccess.length === 0 && availableProjectsForAccess.length === 0}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Agregar
+                </Button>
+              </div>
+
+              <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-4">
+                Empresas y proyectos que este usuario puede revisar en Levantamiento de Obras
+              </p>
+
+              {(surveyAccessCompanies.length > 0 || surveyAccessProjects.length > 0) ? (
+                <div className="space-y-3">
+                  {/* Empresas */}
+                  {surveyAccessCompanies.map((company) => (
+                    <div
+                      key={`company-${company.companyId}`}
+                      className="flex items-center justify-between bg-blue-50 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{company.name}</p>
+                          <p className="text-xs text-blue-600">Empresa</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => company.accessId && handleDeleteSurveyAccess(company.accessId)}
+                        disabled={deletingAccessId === company.accessId}
+                        className="hover:bg-red-100 hover:text-red-600 h-8 w-8"
+                      >
+                        {deletingAccessId === company.accessId ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+
+                  {/* Proyectos */}
+                  {surveyAccessProjects.map((project) => (
+                    <div
+                      key={`project-${project.projectId}`}
+                      className="flex items-center justify-between bg-green-50 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center">
+                          <FolderOpen className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{project.name}</p>
+                          <p className="text-xs text-green-600">Proyecto</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => project.accessId && handleDeleteSurveyAccess(project.accessId)}
+                        disabled={deletingAccessId === project.accessId}
+                        className="hover:bg-red-100 hover:text-red-600 h-8 w-8"
+                      >
+                        {deletingAccessId === project.accessId ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[hsl(var(--canalco-neutral-500))] text-sm text-center py-4">
+                  No tiene accesos configurados
+                </p>
+              )}
+            </Card>
           </div>
         </div>
       </main>
@@ -583,6 +765,94 @@ export default function DetalleUsuarioPage() {
             >
               {deletingLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Agregar Acceso de Levantamiento */}
+      <Dialog open={showAddAccessModal} onOpenChange={setShowAddAccessModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agregar Acceso de Levantamiento</DialogTitle>
+            <DialogDescription>
+              Selecciona una empresa o proyecto que {user.nombre} podrá revisar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Tipo de Acceso</Label>
+              <Select
+                value={accessType}
+                onValueChange={(value: 'company' | 'project') => {
+                  setAccessType(value);
+                  setSelectedCompanyId(0);
+                  setSelectedProjectId(0);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="company">Empresa</SelectItem>
+                  <SelectItem value="project">Proyecto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {accessType === 'company' ? (
+              <div className="space-y-2">
+                <Label>Empresa</Label>
+                <Select
+                  value={selectedCompanyId?.toString() || ''}
+                  onValueChange={(value) => setSelectedCompanyId(parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCompaniesForAccess.map((company) => (
+                      <SelectItem key={company.companyId} value={company.companyId.toString()}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Proyecto</Label>
+                <Select
+                  value={selectedProjectId?.toString() || ''}
+                  onValueChange={(value) => setSelectedProjectId(parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un proyecto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableProjectsForAccess.map((project) => (
+                      <SelectItem key={project.projectId} value={project.projectId.toString()}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddAccessModal(false)} disabled={addingAccess}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleAddSurveyAccess}
+              disabled={addingAccess}
+              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+            >
+              {addingAccess && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Agregar
             </Button>
           </DialogFooter>
         </DialogContent>

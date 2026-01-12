@@ -420,23 +420,54 @@ export const surveysService = {
     const response = await api.get('/surveys/my-access');
     return response.data;
   },
+
+  // Admin endpoints for managing user access
+  async getUserAccess(userId: number): Promise<ReviewerAccess> {
+    const response = await api.get(`/surveys/user-access/${userId}`);
+    return response.data;
+  },
+
+  async addUserAccess(data: AddUserAccessDto): Promise<UserAccessRecord> {
+    const response = await api.post('/surveys/user-access', data);
+    return response.data;
+  },
+
+  async deleteUserAccess(accessId: number): Promise<void> {
+    await api.delete(`/surveys/user-access/${accessId}`);
+  },
 };
 
 // Reviewer Access Types
 export interface AccessCompany {
   companyId: number;
   name: string;
+  accessId?: number;
 }
 
 export interface AccessProject {
   projectId: number;
   name: string;
   companyId: number;
+  accessId?: number;
 }
 
 export interface ReviewerAccess {
   companies: AccessCompany[];
   projects: AccessProject[];
+}
+
+export interface AddUserAccessDto {
+  userId: number;
+  companyId?: number;
+  projectId?: number;
+}
+
+export interface UserAccessRecord {
+  accessId: number;
+  userId: number;
+  companyId?: number;
+  projectId?: number;
+  createdAt: string;
 }
 
 export default surveysService;
