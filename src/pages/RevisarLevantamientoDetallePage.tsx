@@ -704,14 +704,24 @@ function TravelExpensesBlockContent({ survey }: { survey: Survey }) {
   const travelExpenses = survey.travelExpenses || [];
 
   const expenseLabels: Record<string, string> = {
+    // Spanish keys
     peajes: 'Peajes',
     parqueaderos: 'Parqueaderos',
     hospedaje: 'Hospedaje',
-    alimentacion: 'Alimentacion',
+    alimentacion: 'Alimentación',
     combustible: 'Combustible',
     cuadrilla_adicional: 'Cuadrilla Adicional',
     horas_diurnas: 'Horas Diurnas',
     horas_extras_festivas: 'Horas Extras Festivas',
+    // English keys from backend
+    tolls: 'Peajes',
+    parking: 'Parqueaderos',
+    lodging: 'Hospedaje',
+    food: 'Alimentación',
+    fuel: 'Combustible',
+    additional_crew: 'Cuadrilla Adicional',
+    day_hours: 'Horas Diurnas',
+    holiday_overtime: 'Horas Extras Festivas',
   };
 
   return (

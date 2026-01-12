@@ -235,6 +235,13 @@ export default function RevisarLevantamientosPage() {
   };
 
   const handleWorkClick = (work: WorkWithSurveys) => {
+    // If there's only one survey total, go directly to detail page
+    const allSurveysInWork = [...work.pendingSurveys, ...work.reviewedSurveys];
+    if (allSurveysInWork.length === 1) {
+      navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${allSurveysInWork[0].surveyId}`);
+      return;
+    }
+    // Otherwise show the list
     setSelectedWork(work);
     setViewMode('levantamientos');
   };
