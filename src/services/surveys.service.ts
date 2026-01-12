@@ -428,7 +428,8 @@ export const surveysService = {
   },
 
   async addUserAccess(data: AddUserAccessDto): Promise<UserAccessRecord> {
-    const response = await api.post('/surveys/user-access', data);
+    const { userId, ...body } = data;
+    const response = await api.post(`/surveys/user-access/${userId}`, body);
     return response.data;
   },
 
