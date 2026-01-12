@@ -323,7 +323,7 @@ export default function RevisarLevantamientoDetallePage() {
         {/* Survey Info */}
         <Card className="p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Informacion de la Obra</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">Empresa:</span>
               <p className="font-medium">{survey.work?.company?.name || '-'}</p>
@@ -337,6 +337,10 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.projectCode || '-'}</p>
             </div>
             <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">N. Levantamiento:</span>
+              <p className="font-medium">{survey.surveyNumber || '-'}</p>
+            </div>
+            <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">Direccion:</span>
               <p className="font-medium">{survey.work?.address || '-'}</p>
             </div>
@@ -345,40 +349,100 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.work?.neighborhood || '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">Fecha:</span>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Usuario:</span>
+              <p className="font-medium">{survey.work?.userName || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Entidad Solicitante:</span>
+              <p className="font-medium">{survey.work?.requestingEntity || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Sector/Vereda:</span>
+              <p className="font-medium">{survey.work?.sectorVillage || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Zona:</span>
+              <p className="font-medium">{survey.work?.zone || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Direccion Usuario:</span>
+              <p className="font-medium">{survey.work?.userAddress || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Tipo de Area:</span>
+              <p className="font-medium">{survey.work?.areaType || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Tipo de Solicitud:</span>
+              <p className="font-medium">{survey.work?.requestType || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">N. Radicado:</span>
+              <p className="font-medium">{survey.work?.filingNumber || '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Fecha Levantamiento:</span>
               <p className="font-medium">
-                {new Date(survey.surveyDate).toLocaleDateString('es-CO')}
+                {survey.surveyDate ? new Date(survey.surveyDate).toLocaleDateString('es-CO') : '-'}
               </p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Fecha Solicitud:</span>
+              <p className="font-medium">
+                {survey.requestDate ? new Date(survey.requestDate).toLocaleDateString('es-CO') : '-'}
+              </p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Mes Anterior:</span>
+              <p className="font-medium text-cyan-700">{survey.previousMonthIpp ?? '-'}</p>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Recibido por:</span>
+              <p className="font-medium">{survey.receiver?.nombre || '-'}</p>
             </div>
           </div>
 
+          {/* Description */}
+          <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
+            <span className="text-[hsl(var(--canalco-neutral-500))] text-sm">Descripcion:</span>
+            <p className="font-medium text-sm mt-1">{survey.description || '-'}</p>
+          </div>
+
           {/* Document Links */}
-          {(survey.sketchUrl || survey.mapUrl) && (
-            <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))] flex gap-4">
-              {survey.sketchUrl && (
+          <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))] flex gap-6">
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))] text-sm">Croquis:</span>
+              {survey.sketchUrl ? (
                 <a
                   href={survey.sketchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm"
+                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm mt-1"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Ver Croquis
                 </a>
+              ) : (
+                <p className="font-medium text-sm mt-1">-</p>
               )}
-              {survey.mapUrl && (
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))] text-sm">Mapa:</span>
+              {survey.mapUrl ? (
                 <a
                   href={survey.mapUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm"
+                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm mt-1"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Ver Mapa
                 </a>
+              ) : (
+                <p className="font-medium text-sm mt-1">-</p>
               )}
             </div>
-          )}
+          </div>
         </Card>
 
         {/* Blocks */}
@@ -515,64 +579,105 @@ function BudgetBlockContent({
   formatCurrency: (v: number) => string;
 }) {
   const budgetItems = survey.budgetItems || [];
-  const total = budgetItems.reduce(
+  const previousMonthIpp = survey.previousMonthIpp;
+  const baseIpp = 100; // IPP base (configurable si viene del backend)
+
+  // Calculate totals
+  const totalBase = budgetItems.reduce(
     (sum, item) => sum + (item.unitValue || 0) * item.quantity,
     0
   );
 
+  // Total ajustado por IPP: Total × (IPP Actual / IPP Base)
+  const totalAjustado = previousMonthIpp
+    ? totalBase * (previousMonthIpp / baseIpp)
+    : totalBase;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-cyan-50">
-          <tr>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Item</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">UCAP</th>
-            <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Valor Unitario</th>
-            <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cantidad</th>
-            <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {budgetItems.length === 0 ? (
+    <div>
+      {/* IPP Info */}
+      {previousMonthIpp && (
+        <div className="mb-4 p-3 bg-cyan-50 rounded-lg border border-cyan-200">
+          <div className="flex items-center gap-6 text-sm">
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Base:</span>
+              <span className="font-medium ml-2">{baseIpp}</span>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Mes Anterior:</span>
+              <span className="font-medium ml-2 text-cyan-700">{previousMonthIpp}</span>
+            </div>
+            <div>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Factor de Ajuste:</span>
+              <span className="font-medium ml-2">{(previousMonthIpp / baseIpp).toFixed(4)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-cyan-50">
             <tr>
-              <td colSpan={5} className="px-3 py-4 text-center text-[hsl(var(--canalco-neutral-500))]">
-                Sin items de presupuesto
-              </td>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Item</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">UCAP</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Valor Unitario</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cantidad</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Total</th>
             </tr>
-          ) : (
-            budgetItems.map((item, idx) => (
-              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-3 py-2">{idx + 1}</td>
-                <td className="px-3 py-2">
-                  <span className="font-mono text-cyan-700">{item.ucap?.code}</span>
-                  {item.ucap?.description && (
-                    <span className="text-[hsl(var(--canalco-neutral-500))] ml-2">
-                      - {item.ucap.description}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right">{formatCurrency(item.unitValue || 0)}</td>
-                <td className="px-3 py-2 text-right">{item.quantity}</td>
-                <td className="px-3 py-2 text-right font-medium">
-                  {formatCurrency((item.unitValue || 0) * item.quantity)}
+          </thead>
+          <tbody>
+            {budgetItems.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-4 text-center text-[hsl(var(--canalco-neutral-500))]">
+                  Sin items de presupuesto
                 </td>
               </tr>
-            ))
+            ) : (
+              budgetItems.map((item, idx) => (
+                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2">{idx + 1}</td>
+                  <td className="px-3 py-2">
+                    <span className="font-mono text-cyan-700">{item.ucap?.code}</span>
+                    {item.ucap?.description && (
+                      <span className="text-[hsl(var(--canalco-neutral-500))] ml-2">
+                        - {item.ucap.description}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(item.unitValue || 0)}</td>
+                  <td className="px-3 py-2 text-right">{item.quantity}</td>
+                  <td className="px-3 py-2 text-right font-medium">
+                    {formatCurrency((item.unitValue || 0) * item.quantity)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {budgetItems.length > 0 && (
+            <tfoot className="bg-cyan-100">
+              <tr>
+                <td colSpan={4} className="px-3 py-2 text-right font-semibold">
+                  SUBTOTAL:
+                </td>
+                <td className="px-3 py-2 text-right font-bold text-cyan-800">
+                  {formatCurrency(totalBase)}
+                </td>
+              </tr>
+              {previousMonthIpp && (
+                <tr className="bg-green-100">
+                  <td colSpan={4} className="px-3 py-2 text-right font-semibold text-green-800">
+                    TOTAL AJUSTADO (IPP {previousMonthIpp}):
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold text-green-800">
+                    {formatCurrency(totalAjustado)}
+                  </td>
+                </tr>
+              )}
+            </tfoot>
           )}
-        </tbody>
-        {budgetItems.length > 0 && (
-          <tfoot className="bg-cyan-100">
-            <tr>
-              <td colSpan={4} className="px-3 py-2 text-right font-semibold">
-                TOTAL:
-              </td>
-              <td className="px-3 py-2 text-right font-bold text-cyan-800">
-                {formatCurrency(total)}
-              </td>
-            </tr>
-          </tfoot>
-        )}
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
