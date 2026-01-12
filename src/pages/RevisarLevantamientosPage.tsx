@@ -1,12 +1,43 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { surveysService, type Survey, type AccessCompany, type AccessProject } from '@/services/surveys.service';
+import {
+  surveysService,
+  type Survey,
+  type AccessCompany,
+  type AccessProject,
+  type SurveyDatabaseItem,
+  type BlockStatus,
+} from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Home, ArrowLeft, Building2, FolderOpen, ClipboardList, Eye, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Home,
+  ArrowLeft,
+  Building2,
+  FolderOpen,
+  ClipboardList,
+  Eye,
+  CheckCircle,
+  XCircle,
+  ChevronRight,
+  Database,
+  LayoutGrid,
+  Search,
+  Filter,
+} from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 
 type ViewMode = 'cards' | 'obras' | 'levantamientos';
+type MainView = 'revision' | 'database';
 
 interface CardData {
   id: number;
@@ -32,27 +63,48 @@ export default function RevisarLevantamientosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Main view toggle
+  const [mainView, setMainView] = useState<MainView>('revision');
+
   // Reviewer access data from backend
   const [accessCompanies, setAccessCompanies] = useState<AccessCompany[]>([]);
   const [accessProjects, setAccessProjects] = useState<AccessProject[]>([]);
   const [allSurveys, setAllSurveys] = useState<Survey[]>([]);
 
-  // View state
+  // View state for revision flow
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [selectedWork, setSelectedWork] = useState<WorkWithSurveys | null>(null);
+
+  // Database view state
+  const [databaseData, setDatabaseData] = useState<SurveyDatabaseItem[]>([]);
+  const [databaseLoading, setDatabaseLoading] = useState(false);
+  const [databaseFilters, setDatabaseFilters] = useState({
+    companyId: '',
+    search: '',
+    budgetStatus: '',
+    investmentStatus: '',
+    materialsStatus: '',
+    travelExpensesStatus: '',
+  });
 
   // Load initial data
   useEffect(() => {
     loadData();
   }, []);
 
+  // Load database when switching to database view
+  useEffect(() => {
+    if (mainView === 'database') {
+      loadDatabaseData();
+    }
+  }, [mainView]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch reviewer access and surveys in parallel
       const [accessData, surveysResponse] = await Promise.all([
         surveysService.getMyAccess(),
         surveysService.getSurveysForReview(),
@@ -69,14 +121,34 @@ export default function RevisarLevantamientosPage() {
     }
   };
 
+  const loadDatabaseData = async () => {
+    try {
+      setDatabaseLoading(true);
+      const filters: any = {};
+      if (databaseFilters.companyId) filters.companyId = Number(databaseFilters.companyId);
+      if (databaseFilters.search) filters.search = databaseFilters.search;
+      if (databaseFilters.budgetStatus) filters.budgetStatus = databaseFilters.budgetStatus;
+      if (databaseFilters.investmentStatus) filters.investmentStatus = databaseFilters.investmentStatus;
+      if (databaseFilters.materialsStatus) filters.materialsStatus = databaseFilters.materialsStatus;
+      if (databaseFilters.travelExpensesStatus) filters.travelExpensesStatus = databaseFilters.travelExpensesStatus;
+
+      const response = await surveysService.getSurveysDatabase(filters);
+      setDatabaseData(response.data || []);
+    } catch (err: any) {
+      console.error('Error loading database:', err);
+      setError(err.response?.data?.message || 'Error al cargar la base de datos');
+    } finally {
+      setDatabaseLoading(false);
+    }
+  };
+
   // Build cards data from backend access configuration
   const cardsData = useMemo((): CardData[] => {
     const cards: CardData[] = [];
 
-    // Add company cards from user's access
     accessCompanies.forEach((company) => {
       const pendingCount = allSurveys.filter(
-        (s) => s.work?.company?.companyId === company.companyId && s.status === 'pending'
+        (s) => s.work?.company?.companyId === company.companyId && s.status?.code === 'pending'
       ).length;
       cards.push({
         id: company.companyId,
@@ -87,12 +159,12 @@ export default function RevisarLevantamientosPage() {
       });
     });
 
-    // Add project cards from user's access
     accessProjects.forEach((project) => {
       const pendingCount = allSurveys.filter(
-        (s) => s.work?.company?.companyId === project.companyId &&
-               (s as any).work?.project?.projectId === project.projectId &&
-               s.status === 'pending'
+        (s) =>
+          s.work?.company?.companyId === project.companyId &&
+          (s as any).work?.project?.projectId === project.projectId &&
+          s.status?.code === 'pending'
       ).length;
       cards.push({
         id: project.projectId,
@@ -111,7 +183,6 @@ export default function RevisarLevantamientosPage() {
   const obrasForSelectedCard = useMemo((): WorkWithSurveys[] => {
     if (!selectedCard) return [];
 
-    // Filter surveys by company/project
     const relevantSurveys = allSurveys.filter((s) => {
       if (selectedCard.type === 'company') {
         return s.work?.company?.companyId === selectedCard.companyId;
@@ -123,7 +194,6 @@ export default function RevisarLevantamientosPage() {
       }
     });
 
-    // Group by work
     const workMap = new Map<number, WorkWithSurveys>();
     relevantSurveys.forEach((survey) => {
       if (!survey.work) return;
@@ -140,7 +210,7 @@ export default function RevisarLevantamientosPage() {
         });
       }
       const workEntry = workMap.get(workId)!;
-      if (survey.status === 'pending') {
+      if (survey.status?.code === 'pending') {
         workEntry.pendingSurveys.push(survey);
       } else {
         workEntry.reviewedSurveys.push(survey);
@@ -170,14 +240,14 @@ export default function RevisarLevantamientosPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status?: string | BlockStatus) => {
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
       pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pendiente' },
-      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'En Revisión' },
+      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'En Revision' },
       approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Aprobado' },
       rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rechazado' },
     };
-    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
+    const config = statusConfig[status || 'pending'] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status || '-' };
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
         {config.label}
@@ -193,26 +263,40 @@ export default function RevisarLevantamientosPage() {
     });
   };
 
-  // Get current title based on view mode
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
   const getTitle = () => {
-    if (viewMode === 'levantamientos' && selectedWork) {
-      return `Levantamientos - ${selectedWork.name}`;
-    }
-    if (viewMode === 'obras' && selectedCard) {
-      return `Obras - ${selectedCard.name}`;
-    }
+    if (mainView === 'database') return 'Base de Datos de Levantamientos';
+    if (viewMode === 'levantamientos' && selectedWork) return `Levantamientos - ${selectedWork.name}`;
+    if (viewMode === 'obras' && selectedCard) return `Obras - ${selectedCard.name}`;
     return 'Revisar Levantamientos';
   };
 
   const getSubtitle = () => {
-    if (viewMode === 'levantamientos' && selectedWork) {
+    if (mainView === 'database') return `${databaseData.length} registros`;
+    if (viewMode === 'levantamientos' && selectedWork)
       return `${selectedWork.pendingSurveys.length} pendientes, ${selectedWork.reviewedSurveys.length} revisados`;
-    }
-    if (viewMode === 'obras' && selectedCard) {
-      return `${obrasForSelectedCard.length} obras`;
-    }
+    if (viewMode === 'obras' && selectedCard) return `${obrasForSelectedCard.length} obras`;
     return 'Selecciona una empresa o proyecto';
   };
+
+  // Get unique companies for database filter
+  const availableCompanies = useMemo(() => {
+    const companies = [...accessCompanies];
+    accessProjects.forEach((p) => {
+      if (!companies.find((c) => c.companyId === p.companyId)) {
+        companies.push({ companyId: p.companyId, name: `Empresa ${p.companyId}` });
+      }
+    });
+    return companies;
+  }, [accessCompanies, accessProjects]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -241,7 +325,13 @@ export default function RevisarLevantamientosPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={viewMode === 'cards' ? () => navigate('/dashboard/levantamiento-obras') : handleBack}
+                onClick={
+                  mainView === 'database'
+                    ? () => setMainView('revision')
+                    : viewMode === 'cards'
+                    ? () => navigate('/dashboard/levantamiento-obras')
+                    : handleBack
+                }
                 className="hover:bg-[hsl(var(--canalco-neutral-200))]"
                 title="Volver"
               >
@@ -254,13 +344,40 @@ export default function RevisarLevantamientosPage() {
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
                 {getTitle()}
               </h1>
-              <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                {getSubtitle()}
-              </p>
+              <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">{getSubtitle()}</p>
             </div>
 
-            {/* Right spacer */}
-            <div className="w-32" />
+            {/* Right: View Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMainView('revision')}
+                  className={`rounded-none ${
+                    mainView === 'revision'
+                      ? 'bg-[hsl(var(--canalco-primary))] text-white hover:bg-[hsl(var(--canalco-primary))]'
+                      : ''
+                  }`}
+                >
+                  <LayoutGrid className="w-4 h-4 mr-1" />
+                  Revision
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMainView('database')}
+                  className={`rounded-none ${
+                    mainView === 'database'
+                      ? 'bg-[hsl(var(--canalco-primary))] text-white hover:bg-[hsl(var(--canalco-primary))]'
+                      : ''
+                  }`}
+                >
+                  <Database className="w-4 h-4 mr-1" />
+                  Base de Datos
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -279,45 +396,67 @@ export default function RevisarLevantamientosPage() {
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
           </div>
+        ) : mainView === 'database' ? (
+          /* Database View */
+          <DatabaseView
+            data={databaseData}
+            loading={databaseLoading}
+            filters={databaseFilters}
+            setFilters={setDatabaseFilters}
+            onSearch={loadDatabaseData}
+            companies={availableCompanies}
+            navigate={navigate}
+            getStatusBadge={getStatusBadge}
+            formatDate={formatDate}
+            formatCurrency={formatCurrency}
+          />
         ) : viewMode === 'cards' ? (
           /* Cards Grid View */
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {cardsData.map((card) => (
-              <Card
-                key={`${card.type}-${card.id}`}
-                className="p-4 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105 border-2 hover:border-[hsl(var(--canalco-primary))]"
-                onClick={() => handleCardClick(card)}
-              >
-                <div className="flex flex-col items-center text-center gap-3">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    card.type === 'company'
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'bg-green-100 text-green-600'
-                  }`}>
-                    {card.type === 'company' ? (
-                      <Building2 className="w-6 h-6" />
-                    ) : (
-                      <FolderOpen className="w-6 h-6" />
-                    )}
+            {cardsData.length === 0 ? (
+              <div className="col-span-full bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-12 text-center">
+                <ClipboardList className="w-16 h-16 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
+                <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
+                  Sin accesos configurados
+                </h3>
+                <p className="text-[hsl(var(--canalco-neutral-500))]">
+                  No tienes empresas o proyectos asignados para revision
+                </p>
+              </div>
+            ) : (
+              cardsData.map((card) => (
+                <Card
+                  key={`${card.type}-${card.id}`}
+                  className="p-4 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105 border-2 hover:border-[hsl(var(--canalco-primary))]"
+                  onClick={() => handleCardClick(card)}
+                >
+                  <div className="flex flex-col items-center text-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        card.type === 'company' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                      }`}
+                    >
+                      {card.type === 'company' ? <Building2 className="w-6 h-6" /> : <FolderOpen className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm text-[hsl(var(--canalco-neutral-800))] line-clamp-2">
+                        {card.name}
+                      </h3>
+                      <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-1">
+                        {card.type === 'company' ? 'Empresa' : 'Proyecto'}
+                      </p>
+                    </div>
+                    <div
+                      className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        card.pendingCount > 0 ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                      }`}
+                    >
+                      {card.pendingCount} pendientes
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-sm text-[hsl(var(--canalco-neutral-800))] line-clamp-2">
-                      {card.name}
-                    </h3>
-                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-1">
-                      {card.type === 'company' ? 'Empresa' : 'Proyecto'}
-                    </p>
-                  </div>
-                  <div className={`px-3 py-1 rounded-full text-sm font-bold ${
-                    card.pendingCount > 0
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {card.pendingCount} pendientes
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              ))
+            )}
           </div>
         ) : viewMode === 'obras' ? (
           /* Obras List View */
@@ -342,22 +481,20 @@ export default function RevisarLevantamientosPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-grow">
                       <div className="flex items-center gap-3">
-                        <h3 className="font-semibold text-[hsl(var(--canalco-neutral-800))]">
-                          {work.name}
-                        </h3>
+                        <h3 className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{work.name}</h3>
                         {work.recordNumber && (
                           <span className="text-xs font-mono bg-[hsl(var(--canalco-neutral-100))] px-2 py-1 rounded">
                             Acta: {work.recordNumber}
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">
-                        {work.address}
-                      </p>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">{work.address}</p>
                       <div className="flex gap-4 mt-2">
-                        <span className={`text-sm font-medium ${
-                          work.pendingSurveys.length > 0 ? 'text-orange-600' : 'text-green-600'
-                        }`}>
+                        <span
+                          className={`text-sm font-medium ${
+                            work.pendingSurveys.length > 0 ? 'text-orange-600' : 'text-green-600'
+                          }`}
+                        >
                           {work.pendingSurveys.length} pendientes
                         </span>
                         <span className="text-sm text-[hsl(var(--canalco-neutral-500))]">
@@ -385,72 +522,34 @@ export default function RevisarLevantamientosPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-orange-50 border-b border-orange-200">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-orange-800">
-                          Código Proyecto
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-orange-800">
-                          Fecha Levantamiento
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-orange-800">
-                          Estado
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-orange-800">
-                          Acciones
-                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-orange-800">Codigo Proyecto</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-orange-800">Fecha</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-orange-800">Estado</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-orange-800">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedWork.pendingSurveys.map((survey, index) => (
-                        <tr
-                          key={survey.surveyId}
-                          className={index % 2 === 0 ? 'bg-white' : 'bg-orange-50/30'}
-                        >
+                        <tr key={survey.surveyId} className={index % 2 === 0 ? 'bg-white' : 'bg-orange-50/30'}>
                           <td className="px-4 py-3 font-mono font-medium text-[hsl(var(--canalco-primary))]">
                             {survey.projectCode || '-'}
                           </td>
                           <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
                             {survey.surveyDate ? formatDate(survey.surveyDate) : '-'}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {getStatusBadge(survey.status || 'pending')}
-                          </td>
+                          <td className="px-4 py-3 text-center">{getStatusBadge(survey.status?.code)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(`/dashboard/levantamiento-obras/revisar/${survey.surveyId}`);
-                                }}
-                                className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
-                                title="Ver detalle"
+                                onClick={() =>
+                                  navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)
+                                }
+                                className="h-8 w-8 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
+                                title="Ver y Revisar"
                               >
                                 <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  alert('Aprobar - Próximamente');
-                                }}
-                                className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                title="Aprobar"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  alert('Rechazar - Próximamente');
-                                }}
-                                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                title="Rechazar"
-                              >
-                                <XCircle className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>
@@ -473,44 +572,30 @@ export default function RevisarLevantamientosPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-green-50 border-b border-green-200">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-green-800">
-                          Código Proyecto
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-green-800">
-                          Fecha Levantamiento
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-green-800">
-                          Estado
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-green-800">
-                          Acciones
-                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-green-800">Codigo Proyecto</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-green-800">Fecha</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-green-800">Estado</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-green-800">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedWork.reviewedSurveys.map((survey, index) => (
-                        <tr
-                          key={survey.surveyId}
-                          className={index % 2 === 0 ? 'bg-white' : 'bg-green-50/30'}
-                        >
+                        <tr key={survey.surveyId} className={index % 2 === 0 ? 'bg-white' : 'bg-green-50/30'}>
                           <td className="px-4 py-3 font-mono font-medium text-[hsl(var(--canalco-neutral-600))]">
                             {survey.projectCode || '-'}
                           </td>
                           <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
                             {survey.surveyDate ? formatDate(survey.surveyDate) : '-'}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {getStatusBadge(survey.status || 'pending')}
-                          </td>
+                          <td className="px-4 py-3 text-center">{getStatusBadge(survey.status?.code)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(`/dashboard/levantamiento-obras/revisar/${survey.surveyId}`);
-                                }}
+                                onClick={() =>
+                                  navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)
+                                }
                                 className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
                                 title="Ver detalle"
                               >
@@ -530,12 +615,8 @@ export default function RevisarLevantamientosPage() {
             {selectedWork && selectedWork.pendingSurveys.length === 0 && selectedWork.reviewedSurveys.length === 0 && (
               <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-12 text-center">
                 <ClipboardList className="w-16 h-16 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
-                <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
-                  Sin levantamientos
-                </h3>
-                <p className="text-[hsl(var(--canalco-neutral-500))]">
-                  Esta obra no tiene levantamientos registrados
-                </p>
+                <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">Sin levantamientos</h3>
+                <p className="text-[hsl(var(--canalco-neutral-500))]">Esta obra no tiene levantamientos registrados</p>
               </div>
             )}
           </div>
@@ -543,6 +624,243 @@ export default function RevisarLevantamientosPage() {
       </main>
 
       <Footer />
+    </div>
+  );
+}
+
+// Database View Component
+interface DatabaseViewProps {
+  data: SurveyDatabaseItem[];
+  loading: boolean;
+  filters: {
+    companyId: string;
+    search: string;
+    budgetStatus: string;
+    investmentStatus: string;
+    materialsStatus: string;
+    travelExpensesStatus: string;
+  };
+  setFilters: React.Dispatch<
+    React.SetStateAction<{
+      companyId: string;
+      search: string;
+      budgetStatus: string;
+      investmentStatus: string;
+      materialsStatus: string;
+      travelExpensesStatus: string;
+    }>
+  >;
+  onSearch: () => void;
+  companies: AccessCompany[];
+  navigate: (path: string) => void;
+  getStatusBadge: (status?: string | BlockStatus) => React.ReactNode;
+  formatDate: (date: string) => string;
+  formatCurrency: (value: number) => string;
+}
+
+function DatabaseView({
+  data,
+  loading,
+  filters,
+  setFilters,
+  onSearch,
+  companies,
+  navigate,
+  getStatusBadge,
+  formatDate,
+  formatCurrency,
+}: DatabaseViewProps) {
+  const statusOptions = [
+    { value: '', label: 'Todos' },
+    { value: 'pending', label: 'Pendiente' },
+    { value: 'approved', label: 'Aprobado' },
+    { value: 'rejected', label: 'Rechazado' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Filter className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+          <span className="font-semibold text-sm">Filtros</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Empresa</label>
+            <Select
+              value={filters.companyId}
+              onValueChange={(value) => setFilters((f) => ({ ...f, companyId: value }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Todas</SelectItem>
+                {companies.map((c) => (
+                  <SelectItem key={c.companyId} value={c.companyId.toString()}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Presupuesto</label>
+            <Select
+              value={filters.budgetStatus}
+              onValueChange={(value) => setFilters((f) => ({ ...f, budgetStatus: value }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Inversion</label>
+            <Select
+              value={filters.investmentStatus}
+              onValueChange={(value) => setFilters((f) => ({ ...f, investmentStatus: value }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Materiales</label>
+            <Select
+              value={filters.materialsStatus}
+              onValueChange={(value) => setFilters((f) => ({ ...f, materialsStatus: value }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Costos Viaje</label>
+            <Select
+              value={filters.travelExpensesStatus}
+              onValueChange={(value) => setFilters((f) => ({ ...f, travelExpensesStatus: value }))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button onClick={onSearch} className="w-full h-9" disabled={loading}>
+              <Search className="w-4 h-4 mr-1" />
+              Buscar
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Data Table */}
+      <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin w-8 h-8 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-cyan-100 border-b border-cyan-200">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Codigo</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Obra</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Empresa</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">N. Acta</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-cyan-800">Total Ppto</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Presupuesto</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Inversion</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Materiales</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Viajes</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Fecha</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="px-3 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
+                      No se encontraron levantamientos
+                    </td>
+                  </tr>
+                ) : (
+                  data.map((item, index) => (
+                    <tr
+                      key={item.surveyId}
+                      className={`cursor-pointer hover:bg-cyan-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                      onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${item.surveyId}`)}
+                    >
+                      <td className="px-3 py-2 font-mono text-cyan-700">{item.projectCode || item.surveyNumber}</td>
+                      <td className="px-3 py-2 font-medium max-w-[150px] truncate" title={item.workName}>
+                        {item.workName}
+                      </td>
+                      <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-600))]">{item.companyName}</td>
+                      <td className="px-3 py-2 font-mono text-sm">{item.recordNumber || '-'}</td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        {item.budgetTotal ? formatCurrency(item.budgetTotal) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-center">{getStatusBadge(item.budgetStatus)}</td>
+                      <td className="px-3 py-2 text-center">{getStatusBadge(item.investmentStatus)}</td>
+                      <td className="px-3 py-2 text-center">{getStatusBadge(item.materialsStatus)}</td>
+                      <td className="px-3 py-2 text-center">{getStatusBadge(item.travelExpensesStatus)}</td>
+                      <td className="px-3 py-2 text-center text-[hsl(var(--canalco-neutral-600))]">
+                        {formatDate(item.surveyDate)}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${item.surveyId}`);
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

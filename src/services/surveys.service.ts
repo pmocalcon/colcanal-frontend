@@ -63,6 +63,9 @@ export interface SurveyItem {
   };
 }
 
+export type BlockStatus = 'pending' | 'approved' | 'rejected';
+export type BlockName = 'budget' | 'investment' | 'materials' | 'travelExpenses';
+
 export interface Survey {
   surveyId: number;
   surveyNumber: string;
@@ -85,6 +88,15 @@ export interface Survey {
   // IPP del mes anterior (ingresado por Director Técnico)
   previousMonthIpp?: number;
   description?: string;
+  // Block review statuses
+  budgetStatus?: BlockStatus;
+  budgetComments?: string;
+  investmentStatus?: BlockStatus;
+  investmentComments?: string;
+  materialsStatus?: BlockStatus;
+  materialsComments?: string;
+  travelExpensesStatus?: BlockStatus;
+  travelExpensesComments?: string;
   createdAt: string;
   updatedAt: string;
   work?: Work;
@@ -206,6 +218,61 @@ export interface UpdateSurveyDto extends Partial<CreateSurveyDto> {}
 export interface ReviewSurveyDto {
   approved: boolean;
   comments?: string;
+}
+
+export interface ReviewBlockDto {
+  block: BlockName;
+  status: 'approved' | 'rejected';
+  comments?: string;
+}
+
+export interface SurveyDatabaseFilters {
+  companyId?: number;
+  projectId?: number;
+  page?: number;
+  limit?: number;
+  search?: string;
+  budgetStatus?: BlockStatus;
+  investmentStatus?: BlockStatus;
+  materialsStatus?: BlockStatus;
+  travelExpensesStatus?: BlockStatus;
+}
+
+export interface SurveyDatabaseItem {
+  surveyId: number;
+  surveyNumber: string;
+  projectCode?: string;
+  status?: string;
+  // Work data
+  workId: number;
+  workName: string;
+  workAddress?: string;
+  recordNumber?: string;
+  companyId: number;
+  companyName: string;
+  // Block statuses
+  budgetStatus: BlockStatus;
+  budgetComments?: string;
+  investmentStatus: BlockStatus;
+  investmentComments?: string;
+  materialsStatus: BlockStatus;
+  materialsComments?: string;
+  travelExpensesStatus: BlockStatus;
+  travelExpensesComments?: string;
+  // Totals
+  budgetTotal?: number;
+  // Dates
+  surveyDate: string;
+  createdAt: string;
+  reviewedAt?: string;
+}
+
+export interface SurveyDatabaseResponse {
+  data: SurveyDatabaseItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface SurveyFilters {
@@ -350,6 +417,25 @@ export const surveysService = {
 
   async getSurveysForReview(): Promise<SurveysListResponse> {
     const response = await api.get('/surveys/for-review');
+    return response.data;
+  },
+
+  // ---- BLOCK REVIEW ----
+
+  async reviewBlock(surveyId: number, data: ReviewBlockDto): Promise<Survey> {
+    const response = await api.patch(`/surveys/${surveyId}/review-block`, data);
+    return response.data;
+  },
+
+  async approveAll(surveyId: number): Promise<Survey> {
+    const response = await api.patch(`/surveys/${surveyId}/approve-all`);
+    return response.data;
+  },
+
+  // ---- DATABASE VIEW ----
+
+  async getSurveysDatabase(filters?: SurveyDatabaseFilters): Promise<SurveyDatabaseResponse> {
+    const response = await api.get('/surveys/database', { params: filters });
     return response.data;
   },
 

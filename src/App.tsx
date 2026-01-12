@@ -38,6 +38,7 @@ import LevantamientoObrasPage from './pages/LevantamientoObrasPage'
 import ObrasListPage from './pages/ObrasListPage'
 import LevantamientosListPage from './pages/LevantamientosListPage'
 import RevisarLevantamientosPage from './pages/RevisarLevantamientosPage'
+import RevisarLevantamientoDetallePage from './pages/RevisarLevantamientoDetallePage'
 
 export default function App() {
   return (
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/obras/editar/:id" element={<CrearObraPage />} />
           <Route path="/dashboard/levantamiento-obras/levantamientos" element={<LevantamientosListPage />} />
           <Route path="/dashboard/levantamiento-obras/levantamientos/revisar" element={<RevisarLevantamientosPage />} />
+          <Route path="/dashboard/levantamiento-obras/levantamientos/revisar/:surveyId" element={<RevisarLevantamientoDetallePage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
