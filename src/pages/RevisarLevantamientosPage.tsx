@@ -82,12 +82,12 @@ export default function RevisarLevantamientosPage() {
   const [databaseData, setDatabaseData] = useState<SurveyDatabaseItem[]>([]);
   const [databaseLoading, setDatabaseLoading] = useState(false);
   const [databaseFilters, setDatabaseFilters] = useState({
-    companyId: '',
+    companyId: 'all',
     search: '',
-    budgetStatus: '',
-    investmentStatus: '',
-    materialsStatus: '',
-    travelExpensesStatus: '',
+    budgetStatus: 'all',
+    investmentStatus: 'all',
+    materialsStatus: 'all',
+    travelExpensesStatus: 'all',
   });
 
   // Load initial data
@@ -127,12 +127,22 @@ export default function RevisarLevantamientosPage() {
     try {
       setDatabaseLoading(true);
       const filters: any = {};
-      if (databaseFilters.companyId) filters.companyId = Number(databaseFilters.companyId);
+      if (databaseFilters.companyId && databaseFilters.companyId !== 'all') {
+        filters.companyId = Number(databaseFilters.companyId);
+      }
       if (databaseFilters.search) filters.search = databaseFilters.search;
-      if (databaseFilters.budgetStatus) filters.budgetStatus = databaseFilters.budgetStatus;
-      if (databaseFilters.investmentStatus) filters.investmentStatus = databaseFilters.investmentStatus;
-      if (databaseFilters.materialsStatus) filters.materialsStatus = databaseFilters.materialsStatus;
-      if (databaseFilters.travelExpensesStatus) filters.travelExpensesStatus = databaseFilters.travelExpensesStatus;
+      if (databaseFilters.budgetStatus && databaseFilters.budgetStatus !== 'all') {
+        filters.budgetStatus = databaseFilters.budgetStatus;
+      }
+      if (databaseFilters.investmentStatus && databaseFilters.investmentStatus !== 'all') {
+        filters.investmentStatus = databaseFilters.investmentStatus;
+      }
+      if (databaseFilters.materialsStatus && databaseFilters.materialsStatus !== 'all') {
+        filters.materialsStatus = databaseFilters.materialsStatus;
+      }
+      if (databaseFilters.travelExpensesStatus && databaseFilters.travelExpensesStatus !== 'all') {
+        filters.travelExpensesStatus = databaseFilters.travelExpensesStatus;
+      }
 
       const response = await surveysService.getSurveysDatabase(filters);
       setDatabaseData(response.data || []);
@@ -692,7 +702,7 @@ function DatabaseView({
   formatCurrency,
 }: DatabaseViewProps) {
   const statusOptions = [
-    { value: '', label: 'Todos' },
+    { value: 'all', label: 'Todos' },
     { value: 'pending', label: 'Pendiente' },
     { value: 'approved', label: 'Aprobado' },
     { value: 'rejected', label: 'Rechazado' },
@@ -717,7 +727,7 @@ function DatabaseView({
                 <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
                 {companies.map((c) => (
                   <SelectItem key={c.companyId} value={c.companyId.toString()}>
                     {c.name}
