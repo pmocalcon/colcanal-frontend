@@ -75,6 +75,8 @@ export default function RevisarLevantamientosPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [selectedWork, setSelectedWork] = useState<WorkWithSurveys | null>(null);
+  const [cardSurveys, setCardSurveys] = useState<Survey[]>([]);
+  const [loadingCardSurveys, setLoadingCardSurveys] = useState(false);
 
   // Database view state
   const [databaseData, setDatabaseData] = useState<SurveyDatabaseItem[]>([]);
@@ -181,21 +183,10 @@ export default function RevisarLevantamientosPage() {
 
   // Get obras for selected card
   const obrasForSelectedCard = useMemo((): WorkWithSurveys[] => {
-    if (!selectedCard) return [];
-
-    const relevantSurveys = allSurveys.filter((s) => {
-      if (selectedCard.type === 'company') {
-        return s.work?.company?.companyId === selectedCard.companyId;
-      } else {
-        return (
-          s.work?.company?.companyId === selectedCard.companyId &&
-          (s as any).work?.project?.projectId === selectedCard.projectId
-        );
-      }
-    });
+    if (!selectedCard || cardSurveys.length === 0) return [];
 
     const workMap = new Map<number, WorkWithSurveys>();
-    relevantSurveys.forEach((survey) => {
+    cardSurveys.forEach((survey) => {
       if (!survey.work) return;
       const workId = survey.workId;
       if (!workMap.has(workId)) {
@@ -210,7 +201,14 @@ export default function RevisarLevantamientosPage() {
         });
       }
       const workEntry = workMap.get(workId)!;
-      if (survey.status?.code === 'pending') {
+      // Check if any block is pending
+      const hasPendingBlocks =
+        survey.budgetStatus === 'pending' ||
+        survey.investmentStatus === 'pending' ||
+        survey.materialsStatus === 'pending' ||
+        survey.travelExpensesStatus === 'pending';
+
+      if (hasPendingBlocks) {
         workEntry.pendingSurveys.push(survey);
       } else {
         workEntry.reviewedSurveys.push(survey);
@@ -218,11 +216,22 @@ export default function RevisarLevantamientosPage() {
     });
 
     return Array.from(workMap.values());
-  }, [selectedCard, allSurveys]);
+  }, [selectedCard, cardSurveys]);
 
-  const handleCardClick = (card: CardData) => {
+  const handleCardClick = async (card: CardData) => {
     setSelectedCard(card);
     setViewMode('obras');
+    setLoadingCardSurveys(true);
+
+    try {
+      const response = await surveysService.getSurveys({ companyId: card.companyId });
+      setCardSurveys(response.data || []);
+    } catch (err: any) {
+      console.error('Error loading surveys for card:', err);
+      setError(err.response?.data?.message || 'Error al cargar levantamientos');
+    } finally {
+      setLoadingCardSurveys(false);
+    }
   };
 
   const handleWorkClick = (work: WorkWithSurveys) => {
@@ -236,6 +245,7 @@ export default function RevisarLevantamientosPage() {
       setViewMode('obras');
     } else if (viewMode === 'obras') {
       setSelectedCard(null);
+      setCardSurveys([]);
       setViewMode('cards');
     }
   };
@@ -461,7 +471,11 @@ export default function RevisarLevantamientosPage() {
         ) : viewMode === 'obras' ? (
           /* Obras List View */
           <div className="space-y-4">
-            {obrasForSelectedCard.length === 0 ? (
+            {loadingCardSurveys ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
+              </div>
+            ) : obrasForSelectedCard.length === 0 ? (
               <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-12 text-center">
                 <ClipboardList className="w-16 h-16 mx-auto mb-4 text-[hsl(var(--canalco-neutral-400))]" />
                 <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
