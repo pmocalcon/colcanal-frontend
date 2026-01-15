@@ -432,6 +432,11 @@ export const surveysService = {
     return response.data;
   },
 
+  async reopenForEditing(surveyId: number, reason?: string): Promise<Survey> {
+    const response = await api.patch(`/surveys/${surveyId}/reopen`, { reason });
+    return response.data;
+  },
+
   // ---- DATABASE VIEW ----
 
   async getSurveysDatabase(filters?: SurveyDatabaseFilters): Promise<SurveyDatabaseResponse> {

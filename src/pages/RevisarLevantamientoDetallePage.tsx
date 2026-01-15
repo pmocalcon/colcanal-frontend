@@ -31,6 +31,7 @@ import {
   Car,
   DollarSign,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 
@@ -88,6 +89,11 @@ export default function RevisarLevantamientoDetallePage() {
     block: BlockName | null;
   }>({ open: false, block: null });
   const [rejectComments, setRejectComments] = useState('');
+
+  // Reopen modal state
+  const [reopenModal, setReopenModal] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopening, setReopening] = useState(false);
 
   useEffect(() => {
     if (surveyId) {
@@ -159,6 +165,21 @@ export default function RevisarLevantamientoDetallePage() {
     }
   };
 
+  const handleReopenForEditing = async () => {
+    try {
+      setReopening(true);
+      const updated = await surveysService.reopenForEditing(Number(surveyId), reopenReason || undefined);
+      setSurvey(updated);
+      setReopenModal(false);
+      setReopenReason('');
+    } catch (err: any) {
+      console.error('Error reopening survey:', err);
+      setError(err.response?.data?.message || 'Error al reabrir el levantamiento');
+    } finally {
+      setReopening(false);
+    }
+  };
+
   const getStatusBadge = (status?: BlockStatus) => {
     switch (status) {
       case 'approved':
@@ -201,6 +222,26 @@ export default function RevisarLevantamientoDetallePage() {
       survey.investmentStatus === 'pending' ||
       survey.materialsStatus === 'pending' ||
       survey.travelExpensesStatus === 'pending'
+    );
+  }, [survey]);
+
+  // Get all rejected blocks with their comments
+  const rejectedBlocks = useMemo(() => {
+    if (!survey) return [];
+    return BLOCKS.filter(block => survey[block.statusField] === 'rejected').map(block => ({
+      title: block.title,
+      comments: survey[block.commentsField] as string | undefined,
+    }));
+  }, [survey]);
+
+  // Check if any block has been reviewed (not pending)
+  const hasReviewedBlocks = useMemo(() => {
+    if (!survey) return false;
+    return (
+      survey.budgetStatus !== 'pending' ||
+      survey.investmentStatus !== 'pending' ||
+      survey.materialsStatus !== 'pending' ||
+      survey.travelExpensesStatus !== 'pending'
     );
   }, [survey]);
 
@@ -287,6 +328,16 @@ export default function RevisarLevantamientoDetallePage() {
             </div>
 
             <div className="flex items-center gap-2">
+              {hasReviewedBlocks && (
+                <Button
+                  onClick={() => setReopenModal(true)}
+                  variant="outline"
+                  className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Reabrir para Edición
+                </Button>
+              )}
               {!allBlocksApproved && anyBlockPending && (
                 <Button
                   onClick={handleApproveAll}
@@ -318,6 +369,34 @@ export default function RevisarLevantamientoDetallePage() {
               &times;
             </button>
           </div>
+        )}
+
+        {/* Rejected Blocks Summary */}
+        {rejectedBlocks.length > 0 && (
+          <Card className="p-6 mb-6 border-2 border-red-300 bg-red-50">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-bold text-red-800 text-lg mb-3">
+                  Bloques Rechazados ({rejectedBlocks.length})
+                </h3>
+                <div className="space-y-3">
+                  {rejectedBlocks.map((block, idx) => (
+                    <div key={idx} className="bg-white rounded-lg p-3 border border-red-200">
+                      <p className="font-semibold text-red-700">{block.title}</p>
+                      {block.comments ? (
+                        <p className="text-red-600 text-sm mt-1">
+                          <strong>Motivo:</strong> {block.comments}
+                        </p>
+                      ) : (
+                        <p className="text-red-400 text-sm mt-1 italic">Sin comentarios</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Card>
         )}
 
         {/* Survey Info */}
@@ -496,10 +575,22 @@ export default function RevisarLevantamientoDetallePage() {
 
                 {/* Block Content */}
                 <div className="p-6">
-                  {/* Comments if rejected */}
-                  {status === 'rejected' && comments && (
-                    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                      <strong>Motivo del rechazo:</strong> {comments}
+                  {/* Rejection message - always show when rejected */}
+                  {status === 'rejected' && (
+                    <div className="mb-4 bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-red-700">Este bloque fue rechazado</p>
+                          {comments ? (
+                            <p className="text-red-600 mt-1">
+                              <strong>Motivo:</strong> {comments}
+                            </p>
+                          ) : (
+                            <p className="text-red-500 mt-1 italic">Sin comentarios adicionales</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -559,6 +650,56 @@ export default function RevisarLevantamientoDetallePage() {
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
               ) : null}
               Rechazar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reopen for Editing Modal */}
+      <Dialog open={reopenModal} onOpenChange={(open) => !open && setReopenModal(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-amber-600 flex items-center gap-2">
+              <RotateCcw className="w-5 h-5" />
+              Reabrir para Edición
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción reseteará todos los bloques a estado "Pendiente", permitiendo que el Director de Proyectos pueda editar el levantamiento. Luego deberá ser revisado nuevamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-2 block">
+              Motivo de reapertura (opcional)
+            </label>
+            <Textarea
+              placeholder="Ej: Cambio en materiales solicitados por el cliente..."
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReopenModal(false);
+                setReopenReason('');
+              }}
+              disabled={reopening}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleReopenForEditing}
+              disabled={reopening}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {reopening ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <RotateCcw className="w-4 h-4 mr-2" />
+              )}
+              Reabrir Levantamiento
             </Button>
           </DialogFooter>
         </DialogContent>
