@@ -1,24 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { surveysService } from '@/services/surveys.service';
+import { surveysService, type Survey, type BlockStatus } from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, Search, Eye, ClipboardList } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Home,
+  ArrowLeft,
+  Search,
+  Eye,
+  Edit,
+  ClipboardList,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  Lock,
+} from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
-
-interface Survey {
-  surveyId: number;
-  workId: number;
-  work?: {
-    workCode?: string;
-    name: string;
-    address: string;
-  };
-  surveyDate: string;
-  status: string;
-  receivedBy?: string;
-  assignedReviewer?: string;
-}
 
 export default function LevantamientosListPage() {
   const navigate = useNavigate();
@@ -40,9 +40,9 @@ export default function LevantamientosListPage() {
       setFilteredSurveys(
         surveys.filter(
           (s) =>
-            s.work?.workCode?.toLowerCase().includes(term) ||
-            s.work?.name.toLowerCase().includes(term) ||
-            s.status.toLowerCase().includes(term)
+            s.surveyNumber?.toLowerCase().includes(term) ||
+            s.work?.name?.toLowerCase().includes(term) ||
+            s.work?.recordNumber?.toLowerCase().includes(term)
         )
       );
     }
@@ -63,20 +63,73 @@ export default function LevantamientosListPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pendiente' },
-      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'En Revisión' },
-      approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Aprobado' },
-      rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rechazado' },
-    };
-    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
+  // Calculate review status for a survey
+  const getReviewSummary = (survey: Survey) => {
+    const blocks = [
+      { name: 'Presupuesto', status: survey.budgetStatus, comments: survey.budgetComments },
+      { name: 'Inversión', status: survey.investmentStatus, comments: survey.investmentComments },
+      { name: 'Materiales', status: survey.materialsStatus, comments: survey.materialsComments },
+      { name: 'Costos Viaje', status: survey.travelExpensesStatus, comments: survey.travelExpensesComments },
+    ];
+
+    const approved = blocks.filter(b => b.status === 'approved').length;
+    const rejected = blocks.filter(b => b.status === 'rejected');
+    const pending = blocks.filter(b => b.status === 'pending' || !b.status).length;
+
+    const allApproved = approved === 4;
+    const hasRejections = rejected.length > 0;
+
+    return { blocks, approved, rejected, pending, allApproved, hasRejections };
+  };
+
+  const getBlockStatusIcon = (status?: BlockStatus) => {
+    switch (status) {
+      case 'approved':
+        return <CheckCircle className="w-3 h-3 text-green-600" />;
+      case 'rejected':
+        return <XCircle className="w-3 h-3 text-red-600" />;
+      default:
+        return <Clock className="w-3 h-3 text-amber-500" />;
+    }
+  };
+
+  const getOverallStatusBadge = (survey: Survey) => {
+    const { allApproved, hasRejections, pending, approved } = getReviewSummary(survey);
+
+    if (allApproved) {
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-200">
+          <Lock className="w-3 h-3 mr-1" />
+          Aprobado
+        </Badge>
+      );
+    }
+    if (hasRejections) {
+      return (
+        <Badge className="bg-red-100 text-red-800 border-red-200">
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Requiere Corrección
+        </Badge>
+      );
+    }
+    if (approved > 0) {
+      return (
+        <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+          <Clock className="w-3 h-3 mr-1" />
+          En Revisión ({approved}/4)
+        </Badge>
+      );
+    }
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-        {config.label}
-      </span>
+      <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+        <Clock className="w-3 h-3 mr-1" />
+        Pendiente
+      </Badge>
     );
   };
+
+  // Get surveys with rejections for alert
+  const surveysWithRejections = filteredSurveys.filter(s => getReviewSummary(s).hasRejections);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -116,7 +169,7 @@ export default function LevantamientosListPage() {
             {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Levantamientos
+                Mis Levantamientos
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
                 {filteredSurveys.length} levantamientos registrados
@@ -131,13 +184,54 @@ export default function LevantamientosListPage() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
+        {/* Rejections Alert */}
+        {surveysWithRejections.length > 0 && (
+          <Card className="p-4 mb-6 border-2 border-red-300 bg-red-50">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-bold text-red-800 mb-2">
+                  Tienes {surveysWithRejections.length} levantamiento(s) con rechazos
+                </h3>
+                <div className="space-y-2">
+                  {surveysWithRejections.map(survey => {
+                    const { rejected } = getReviewSummary(survey);
+                    return (
+                      <div key={survey.surveyId} className="bg-white rounded p-3 border border-red-200">
+                        <p className="font-medium text-red-700">
+                          {survey.surveyNumber} - {survey.work?.name}
+                        </p>
+                        <ul className="mt-1 space-y-1">
+                          {rejected.map((block, idx) => (
+                            <li key={idx} className="text-sm text-red-600">
+                              <strong>{block.name}:</strong> {block.comments || 'Sin comentarios'}
+                            </li>
+                          ))}
+                        </ul>
+                        <Button
+                          size="sm"
+                          className="mt-2 bg-red-600 hover:bg-red-700 text-white"
+                          onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/editar/${survey.surveyId}`)}
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Corregir
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Search Bar */}
         <div className="mb-6 flex gap-4">
           <div className="relative flex-grow max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
             <Input
               type="text"
-              placeholder="Buscar por código de obra, nombre, estado..."
+              placeholder="Buscar por número, nombre de obra..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -178,19 +272,19 @@ export default function LevantamientosListPage() {
                 <thead className="bg-cyan-100 border-b border-cyan-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
-                      Código Obra
+                      N° Levantamiento
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
-                      Nombre Obra
+                      Obra
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
-                      Fecha Levantamiento
+                      Fecha
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
-                      Estado
+                      Estado Revisión
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
-                      Revisor
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
+                      Bloques
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
                       Acciones
@@ -198,46 +292,106 @@ export default function LevantamientosListPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSurveys.map((survey, index) => (
-                    <tr
-                      key={survey.surveyId}
-                      className={index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}
-                    >
-                      <td className="px-4 py-3 font-mono font-medium text-cyan-700">
-                        {survey.work?.workCode || '-'}
-                      </td>
-                      <td className="px-4 py-3 font-medium">
-                        {survey.work?.name || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
-                        {survey.surveyDate ? new Date(survey.surveyDate).toLocaleDateString('es-CO') : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {getStatusBadge(survey.status)}
-                      </td>
-                      <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
-                        {survey.assignedReviewer || '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => alert('Ver detalle - Próximamente')}
-                            className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
-                            title="Ver detalle"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredSurveys.map((survey, index) => {
+                    const reviewSummary = getReviewSummary(survey);
+                    const canEdit = !reviewSummary.allApproved;
+
+                    return (
+                      <tr
+                        key={survey.surveyId}
+                        className={`${index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'} ${reviewSummary.hasRejections ? 'border-l-4 border-l-red-500' : ''}`}
+                      >
+                        <td className="px-4 py-3 font-mono font-medium text-cyan-700">
+                          {survey.surveyNumber || '-'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="font-medium">{survey.work?.name || '-'}</p>
+                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                              {survey.work?.recordNumber || '-'}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
+                          {survey.surveyDate ? new Date(survey.surveyDate).toLocaleDateString('es-CO') : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {getOverallStatusBadge(survey)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1" title="Presupuesto | Inversión | Materiales | Costos Viaje">
+                            {reviewSummary.blocks.map((block, idx) => (
+                              <div key={idx} title={`${block.name}: ${block.status || 'pendiente'}`}>
+                                {getBlockStatusIcon(block.status as BlockStatus)}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)}
+                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
+                              title="Ver detalle"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            {canEdit ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/editar/${survey.surveyId}`)}
+                                className={`h-8 w-8 ${reviewSummary.hasRejections ? 'text-red-600 hover:text-red-700' : 'text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]'}`}
+                                title={reviewSummary.hasRejections ? 'Corregir rechazos' : 'Editar'}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled
+                                className="h-8 w-8 text-gray-300 cursor-not-allowed"
+                                title="Aprobado - No editable"
+                              >
+                                <Lock className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
+
+        {/* Legend */}
+        <div className="mt-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-300))] p-4">
+          <h4 className="font-semibold text-sm text-[hsl(var(--canalco-neutral-700))] mb-3">Leyenda de estados</h4>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <span>Aprobado</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-red-600" />
+              <span>Rechazado</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-500" />
+              <span>Pendiente</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-gray-400" />
+              <span>Bloqueado (Completamente aprobado)</span>
+            </div>
+          </div>
+        </div>
       </main>
 
       <Footer />
