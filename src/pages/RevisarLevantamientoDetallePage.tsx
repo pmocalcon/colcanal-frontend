@@ -377,9 +377,18 @@ export default function RevisarLevantamientoDetallePage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
               <div className="flex-1">
-                <h3 className="font-bold text-red-800 text-lg mb-3">
-                  Bloques Rechazados ({rejectedBlocks.length})
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-red-800 text-lg">
+                    Bloques Rechazados ({rejectedBlocks.length})
+                  </h3>
+                  <Button
+                    onClick={() => setReopenModal(true)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Reabrir para Edición
+                  </Button>
+                </div>
                 <div className="space-y-3">
                   {rejectedBlocks.map((block, idx) => (
                     <div key={idx} className="bg-white rounded-lg p-3 border border-red-200">
