@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { surveysService, type Work } from '@/services/surveys.service';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Home, ArrowLeft, Plus, Search, Edit, Eye } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Footer } from '@/components/ui/footer';
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [works, setWorks] = useState<Work[]>([]);
   const [filteredWorks, setFilteredWorks] = useState<Work[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,8 +17,10 @@ export default function ObrasListPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    loadWorks();
-  }, []);
+    if (user?.userId) {
+      loadWorks();
+    }
+  }, [user?.userId]);
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -36,7 +40,8 @@ export default function ObrasListPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await surveysService.getWorks();
+      // Filter by current user (createdBy)
+      const response = await surveysService.getWorks({ createdBy: user?.userId });
       console.log('API Response for works:', response);
       // Handle both response structures: { data: Work[] } or Work[]
       const worksData = Array.isArray(response) ? response : (response.data || []);
@@ -89,10 +94,10 @@ export default function ObrasListPage() {
             {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Listado de Obras
+                Mis Obras
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                {filteredWorks.length} obras registradas
+                {filteredWorks.length} obras creadas por ti
               </p>
             </div>
 
@@ -169,7 +174,7 @@ export default function ObrasListPage() {
                   {filteredWorks.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
-                        {searchTerm ? 'No se encontraron obras con ese criterio' : 'No hay obras registradas'}
+                        {searchTerm ? 'No se encontraron obras con ese criterio' : 'No has creado ninguna obra aún'}
                       </td>
                     </tr>
                   ) : (

@@ -360,7 +360,7 @@ export const surveysService = {
     return response.data;
   },
 
-  async getWorks(params?: { companyId?: number; search?: string; page?: number; limit?: number }): Promise<WorksListResponse> {
+  async getWorks(params?: { companyId?: number; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
     const response = await api.get('/surveys/works', { params });
     return response.data;
   },
