@@ -50,7 +50,6 @@ import {
   type Material,
   type MaterialGroup,
   type CreateMaterialDto,
-  isFuzzyMatchError,
   type SimilarSuggestion,
 } from '@/services/materials.service';
 
@@ -79,6 +78,7 @@ export default function MaterialesListPage() {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [hasConflict, setHasConflict] = useState(false); // Para mostrar botón "Crear de todos modos"
 
   // Estados del modal de sugerencias (fuzzy matching)
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
@@ -174,6 +174,7 @@ export default function MaterialesListPage() {
     setEditingMaterial(null);
     setFormData({ code: '', description: '', groupId: 0 });
     setFormError(null);
+    setHasConflict(false);
   };
 
   const handleSubmit = async (force: boolean = false) => {
@@ -218,14 +219,21 @@ export default function MaterialesListPage() {
     } catch (err: any) {
       console.error('Error saving material:', err);
 
-      // Verificar si es error de fuzzy matching (409)
-      if (isFuzzyMatchError(err)) {
-        const { message, suggestions: sug, hint } = err.response.data;
-        setSuggestions(sug);
-        setSuggestionHint(hint);
-        setPendingFormData(formData);
-        setShowSuggestionsModal(true);
-        setFormError(message);
+      // Verificar si es error 409 (conflicto/fuzzy matching)
+      if (err?.response?.status === 409) {
+        const { message, suggestions: sug, hint } = err.response.data || {};
+
+        // Si hay sugerencias, mostrar el modal de sugerencias
+        if (sug && Array.isArray(sug) && sug.length > 0) {
+          setSuggestions(sug);
+          setSuggestionHint(hint || '');
+          setPendingFormData(formData);
+          setShowSuggestionsModal(true);
+        } else {
+          // Si no hay sugerencias, habilitar botón "Crear de todos modos" en el modal actual
+          setHasConflict(true);
+        }
+        setFormError(message || 'Se encontraron materiales similares');
       } else {
         setFormError(err.response?.data?.message || 'Error al guardar el material');
       }
@@ -543,18 +551,29 @@ export default function MaterialesListPage() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={handleCloseModal} disabled={formLoading}>
               Cancelar
             </Button>
-            <Button
-              onClick={() => handleSubmit(false)}
-              disabled={formLoading}
-              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
-            >
-              {formLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {editingMaterial ? 'Guardar Cambios' : 'Crear Material'}
-            </Button>
+            {hasConflict && !editingMaterial ? (
+              <Button
+                onClick={() => handleSubmit(true)}
+                disabled={formLoading}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {formLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Crear de todos modos
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleSubmit(false)}
+                disabled={formLoading}
+                className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
+              >
+                {formLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {editingMaterial ? 'Guardar Cambios' : 'Crear Material'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
