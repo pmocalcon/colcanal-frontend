@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { Toaster } from 'sonner'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ComprasPage from './pages/ComprasPage'
@@ -39,10 +40,12 @@ import ObrasListPage from './pages/ObrasListPage'
 import LevantamientosListPage from './pages/LevantamientosListPage'
 import RevisarLevantamientosPage from './pages/RevisarLevantamientosPage'
 import RevisarLevantamientoDetallePage from './pages/RevisarLevantamientoDetallePage'
+import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" richColors />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -87,11 +90,39 @@ export default function App() {
           {/* Levantamiento de Obras */}
           <Route path="/dashboard/levantamiento-obras" element={<LevantamientoObrasPage />} />
           <Route path="/dashboard/levantamiento-obras/obras" element={<ObrasListPage />} />
-          <Route path="/dashboard/levantamiento-obras/obras/crear" element={<CrearObraPage />} />
-          <Route path="/dashboard/levantamiento-obras/obras/editar/:id" element={<CrearObraPage />} />
+          <Route
+            path="/dashboard/levantamiento-obras/obras/crear"
+            element={
+              <ProtectedRoute permission={["obras:crear", "levantamientos:crear"]} requireAll={true}>
+                <CrearObraPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/levantamiento-obras/obras/editar/:id"
+            element={
+              <ProtectedRoute permission={["obras:editar", "levantamientos:editar"]} requireAll={true}>
+                <CrearObraPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/dashboard/levantamiento-obras/levantamientos" element={<LevantamientosListPage />} />
-          <Route path="/dashboard/levantamiento-obras/levantamientos/revisar" element={<RevisarLevantamientosPage />} />
-          <Route path="/dashboard/levantamiento-obras/levantamientos/revisar/:surveyId" element={<RevisarLevantamientoDetallePage />} />
+          <Route
+            path="/dashboard/levantamiento-obras/levantamientos/revisar"
+            element={
+              <ProtectedRoute permission="levantamientos:revisar">
+                <RevisarLevantamientosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/levantamiento-obras/levantamientos/revisar/:surveyId"
+            element={
+              <ProtectedRoute permission="levantamientos:revisar">
+                <RevisarLevantamientoDetallePage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

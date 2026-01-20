@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 
 // Create axios instance with base configuration
 const baseURL = import.meta.env.VITE_API_URL || 'https://colcanal-backend.onrender.com/api';
@@ -72,6 +73,15 @@ api.interceptors.response.use(
 
         return Promise.reject(refreshError);
       }
+    }
+
+    // Handle 403 Forbidden errors
+    if (error.response?.status === 403) {
+      const errorMessage = error.response?.data?.message || 'No tienes permisos para realizar esta acción';
+      toast.error('Acceso denegado', {
+        description: errorMessage,
+        duration: 5000,
+      });
     }
 
     return Promise.reject(error);

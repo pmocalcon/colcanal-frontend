@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Home, ArrowLeft, Plus, Search, Edit, Eye, AlertCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PermissionGuard } from '@/components/PermissionGuard';
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
@@ -187,13 +188,15 @@ export default function ObrasListPage() {
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2">
-              <Button
-                onClick={() => navigate('/dashboard/levantamiento-obras/obras/crear')}
-                className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Obra
-              </Button>
+              <PermissionGuard permission="obras:crear">
+                <Button
+                  onClick={() => navigate('/dashboard/levantamiento-obras/obras/crear')}
+                  className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nueva Obra
+                </Button>
+              </PermissionGuard>
             </div>
           </div>
         </div>
@@ -296,15 +299,17 @@ export default function ObrasListPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => navigate(`/dashboard/levantamiento-obras/obras/editar/${work.workId}`)}
-                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
-                              title="Editar"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
+                            <PermissionGuard permission="obras:editar">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/dashboard/levantamiento-obras/obras/editar/${work.workId}`)}
+                                className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
+                                title="Editar"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                            </PermissionGuard>
                             <Button
                               variant="ghost"
                               size="icon"

@@ -34,6 +34,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
+import { PermissionGuard } from '@/components/PermissionGuard';
 
 interface BlockInfo {
   key: BlockName;
@@ -328,30 +329,32 @@ export default function RevisarLevantamientoDetallePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {hasReviewedBlocks && (
-                <Button
-                  onClick={() => setReopenModal(true)}
-                  variant="outline"
-                  className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Reabrir para Edición
-                </Button>
-              )}
-              {!allBlocksApproved && anyBlockPending && (
-                <Button
-                  onClick={handleApproveAll}
-                  disabled={approvingAll}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {approvingAll ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <CheckCheck className="w-4 h-4 mr-2" />
-                  )}
-                  Aprobar Todo
-                </Button>
-              )}
+              <PermissionGuard permission="levantamientos:revisar">
+                {hasReviewedBlocks && (
+                  <Button
+                    onClick={() => setReopenModal(true)}
+                    variant="outline"
+                    className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Reabrir para Edición
+                  </Button>
+                )}
+                {!allBlocksApproved && anyBlockPending && (
+                  <Button
+                    onClick={handleApproveAll}
+                    disabled={approvingAll}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {approvingAll ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCheck className="w-4 h-4 mr-2" />
+                    )}
+                    Aprobar Todo
+                  </Button>
+                )}
+              </PermissionGuard>
             </div>
           </div>
         </div>
@@ -381,13 +384,15 @@ export default function RevisarLevantamientoDetallePage() {
                   <h3 className="font-bold text-red-800 text-lg">
                     Bloques Rechazados ({rejectedBlocks.length})
                   </h3>
-                  <Button
-                    onClick={() => setReopenModal(true)}
-                    className="bg-amber-600 hover:bg-amber-700 text-white"
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Reabrir para Edición
-                  </Button>
+                  <PermissionGuard permission="levantamientos:revisar">
+                    <Button
+                      onClick={() => setReopenModal(true)}
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Reabrir para Edición
+                    </Button>
+                  </PermissionGuard>
                 </div>
                 <div className="space-y-3">
                   {rejectedBlocks.map((block, idx) => (
@@ -549,36 +554,38 @@ export default function RevisarLevantamientoDetallePage() {
                   </div>
                   <div className="flex items-center gap-3">
                     {getStatusBadge(status)}
-                    {status === 'pending' && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleApproveBlock(block.key)}
-                          disabled={processingBlock === block.key}
-                          className="bg-green-500 hover:bg-green-600 text-white"
-                        >
-                          {processingBlock === block.key ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <>
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Aprobar
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setRejectModal({ open: true, block: block.key })}
-                          disabled={processingBlock === block.key}
-                          className="bg-red-500 hover:bg-red-600 text-white"
-                        >
-                          <XCircle className="w-4 h-4 mr-1" />
-                          Rechazar
-                        </Button>
-                      </div>
-                    )}
+                    <PermissionGuard permission="levantamientos:revisar">
+                      {status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleApproveBlock(block.key)}
+                            disabled={processingBlock === block.key}
+                            className="bg-green-500 hover:bg-green-600 text-white"
+                          >
+                            {processingBlock === block.key ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Aprobar
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setRejectModal({ open: true, block: block.key })}
+                            disabled={processingBlock === block.key}
+                            className="bg-red-500 hover:bg-red-600 text-white"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Rechazar
+                          </Button>
+                        </div>
+                      )}
+                    </PermissionGuard>
                   </div>
                 </div>
 
