@@ -52,7 +52,7 @@ import {
 } from '@/services/users.service';
 import { masterDataService } from '@/services/master-data.service';
 import { surveysService } from '@/services/surveys.service';
-import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
+import { mapCompaniesToDepartments, mapProjectsToDepartments } from '@/utils/departmentMapper';
 
 export default function AdminUsuariosPage() {
   const navigate = useNavigate();
@@ -1182,7 +1182,7 @@ export default function AdminUsuariosPage() {
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="companies" className="mt-4 space-y-4">
+                <TabsContent value="companies" className="mt-4 space-y-3">
                   {availableCompanies.length === 0 ? (
                     <p className="text-center text-[hsl(var(--canalco-neutral-600))] py-8">
                       No hay empresas disponibles
@@ -1190,82 +1190,141 @@ export default function AdminUsuariosPage() {
                   ) : (
                     <>
                       {/* Agrupar empresas por departamento */}
-                      {mapCompaniesToDepartments(availableCompanies).map((dept) => (
-                        <Card key={dept.name} className="p-4">
-                          <h3 className="font-semibold text-sm mb-3 flex items-center justify-between">
-                            <span>{dept.name}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {dept.companies.filter((c) => userCompanyAccess.includes(c.companyId)).length}/{dept.companies.length}
-                            </Badge>
-                          </h3>
-                          <div className="space-y-2">
-                            {dept.companies.map((company) => (
-                              <label
-                                key={company.companyId}
-                                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                                  userCompanyAccess.includes(company.companyId)
-                                    ? 'bg-purple-50 border-purple-300'
-                                    : 'hover:bg-[hsl(var(--canalco-neutral-100))]'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={userCompanyAccess.includes(company.companyId)}
-                                  onChange={() => handleToggleCompanyAccess(company.companyId)}
-                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                />
-                                <div className="flex-1">
-                                  <p className="font-medium text-sm">{company.name}</p>
-                                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                                    ID: {company.companyId}
+                      {mapCompaniesToDepartments(availableCompanies).map((dept) => {
+                        const allSelected = dept.companies.every((c) => userCompanyAccess.includes(c.companyId));
+                        const someSelected = dept.companies.some((c) => userCompanyAccess.includes(c.companyId));
+
+                        return (
+                          <Card key={dept.name} className={`p-4 transition-colors ${allSelected ? 'bg-purple-50 border-purple-300' : ''}`}>
+                            {/* Checkbox para todo el departamento */}
+                            <label className="flex items-center gap-3 cursor-pointer mb-3">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = someSelected && !allSelected;
+                                }}
+                                onChange={() => {
+                                  if (allSelected) {
+                                    // Deseleccionar todas las empresas del departamento
+                                    setUserCompanyAccess((prev) =>
+                                      prev.filter((id) => !dept.companyIds.includes(id))
+                                    );
+                                  } else {
+                                    // Seleccionar todas las empresas del departamento
+                                    setUserCompanyAccess((prev) => {
+                                      const newSet = new Set([...prev, ...dept.companyIds]);
+                                      return Array.from(newSet);
+                                    });
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-5 h-5"
+                              />
+                              <div className="flex-1 flex items-center justify-between">
+                                <div>
+                                  <h3 className="font-semibold text-base">{dept.name}</h3>
+                                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-0.5">
+                                    {dept.companies.length} empresa{dept.companies.length !== 1 ? 's' : ''}
                                   </p>
                                 </div>
-                                {userCompanyAccess.includes(company.companyId) && (
-                                  <CheckCircle className="w-4 h-4 text-purple-600" />
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        </Card>
-                      ))}
+                                <Badge variant={allSelected ? "default" : "outline"} className="text-xs">
+                                  {dept.companies.filter((c) => userCompanyAccess.includes(c.companyId)).length}/{dept.companies.length}
+                                </Badge>
+                              </div>
+                              {allSelected && (
+                                <CheckCircle className="w-5 h-5 text-purple-600" />
+                              )}
+                            </label>
+
+                            {/* Lista colapsable de empresas (opcional) */}
+                            {someSelected && (
+                              <div className="ml-8 mt-2 pt-2 border-t space-y-1">
+                                {dept.companies
+                                  .filter((c) => userCompanyAccess.includes(c.companyId))
+                                  .map((company) => (
+                                    <p key={company.companyId} className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                      • {company.name}
+                                    </p>
+                                  ))}
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
                     </>
                   )}
                 </TabsContent>
 
-                <TabsContent value="projects" className="mt-4 space-y-2">
+                <TabsContent value="projects" className="mt-4 space-y-3">
                   {availableProjects.length === 0 ? (
                     <p className="text-center text-[hsl(var(--canalco-neutral-600))] py-8">
                       No hay proyectos disponibles
                     </p>
                   ) : (
-                    <div className="space-y-2">
-                      {availableProjects.map((project) => (
-                        <label
-                          key={project.projectId}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                            userProjectAccess.includes(project.projectId)
-                              ? 'bg-purple-50 border-purple-300'
-                              : 'hover:bg-[hsl(var(--canalco-neutral-100))]'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={userProjectAccess.includes(project.projectId)}
-                            onChange={() => handleToggleProjectAccess(project.projectId)}
-                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                          />
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{project.name}</p>
-                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                              ID: {project.projectId} • Empresa ID: {project.companyId}
-                            </p>
-                          </div>
-                          {userProjectAccess.includes(project.projectId) && (
-                            <CheckCircle className="w-4 h-4 text-purple-600" />
-                          )}
-                        </label>
-                      ))}
-                    </div>
+                    <>
+                      {/* Agrupar proyectos por departamento */}
+                      {mapProjectsToDepartments(availableProjects).map((dept) => {
+                        const allSelected = (dept.projectIds || []).every((id) => userProjectAccess.includes(id));
+                        const someSelected = (dept.projectIds || []).some((id) => userProjectAccess.includes(id));
+
+                        return (
+                          <Card key={dept.name} className={`p-4 transition-colors ${allSelected ? 'bg-purple-50 border-purple-300' : ''}`}>
+                            {/* Checkbox para todo el departamento */}
+                            <label className="flex items-center gap-3 cursor-pointer mb-3">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = someSelected && !allSelected;
+                                }}
+                                onChange={() => {
+                                  if (allSelected) {
+                                    // Deseleccionar todos los proyectos del departamento
+                                    setUserProjectAccess((prev) =>
+                                      prev.filter((id) => !(dept.projectIds || []).includes(id))
+                                    );
+                                  } else {
+                                    // Seleccionar todos los proyectos del departamento
+                                    setUserProjectAccess((prev) => {
+                                      const newSet = new Set([...prev, ...(dept.projectIds || [])]);
+                                      return Array.from(newSet);
+                                    });
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-5 h-5"
+                              />
+                              <div className="flex-1 flex items-center justify-between">
+                                <div>
+                                  <h3 className="font-semibold text-base">{dept.name}</h3>
+                                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-0.5">
+                                    {(dept.projects || []).length} proyecto{(dept.projects || []).length !== 1 ? 's' : ''}
+                                  </p>
+                                </div>
+                                <Badge variant={allSelected ? "default" : "outline"} className="text-xs">
+                                  {(dept.projects || []).filter((p) => userProjectAccess.includes(p.projectId)).length}/{(dept.projects || []).length}
+                                </Badge>
+                              </div>
+                              {allSelected && (
+                                <CheckCircle className="w-5 h-5 text-purple-600" />
+                              )}
+                            </label>
+
+                            {/* Lista colapsable de proyectos (opcional) */}
+                            {someSelected && (
+                              <div className="ml-8 mt-2 pt-2 border-t space-y-1">
+                                {(dept.projects || [])
+                                  .filter((p) => userProjectAccess.includes(p.projectId))
+                                  .map((project) => (
+                                    <p key={project.projectId} className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                      • {project.name}
+                                    </p>
+                                  ))}
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </>
                   )}
                 </TabsContent>
               </Tabs>

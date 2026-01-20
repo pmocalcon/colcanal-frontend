@@ -29,6 +29,8 @@ export interface Department {
   name: string;
   companyIds: number[];
   companies: Array<{ companyId: number; name: string }>;
+  projectIds?: number[];
+  projects?: Array<{ projectId: number; name: string; companyId: number }>;
 }
 
 /**
@@ -77,5 +79,38 @@ export function mapCompaniesToDepartments(
   }
 
   console.log('🔍 [departmentMapper] Departamentos finales:', departments);
+  return departments;
+}
+
+/**
+ * Mapea una lista de proyectos a departamentos
+ * Solo retorna departamentos donde el usuario tiene al menos un proyecto
+ *
+ * @param projects - Lista de proyectos a los que el usuario tiene acceso
+ * @returns Array de departamentos con sus proyectos asociados
+ */
+export function mapProjectsToDepartments(
+  projects: Array<{ projectId: number; name: string; companyId: number }>
+): Department[] {
+  const departments: Department[] = [];
+
+  for (const [deptName, locationNames] of Object.entries(DEPARTMENT_MAPPING)) {
+    // Filtrar proyectos que pertenecen a este departamento
+    const deptProjects = projects.filter((p) =>
+      locationNames.includes(p.name)
+    );
+
+    // Solo agregar departamento si el usuario tiene acceso a al menos un proyecto
+    if (deptProjects.length > 0) {
+      departments.push({
+        name: deptName,
+        companyIds: [],
+        companies: [],
+        projectIds: deptProjects.map((p) => p.projectId),
+        projects: deptProjects,
+      });
+    }
+  }
+
   return departments;
 }
