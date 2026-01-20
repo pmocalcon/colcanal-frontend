@@ -4,10 +4,25 @@
  */
 
 export const DEPARTMENT_MAPPING: Record<string, string[]> = {
-  Antioquia: ['Jericó', 'Ciudad Bolívar', 'Tarso', 'Pueblo Rico', 'Santa Bárbara'],
-  'Valle del Cauca': ['El Cerrito', 'Guacarí'],
-  Quindío: ['Circasia', 'Quimbaya'],
-  Putumayo: ['Puerto Asís'],
+  Antioquia: [
+    'Jericó',
+    'Ciudad Bolívar',
+    'Tarso',
+    'Pueblo Rico',
+    'Unión Temporal Alumbrado Público Santa Bárbara'
+  ],
+  'Valle del Cauca': [
+    'Unión Temporal Alumbrado Público El Cerrito',
+    'Unión Temporal Alumbrado Público Guacarí',
+    'Unión Temporal Alumbrado Público Jamundí'
+  ],
+  Quindío: [
+    'Unión Temporal Alumbrado Público Circasia',
+    'Unión Temporal Alumbrado Público Quimbaya'
+  ],
+  Putumayo: [
+    'Unión Temporal Alumbrado Público Puerto Asís'
+  ],
 };
 
 export interface Department {
