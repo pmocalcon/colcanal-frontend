@@ -16,6 +16,7 @@ import {
   Trash2,
   Key,
   Layout,
+  Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +50,9 @@ import {
   type Gestion,
   type CreateRoleDto,
 } from '@/services/users.service';
+import { masterDataService } from '@/services/master-data.service';
+import { surveysService } from '@/services/surveys.service';
+import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 
 export default function AdminUsuariosPage() {
   const navigate = useNavigate();
@@ -105,6 +109,16 @@ export default function AdminUsuariosPage() {
   const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
   const [deleteRoleLoading, setDeleteRoleLoading] = useState(false);
   const [deleteRoleError, setDeleteRoleError] = useState<string | null>(null);
+
+  // Estados para gestión de accesos
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
+  const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [userCompanyAccess, setUserCompanyAccess] = useState<number[]>([]);
+  const [userProjectAccess, setUserProjectAccess] = useState<number[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessSaving, setAccessSaving] = useState(false);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -343,6 +357,116 @@ export default function AdminUsuariosPage() {
     }
   };
 
+  // ========== FUNCIONES DE ACCESOS ==========
+  const handleOpenAccessModal = async (user: User) => {
+    setSelectedUserForAccess(user);
+    setShowAccessModal(true);
+    setAccessLoading(true);
+
+    try {
+      // Cargar empresas y proyectos disponibles
+      const [companies, projects, userAccess] = await Promise.all([
+        masterDataService.getCompanies(),
+        masterDataService.getProjects(),
+        surveysService.getUserAccess(user.userId),
+      ]);
+
+      setAvailableCompanies(companies);
+      setAvailableProjects(projects);
+      setUserCompanyAccess(userAccess.companies.map((c) => c.companyId));
+      setUserProjectAccess(userAccess.projects.map((p) => p.projectId));
+    } catch (error) {
+      console.error('Error loading access data:', error);
+      setError('Error al cargar los accesos del usuario');
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const handleToggleCompanyAccess = (companyId: number) => {
+    setUserCompanyAccess((prev) =>
+      prev.includes(companyId)
+        ? prev.filter((id) => id !== companyId)
+        : [...prev, companyId]
+    );
+  };
+
+  const handleToggleProjectAccess = (projectId: number) => {
+    setUserProjectAccess((prev) =>
+      prev.includes(projectId)
+        ? prev.filter((id) => id !== projectId)
+        : [...prev, projectId]
+    );
+  };
+
+  const handleSaveAccess = async () => {
+    if (!selectedUserForAccess) return;
+
+    try {
+      setAccessSaving(true);
+
+      // Obtener accesos actuales
+      const currentAccess = await surveysService.getUserAccess(selectedUserForAccess.userId);
+
+      // Determinar qué agregar y qué eliminar
+      const currentCompanyIds = currentAccess.companies.map((c) => c.companyId);
+      const currentProjectIds = currentAccess.projects.map((p) => p.projectId);
+
+      const companiesToAdd = userCompanyAccess.filter((id) => !currentCompanyIds.includes(id));
+      const companiesToRemove = currentAccess.companies.filter((c) => !userCompanyAccess.includes(c.companyId));
+
+      const projectsToAdd = userProjectAccess.filter((id) => !currentProjectIds.includes(id));
+      const projectsToRemove = currentAccess.projects.filter((p) => !userProjectAccess.includes(p.projectId));
+
+      // Ejecutar cambios
+      const operations = [];
+
+      // Agregar nuevas empresas
+      for (const companyId of companiesToAdd) {
+        operations.push(
+          surveysService.addUserAccess({
+            userId: selectedUserForAccess.userId,
+            companyId,
+          })
+        );
+      }
+
+      // Agregar nuevos proyectos
+      for (const projectId of projectsToAdd) {
+        operations.push(
+          surveysService.addUserAccess({
+            userId: selectedUserForAccess.userId,
+            projectId,
+          })
+        );
+      }
+
+      // Eliminar empresas
+      for (const company of companiesToRemove) {
+        if (company.accessId) {
+          operations.push(surveysService.deleteUserAccess(company.accessId));
+        }
+      }
+
+      // Eliminar proyectos
+      for (const project of projectsToRemove) {
+        if (project.accessId) {
+          operations.push(surveysService.deleteUserAccess(project.accessId));
+        }
+      }
+
+      await Promise.all(operations);
+
+      setSuccessMessage('Accesos actualizados correctamente');
+      setShowAccessModal(false);
+    } catch (error: any) {
+      console.error('Error saving access:', error);
+      setError('Error al guardar los accesos');
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
   // ========== HELPERS ==========
   const getRoleBadgeColor = (roleName: string) => {
     const name = roleName.toLowerCase();
@@ -542,6 +666,15 @@ export default function AdminUsuariosPage() {
                               title="Ver detalle"
                             >
                               <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenAccessModal(user)}
+                              className="hover:bg-purple-100 hover:text-purple-600"
+                              title="Gestionar accesos a empresas"
+                            >
+                              <Building2 className="w-4 h-4" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -990,6 +1123,145 @@ export default function AdminUsuariosPage() {
             >
               {gestionesLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Guardar Módulos ({selectedGestionIds.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Gestionar Accesos */}
+      <Dialog open={showAccessModal} onOpenChange={setShowAccessModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-purple-600" />
+              Gestionar Accesos - {selectedUserForAccess?.nombre}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona las empresas y proyectos a los que este usuario tendrá acceso para gestionar obras y levantamientos
+            </DialogDescription>
+          </DialogHeader>
+
+          {accessLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto py-4">
+              <Tabs defaultValue="companies" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="companies">
+                    Empresas ({userCompanyAccess.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="projects">
+                    Proyectos ({userProjectAccess.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="companies" className="mt-4 space-y-4">
+                  {availableCompanies.length === 0 ? (
+                    <p className="text-center text-[hsl(var(--canalco-neutral-600))] py-8">
+                      No hay empresas disponibles
+                    </p>
+                  ) : (
+                    <>
+                      {/* Agrupar empresas por departamento */}
+                      {mapCompaniesToDepartments(availableCompanies).map((dept) => (
+                        <Card key={dept.name} className="p-4">
+                          <h3 className="font-semibold text-sm mb-3 flex items-center justify-between">
+                            <span>{dept.name}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {dept.companies.filter((c) => userCompanyAccess.includes(c.companyId)).length}/{dept.companies.length}
+                            </Badge>
+                          </h3>
+                          <div className="space-y-2">
+                            {dept.companies.map((company) => (
+                              <label
+                                key={company.companyId}
+                                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                  userCompanyAccess.includes(company.companyId)
+                                    ? 'bg-purple-50 border-purple-300'
+                                    : 'hover:bg-[hsl(var(--canalco-neutral-100))]'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={userCompanyAccess.includes(company.companyId)}
+                                  onChange={() => handleToggleCompanyAccess(company.companyId)}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm">{company.name}</p>
+                                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                    ID: {company.companyId}
+                                  </p>
+                                </div>
+                                {userCompanyAccess.includes(company.companyId) && (
+                                  <CheckCircle className="w-4 h-4 text-purple-600" />
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        </Card>
+                      ))}
+                    </>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="projects" className="mt-4 space-y-2">
+                  {availableProjects.length === 0 ? (
+                    <p className="text-center text-[hsl(var(--canalco-neutral-600))] py-8">
+                      No hay proyectos disponibles
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {availableProjects.map((project) => (
+                        <label
+                          key={project.projectId}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            userProjectAccess.includes(project.projectId)
+                              ? 'bg-purple-50 border-purple-300'
+                              : 'hover:bg-[hsl(var(--canalco-neutral-100))]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={userProjectAccess.includes(project.projectId)}
+                            onChange={() => handleToggleProjectAccess(project.projectId)}
+                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{project.name}</p>
+                            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                              ID: {project.projectId} • Empresa ID: {project.companyId}
+                            </p>
+                          </div>
+                          {userProjectAccess.includes(project.projectId) && (
+                            <CheckCircle className="w-4 h-4 text-purple-600" />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          <DialogFooter className="border-t pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowAccessModal(false)}
+              disabled={accessSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveAccess}
+              disabled={accessSaving || accessLoading}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {accessSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Guardar Accesos
             </Button>
           </DialogFooter>
         </DialogContent>
