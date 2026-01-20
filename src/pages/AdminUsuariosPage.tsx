@@ -412,15 +412,15 @@ export default function AdminUsuariosPage() {
       const currentAccess = await surveysService.getUserAccess(selectedUserForAccess.userId);
       console.log('🔍 [handleSaveAccess] Accesos actuales:', currentAccess);
 
-      // Determinar qué agregar y qué eliminar
-      const currentCompanyIds = currentAccess.companies.map((c) => c.companyId);
-      const currentProjectIds = currentAccess.projects.map((p) => p.projectId);
+      // Determinar qué agregar y qué eliminar (usar || [] para evitar undefined)
+      const currentCompanyIds = (currentAccess.companies || []).map((c) => c.companyId);
+      const currentProjectIds = (currentAccess.projects || []).map((p) => p.projectId);
 
       const companiesToAdd = userCompanyAccess.filter((id) => !currentCompanyIds.includes(id));
-      const companiesToRemove = currentAccess.companies.filter((c) => !userCompanyAccess.includes(c.companyId));
+      const companiesToRemove = (currentAccess.companies || []).filter((c) => !userCompanyAccess.includes(c.companyId));
 
       const projectsToAdd = userProjectAccess.filter((id) => !currentProjectIds.includes(id));
-      const projectsToRemove = currentAccess.projects.filter((p) => !userProjectAccess.includes(p.projectId));
+      const projectsToRemove = (currentAccess.projects || []).filter((p) => !userProjectAccess.includes(p.projectId));
 
       console.log('🔍 [handleSaveAccess] Empresas a agregar:', companiesToAdd);
       console.log('🔍 [handleSaveAccess] Empresas a eliminar:', companiesToRemove);
