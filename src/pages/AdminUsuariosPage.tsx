@@ -444,12 +444,20 @@ export default function AdminUsuariosPage() {
       // Agregar nuevos proyectos
       for (const projectId of projectsToAdd) {
         console.log('🔍 [handleSaveAccess] Agregando proyecto:', projectId);
-        operations.push(
-          surveysService.addUserAccess({
-            userId: selectedUserForAccess.userId,
-            projectId,
-          })
-        );
+        // Encontrar el proyecto para obtener su companyId
+        const project = allProjects.find(p => p.projectId === projectId);
+        if (project) {
+          console.log('🔍 [handleSaveAccess] Proyecto encontrado:', project);
+          operations.push(
+            surveysService.addUserAccess({
+              userId: selectedUserForAccess.userId,
+              projectId,
+              companyId: project.companyId, // El proyecto necesita su companyId
+            })
+          );
+        } else {
+          console.error('❌ [handleSaveAccess] No se encontró el proyecto:', projectId);
+        }
       }
 
       // Eliminar empresas
