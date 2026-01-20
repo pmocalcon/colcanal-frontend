@@ -72,15 +72,26 @@ export default function ObrasListPage() {
     try {
       setLoading(true);
       setError(null);
+      console.log('🔍 [loadWorks] Cargando obras para:', {
+        departamento: activeTab,
+        companyIds: activeCompanyIds,
+        userId: user?.userId
+      });
       // Filter by company IDs of active department and current user
       const response = await surveysService.getWorks({
         companyId: activeCompanyIds,
         createdBy: user?.userId
       });
-      console.log('API Response for works:', response);
+      console.log('🔍 [loadWorks] API Response for works:', response);
       // Handle both response structures: { data: Work[] } or Work[]
       const worksData = Array.isArray(response) ? response : (response.data || []);
-      console.log('Works data:', worksData);
+      console.log('🔍 [loadWorks] Works data:', worksData);
+      console.log('🔍 [loadWorks] CompanyIds en las obras:', worksData.map(w => ({
+        workId: w.workId,
+        name: w.name,
+        companyId: w.companyId,
+        companyName: w.company?.name
+      })));
       setWorks(worksData);
       setFilteredWorks(worksData);
     } catch (err: any) {
