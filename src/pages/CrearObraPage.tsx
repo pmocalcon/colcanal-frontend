@@ -294,7 +294,11 @@ export default function CrearObraPage() {
       }
     } catch (err: any) {
       console.error('Error loading data:', err);
-      setError(err.response?.data?.message || 'Error al cargar los datos');
+      // Ignorar errores de permisos del backend - el sistema de permisos granulares ya se encarga
+      const errorMsg = err.response?.data?.message || 'Error al cargar los datos';
+      if (!errorMsg.includes('no tiene permisos')) {
+        setError(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
