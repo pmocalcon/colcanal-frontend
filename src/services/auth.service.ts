@@ -32,6 +32,8 @@ export interface RefreshTokenRequest {
 function decodeToken(token: string): { permissions?: string[] } {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
+    console.log('🔓 [JWT] Payload completo del token:', payload);
+    console.log('🔓 [JWT] Permisos en el token:', payload.permissions);
     return {
       permissions: payload.permissions || [],
     };
