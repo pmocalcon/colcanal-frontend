@@ -1133,25 +1133,20 @@ const ValidarRequisicionesPage: React.FC = () => {
                       ) : null;
                     })()}
 
-                    {/* Revisado por */}
-                    {(() => {
-                      const reviewLog = selectedRequisition.logs?.find(
-                        (log) => log.action?.startsWith('revisar_')
-                      );
-                      return reviewLog ? (
-                        <div className="border-l-4 border-blue-500 pl-4">
-                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                            Revisado por
-                          </p>
-                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {reviewLog.user.nombre}
-                          </p>
-                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {reviewLog.user.cargo || 'Sin cargo'}
-                          </p>
-                        </div>
-                      ) : null;
-                    })()}
+                    {/* Revisado por - Solo si reviewedBy NO es NULL */}
+                    {selectedRequisition.reviewedBy && selectedRequisition.reviewer ? (
+                      <div className="border-l-4 border-blue-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Revisado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {selectedRequisition.reviewer.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.reviewer.cargo || 'Sin cargo'}
+                        </p>
+                      </div>
+                    ) : null}
 
                     {/* Autorizado por */}
                     {(() => {
@@ -1173,25 +1168,20 @@ const ValidarRequisicionesPage: React.FC = () => {
                       ) : null;
                     })()}
 
-                    {/* Aprobado por */}
-                    {(() => {
-                      const approveLog = selectedRequisition.logs?.find(
-                        (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
-                      );
-                      return approveLog ? (
-                        <div className="border-l-4 border-green-500 pl-4">
-                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                            Aprobado por
-                          </p>
-                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {approveLog.user.nombre}
-                          </p>
-                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {approveLog.user.cargo || 'Sin cargo'}
-                          </p>
-                        </div>
-                      ) : null;
-                    })()}
+                    {/* Aprobado por - Solo si approvedBy NO es NULL */}
+                    {selectedRequisition.approvedBy && selectedRequisition.approver ? (
+                      <div className="border-l-4 border-green-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Aprobado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {selectedRequisition.approver.nombre}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {selectedRequisition.approver.cargo || 'Sin cargo'}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 </Card>
               </>
