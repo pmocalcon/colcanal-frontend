@@ -133,17 +133,32 @@ export default function CrearObraPage() {
       setLoading(true);
       setError(null);
 
-      // Cargar empresas
-      const companiesData = await masterDataService.getCompanies();
-      setCompanies(Array.isArray(companiesData) ? companiesData : []);
+      // Cargar empresas (resiliente a errores de permisos)
+      try {
+        const companiesData = await masterDataService.getCompanies();
+        setCompanies(Array.isArray(companiesData) ? companiesData : []);
+      } catch (err: any) {
+        console.warn('Error loading companies (continuando de todos modos):', err);
+        setCompanies([]);
+      }
 
-      // Cargar usuarios recibedores (PQRS y Coordinador Operativo)
-      const receiversData = await usersService.getByRoles(RECEIVER_ROLE_IDS);
-      setReceivers(receiversData);
+      // Cargar usuarios recibedores (resiliente a errores de permisos)
+      try {
+        const receiversData = await usersService.getByRoles(RECEIVER_ROLE_IDS);
+        setReceivers(receiversData);
+      } catch (err: any) {
+        console.warn('Error loading receivers (continuando de todos modos):', err);
+        setReceivers([]);
+      }
 
-      // Cargar usuarios revisores
-      const reviewersData = await usersService.getByRoles(REVIEWER_ROLE_IDS);
-      setReviewers(reviewersData);
+      // Cargar usuarios revisores (resiliente a errores de permisos)
+      try {
+        const reviewersData = await usersService.getByRoles(REVIEWER_ROLE_IDS);
+        setReviewers(reviewersData);
+      } catch (err: any) {
+        console.warn('Error loading reviewers (continuando de todos modos):', err);
+        setReviewers([]);
+      }
 
       // Si es modo edición, cargar la obra y su levantamiento
       if (isEditMode && id) {
