@@ -13,6 +13,7 @@ export interface User {
   cargo: string;
   rolId: number;
   nombreRol: string;
+  permissions?: string[]; // Permisos granulares del JWT
 }
 
 export interface LoginResponse {
@@ -25,6 +26,21 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
+/**
+ * Decodifica el JWT y extrae los permisos
+ */
+function decodeToken(token: string): { permissions?: string[] } {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return {
+      permissions: payload.permissions || [],
+    };
+  } catch (error) {
+    console.error('Error decoding JWT:', error);
+    return {};
+  }
+}
+
 // Auth Service
 export const authService = {
   /**
@@ -33,12 +49,22 @@ export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     const response = await api.post<LoginResponse>('/auth/login', credentials);
 
+    // Extraer permisos del JWT
+    const tokenData = decodeToken(response.data.accessToken);
+    const userWithPermissions: User = {
+      ...response.data.user,
+      permissions: tokenData.permissions || [],
+    };
+
     // Store tokens and user in localStorage
     localStorage.setItem('accessToken', response.data.accessToken);
     localStorage.setItem('refreshToken', response.data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    localStorage.setItem('user', JSON.stringify(userWithPermissions));
 
-    return response.data;
+    return {
+      ...response.data,
+      user: userWithPermissions,
+    };
   },
 
   /**
@@ -47,12 +73,22 @@ export const authService = {
   async refresh(refreshToken: string): Promise<LoginResponse> {
     const response = await api.post<LoginResponse>('/auth/refresh', { refreshToken });
 
+    // Extraer permisos del JWT
+    const tokenData = decodeToken(response.data.accessToken);
+    const userWithPermissions: User = {
+      ...response.data.user,
+      permissions: tokenData.permissions || [],
+    };
+
     // Update tokens and user in localStorage
     localStorage.setItem('accessToken', response.data.accessToken);
     localStorage.setItem('refreshToken', response.data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(response.data.user));
+    localStorage.setItem('user', JSON.stringify(userWithPermissions));
 
-    return response.data;
+    return {
+      ...response.data,
+      user: userWithPermissions,
+    };
   },
 
   /**

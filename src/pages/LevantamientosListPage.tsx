@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { surveysService, type Survey, type BlockStatus } from '@/services/surveys.service';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
+import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,7 @@ import { Footer } from '@/components/ui/footer';
 export default function LevantamientosListPage() {
   const navigate = useNavigate();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
+  const { hasPermission } = useGranularPermissions();
   const [activeTab, setActiveTab] = useState('');
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [filteredSurveys, setFilteredSurveys] = useState<Survey[]>([]);
@@ -288,14 +290,16 @@ export default function LevantamientosListPage() {
                             </li>
                           ))}
                         </ul>
-                        <Button
-                          size="sm"
-                          className="mt-2 bg-red-600 hover:bg-red-700 text-white"
-                          onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/editar/${survey.surveyId}`)}
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Corregir
-                        </Button>
+                        {hasPermission('levantamientos:editar') && (
+                          <Button
+                            size="sm"
+                            className="mt-2 bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/editar/${survey.surveyId}`)}
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            Corregir
+                          </Button>
+                        )}
                       </div>
                     );
                   })}
@@ -418,7 +422,7 @@ export default function LevantamientosListPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
-                            {canEdit ? (
+                            {hasPermission('levantamientos:editar') && canEdit ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -428,7 +432,7 @@ export default function LevantamientosListPage() {
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                            ) : (
+                            ) : !canEdit ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -438,7 +442,7 @@ export default function LevantamientosListPage() {
                               >
                                 <Lock className="w-4 h-4" />
                               </Button>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
