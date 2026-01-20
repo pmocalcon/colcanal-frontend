@@ -26,6 +26,9 @@ export interface Department {
 export function mapCompaniesToDepartments(
   companies: Array<{ companyId: number; name: string }>
 ): Department[] {
+  console.log('🔍 [departmentMapper] Empresas recibidas:', companies);
+  console.log('🔍 [departmentMapper] Mapeo de departamentos:', DEPARTMENT_MAPPING);
+
   const departments: Department[] = [];
 
   for (const [deptName, companyNames] of Object.entries(DEPARTMENT_MAPPING)) {
@@ -33,6 +36,11 @@ export function mapCompaniesToDepartments(
     const deptCompanies = companies.filter((c) =>
       companyNames.includes(c.name)
     );
+
+    console.log(`🔍 [departmentMapper] ${deptName}:`, {
+      expectedCompanies: companyNames,
+      foundCompanies: deptCompanies,
+    });
 
     // Solo agregar departamento si el usuario tiene acceso a al menos una empresa
     if (deptCompanies.length > 0) {
@@ -44,5 +52,6 @@ export function mapCompaniesToDepartments(
     }
   }
 
+  console.log('🔍 [departmentMapper] Departamentos finales:', departments);
   return departments;
 }

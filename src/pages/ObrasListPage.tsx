@@ -24,8 +24,15 @@ export default function ObrasListPage() {
 
   // Mapear empresas a departamentos
   const departments = useMemo(() => {
-    if (!access?.companies) return [];
-    return mapCompaniesToDepartments(access.companies);
+    console.log('🔍 [ObrasListPage] Access:', access);
+    console.log('🔍 [ObrasListPage] Access.companies:', access?.companies);
+    if (!access?.companies) {
+      console.log('⚠️ [ObrasListPage] No hay companies en access');
+      return [];
+    }
+    const depts = mapCompaniesToDepartments(access.companies);
+    console.log('🔍 [ObrasListPage] Departments mapeados:', depts);
+    return depts;
   }, [access]);
 
   // Obtener IDs de empresas del departamento activo
