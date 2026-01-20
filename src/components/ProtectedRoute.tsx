@@ -65,16 +65,25 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   redirectTo,
   children,
 }) => {
-  const { hasPermission, hasAnyPermission, hasAllPermissions } = useGranularPermissions();
+  const { hasPermission, hasAnyPermission, hasAllPermissions, permissions } = useGranularPermissions();
 
   const hasAccess = React.useMemo(() => {
-    if (Array.isArray(permission)) {
-      return requireAll
+    const access = Array.isArray(permission)
+      ? requireAll
         ? hasAllPermissions(permission)
-        : hasAnyPermission(permission);
-    }
-    return hasPermission(permission);
-  }, [permission, requireAll, hasPermission, hasAnyPermission, hasAllPermissions]);
+        : hasAnyPermission(permission)
+      : hasPermission(permission);
+
+    // Debug logs
+    console.log('🔐 [ProtectedRoute] Verificación de permisos:', {
+      permisosRequeridos: permission,
+      requiereToods: requireAll,
+      permisosDelUsuario: permissions,
+      tieneAcceso: access,
+    });
+
+    return access;
+  }, [permission, requireAll, hasPermission, hasAnyPermission, hasAllPermissions, permissions]);
 
   if (!hasAccess) {
     // Opción 1: Redirigir al dashboard

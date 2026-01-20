@@ -188,7 +188,7 @@ export default function ObrasListPage() {
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2">
-              <PermissionGuard permission="obras:crear">
+              <PermissionGuard permission="levantamientos:crear">
                 <Button
                   onClick={() => navigate('/dashboard/levantamiento-obras/obras/crear')}
                   className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
@@ -299,7 +299,7 @@ export default function ObrasListPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
-                            <PermissionGuard permission="obras:editar">
+                            <PermissionGuard permission="levantamientos:editar">
                               <Button
                                 variant="ghost"
                                 size="icon"

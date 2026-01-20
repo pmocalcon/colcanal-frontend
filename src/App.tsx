@@ -93,7 +93,7 @@ export default function App() {
           <Route
             path="/dashboard/levantamiento-obras/obras/crear"
             element={
-              <ProtectedRoute permission={["obras:crear", "levantamientos:crear"]} requireAll={true}>
+              <ProtectedRoute permission="levantamientos:crear">
                 <CrearObraPage />
               </ProtectedRoute>
             }
@@ -101,7 +101,7 @@ export default function App() {
           <Route
             path="/dashboard/levantamiento-obras/obras/editar/:id"
             element={
-              <ProtectedRoute permission={["obras:editar", "levantamientos:editar"]} requireAll={true}>
+              <ProtectedRoute permission="levantamientos:editar">
                 <CrearObraPage />
               </ProtectedRoute>
             }
