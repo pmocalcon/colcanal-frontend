@@ -40,6 +40,15 @@ export function mapCompaniesToDepartments(
     console.log(`🔍 [departmentMapper] ${deptName}:`, {
       expectedCompanies: companyNames,
       foundCompanies: deptCompanies,
+      allCompanyNames: companies.map(c => c.name),
+      comparisons: companies.map(c => ({
+        name: c.name,
+        matchesAny: companyNames.some(expected => {
+          const match = expected === c.name;
+          console.log(`  "${expected}" === "${c.name}" ? ${match}`);
+          return match;
+        })
+      }))
     });
 
     // Solo agregar departamento si el usuario tiene acceso a al menos una empresa
