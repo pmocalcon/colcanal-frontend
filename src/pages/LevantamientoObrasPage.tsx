@@ -1,50 +1,23 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { modulesService, type ModulePermissions } from '@/services/modules.service';
+import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 
 export default function LevantamientoObrasPage() {
   const navigate = useNavigate();
-  const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchPermissions = async () => {
-      try {
-        const modules = await modulesService.getUserModules();
-        const levantamientoModule = modules.find(
-          (m) =>
-            m.slug === 'levantamiento-obras' ||
-            m.slug === 'reportes' ||
-            m.nombre.toLowerCase().includes('levantamiento')
-        );
-        if (levantamientoModule) {
-          setPermissions(levantamientoModule.permisos);
-        }
-      } catch (error) {
-        console.error('Error fetching permissions:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPermissions();
-  }, []);
+  const { hasPermission } = useGranularPermissions();
 
   const getSubModuleAccess = (slug: string): boolean => {
-    if (!permissions) return false;
-
     switch (slug) {
       case 'obras':
-        return permissions.ver === true;
+        return hasPermission('levantamientos:ver');
       case 'crear-obra':
-        return permissions.crear === true;
+        return hasPermission('levantamientos:crear');
       case 'levantamientos':
-        return permissions.ver === true;
+        return hasPermission('levantamientos:ver');
       case 'revisar-levantamientos':
-        return permissions.revisar === true || permissions.aprobar === true;
+        return hasPermission('levantamientos:revisar');
       default:
         return false;
     }
@@ -86,11 +59,12 @@ export default function LevantamientoObrasPage() {
   ];
 
   const handleSubModuleClick = (subModule: (typeof subModules)[0]) => {
+    // Si no tiene acceso, no hacer nada (la tarjeta ya se ve en gris)
     if (!subModule.hasAccess) {
-      alert('No tiene permisos para acceder a este módulo');
       return;
     }
 
+    // Navegar directamente - la protección la hace ProtectedRoute en App.tsx
     switch (subModule.slug) {
       case 'obras':
         navigate('/dashboard/levantamiento-obras/obras');
@@ -106,17 +80,6 @@ export default function LevantamientoObrasPage() {
         break;
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-[hsl(var(--canalco-neutral-600))]">Cargando permisos...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
