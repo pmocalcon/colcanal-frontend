@@ -227,7 +227,7 @@ export interface ReviewBlockDto {
 }
 
 export interface SurveyDatabaseFilters {
-  companyId?: number;
+  companyId?: number | number[];
   projectId?: number;
   page?: number;
   limit?: number;
@@ -278,7 +278,7 @@ export interface SurveyDatabaseResponse {
 export interface SurveyFilters {
   page?: number;
   limit?: number;
-  companyId?: number;
+  companyId?: number | number[];
   workId?: number;
   statusCode?: string;
   search?: string;
@@ -360,8 +360,13 @@ export const surveysService = {
     return response.data;
   },
 
-  async getWorks(params?: { companyId?: number; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
-    const response = await api.get('/surveys/works', { params });
+  async getWorks(params?: { companyId?: number | number[]; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
+    // Convert companyId array to comma-separated string if needed
+    const queryParams = { ...params };
+    if (Array.isArray(queryParams.companyId)) {
+      (queryParams as any).companyId = queryParams.companyId.join(',');
+    }
+    const response = await api.get('/surveys/works', { params: queryParams });
     return response.data;
   },
 
@@ -387,7 +392,12 @@ export const surveysService = {
   },
 
   async getSurveys(filters?: SurveyFilters): Promise<SurveysListResponse> {
-    const response = await api.get('/surveys', { params: filters });
+    // Convert companyId array to comma-separated string if needed
+    const queryParams = { ...filters };
+    if (queryParams && Array.isArray(queryParams.companyId)) {
+      (queryParams as any).companyId = queryParams.companyId.join(',');
+    }
+    const response = await api.get('/surveys', { params: queryParams });
     return response.data;
   },
 
@@ -440,7 +450,12 @@ export const surveysService = {
   // ---- DATABASE VIEW ----
 
   async getSurveysDatabase(filters?: SurveyDatabaseFilters): Promise<SurveyDatabaseResponse> {
-    const response = await api.get('/surveys/database', { params: filters });
+    // Convert companyId array to comma-separated string if needed
+    const queryParams = { ...filters };
+    if (queryParams && Array.isArray(queryParams.companyId)) {
+      (queryParams as any).companyId = queryParams.companyId.join(',');
+    }
+    const response = await api.get('/surveys/database', { params: queryParams });
     return response.data;
   },
 

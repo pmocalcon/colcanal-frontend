@@ -1,26 +1,51 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { surveysService, type Work } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSurveyAccess } from '@/hooks/useSurveyAccess';
+import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, Plus, Search, Edit, Eye } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Home, ArrowLeft, Plus, Search, Edit, Eye, AlertCircle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
+  const [activeTab, setActiveTab] = useState('');
   const [works, setWorks] = useState<Work[]>([]);
   const [filteredWorks, setFilteredWorks] = useState<Work[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Mapear empresas a departamentos
+  const departments = useMemo(() => {
+    if (!access?.companies) return [];
+    return mapCompaniesToDepartments(access.companies);
+  }, [access]);
+
+  // Obtener IDs de empresas del departamento activo
+  const activeCompanyIds = useMemo(() => {
+    const dept = departments.find((d) => d.name === activeTab);
+    return dept?.companyIds || [];
+  }, [activeTab, departments]);
+
+  // Establecer el primer departamento como activo al cargar
   useEffect(() => {
-    if (user?.userId) {
+    if (departments.length > 0 && !activeTab) {
+      setActiveTab(departments[0].name);
+    }
+  }, [departments, activeTab]);
+
+  useEffect(() => {
+    if (user?.userId && activeCompanyIds.length > 0) {
       loadWorks();
     }
-  }, [user?.userId]);
+  }, [user?.userId, activeCompanyIds]);
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -40,8 +65,11 @@ export default function ObrasListPage() {
     try {
       setLoading(true);
       setError(null);
-      // Filter by current user (createdBy)
-      const response = await surveysService.getWorks({ createdBy: user?.userId });
+      // Filter by company IDs of active department and current user
+      const response = await surveysService.getWorks({
+        companyId: activeCompanyIds,
+        createdBy: user?.userId
+      });
       console.log('API Response for works:', response);
       // Handle both response structures: { data: Work[] } or Work[]
       const worksData = Array.isArray(response) ? response : (response.data || []);
@@ -55,6 +83,44 @@ export default function ObrasListPage() {
       setLoading(false);
     }
   };
+
+  // Loading state
+  if (accessLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-[hsl(var(--canalco-neutral-600))]">Cargando accesos...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (accessError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+        <Alert className="max-w-md border-red-500 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">{accessError}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // No access state
+  if (departments.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+        <Alert className="max-w-md border-amber-500 bg-amber-50">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-700">
+            No tienes acceso a ningún departamento. Contacta al administrador.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -94,7 +160,7 @@ export default function ObrasListPage() {
             {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Mis Obras
+                Mis Obras - {activeTab}
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
                 {filteredWorks.length} obras creadas por ti
@@ -117,6 +183,18 @@ export default function ObrasListPage() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
+        {/* Tabs por Departamento */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground mx-auto">
+            {departments.map((dept) => (
+              <TabsTrigger key={dept.name} value={dept.name}>
+                {dept.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {departments.map((dept) => (
+            <TabsContent key={dept.name} value={dept.name}>
         {/* Search Bar */}
         <div className="mb-6 flex gap-4">
           <div className="relative flex-grow max-w-md">
@@ -228,6 +306,9 @@ export default function ObrasListPage() {
             </div>
           </div>
         )}
+            </TabsContent>
+          ))}
+        </Tabs>
       </main>
 
       <Footer />
