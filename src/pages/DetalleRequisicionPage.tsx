@@ -299,19 +299,27 @@ export default function DetalleRequisicionPage() {
               })()}
 
               {/* Revisado por - Solo si reviewedBy NO es NULL */}
-              {requisition.reviewedBy && requisition.reviewer ? (
-                <div className="border-l-4 border-blue-500 pl-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    Revisado por
-                  </p>
-                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.reviewer.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.reviewer.cargo || 'Sin cargo'}
-                  </p>
-                </div>
-              ) : null}
+              {(() => {
+                if (!requisition.reviewedBy) return null;
+                // Usar reviewer si existe, sino buscar en logs
+                const reviewerData = requisition.reviewer || requisition.logs?.find(
+                  (log) => log.action?.startsWith('revisar_') || log.action === 'reviewed'
+                )?.user;
+                if (!reviewerData) return null;
+                return (
+                  <div className="border-l-4 border-blue-500 pl-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                      Revisado por
+                    </p>
+                    <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {reviewerData.nombre}
+                    </p>
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      {reviewerData.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Autorizado por - actions: autorizar_aprobar (newStatus = autorizado) */}
               {(() => {
@@ -334,19 +342,27 @@ export default function DetalleRequisicionPage() {
               })()}
 
               {/* Aprobado por (Gerencia) - Solo si approvedBy NO es NULL */}
-              {requisition.approvedBy && requisition.approver ? (
-                <div className="border-l-4 border-green-500 pl-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    Aprobado por
-                  </p>
-                  <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {requisition.approver.nombre}
-                  </p>
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {requisition.approver.cargo || 'Sin cargo'}
-                  </p>
-                </div>
-              ) : null}
+              {(() => {
+                if (!requisition.approvedBy) return null;
+                // Usar approver si existe, sino buscar en logs
+                const approverData = requisition.approver || requisition.logs?.find(
+                  (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
+                )?.user;
+                if (!approverData) return null;
+                return (
+                  <div className="border-l-4 border-green-500 pl-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                      Aprobado por
+                    </p>
+                    <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                      {approverData.nombre}
+                    </p>
+                    <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                      {approverData.cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
