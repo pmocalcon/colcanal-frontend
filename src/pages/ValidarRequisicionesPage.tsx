@@ -1139,17 +1139,16 @@ const ValidarRequisicionesPage: React.FC = () => {
                       const reviewerData = selectedRequisition.reviewer || selectedRequisition.logs?.find(
                         (log) => log.action?.startsWith('revisar_') || log.action === 'reviewed'
                       )?.user;
-                      if (!reviewerData) return null;
                       return (
                         <div className="border-l-4 border-blue-500 pl-4">
                           <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
                             Revisado por
                           </p>
                           <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {reviewerData.nombre}
+                            {reviewerData?.nombre || 'Director Técnico'}
                           </p>
                           <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {reviewerData.cargo || 'Sin cargo'}
+                            {reviewerData?.cargo || 'Director Técnico'}
                           </p>
                         </div>
                       );
@@ -1181,17 +1180,16 @@ const ValidarRequisicionesPage: React.FC = () => {
                       const approverData = selectedRequisition.approver || selectedRequisition.logs?.find(
                         (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
                       )?.user;
-                      if (!approverData) return null;
                       return (
                         <div className="border-l-4 border-green-500 pl-4">
                           <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
                             Aprobado por
                           </p>
                           <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {approverData.nombre}
+                            {approverData?.nombre || 'Gerencia'}
                           </p>
                           <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {approverData.cargo || 'Sin cargo'}
+                            {approverData?.cargo || 'Gerencia'}
                           </p>
                         </div>
                       );
