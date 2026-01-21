@@ -695,6 +695,11 @@ export default function AsignarPreciosPage() {
                           <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                             <span className="font-medium">Cantidad solicitada:</span> {item.quantity}
                           </p>
+                          {item.observation && (
+                            <p className="text-sm text-amber-600 mt-1">
+                              <span className="font-medium">Observación:</span> {item.observation}
+                            </p>
+                          )}
                         </div>
 
                         {/* Price History Indicator */}

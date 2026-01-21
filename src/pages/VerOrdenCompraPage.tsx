@@ -389,6 +389,11 @@ export default function VerOrdenCompraPage() {
                                   <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
                                     {item.requisitionItem?.material?.description || 'Sin descripción'}
                                   </p>
+                                  {item.requisitionItem?.observation && (
+                                    <p className="text-xs text-amber-600 mt-1">
+                                      Obs: {item.requisitionItem.observation}
+                                    </p>
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-sm">{item.quantity}</TableCell>
                                 <TableCell className="text-sm">{formatCurrency(item.unitPrice)}</TableCell>
