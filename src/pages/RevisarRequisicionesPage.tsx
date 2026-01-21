@@ -26,6 +26,7 @@ import { requisitionsService, type ItemApprovalResponse } from '@/services/requi
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
 import { modulesService, type ModulePermissions } from '@/services/modules.service';
+import { usersService, type User } from '@/services/users.service';
 
 // Estado de aprobación por ítem
 interface ItemReviewStatus {
@@ -59,6 +60,10 @@ const RevisarRequisicionesPage: React.FC = () => {
 
   // Permisos del usuario
   const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
+
+  // Datos reales del revisor y aprobador (obtenidos por ID)
+  const [reviewerUser, setReviewerUser] = useState<User | null>(null);
+  const [approverUser, setApproverUser] = useState<User | null>(null);
 
   // Determinar títulos de sección según permisos
   const sectionTitle = useMemo(() => {
@@ -107,6 +112,33 @@ const RevisarRequisicionesPage: React.FC = () => {
     };
     fetchPermissions();
   }, []);
+
+  // Cargar datos reales del revisor y aprobador por ID
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (selectedRequisition?.reviewedBy) {
+        try {
+          const userData = await usersService.getById(selectedRequisition.reviewedBy);
+          setReviewerUser(userData);
+        } catch (err) {
+          console.error('Error loading reviewer:', err);
+        }
+      } else {
+        setReviewerUser(null);
+      }
+      if (selectedRequisition?.approvedBy) {
+        try {
+          const userData = await usersService.getById(selectedRequisition.approvedBy);
+          setApproverUser(userData);
+        } catch (err) {
+          console.error('Error loading approver:', err);
+        }
+      } else {
+        setApproverUser(null);
+      }
+    };
+    loadUserData();
+  }, [selectedRequisition?.reviewedBy, selectedRequisition?.approvedBy]);
 
   // Cargar requisiciones pendientes
   const loadPendingRequisitions = async () => {
@@ -1306,25 +1338,19 @@ const RevisarRequisicionesPage: React.FC = () => {
                     })()}
 
                     {/* Revisado por - Solo si reviewedBy NO es NULL */}
-                    {(() => {
-                      if (!selectedRequisition.reviewedBy) return null;
-                      const reviewerData = selectedRequisition.reviewer || selectedRequisition.logs?.find(
-                        (log) => log.action?.startsWith('revisar_') || log.action === 'reviewed'
-                      )?.user;
-                      return (
-                        <div className="border-l-4 border-blue-500 pl-4">
-                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                            Revisado por
-                          </p>
-                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {reviewerData?.nombre || 'Director Técnico'}
-                          </p>
-                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {reviewerData?.cargo || 'Director Técnico'}
-                          </p>
-                        </div>
-                      );
-                    })()}
+                    {selectedRequisition.reviewedBy ? (
+                      <div className="border-l-4 border-blue-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Revisado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {reviewerUser?.nombre || 'Director Técnico'}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {reviewerUser?.cargo || 'Director Técnico'}
+                        </p>
+                      </div>
+                    ) : null}
 
                     {/* Autorizado por - actions: autorizar_aprobar (newStatus = autorizado) */}
                     {(() => {
@@ -1347,25 +1373,19 @@ const RevisarRequisicionesPage: React.FC = () => {
                     })()}
 
                     {/* Aprobado por (Gerencia) - Solo si approvedBy NO es NULL */}
-                    {(() => {
-                      if (!selectedRequisition.approvedBy) return null;
-                      const approverData = selectedRequisition.approver || selectedRequisition.logs?.find(
-                        (log) => log.action === 'aprobar_gerencia' || log.newStatus === 'aprobada_gerencia'
-                      )?.user;
-                      return (
-                        <div className="border-l-4 border-green-500 pl-4">
-                          <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                            Aprobado por
-                          </p>
-                          <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {approverData?.nombre || 'Gerencia'}
-                          </p>
-                          <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                            {approverData?.cargo || 'Gerencia'}
-                          </p>
-                        </div>
-                      );
-                    })()}
+                    {selectedRequisition.approvedBy ? (
+                      <div className="border-l-4 border-green-500 pl-4">
+                        <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
+                          Aprobado por
+                        </p>
+                        <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
+                          {approverUser?.nombre || 'Gerencia'}
+                        </p>
+                        <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                          {approverUser?.cargo || 'Gerencia'}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 </Card>
 
