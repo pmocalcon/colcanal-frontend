@@ -127,6 +127,20 @@ export default function GestionarCotizacionPage() {
       setLoading(true);
       setError(null);
       const data = await getRequisitionQuotation(Number(requisitionId));
+
+      // DEBUG: Ver si las observaciones vienen del backend
+      console.log('=== DEBUG OBSERVACIONES ===');
+      console.log('Items de la requisición:', data.items);
+      data.items.forEach((item, idx) => {
+        console.log(`Item ${idx + 1}:`, {
+          itemId: item.itemId,
+          materialCode: item.material?.code,
+          observation: item.observation,
+          hasObservation: !!item.observation
+        });
+      });
+      console.log('=== FIN DEBUG ===');
+
       setRequisition(data);
       if (data.company?.companyId) {
         await loadShippingContact(
