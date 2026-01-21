@@ -111,6 +111,19 @@ export default function VerOrdenCompraPage() {
     );
   }, [purchaseOrders]);
 
+  // Mapeo de observaciones de items de la requisición para fallback
+  const itemObservationsMap = useMemo(() => {
+    const map = new Map<number, string>();
+    if (requisition?.items) {
+      for (const item of requisition.items) {
+        if (item.observation) {
+          map.set(item.itemId, item.observation);
+        }
+      }
+    }
+    return map;
+  }, [requisition]);
+
   if (!isCompras) {
     return null;
   }
@@ -382,16 +395,22 @@ export default function VerOrdenCompraPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {po.items.map((item) => (
+                            {po.items.map((item) => {
+                              // Buscar observación: primero en el item de OC, luego en el mapeo de la requisición
+                              const observation = item.requisitionItem?.observation
+                                || (item.requisitionItem?.itemId ? itemObservationsMap.get(item.requisitionItem.itemId) : undefined)
+                                || (item.requisitionItemId ? itemObservationsMap.get(item.requisitionItemId) : undefined);
+
+                              return (
                               <TableRow key={item.poItemId}>
                                 <TableCell className="text-sm">
                                   <p className="font-medium">{item.requisitionItem?.material?.code}</p>
                                   <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
                                     {item.requisitionItem?.material?.description || 'Sin descripción'}
                                   </p>
-                                  {item.requisitionItem?.observation && (
+                                  {observation && (
                                     <p className="text-xs text-amber-600 mt-1">
-                                      Obs: {item.requisitionItem.observation}
+                                      Obs: {observation}
                                     </p>
                                   )}
                                 </TableCell>
@@ -401,7 +420,8 @@ export default function VerOrdenCompraPage() {
                                   {formatCurrency(item.totalAmount)}
                                 </TableCell>
                               </TableRow>
-                            ))}
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </div>
