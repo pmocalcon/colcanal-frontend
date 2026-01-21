@@ -157,13 +157,24 @@ const RevisarRequisicionesPage: React.FC = () => {
         // - aprobada_gerencia: ya aprobadas por gerencia
         if (permissions.aprobar && !permissions.revisar) {
           filteredData = response.data.filter(
-            (req) => ['aprobada_revisor', 'autorizado', 'aprobada_gerencia'].includes(req.status?.code || '')
+            (req) => [
+              'aprobada_revisor', 'autorizado', 'aprobada_gerencia',
+              // Estados posteriores (requisiciones ya aprobadas y en proceso)
+              'en_cotizacion', 'cotizada', 'en_orden_compra', 'pendiente_recepcion',
+              'en_recepcion', 'recepcion_completa'
+            ].includes(req.status?.code || '')
           );
         }
         // Si tiene permiso de revisar pero NO de aprobar: ve estados pendientes y ya revisados
         else if (permissions.revisar && !permissions.aprobar) {
           filteredData = response.data.filter(
-            (req) => ['pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion', 'autorizado', 'aprobada_gerencia', 'rechazada_revisor'].includes(req.status?.code || '')
+            (req) => [
+              'pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion',
+              'autorizado', 'aprobada_gerencia', 'rechazada_revisor',
+              // Estados posteriores (requisiciones que ya fueron procesadas completamente)
+              'en_cotizacion', 'cotizada', 'en_orden_compra', 'pendiente_recepcion',
+              'en_recepcion', 'recepcion_completa'
+            ].includes(req.status?.code || '')
           );
         }
         // Si tiene ambos permisos: ve todo
