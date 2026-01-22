@@ -1,73 +1,81 @@
-# React + TypeScript + Vite
+# CANALCO - Sistema de Gestión
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend del sistema de gestión empresarial CANALCO, construido con React, TypeScript y Vite.
 
-Currently, two official plugins are available:
+## Tecnologías
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 19** - Biblioteca de UI
+- **TypeScript** - Tipado estático
+- **Vite** - Build tool y dev server
+- **Tailwind CSS** - Estilos utilitarios
+- **Radix UI** - Componentes accesibles
+- **React Router** - Enrutamiento
+- **React Hook Form + Zod** - Formularios y validación
+- **Axios** - Cliente HTTP
+- **Lucide React** - Iconos
 
-## React Compiler
+## Módulos
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Requisiciones
+- Crear, editar y gestionar requisiciones de materiales
+- Flujo de aprobación multi-nivel (Validación → Revisión → Autorización → Aprobación)
+- Firmas digitales de aprobadores
 
-## Expanding the ESLint configuration
+### Compras
+- Gestión de cotizaciones con múltiples proveedores
+- Asignación de precios y generación de órdenes de compra
+- Fecha estimada de entrega por proveedor
+- Aprobación de órdenes de compra por Gerencia
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Recepciones
+- Registro de recepciones parciales y totales
+- Seguimiento de entregas pendientes
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Levantamiento de Obras
+- Gestión de obras y proyectos
+- Encuestas y UCAPs
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Scripts
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Desarrollo
+npm run dev
+
+# Build para producción
+npm run build
+
+# Preview del build
+npm run preview
+
+# Linting
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Estructura del Proyecto
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+src/
+├── components/     # Componentes reutilizables (UI)
+├── contexts/       # Contextos de React (Auth, etc.)
+├── pages/          # Páginas/vistas de la aplicación
+├── services/       # Servicios API (axios)
+├── types/          # Tipos TypeScript
+└── utils/          # Utilidades y helpers
+```
+
+## Variables de Entorno
+
+```env
+VITE_API_URL=https://api.example.com
+```
+
+## Despliegue
+
+El proyecto está configurado para desplegarse en **Vercel** con soporte para React Router (ver `vercel.json`).
+
+## Desarrollo
+
+1. Clonar el repositorio
+2. Instalar dependencias: `npm install`
+3. Configurar variables de entorno (`.env`)
+4. Ejecutar en desarrollo: `npm run dev`

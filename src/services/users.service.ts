@@ -2,6 +2,31 @@ import api from './api';
 
 // ============ TIPOS ============
 
+/**
+ * Mapeo estático de IDs de roles a nombres
+ * Usado como fallback si el endpoint de roles requiere permisos de admin
+ */
+const ROLE_ID_TO_NAME_FALLBACK: Record<number, string> = {
+  // Directores
+  8: 'Director Técnico',
+  9: 'Director Técnico',
+  10: 'Director Técnico',
+  11: 'Director Técnico',
+  // PQRS
+  18: 'PQRS',
+  19: 'PQRS',
+  20: 'PQRS',
+  21: 'PQRS',
+  22: 'PQRS',
+  23: 'PQRS',
+  24: 'PQRS',
+  25: 'PQRS',
+  26: 'PQRS',
+  27: 'PQRS',
+  // Coordinador Operativo
+  32: 'Coordinador Operativo',
+};
+
 export interface Role {
   rolId: number;
   nombreRol: string;
@@ -134,7 +159,8 @@ export const usersService = {
   // ============ CRUD USUARIOS ============
 
   /**
-   * Listar todos los usuarios
+   * Listar todos los usuarios (requiere permisos de administrador)
+   * Para obtener usuarios sin permisos de admin, usar getAllActive()
    */
   async getAll(includeInactive: boolean = false): Promise<User[]> {
     const response = await api.get<User[]>('/users', {
@@ -144,11 +170,62 @@ export const usersService = {
   },
 
   /**
+   * Listar todos los usuarios activos (endpoint público, no requiere permisos de admin)
+   */
+  async getAllActive(): Promise<User[]> {
+    const response = await api.get<User[]>('/users/public/active');
+    return response.data;
+  },
+
+  /**
    * Obtener usuarios por IDs de roles
+   * Usa el endpoint público que no requiere permisos de administrador
    */
   async getByRoles(roleIds: number[]): Promise<User[]> {
-    const allUsers = await this.getAll();
-    return allUsers.filter((user) => roleIds.includes(user.rolId) && user.estado);
+    let roleMap: Map<number, string>;
+
+    try {
+      // Intentar obtener todos los roles para mapear IDs a nombres
+      const roles = await this.getRoles();
+      roleMap = new Map(roles.map(r => [r.rolId, r.nombreRol]));
+    } catch (error) {
+      // Si falla (usuario sin permisos de admin), usar el mapeo estático
+      console.warn('No se pudieron cargar los roles, usando mapeo estático', error);
+      roleMap = new Map(Object.entries(ROLE_ID_TO_NAME_FALLBACK).map(([id, name]) => [Number(id), name]));
+    }
+
+    // Convertir IDs a nombres
+    const roleNames = roleIds
+      .map(id => roleMap.get(id))
+      .filter((name): name is string => name !== undefined);
+
+    if (roleNames.length === 0) {
+      console.warn('No se pudieron mapear los role IDs a nombres:', roleIds);
+      return [];
+    }
+
+    // Llamar al endpoint público con nombres de roles
+    return this.getByRoleNames(roleNames);
+  },
+
+  /**
+   * Obtener usuarios por nombres de roles (endpoint público)
+   */
+  async getByRoleNames(roleNames: string[]): Promise<User[]> {
+    const response = await api.get<User[]>('/users/public/by-roles', {
+      params: { roles: roleNames.join(',') },
+    });
+    return response.data;
+  },
+
+  /**
+   * Obtener usuarios con un permiso específico (endpoint público)
+   */
+  async getByPermission(permission: string): Promise<User[]> {
+    const response = await api.get<User[]>('/users/public/with-permission', {
+      params: { permission },
+    });
+    return response.data;
   },
 
   /**
