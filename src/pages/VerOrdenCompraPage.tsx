@@ -376,6 +376,11 @@ export default function VerOrdenCompraPage() {
                           Vence: {formatDate(po.deadline)}
                         </p>
                       )}
+                      {po.estimatedDeliveryDate && (
+                        <p className="text-xs text-green-600 mt-1">
+                          Entrega estimada: {formatDate(po.estimatedDeliveryDate)}
+                        </p>
+                      )}
                     </div>
                   </div>
 

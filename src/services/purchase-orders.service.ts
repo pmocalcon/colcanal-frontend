@@ -58,6 +58,7 @@ export interface PurchaseOrder {
   deadline?: string;
   isOverdue?: boolean;
   daysOverdue?: number;
+  estimatedDeliveryDate?: string;
   creator?: {
     userId: number;
     nombre: string;
@@ -116,6 +117,7 @@ export interface CreatePurchaseOrdersDto {
     supplierId: number;
     unitPrice: number;
     discount?: number;
+    estimatedDeliveryDate?: string;
   }[];
 }
 

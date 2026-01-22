@@ -55,6 +55,7 @@ export default function AsignarPreciosPage() {
   const [shippingContact, setShippingContact] = useState<CompanyContact | null>(null);
   const [itemPrices, setItemPrices] = useState<Map<number, ItemPriceState>>(new Map());
   const [selectedSuppliers, setSelectedSuppliers] = useState<Set<number>>(new Set());
+  const [estimatedDeliveryDates, setEstimatedDeliveryDates] = useState<Map<number, string>>(new Map());
 
   const isCompras = user?.nombreRol === 'Compras';
 
@@ -322,6 +323,7 @@ export default function AsignarPreciosPage() {
           supplierId: state.selectedSupplier!.supplierId!,
           unitPrice: parseFloat(state.unitPrice),
           discount: parseFloat(state.discount) || 0,
+          estimatedDeliveryDate: estimatedDeliveryDates.get(state.selectedSupplier!.supplierId!) || undefined,
         }));
 
       await createPurchaseOrders(requisition.requisitionId, {
@@ -671,6 +673,35 @@ export default function AsignarPreciosPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Fecha estimada de entrega */}
+                {isSelected && (
+                  <div className="px-6 py-3 bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                    <div className="flex items-center gap-4">
+                      <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                        Fecha estimada de entrega:
+                      </label>
+                      <Input
+                        type="date"
+                        value={estimatedDeliveryDates.get(group.supplier.supplierId) || ''}
+                        onChange={(e) => {
+                          const newDates = new Map(estimatedDeliveryDates);
+                          if (e.target.value) {
+                            newDates.set(group.supplier.supplierId, e.target.value);
+                          } else {
+                            newDates.delete(group.supplier.supplierId);
+                          }
+                          setEstimatedDeliveryDates(newDates);
+                        }}
+                        className="w-48"
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                      <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                        (Opcional)
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Items for this supplier */}
                 <div className="p-6 space-y-4">

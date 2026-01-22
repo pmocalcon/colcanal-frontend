@@ -158,6 +158,11 @@ export default function VerOrdenCompraIndividualPage() {
           <div className="text-right">
             <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">Fecha de emisión</p>
             <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">{today}</p>
+            {purchaseOrder.estimatedDeliveryDate && (
+              <p className="text-xs text-green-600 mt-1">
+                Entrega estimada: {formatDateShort(purchaseOrder.estimatedDeliveryDate)}
+              </p>
+            )}
             {purchaseOrder.approvalStatus && (
               <span
                 className="inline-block mt-2 px-3 py-1 text-xs font-medium rounded-full"
