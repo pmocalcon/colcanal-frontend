@@ -118,6 +118,8 @@ export interface CreatePurchaseOrdersDto {
     unitPrice: number;
     discount?: number;
     estimatedDeliveryDate?: string;
+    otherValue?: number;
+    observations?: string;
   }[];
 }
 

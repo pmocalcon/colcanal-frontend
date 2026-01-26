@@ -56,6 +56,8 @@ export default function AsignarPreciosPage() {
   const [itemPrices, setItemPrices] = useState<Map<number, ItemPriceState>>(new Map());
   const [selectedSuppliers, setSelectedSuppliers] = useState<Set<number>>(new Set());
   const [estimatedDeliveryDates, setEstimatedDeliveryDates] = useState<Map<number, string>>(new Map());
+  const [supplierOtherValues, setSupplierOtherValues] = useState<Map<number, string>>(new Map());
+  const [supplierObservations, setSupplierObservations] = useState<Map<number, string>>(new Map());
 
   const isCompras = user?.nombreRol === 'Compras';
 
@@ -318,13 +320,19 @@ export default function AsignarPreciosPage() {
       // Solo incluir ítems de proveedores seleccionados
       const items = Array.from(itemPrices.values())
         .filter((state) => state.selectedSupplier && selectedSuppliers.has(state.selectedSupplier.supplierId!))
-        .map((state) => ({
-          itemId: state.itemId,
-          supplierId: state.selectedSupplier!.supplierId!,
-          unitPrice: parseFloat(state.unitPrice),
-          discount: parseFloat(state.discount) || 0,
-          estimatedDeliveryDate: estimatedDeliveryDates.get(state.selectedSupplier!.supplierId!) || undefined,
-        }));
+        .map((state) => {
+          const supplierId = state.selectedSupplier!.supplierId!;
+          const otherValueStr = supplierOtherValues.get(supplierId);
+          return {
+            itemId: state.itemId,
+            supplierId,
+            unitPrice: parseFloat(state.unitPrice),
+            discount: parseFloat(state.discount) || 0,
+            estimatedDeliveryDate: estimatedDeliveryDates.get(supplierId) || undefined,
+            otherValue: otherValueStr ? parseFloat(otherValueStr) : undefined,
+            observations: supplierObservations.get(supplierId) || undefined,
+          };
+        });
 
       await createPurchaseOrders(requisition.requisitionId, {
         issueDate: new Date().toISOString().split('T')[0],
@@ -674,31 +682,77 @@ export default function AsignarPreciosPage() {
                   </div>
                 </div>
 
-                {/* Fecha estimada de entrega */}
+                {/* Datos adicionales de la OC */}
                 {isSelected && (
-                  <div className="px-6 py-3 bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-200))]">
-                    <div className="flex items-center gap-4">
-                      <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                        Fecha estimada de entrega:
+                  <div className="px-6 py-4 bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-200))] space-y-3">
+                    {/* Fila 1: Fecha estimada y Otros valores */}
+                    <div className="flex flex-wrap items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                          Fecha estimada de entrega:
+                        </label>
+                        <Input
+                          type="date"
+                          value={estimatedDeliveryDates.get(group.supplier.supplierId) || ''}
+                          onChange={(e) => {
+                            const newDates = new Map(estimatedDeliveryDates);
+                            if (e.target.value) {
+                              newDates.set(group.supplier.supplierId, e.target.value);
+                            } else {
+                              newDates.delete(group.supplier.supplierId);
+                            }
+                            setEstimatedDeliveryDates(newDates);
+                          }}
+                          className="w-44"
+                          min={new Date().toISOString().split('T')[0]}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                          Otros valores:
+                        </label>
+                        <Input
+                          type="number"
+                          placeholder="$ 0"
+                          value={supplierOtherValues.get(group.supplier.supplierId) || ''}
+                          onChange={(e) => {
+                            const newValues = new Map(supplierOtherValues);
+                            if (e.target.value) {
+                              newValues.set(group.supplier.supplierId, e.target.value);
+                            } else {
+                              newValues.delete(group.supplier.supplierId);
+                            }
+                            setSupplierOtherValues(newValues);
+                          }}
+                          className="w-32"
+                          min="0"
+                          step="100"
+                        />
+                        <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                          (Opcional)
+                        </span>
+                      </div>
+                    </div>
+                    {/* Fila 2: Observaciones */}
+                    <div className="flex items-start gap-2">
+                      <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))] pt-2">
+                        Observaciones:
                       </label>
                       <Input
-                        type="date"
-                        value={estimatedDeliveryDates.get(group.supplier.supplierId) || ''}
+                        type="text"
+                        placeholder="Escriba observaciones para esta orden de compra..."
+                        value={supplierObservations.get(group.supplier.supplierId) || ''}
                         onChange={(e) => {
-                          const newDates = new Map(estimatedDeliveryDates);
+                          const newObs = new Map(supplierObservations);
                           if (e.target.value) {
-                            newDates.set(group.supplier.supplierId, e.target.value);
+                            newObs.set(group.supplier.supplierId, e.target.value);
                           } else {
-                            newDates.delete(group.supplier.supplierId);
+                            newObs.delete(group.supplier.supplierId);
                           }
-                          setEstimatedDeliveryDates(newDates);
+                          setSupplierObservations(newObs);
                         }}
-                        className="w-48"
-                        min={new Date().toISOString().split('T')[0]}
+                        className="flex-1"
                       />
-                      <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                        (Opcional)
-                      </span>
                     </div>
                   </div>
                 )}
