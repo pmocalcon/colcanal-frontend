@@ -1355,7 +1355,7 @@ const RevisarRequisicionesPage: React.FC = () => {
                           Revisado por
                         </p>
                         <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.reviewer?.nombre || reviewerUser?.nombre || 'Director Técnico'}
+                          {selectedRequisition.reviewer?.nombre || reviewerUser?.nombre || 'Andrés Gómez'}
                         </p>
                         <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                           {selectedRequisition.reviewer?.cargo || reviewerUser?.cargo || 'Director Técnico'}
