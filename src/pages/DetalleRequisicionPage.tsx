@@ -324,17 +324,17 @@ export default function DetalleRequisicionPage() {
                 ) : null;
               })()}
 
-              {/* Revisado por - Solo si reviewedBy NO es NULL */}
-              {requisition.reviewedBy ? (
+              {/* Revisado por - Solo si reviewedBy existe Y es diferente al creador */}
+              {requisition.reviewedBy && requisition.reviewedBy !== requisition.creator?.userId ? (
                 <div className="border-l-4 border-blue-500 pl-4">
                   <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
                     Revisado por
                   </p>
                   <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                    {reviewerUser?.nombre || 'Director Técnico'}
+                    {requisition.reviewer?.nombre || reviewerUser?.nombre || 'Sin nombre'}
                   </p>
                   <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    {reviewerUser?.cargo || 'Director Técnico'}
+                    {requisition.reviewer?.cargo || reviewerUser?.cargo || 'Sin cargo'}
                   </p>
                 </div>
               ) : null}
