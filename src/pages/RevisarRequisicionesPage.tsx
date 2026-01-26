@@ -1349,16 +1349,16 @@ const RevisarRequisicionesPage: React.FC = () => {
                     })()}
 
                     {/* Revisado por - Solo si reviewedBy existe Y es diferente al creador */}
-                    {selectedRequisition.reviewedBy && selectedRequisition.reviewedBy !== selectedRequisition.creator?.userId ? (
+                    {selectedRequisition.reviewedBy && (!selectedRequisition.creator?.userId || selectedRequisition.reviewedBy !== selectedRequisition.creator.userId) ? (
                       <div className="border-l-4 border-blue-500 pl-4">
                         <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
                           Revisado por
                         </p>
                         <p className="font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {selectedRequisition.reviewer?.nombre || reviewerUser?.nombre || 'Sin nombre'}
+                          {selectedRequisition.reviewer?.nombre || reviewerUser?.nombre || 'Director Técnico'}
                         </p>
                         <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {selectedRequisition.reviewer?.cargo || reviewerUser?.cargo || 'Sin cargo'}
+                          {selectedRequisition.reviewer?.cargo || reviewerUser?.cargo || 'Director Técnico'}
                         </p>
                       </div>
                     ) : null}
