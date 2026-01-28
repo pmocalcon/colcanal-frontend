@@ -361,6 +361,7 @@ export default function AsignarPreciosPage() {
     let grandSubtotal = 0;
     let grandIva = 0;
     let grandDiscount = 0;
+    let grandOtherValues = 0;
     let grandTotal = 0;
 
     itemPrices.forEach((state) => {
@@ -370,7 +371,14 @@ export default function AsignarPreciosPage() {
       grandTotal += state.total;
     });
 
-    return { grandSubtotal, grandIva, grandDiscount, grandTotal };
+    // Sumar "otros valores" de proveedores seleccionados
+    selectedSuppliers.forEach((supplierId) => {
+      const otherValue = parseFloat(supplierOtherValues.get(supplierId) || '0') || 0;
+      grandOtherValues += otherValue;
+      grandTotal += otherValue;
+    });
+
+    return { grandSubtotal, grandIva, grandDiscount, grandOtherValues, grandTotal };
   };
 
   // Agrupar ítems por proveedor
@@ -381,6 +389,7 @@ export default function AsignarPreciosPage() {
       subtotal: number;
       iva: number;
       discount: number;
+      otherValue: number;
       total: number;
     }> = new Map();
 
@@ -399,6 +408,7 @@ export default function AsignarPreciosPage() {
         const supplierId = quotation.supplierId;
 
         if (!groups.has(supplierId)) {
+          const otherValue = parseFloat(supplierOtherValues.get(supplierId) || '0') || 0;
           groups.set(supplierId, {
             supplier: {
               supplierId,
@@ -409,6 +419,7 @@ export default function AsignarPreciosPage() {
             subtotal: 0,
             iva: 0,
             discount: 0,
+            otherValue,
             total: 0,
           });
         }
@@ -425,8 +436,13 @@ export default function AsignarPreciosPage() {
       }
     });
 
+    // Agregar "otros valores" al total de cada grupo
+    groups.forEach((group) => {
+      group.total += group.otherValue;
+    });
+
     return Array.from(groups.values());
-  }, [cotizarItems, itemPrices]);
+  }, [cotizarItems, itemPrices, supplierOtherValues]);
 
   if (!isCompras) return null;
 
@@ -920,6 +936,12 @@ export default function AsignarPreciosPage() {
                         <span className="ml-2 font-semibold text-red-600">-{formatCurrency(group.discount)}</span>
                       </div>
                     )}
+                    {group.otherValue > 0 && (
+                      <div>
+                        <span className="text-blue-600">Otros:</span>
+                        <span className="ml-2 font-semibold text-blue-600">+{formatCurrency(group.otherValue)}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-[hsl(var(--canalco-neutral-700))] font-medium">Total Proveedor:</span>
                       <span className="ml-2 font-bold text-[hsl(var(--canalco-primary))]">{formatCurrency(group.total)}</span>
@@ -949,6 +971,12 @@ export default function AsignarPreciosPage() {
                 <div className="flex justify-between text-red-600">
                   <span>Descuento:</span>
                   <span className="font-semibold">-{formatCurrency(totals.grandDiscount)}</span>
+                </div>
+              )}
+              {totals.grandOtherValues > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>Otros valores:</span>
+                  <span className="font-semibold">+{formatCurrency(totals.grandOtherValues)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xl font-bold border-t pt-2">
