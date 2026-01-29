@@ -59,6 +59,8 @@ export interface PurchaseOrder {
   isOverdue?: boolean;
   daysOverdue?: number;
   estimatedDeliveryDate?: string;
+  otherValue?: number;
+  observations?: string;
   creator?: {
     userId: number;
     nombre: string;

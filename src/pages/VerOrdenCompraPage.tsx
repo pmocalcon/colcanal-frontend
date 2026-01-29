@@ -364,6 +364,9 @@ export default function VerOrdenCompraPage() {
                         <p>Subtotal: {formatCurrency(po.subtotal)}</p>
                         <p>IVA: {formatCurrency(po.totalIva)}</p>
                         {po.totalDiscount > 0 && <p>Descuento: -{formatCurrency(po.totalDiscount)}</p>}
+                        {po.otherValue && po.otherValue > 0 && (
+                          <p className="text-blue-600">Otros: +{formatCurrency(po.otherValue)}</p>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -383,6 +386,14 @@ export default function VerOrdenCompraPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Observaciones de la OC */}
+                  {po.observations && (
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm font-semibold text-amber-800 mb-1">Observaciones:</p>
+                      <p className="text-sm text-amber-700">{po.observations}</p>
+                    </div>
+                  )}
 
                   {po.items && po.items.length > 0 && (
                     <div className="mt-4">

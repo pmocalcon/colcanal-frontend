@@ -283,6 +283,16 @@ export default function VerOrdenCompraIndividualPage() {
           </Card>
         </div>
 
+        {/* Observaciones de la OC */}
+        {purchaseOrder.observations && (
+          <Card className="print:shadow-none print:border bg-amber-50 border-amber-200">
+            <CardContent className="p-4">
+              <p className="text-sm font-semibold text-amber-800 mb-1">Observaciones:</p>
+              <p className="text-sm text-amber-700">{purchaseOrder.observations}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tabla de ítems */}
         <Card className="print:shadow-none print:border">
           <CardContent className="p-0">
@@ -368,6 +378,14 @@ export default function VerOrdenCompraIndividualPage() {
                     <span className="text-[hsl(var(--canalco-neutral-600))]">IVA (19%):</span>
                     <span className="font-medium">{formatCurrency(purchaseOrder.totalIva)}</span>
                   </div>
+                  {purchaseOrder.otherValue && Number(purchaseOrder.otherValue) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-600">Otros valores:</span>
+                      <span className="font-medium text-blue-600">
+                        +{formatCurrency(purchaseOrder.otherValue)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold border-t border-[hsl(var(--canalco-neutral-300))] pt-2 mt-2">
                     <span>TOTAL:</span>
                     <span className="text-[hsl(var(--canalco-primary))]">
