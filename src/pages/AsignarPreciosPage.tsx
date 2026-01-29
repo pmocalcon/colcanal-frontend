@@ -318,8 +318,6 @@ export default function AsignarPreciosPage() {
       setError(null);
 
       // Solo incluir ítems de proveedores seleccionados
-      // NOTA: otherValue y observations se muestran en el frontend pero no se envían al backend
-      // porque el backend aún no soporta estos campos
       const items = Array.from(itemPrices.values())
         .filter((state) => state.selectedSupplier && selectedSuppliers.has(state.selectedSupplier.supplierId!))
         .map((state) => {
@@ -330,9 +328,8 @@ export default function AsignarPreciosPage() {
             unitPrice: parseFloat(state.unitPrice),
             discount: parseFloat(state.discount) || 0,
             estimatedDeliveryDate: estimatedDeliveryDates.get(supplierId) || undefined,
-            // TODO: Agregar cuando el backend soporte estos campos:
-            // otherValue: supplierOtherValues.get(supplierId) ? parseFloat(supplierOtherValues.get(supplierId)!) : undefined,
-            // observations: supplierObservations.get(supplierId) || undefined,
+            otherValue: supplierOtherValues.get(supplierId) ? parseFloat(supplierOtherValues.get(supplierId)!) : undefined,
+            observations: supplierObservations.get(supplierId) || undefined,
           };
         });
 
