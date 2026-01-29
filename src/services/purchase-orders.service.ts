@@ -118,6 +118,7 @@ export interface CreatePurchaseOrdersDto {
     itemId: number;
     supplierId: number;
     unitPrice: number;
+    hasIva: boolean;
     discount?: number;
     estimatedDeliveryDate?: string;
     otherValue?: number;

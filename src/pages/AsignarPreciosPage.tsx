@@ -126,7 +126,7 @@ export default function AsignarPreciosPage() {
           // Fetch price history for this material + supplier
           let priceHistory: MaterialPriceHistory | null = null;
           let unitPrice = selectedQuotation.unitPrice?.toString() || '';
-          let hasIva = selectedQuotation.hasIva ?? true; // Default to true (IVA activated)
+          let hasIva = selectedQuotation.hasIva ?? false; // Default to false (IVA not activated unless explicitly marked)
           let ivaPercentage = 19; // Default IVA percentage
           let discount = selectedQuotation.discount?.toString() || '0';
 
@@ -326,6 +326,7 @@ export default function AsignarPreciosPage() {
             itemId: state.itemId,
             supplierId,
             unitPrice: parseFloat(state.unitPrice),
+            hasIva: state.hasIva,
             discount: parseFloat(state.discount) || 0,
             estimatedDeliveryDate: estimatedDeliveryDates.get(supplierId) || undefined,
             otherValue: supplierOtherValues.get(supplierId) ? parseFloat(supplierOtherValues.get(supplierId)!) : undefined,
