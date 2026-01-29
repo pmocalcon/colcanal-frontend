@@ -334,7 +334,6 @@ export default function AsignarPreciosPage() {
             itemId: state.itemId,
             supplierId,
             unitPrice: parseFloat(state.unitPrice),
-            hasIva: state.hasIva,
             discount: parseFloat(state.discount) || 0,
             estimatedDeliveryDate: estimatedDeliveryDates.get(supplierId) || undefined,
             otherValue: supplierOtherValues.get(supplierId) ? parseFloat(supplierOtherValues.get(supplierId)!) : undefined,
