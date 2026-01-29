@@ -136,12 +136,20 @@ export default function AsignarPreciosPage() {
               selectedQuotation.supplierId
             );
 
-            // Pre-populate from history if available
+            // Pre-populate from history if available, BUT respect quotation values if already set
             if (priceHistory) {
-              unitPrice = priceHistory.unitPrice.toString();
-              hasIva = priceHistory.hasIva;
+              // Solo usar historial si la cotización no tiene valores guardados
+              if (!selectedQuotation.unitPrice) {
+                unitPrice = priceHistory.unitPrice.toString();
+              }
+              // Solo usar hasIva del historial si la cotización no tiene valor definido
+              if (selectedQuotation.hasIva === undefined || selectedQuotation.hasIva === null) {
+                hasIva = priceHistory.hasIva;
+              }
               ivaPercentage = priceHistory.ivaPercentage;
-              discount = priceHistory.discount.toString();
+              if (!selectedQuotation.discount) {
+                discount = priceHistory.discount.toString();
+              }
             } else if (selectedQuotation.unitPrice) {
               // Fallback to quotation price if available
               unitPrice = selectedQuotation.unitPrice.toString();
