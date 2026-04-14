@@ -12,7 +12,7 @@ export function ErrorMessage({ message, className = '' }: ErrorMessageProps) {
       <div>
         <p className="text-red-800">{message}</p>
         <p className="text-red-600 text-sm mt-1">
-          Contactar a Alexsandra Ortiz para la solución.
+          Contactar a PMO para la solución.
         </p>
       </div>
     </div>
