@@ -50,7 +50,7 @@ export default function RecepcionesPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const limit = 10;
+  const limit = 200; // Traer todas las recepciones propias para que la división pendientes/completadas no corte resultados
 
   // Paginación para sección de completadas (10 por página)
   const [processedPage, setProcessedPage] = useState(1);

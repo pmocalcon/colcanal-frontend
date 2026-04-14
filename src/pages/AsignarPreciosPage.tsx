@@ -334,6 +334,7 @@ export default function AsignarPreciosPage() {
             itemId: state.itemId,
             supplierId,
             unitPrice: parseFloat(state.unitPrice),
+            hasIVA: state.hasIva,
             discount: parseFloat(state.discount) || 0,
             estimatedDeliveryDate: estimatedDeliveryDates.get(supplierId) || undefined,
             otherValue: supplierOtherValues.get(supplierId) ? parseFloat(supplierOtherValues.get(supplierId)!) : undefined,
@@ -866,15 +867,20 @@ export default function AsignarPreciosPage() {
                             <label className="block text-sm font-medium mb-2">
                               IVA
                             </label>
-                            <div className="flex items-center h-10">
-                              <Checkbox
-                                checked={priceState?.hasIva || false}
-                                onCheckedChange={(checked) =>
-                                  handlePriceChange(item.itemId, 'hasIva', checked)
-                                }
-                              />
-                              <span className="ml-2 text-sm">Sí</span>
-                            </div>
+                            <Select
+                              value={priceState?.hasIva ? 'si' : 'no'}
+                              onValueChange={(value) =>
+                                handlePriceChange(item.itemId, 'hasIva', value === 'si')
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="no">No</SelectItem>
+                                <SelectItem value="si">Sí</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div>
                             <label className="block text-sm font-medium mb-2">
