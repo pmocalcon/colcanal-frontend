@@ -39,6 +39,9 @@ export interface FilterAuditParams {
   userId?: number;
   action?: string;
   requisitionId?: number;
+  requisitionNumber?: string;
+  companyName?: string;
+  userName?: string;
   fromDate?: string;
   toDate?: string;
 }
@@ -98,6 +101,9 @@ export const auditService = {
     if (filters?.userId) params.append('userId', filters.userId.toString());
     if (filters?.action) params.append('action', filters.action);
     if (filters?.requisitionId) params.append('requisitionId', filters.requisitionId.toString());
+    if (filters?.requisitionNumber) params.append('requisitionNumber', filters.requisitionNumber);
+    if (filters?.companyName) params.append('companyName', filters.companyName);
+    if (filters?.userName) params.append('userName', filters.userName);
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
     if (filters?.toDate) params.append('toDate', filters.toDate);
 
