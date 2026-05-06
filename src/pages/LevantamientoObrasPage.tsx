@@ -18,6 +18,8 @@ export default function LevantamientoObrasPage() {
         return hasPermission('levantamientos:ver');
       case 'revisar-levantamientos':
         return hasPermission('levantamientos:revisar');
+      case 'ucaps':
+        return hasPermission('levantamientos:ver');
       default:
         return false;
     }
@@ -56,6 +58,14 @@ export default function LevantamientoObrasPage() {
       hasAccess: getSubModuleAccess('revisar-levantamientos'),
       description: 'Aprobar o rechazar levantamientos pendientes',
     },
+    {
+      gestionId: 405,
+      nombre: 'UCAPs',
+      slug: 'ucaps',
+      icono: 'ListOrdered',
+      hasAccess: getSubModuleAccess('ucaps'),
+      description: 'Ver y crear UCAPs por municipio',
+    },
   ];
 
   const handleSubModuleClick = (subModule: (typeof subModules)[0]) => {
@@ -77,6 +87,9 @@ export default function LevantamientoObrasPage() {
         break;
       case 'revisar-levantamientos':
         navigate('/dashboard/levantamiento-obras/levantamientos/revisar');
+        break;
+      case 'ucaps':
+        navigate('/dashboard/levantamiento-obras/ucaps');
         break;
     }
   };

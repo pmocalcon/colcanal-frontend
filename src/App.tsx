@@ -40,6 +40,7 @@ import ObrasListPage from './pages/ObrasListPage'
 import LevantamientosListPage from './pages/LevantamientosListPage'
 import RevisarLevantamientosPage from './pages/RevisarLevantamientosPage'
 import RevisarLevantamientoDetallePage from './pages/RevisarLevantamientoDetallePage'
+import GestionarUcapsPage from './pages/GestionarUcapsPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
@@ -123,6 +124,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/dashboard/levantamiento-obras/ucaps" element={<GestionarUcapsPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

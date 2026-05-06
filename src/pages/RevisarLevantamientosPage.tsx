@@ -107,14 +107,28 @@ export default function RevisarLevantamientosPage() {
       setLoading(true);
       setError(null);
 
-      const [accessData, surveysResponse] = await Promise.all([
+      const [accessResult, surveysResult] = await Promise.allSettled([
         surveysService.getMyAccess(),
         surveysService.getSurveysForReview(),
       ]);
 
-      setAccessCompanies(accessData.companies || []);
-      setAccessProjects(accessData.projects || []);
-      setAllSurveys(surveysResponse.data || []);
+      if (accessResult.status === 'fulfilled') {
+        setAccessCompanies(accessResult.value.companies || []);
+        setAccessProjects(accessResult.value.projects || []);
+      }
+
+      if (surveysResult.status === 'fulfilled') {
+        setAllSurveys(surveysResult.value.data || []);
+      }
+
+      // Only show error for non-403 failures
+      const failures = [accessResult, surveysResult].filter(
+        (r) => r.status === 'rejected' && (r as PromiseRejectedResult).reason?.response?.status !== 403
+      );
+      if (failures.length > 0) {
+        const err = (failures[0] as PromiseRejectedResult).reason;
+        setError(err.response?.data?.message || 'Error al cargar los datos');
+      }
     } catch (err: any) {
       console.error('Error loading data:', err);
       setError(err.response?.data?.message || 'Error al cargar los datos');
@@ -577,7 +591,7 @@ export default function RevisarLevantamientosPage() {
                                 onClick={() =>
                                   navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)
                                 }
-                                className="h-8 w-8 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
+                                className="h-8 w-8 text-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary-hover))] hover:bg-[hsl(var(--canalco-primary))]/10"
                                 title="Ver y Revisar"
                               >
                                 <Eye className="w-4 h-4" />
@@ -627,7 +641,7 @@ export default function RevisarLevantamientosPage() {
                                 onClick={() =>
                                   navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)
                                 }
-                                className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
+                                className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
                                 title="Ver detalle"
                               >
                                 <Eye className="w-4 h-4" />
@@ -826,19 +840,19 @@ function DatabaseView({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-cyan-100 border-b border-cyan-200">
+              <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Codigo</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Obra</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">Empresa</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-cyan-800">N. Acta</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-cyan-800">Total Ppto</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Presupuesto</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Inversion</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Materiales</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Viajes</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Fecha</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-800">Acciones</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Codigo</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Obra</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Empresa</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">N. Acta</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Total Ppto</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Presupuesto</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Inversion</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Materiales</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Viajes</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Fecha</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -852,10 +866,10 @@ function DatabaseView({
                   data.map((item, index) => (
                     <tr
                       key={item.surveyId}
-                      className={`cursor-pointer hover:bg-cyan-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                      className={`cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))] ${index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}
                       onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${item.surveyId}`)}
                     >
-                      <td className="px-3 py-2 font-mono text-cyan-700">{item.projectCode || item.surveyNumber}</td>
+                      <td className="px-3 py-2 font-mono text-[hsl(var(--canalco-primary))]">{item.projectCode || item.surveyNumber}</td>
                       <td className="px-3 py-2 font-medium max-w-[150px] truncate" title={item.workName}>
                         {item.workName}
                       </td>

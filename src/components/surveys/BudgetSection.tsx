@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
+import { Check, ChevronsUpDown, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { surveysService, type Ucap, type IppConfig } from '@/services/surveys.service';
 
@@ -44,18 +44,8 @@ interface BudgetSectionProps {
   onIppValueChange: (value: number | null) => void;
 }
 
-// Initialize 30 empty items
 export const createInitialBudgetItems = (): BudgetItemData[] => {
-  return Array.from({ length: 30 }, (_, i) => ({
-    itemNumber: i + 1,
-    ucapId: null,
-    ucapCode: '',
-    ucapDescription: '',
-    unitValue: 0,
-    initialIpp: 0,
-    quantity: 0,
-    budgetedValue: 0,
-  }));
+  return [{ itemNumber: 1, ucapId: null, ucapCode: '', ucapDescription: '', unitValue: 0, initialIpp: 0, quantity: 0, budgetedValue: 0 }];
 };
 
 // UCAP Search Combobox Component
@@ -242,6 +232,21 @@ export function BudgetSection({
     }
   }, [ucaps, items, onItemsChange]);
 
+  // Add a new empty row
+  const addRow = useCallback(() => {
+    const newItem: BudgetItemData = {
+      itemNumber: items.length + 1,
+      ucapId: null,
+      ucapCode: '',
+      ucapDescription: '',
+      unitValue: 0,
+      initialIpp: 0,
+      quantity: 0,
+      budgetedValue: 0,
+    };
+    onItemsChange([...items, newItem]);
+  }, [items, onItemsChange]);
+
   // Handle UCAP selection for a row
   const handleUcapSelect = useCallback(
     (index: number, ucap: Ucap | null) => {
@@ -325,7 +330,7 @@ export function BudgetSection({
   return (
     <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden mt-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3 flex items-center justify-between">
+      <div className="bg-[hsl(var(--canalco-primary))] px-6 py-3 flex items-center justify-between">
         <h2 className="text-lg font-bold text-white tracking-wide">
           I. PRESUPUESTO {workName ? workName.toUpperCase() : 'LEVANTAMIENTO'}
         </h2>
@@ -357,21 +362,21 @@ export function BudgetSection({
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-cyan-100 border-b border-cyan-200">
+          <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800 w-16">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-16">
                 ITEM
               </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800 min-w-[300px]">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] min-w-[300px]">
                 DESCRIPCIÓN (UCAP)
               </th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800 w-32">
+              <th className="px-3 py-2 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-32">
                 VALOR UNITARIO
               </th>
-              <th className="px-3 py-2 text-center text-xs font-semibold text-cyan-800 w-24">
+              <th className="px-3 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-24">
                 CANTIDAD
               </th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800 w-36">
+              <th className="px-3 py-2 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-36">
                 VALOR PPTADO
               </th>
             </tr>
@@ -429,14 +434,29 @@ export function BudgetSection({
         </table>
       </div>
 
+      {/* Add Row Button */}
+      <div className="px-3 py-2 border-t border-[hsl(var(--canalco-neutral-200))]">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={addRow}
+          disabled={loading}
+          className="text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          Agregar línea
+        </Button>
+      </div>
+
       {/* Totals and IPP Section */}
       <div className="border-t border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-50))]">
         {/* Total Obra Row */}
-        <div className="flex justify-between items-center px-6 py-3 border-b border-[hsl(var(--canalco-neutral-200))] bg-cyan-100">
-          <span className="text-sm font-bold text-cyan-800">
+        <div className="flex justify-between items-center px-6 py-3 border-b border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-primary))]/10">
+          <span className="text-sm font-bold text-[hsl(var(--canalco-neutral-900))]">
             TOTAL OBRA {workName ? workName.toUpperCase() : ''}
           </span>
-          <span className="font-mono font-bold text-cyan-800 text-lg">
+          <span className="font-mono font-bold text-[hsl(var(--canalco-neutral-900))] text-lg">
             {formatCurrency(totalBudgeted)}
           </span>
         </div>
@@ -472,7 +492,7 @@ export function BudgetSection({
         </div>
 
         {/* Valor Total Row */}
-        <div className="flex justify-between items-center px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500">
+        <div className="flex justify-between items-center px-6 py-3 bg-[hsl(var(--canalco-primary))]">
           <span className="text-sm font-bold text-white">
             VALOR TOTAL
           </span>

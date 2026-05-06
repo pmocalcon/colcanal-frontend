@@ -247,24 +247,24 @@ export default function ObrasListPage() {
           <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-cyan-100 border-b border-cyan-200">
+                <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       N° Acta
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Nombre
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Dirección
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Barrio
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Empresa
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Acciones
                     </th>
                   </tr>
@@ -282,7 +282,7 @@ export default function ObrasListPage() {
                         key={work.workId}
                         className={index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}
                       >
-                        <td className="px-4 py-3 font-mono font-medium text-cyan-700">
+                        <td className="px-4 py-3 font-mono font-medium text-[hsl(var(--canalco-primary))]">
                           {work.recordNumber || '-'}
                         </td>
                         <td className="px-4 py-3 font-medium">
@@ -314,7 +314,7 @@ export default function ObrasListPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => alert('Ver detalle - Próximamente')}
-                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
+                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
                               title="Ver detalle"
                             >
                               <Eye className="w-4 h-4" />

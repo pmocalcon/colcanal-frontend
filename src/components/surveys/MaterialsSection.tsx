@@ -21,7 +21,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
+import { Check, ChevronsUpDown, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { materialsService, type Material } from '@/services/materials.service';
 
@@ -43,17 +43,8 @@ interface MaterialsSectionProps {
   onItemsChange: (items: MaterialItemData[]) => void;
 }
 
-// Initialize 30 empty items
 export const createInitialMaterialItems = (): MaterialItemData[] => {
-  return Array.from({ length: 30 }, (_, i) => ({
-    itemNumber: i + 1,
-    materialId: null,
-    materialCode: '',
-    description: '',
-    unitOfMeasure: 'Unidad',
-    quantity: '',
-    observations: '',
-  }));
+  return [{ itemNumber: 1, materialId: null, materialCode: '', description: '', unitOfMeasure: 'Unidad', quantity: '', observations: '' }];
 };
 
 // Material Search Combobox Component
@@ -298,6 +289,20 @@ export function MaterialsSection({
     [items, onItemsChange]
   );
 
+  // Add a new empty row
+  const addRow = useCallback(() => {
+    const newItem: MaterialItemData = {
+      itemNumber: items.length + 1,
+      materialId: null,
+      materialCode: '',
+      description: '',
+      unitOfMeasure: 'Unidad',
+      quantity: '',
+      observations: '',
+    };
+    onItemsChange([...items, newItem]);
+  }, [items, onItemsChange]);
+
   // Handle field change - updates on blur
   const handleFieldChange = useCallback(
     (index: number, field: keyof MaterialItemData, value: string) => {
@@ -314,7 +319,7 @@ export function MaterialsSection({
   return (
     <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden mt-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3 flex items-center justify-between">
+      <div className="bg-[hsl(var(--canalco-primary))] px-6 py-3 flex items-center justify-between">
         <h2 className="text-lg font-bold text-white tracking-wide">
           III. MATERIALES
         </h2>
@@ -341,24 +346,24 @@ export function MaterialsSection({
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-cyan-100 border-b border-cyan-200">
+          <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
             <tr>
-              <th className="px-2 py-2 text-center text-xs font-semibold text-cyan-800 w-12">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-12">
                 ITEM
               </th>
-              <th className="px-2 py-2 text-center text-xs font-semibold text-cyan-800 w-32">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-32">
                 CODIGO MATERIAL
               </th>
-              <th className="px-2 py-2 text-left text-xs font-semibold text-cyan-800 min-w-[250px]">
+              <th className="px-2 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] min-w-[250px]">
                 DESCRIPCIÓN
               </th>
-              <th className="px-2 py-2 text-center text-xs font-semibold text-cyan-800 w-28">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-28">
                 UNIDAD DE MEDIDA
               </th>
-              <th className="px-2 py-2 text-center text-xs font-semibold text-cyan-800 w-20">
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-20">
                 CANTIDAD
               </th>
-              <th className="px-2 py-2 text-left text-xs font-semibold text-cyan-800 min-w-[150px]">
+              <th className="px-2 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] min-w-[150px]">
                 OBSERVACIONES
               </th>
             </tr>
@@ -377,6 +382,21 @@ export function MaterialsSection({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Add Row Button */}
+      <div className="px-3 py-2 border-t border-[hsl(var(--canalco-neutral-200))]">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={addRow}
+          disabled={loading}
+          className="text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          Agregar línea
+        </Button>
       </div>
     </div>
   );

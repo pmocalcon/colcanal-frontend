@@ -34,7 +34,7 @@ export function DocumentLinksSection({
         {/* Croquis URL */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] flex items-center gap-2">
-            <FileImage className="w-4 h-4 text-cyan-600" />
+            <FileImage className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
             URL del Croquis
           </Label>
           <Input
@@ -49,7 +49,7 @@ export function DocumentLinksSection({
               href={data.sketchUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-cyan-600 hover:text-cyan-800 hover:underline flex items-center gap-1"
+              className="text-xs text-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary-hover))] hover:underline flex items-center gap-1"
             >
               <FileImage className="w-3 h-3" />
               Ver Croquis
@@ -60,7 +60,7 @@ export function DocumentLinksSection({
         {/* Mapa URL */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] flex items-center gap-2">
-            <Map className="w-4 h-4 text-cyan-600" />
+            <Map className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
             URL del Mapa
           </Label>
           <Input
@@ -75,7 +75,7 @@ export function DocumentLinksSection({
               href={data.mapUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-cyan-600 hover:text-cyan-800 hover:underline flex items-center gap-1"
+              className="text-xs text-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary-hover))] hover:underline flex items-center gap-1"
             >
               <Map className="w-3 h-3" />
               Ver Mapa

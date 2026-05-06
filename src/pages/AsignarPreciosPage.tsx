@@ -111,72 +111,66 @@ export default function AsignarPreciosPage() {
   const initializeItemPrices = async (req: RequisitionWithQuotations) => {
     const pricesMap = new Map<number, ItemPriceState>();
 
-    // Process all items and fetch price history in parallel
+    // Process all items and all their quotations in parallel (one entry per quotation, keyed by quotationId)
     await Promise.all(
       req.items.map(async (item) => {
         const quotationsForItem = item.quotations.filter(
           (q) => q.action === 'cotizar' && q.isActive
         );
 
-        if (quotationsForItem.length > 0) {
-          // Si ya hay un proveedor seleccionado, usar ese
-          const selectedQuotation =
-            quotationsForItem.find((q) => q.isSelected) || quotationsForItem[0];
+        await Promise.all(
+          quotationsForItem.map(async (quotation) => {
+            let priceHistory: MaterialPriceHistory | null = null;
+            let unitPrice = quotation.unitPrice?.toString() || '';
+            let hasIva = quotation.unitPrice != null ? (quotation.hasIva ?? true) : true;
+            let ivaPercentage = 19;
+            let discount = quotation.discount?.toString() || '0';
 
-          // Fetch price history for this material + supplier
-          let priceHistory: MaterialPriceHistory | null = null;
-          let unitPrice = selectedQuotation.unitPrice?.toString() || '';
-          let hasIva = selectedQuotation.hasIva ?? false; // Default to false (IVA not activated unless explicitly marked)
-          let ivaPercentage = 19; // Default IVA percentage
-          let discount = selectedQuotation.discount?.toString() || '0';
+            if (item.material?.materialId && quotation.supplierId) {
+              priceHistory = await getLatestMaterialPrice(
+                item.material.materialId,
+                quotation.supplierId
+              );
 
-          if (item.material?.materialId && selectedQuotation.supplierId) {
-            priceHistory = await getLatestMaterialPrice(
-              item.material.materialId,
-              selectedQuotation.supplierId
+              if (priceHistory) {
+                if (!quotation.unitPrice) {
+                  unitPrice = priceHistory.unitPrice.toString();
+                }
+                if (quotation.hasIva === undefined || quotation.hasIva === null || !quotation.unitPrice) {
+                  hasIva = priceHistory.hasIva;
+                }
+                ivaPercentage = priceHistory.ivaPercentage;
+                if (!quotation.discount) {
+                  discount = priceHistory.discount.toString();
+                }
+              } else if (quotation.unitPrice) {
+                unitPrice = quotation.unitPrice.toString();
+              }
+            }
+
+            const calculatedValues = calculateTotals(
+              parseFloat(unitPrice) || 0,
+              item.quantity,
+              hasIva,
+              ivaPercentage,
+              parseFloat(discount) || 0
             );
 
-            // Pre-populate from history if available, BUT respect quotation values if already set
-            if (priceHistory) {
-              // Solo usar historial si la cotización no tiene valores guardados
-              if (!selectedQuotation.unitPrice) {
-                unitPrice = priceHistory.unitPrice.toString();
-              }
-              // Solo usar hasIva del historial si la cotización no tiene valor definido
-              if (selectedQuotation.hasIva === undefined || selectedQuotation.hasIva === null) {
-                hasIva = priceHistory.hasIva;
-              }
-              ivaPercentage = priceHistory.ivaPercentage;
-              if (!selectedQuotation.discount) {
-                discount = priceHistory.discount.toString();
-              }
-            } else if (selectedQuotation.unitPrice) {
-              // Fallback to quotation price if available
-              unitPrice = selectedQuotation.unitPrice.toString();
-            }
-          }
-
-          const calculatedValues = calculateTotals(
-            parseFloat(unitPrice) || 0,
-            item.quantity,
-            hasIva,
-            ivaPercentage,
-            parseFloat(discount) || 0
-          );
-
-          pricesMap.set(item.itemId, {
-            itemId: item.itemId,
-            quotationId: selectedQuotation.quotationId,
-            selectedSupplier: selectedQuotation,
-            quantity: item.quantity,
-            unitPrice,
-            hasIva,
-            ivaPercentage,
-            discount,
-            priceHistory,
-            ...calculatedValues,
-          });
-        }
+            // Key by quotationId so each supplier gets its own price state
+            pricesMap.set(quotation.quotationId, {
+              itemId: item.itemId,
+              quotationId: quotation.quotationId,
+              selectedSupplier: quotation,
+              quantity: item.quantity,
+              unitPrice,
+              hasIva,
+              ivaPercentage,
+              discount,
+              priceHistory,
+              ...calculatedValues,
+            });
+          })
+        );
       })
     );
 
@@ -197,15 +191,14 @@ export default function AsignarPreciosPage() {
     return { subtotal, ivaAmount, total };
   };
 
-  const handlePriceChange = (itemId: number, field: string, value: any) => {
+  const handlePriceChange = (quotationId: number, field: string, value: any) => {
     setItemPrices((prev) => {
       const newMap = new Map(prev);
-      const currentState = newMap.get(itemId);
+      const currentState = newMap.get(quotationId);
       if (!currentState) return prev;
 
       const updated = { ...currentState, [field]: value };
 
-      // Recalcular totales con la cantidad del estado (que ahora es editable)
       const unitPrice = parseFloat(updated.unitPrice) || 0;
       const quantity = field === 'quantity' ? parseFloat(value) || 0 : updated.quantity;
       const discount = parseFloat(updated.discount) || 0;
@@ -218,7 +211,7 @@ export default function AsignarPreciosPage() {
       );
       Object.assign(updated, calculatedValues);
 
-      newMap.set(itemId, updated);
+      newMap.set(quotationId, updated);
       return newMap;
     });
   };
@@ -231,10 +224,12 @@ export default function AsignarPreciosPage() {
     );
 
     for (const item of cotizarItems) {
-      const priceState = itemPrices.get(item.itemId);
-      if (!priceState) return false;
-      if (!priceState.unitPrice || parseFloat(priceState.unitPrice) <= 0) return false;
-      if (!priceState.quotationId) return false;
+      const activeQuotations = item.quotations.filter((q) => q.action === 'cotizar' && q.isActive);
+      for (const quotation of activeQuotations) {
+        const priceState = itemPrices.get(quotation.quotationId);
+        if (!priceState) return false;
+        if (!priceState.unitPrice || parseFloat(priceState.unitPrice) <= 0) return false;
+      }
     }
 
     return true;
@@ -299,8 +294,8 @@ export default function AsignarPreciosPage() {
     for (const group of itemsBySupplier) {
       if (!selectedSuppliers.has(group.supplier.supplierId)) continue;
 
-      for (const item of group.items) {
-        const priceState = itemPrices.get(item.itemId);
+      for (const { quotationId } of group.items) {
+        const priceState = itemPrices.get(quotationId);
         if (!priceState) return false;
         if (!priceState.unitPrice || parseFloat(priceState.unitPrice) <= 0) return false;
         if (!priceState.selectedSupplier) return false;
@@ -389,11 +384,11 @@ export default function AsignarPreciosPage() {
     return { grandSubtotal, grandIva, grandDiscount, grandOtherValues, grandTotal };
   };
 
-  // Agrupar ítems por proveedor
+  // Agrupar ítems por proveedor — cada cotización activa genera su propio grupo
   const itemsBySupplier = useMemo(() => {
     const groups: Map<number, {
       supplier: { supplierId: number; name: string; nitCc: string };
-      items: typeof cotizarItems;
+      items: Array<{ item: typeof cotizarItems[0]; quotationId: number }>;
       subtotal: number;
       iva: number;
       discount: number;
@@ -402,17 +397,14 @@ export default function AsignarPreciosPage() {
     }> = new Map();
 
     cotizarItems.forEach((item) => {
-      const priceState = itemPrices.get(item.itemId);
-      const selectedQuotation = item.quotations.find(
-        (q) => q.quotationId === priceState?.quotationId
-      );
-
-      // Si no hay cotización seleccionada, usar la primera activa
-      const quotation = selectedQuotation || item.quotations.find(
+      // Iterate ALL active quotations for this item (one per supplier)
+      const activeQuotations = item.quotations.filter(
         (q) => q.action === 'cotizar' && q.isActive
       );
 
-      if (quotation?.supplier && quotation.supplierId) {
+      activeQuotations.forEach((quotation) => {
+        if (!quotation.supplier || !quotation.supplierId) return;
+
         const supplierId = quotation.supplierId;
 
         if (!groups.has(supplierId)) {
@@ -433,15 +425,16 @@ export default function AsignarPreciosPage() {
         }
 
         const group = groups.get(supplierId)!;
-        group.items.push(item);
+        group.items.push({ item, quotationId: quotation.quotationId });
 
+        const priceState = itemPrices.get(quotation.quotationId);
         if (priceState) {
           group.subtotal += priceState.subtotal;
           group.iva += priceState.ivaAmount;
           group.discount += parseFloat(priceState.discount) || 0;
           group.total += priceState.total;
         }
-      }
+      });
     });
 
     // Agregar "otros valores" al total de cada grupo
@@ -783,12 +776,12 @@ export default function AsignarPreciosPage() {
 
                 {/* Items for this supplier */}
                 <div className="p-6 space-y-4">
-                  {group.items.map((item) => {
-                    const priceState = itemPrices.get(item.itemId);
+                  {group.items.map(({ item, quotationId }) => {
+                    const priceState = itemPrices.get(quotationId);
 
                     return (
                       <div
-                        key={item.itemId}
+                        key={quotationId}
                         className="border rounded-lg p-4 bg-gray-50"
                       >
                         {/* Item Header */}
@@ -841,7 +834,7 @@ export default function AsignarPreciosPage() {
                               type="number"
                               value={priceState?.quantity || 0}
                               onChange={(e) =>
-                                handlePriceChange(item.itemId, 'quantity', e.target.value)
+                                handlePriceChange(quotationId, 'quantity', e.target.value)
                               }
                               placeholder="0"
                               min="1"
@@ -856,7 +849,7 @@ export default function AsignarPreciosPage() {
                               type="number"
                               value={priceState?.unitPrice || ''}
                               onChange={(e) =>
-                                handlePriceChange(item.itemId, 'unitPrice', e.target.value)
+                                handlePriceChange(quotationId, 'unitPrice', e.target.value)
                               }
                               placeholder="0.00"
                               min="0"
@@ -870,7 +863,7 @@ export default function AsignarPreciosPage() {
                             <Select
                               value={priceState?.hasIva ? 'si' : 'no'}
                               onValueChange={(value) =>
-                                handlePriceChange(item.itemId, 'hasIva', value === 'si')
+                                handlePriceChange(quotationId, 'hasIva', value === 'si')
                               }
                             >
                               <SelectTrigger className="h-10">
@@ -889,7 +882,7 @@ export default function AsignarPreciosPage() {
                             <Select
                               value={priceState?.ivaPercentage.toString() || '19'}
                               onValueChange={(value) =>
-                                handlePriceChange(item.itemId, 'ivaPercentage', parseInt(value))
+                                handlePriceChange(quotationId, 'ivaPercentage', parseInt(value))
                               }
                               disabled={!priceState?.hasIva}
                             >
@@ -911,7 +904,7 @@ export default function AsignarPreciosPage() {
                               type="number"
                               value={priceState?.discount || '0'}
                               onChange={(e) =>
-                                handlePriceChange(item.itemId, 'discount', e.target.value)
+                                handlePriceChange(quotationId, 'discount', e.target.value)
                               }
                               placeholder="0.00"
                               min="0"

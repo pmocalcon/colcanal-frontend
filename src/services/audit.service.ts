@@ -44,6 +44,9 @@ export interface FilterAuditParams {
   userName?: string;
   fromDate?: string;
   toDate?: string;
+  requisitionNumber?: string;
+  companyName?: string;
+  userName?: string;
 }
 
 export interface TimelineEvent {
@@ -106,6 +109,9 @@ export const auditService = {
     if (filters?.userName) params.append('userName', filters.userName);
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
     if (filters?.toDate) params.append('toDate', filters.toDate);
+    if (filters?.requisitionNumber) params.append('requisitionNumber', filters.requisitionNumber);
+    if (filters?.companyName) params.append('companyName', filters.companyName);
+    if (filters?.userName) params.append('userName', filters.userName);
 
     const response = await api.get<AuditLogsResponse>(`/audit/logs?${params.toString()}`);
     return response.data;

@@ -8,7 +8,7 @@ import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/
 import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
 import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksData } from '@/components/surveys/DocumentLinksSection';
 import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
-import { TravelExpensesSection, createInitialTravelExpenses, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
+import { TravelExpensesSection, createInitialTravelExpenses, FIXED_EXPENSE_TYPES, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
 import { Button } from '@/components/ui/button';
 import { Home, ArrowLeft, Save, CheckCircle, X, Loader2 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
@@ -247,47 +247,42 @@ export default function CrearObraPage() {
 
             // Cargar budget items si existen
             if (surveyData.budgetItems?.length > 0) {
-              const loadedBudgetItems = createInitialBudgetItems();
-              surveyData.budgetItems.forEach((item: any, index: number) => {
-                if (index < loadedBudgetItems.length) {
-                  const quantity = parseFloat(item.quantity) || 0;
-                  const unitValue = parseFloat(item.unitValue) || 0;
-                  loadedBudgetItems[index] = {
-                    ...loadedBudgetItems[index],
-                    ucapId: item.ucapId || null,
-                    ucapCode: item.ucap?.code || '',
-                    ucapDescription: item.ucap?.description || '',
-                    unitValue: unitValue,
-                    quantity: quantity,
-                    budgetedValue: quantity * unitValue,
-                  };
-                }
+              const loadedBudgetItems: BudgetItemData[] = surveyData.budgetItems.map((item: any, index: number) => {
+                const quantity = parseFloat(item.quantity) || 0;
+                const unitValue = parseFloat(item.unitValue) || 0;
+                return {
+                  itemNumber: index + 1,
+                  ucapId: item.ucapId || null,
+                  ucapCode: item.ucap?.code || '',
+                  ucapDescription: item.ucap?.description || '',
+                  unitValue,
+                  initialIpp: 0,
+                  quantity,
+                  budgetedValue: quantity * unitValue,
+                };
               });
               setBudgetItems(loadedBudgetItems);
             }
 
             // Cargar material items si existen
             if (surveyData.materialItems?.length > 0) {
-              const loadedMaterialItems = createInitialMaterialItems();
-              surveyData.materialItems.forEach((item: any, index: number) => {
-                if (index < loadedMaterialItems.length) {
-                  loadedMaterialItems[index] = {
-                    ...loadedMaterialItems[index],
-                    materialId: item.materialId || null,
-                    materialCode: item.material?.code || '',
-                    description: item.material?.description || '',
-                    unitOfMeasure: item.unitOfMeasure || 'Unidad',
-                    quantity: item.quantity?.toString() || '',
-                    observations: item.observations || '',
-                  };
-                }
-              });
+              const loadedMaterialItems: MaterialItemData[] = surveyData.materialItems.map((item: any, index: number) => ({
+                itemNumber: index + 1,
+                materialId: item.materialId || null,
+                materialCode: item.material?.code || '',
+                description: item.material?.description || '',
+                unitOfMeasure: item.unitOfMeasure || 'Unidad',
+                quantity: item.quantity?.toString() || '',
+                observations: item.observations || '',
+              }));
               setMaterialItems(loadedMaterialItems);
             }
 
             // Cargar travel expenses si existen
             if (surveyData.travelExpenses?.length > 0) {
               const loadedTravelExpenses = createInitialTravelExpenses();
+              // Fill fixed types and collect custom rows
+              const customRows: TravelExpenseItemData[] = [];
               surveyData.travelExpenses.forEach((expense: any) => {
                 const expenseIndex = loadedTravelExpenses.findIndex(
                   (e) => e.expenseType === expense.expenseType
@@ -298,9 +293,22 @@ export default function CrearObraPage() {
                     quantity: expense.quantity?.toString() || '',
                     observations: expense.observations || '',
                   };
+                } else if (!FIXED_EXPENSE_TYPES.has(expense.expenseType)) {
+                  customRows.push({
+                    itemNumber: 0, // renumbered below
+                    expenseType: expense.expenseType,
+                    description: expense.expenseType,
+                    quantity: expense.quantity?.toString() || '',
+                    observations: expense.observations || '',
+                    isCustom: true,
+                  });
                 }
               });
-              setTravelExpenses(loadedTravelExpenses);
+              const allRows = [...loadedTravelExpenses, ...customRows].map((r, i) => ({
+                ...r,
+                itemNumber: i + 1,
+              }));
+              setTravelExpenses(allRows);
             }
           }
         } catch (surveyErr) {

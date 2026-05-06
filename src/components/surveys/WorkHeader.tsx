@@ -217,15 +217,15 @@ export function WorkHeader({
   return (
     <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
       {/* Header con título */}
-      <div className="bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3">
+      <div className="bg-[hsl(var(--canalco-primary))] px-6 py-3">
         <h2 className="text-lg font-bold text-white tracking-wide">
           PRESENTACIÓN DE LA OBRA
         </h2>
       </div>
 
       {/* Subtítulo "Acta de Visita" */}
-      <div className="bg-cyan-100 px-6 py-2 border-b border-cyan-200">
-        <span className="text-cyan-800 font-semibold text-sm">Acta de Visita</span>
+      <div className="bg-[hsl(var(--canalco-primary))]/10 px-6 py-2 border-b border-[hsl(var(--canalco-neutral-200))]">
+        <span className="text-[hsl(var(--canalco-neutral-900))] font-semibold text-sm">Acta de Visita</span>
       </div>
 
       {/* Contenido del formulario */}

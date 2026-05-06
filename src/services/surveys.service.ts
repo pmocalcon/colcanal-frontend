@@ -310,6 +310,22 @@ export interface Ucap {
   initialIpp: number;
 }
 
+export interface CreateUcapPayload {
+  companyId: number;
+  projectId?: number;
+  code: string;
+  description: string;
+  roundedValue: number;
+  initialIpp: number;
+}
+
+export interface UpdateUcapPayload {
+  code?: string;
+  description?: string;
+  roundedValue?: number;
+  initialIpp?: number;
+}
+
 export interface IppConfig {
   baseYear: number;
   baseMonth: number;
@@ -460,6 +476,16 @@ export const surveysService = {
   },
 
   // ---- UCAPS ----
+
+  async createUcap(data: CreateUcapPayload): Promise<Ucap> {
+    const response = await api.post('/surveys/ucaps', data);
+    return response.data;
+  },
+
+  async updateUcap(ucapId: number, data: UpdateUcapPayload): Promise<Ucap> {
+    const response = await api.patch(`/surveys/ucaps/${ucapId}`, data);
+    return response.data;
+  },
 
   async getUcaps(companyId?: number, projectId?: number): Promise<UcapsResponse> {
     if (!companyId) {

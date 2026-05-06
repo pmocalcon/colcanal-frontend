@@ -72,7 +72,8 @@ export default function LevantamientosListPage() {
           (s) =>
             s.surveyNumber?.toLowerCase().includes(term) ||
             s.work?.name?.toLowerCase().includes(term) ||
-            s.work?.recordNumber?.toLowerCase().includes(term)
+            s.work?.recordNumber?.toLowerCase().includes(term) ||
+            s.projectCode?.toLowerCase().includes(term)
         )
       );
     }
@@ -315,7 +316,7 @@ export default function LevantamientosListPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
             <Input
               type="text"
-              placeholder="Buscar por número, nombre de obra..."
+              placeholder="Buscar por número, nombre de obra, Cod. Proyecto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -353,24 +354,27 @@ export default function LevantamientosListPage() {
           <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-cyan-100 border-b border-cyan-200">
+                <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       N° Levantamiento
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      Cod. Proyecto
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Obra
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Fecha
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Estado Revisión
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Bloques
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-cyan-800">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                       Acciones
                     </th>
                   </tr>
@@ -385,8 +389,11 @@ export default function LevantamientosListPage() {
                         key={survey.surveyId}
                         className={`${index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'} ${reviewSummary.hasRejections ? 'border-l-4 border-l-red-500' : ''}`}
                       >
-                        <td className="px-4 py-3 font-mono font-medium text-cyan-700">
+                        <td className="px-4 py-3 font-mono font-medium text-[hsl(var(--canalco-neutral-700))]">
                           {survey.surveyNumber || '-'}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-sm font-semibold text-[hsl(var(--canalco-primary))]">
+                          {survey.projectCode || '-'}
                         </td>
                         <td className="px-4 py-3">
                           <div>
@@ -417,7 +424,7 @@ export default function LevantamientosListPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => navigate(`/dashboard/levantamiento-obras/levantamientos/revisar/${survey.surveyId}`)}
-                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-cyan-600"
+                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
                               title="Ver detalle"
                             >
                               <Eye className="w-4 h-4" />
