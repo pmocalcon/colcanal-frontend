@@ -20,6 +20,8 @@ export default function LevantamientoObrasPage() {
         return hasPermission('levantamientos:revisar');
       case 'ucaps':
         return hasPermission('levantamientos:ver');
+      case 'presupuesto':
+        return hasPermission('levantamientos:ver');
       default:
         return false;
     }
@@ -66,6 +68,14 @@ export default function LevantamientoObrasPage() {
       hasAccess: getSubModuleAccess('ucaps'),
       description: 'Ver y crear UCAPs por municipio',
     },
+    {
+      gestionId: 406,
+      nombre: 'Presupuesto',
+      slug: 'presupuesto',
+      icono: 'Calculator',
+      hasAccess: getSubModuleAccess('presupuesto'),
+      description: 'Elaborar presupuesto director de proyectos',
+    },
   ];
 
   const handleSubModuleClick = (subModule: (typeof subModules)[0]) => {
@@ -90,6 +100,9 @@ export default function LevantamientoObrasPage() {
         break;
       case 'ucaps':
         navigate('/dashboard/levantamiento-obras/ucaps');
+        break;
+      case 'presupuesto':
+        navigate('/dashboard/levantamiento-obras/presupuesto');
         break;
     }
   };
