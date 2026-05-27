@@ -12,6 +12,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  paramsSerializer: { indexes: null },
 });
 
 // Request interceptor - Add JWT token to requests
@@ -53,7 +54,9 @@ api.interceptors.response.use(
 
           // Save new tokens
           localStorage.setItem('accessToken', accessToken);
-          localStorage.setItem('refreshToken', newRefreshToken);
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
 
           // Retry original request with new token
           if (originalRequest.headers) {

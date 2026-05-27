@@ -39,6 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
 // Estados que permiten gestionar cotización
 const QUOTABLE_STATUSES = ['aprobada_gerencia', 'en_cotizacion', 'cotizada'];
 
+
 export default function CotizacionesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -46,12 +47,6 @@ export default function CotizacionesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const limit = 10;
 
   // Paginación para sección de cotizadas (10 por página)
   const [processedPage, setProcessedPage] = useState(1);
@@ -76,16 +71,14 @@ export default function CotizacionesPage() {
       return;
     }
     loadRequisitions();
-  }, [page, isCompras]);
+  }, [isCompras]);
 
   const loadRequisitions = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await getRequisitionsForQuotation({ page, limit });
+      const response = await getRequisitionsForQuotation();
       setRequisitions(response.data);
-      setTotal(response.total);
-      setTotalPages(response.totalPages);
     } catch (err) {
       console.error('Error loading requisitions:', err);
       setError('Error al cargar las requisiciones');
@@ -789,37 +782,6 @@ export default function CotizacionesPage() {
                 </div>
               )}
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-4 border-t border-[hsl(var(--canalco-neutral-200))]">
-                  <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                    Mostrando {requisitions.length} de {total} requisiciones
-                  </p>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                      className="border-[hsl(var(--canalco-neutral-300))]"
-                    >
-                      Anterior
-                    </Button>
-                    <span className="px-4 py-2 text-sm text-[hsl(var(--canalco-neutral-700))]">
-                      Página {page} de {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(Math.min(totalPages, page + 1))}
-                      disabled={page === totalPages}
-                      className="border-[hsl(var(--canalco-neutral-300))]"
-                    >
-                      Siguiente
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

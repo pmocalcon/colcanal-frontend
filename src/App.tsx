@@ -38,10 +38,13 @@ import CrearObraPage from './pages/CrearObraPage'
 import LevantamientoObrasPage from './pages/LevantamientoObrasPage'
 import ObrasListPage from './pages/ObrasListPage'
 import LevantamientosListPage from './pages/LevantamientosListPage'
-import RevisarLevantamientosPage from './pages/RevisarLevantamientosPage'
 import RevisarLevantamientoDetallePage from './pages/RevisarLevantamientoDetallePage'
 import GestionarUcapsPage from './pages/GestionarUcapsPage'
 import PresupuestoPage from './pages/PresupuestoPage'
+import PresupuestosListPage from './pages/PresupuestosListPage'
+import PlanAnualPage from './pages/PlanAnualPage'
+import ResumenActaPage from './pages/ResumenActaPage'
+import CronogramaPage from './pages/CronogramaPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
@@ -95,7 +98,7 @@ export default function App() {
           <Route
             path="/dashboard/levantamiento-obras/obras/crear"
             element={
-              <ProtectedRoute permission="levantamientos:crear">
+              <ProtectedRoute permission={['levantamientos:crear', 'levantamientos:nueva-obra']} allowedRoles="Director Técnico">
                 <CrearObraPage />
               </ProtectedRoute>
             }
@@ -103,20 +106,12 @@ export default function App() {
           <Route
             path="/dashboard/levantamiento-obras/obras/editar/:id"
             element={
-              <ProtectedRoute permission="levantamientos:editar">
+              <ProtectedRoute permission={['levantamientos:editar', 'levantamientos:nueva-obra']} allowedRoles="Director Técnico">
                 <CrearObraPage />
               </ProtectedRoute>
             }
           />
           <Route path="/dashboard/levantamiento-obras/levantamientos" element={<LevantamientosListPage />} />
-          <Route
-            path="/dashboard/levantamiento-obras/levantamientos/revisar"
-            element={
-              <ProtectedRoute permission="levantamientos:revisar">
-                <RevisarLevantamientosPage />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/dashboard/levantamiento-obras/levantamientos/revisar/:surveyId"
             element={
@@ -127,6 +122,11 @@ export default function App() {
           />
           <Route path="/dashboard/levantamiento-obras/ucaps" element={<GestionarUcapsPage />} />
           <Route path="/dashboard/levantamiento-obras/presupuesto" element={<PresupuestoPage />} />
+          <Route path="/dashboard/levantamiento-obras/presupuesto/:id" element={<PresupuestoPage />} />
+          <Route path="/dashboard/levantamiento-obras/presupuestos" element={<PresupuestosListPage />} />
+          <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
+          <Route path="/dashboard/levantamiento-obras/cronograma" element={<CronogramaPage />} />
+          <Route path="/dashboard/levantamiento-obras/acta/:recordNumber" element={<ResumenActaPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

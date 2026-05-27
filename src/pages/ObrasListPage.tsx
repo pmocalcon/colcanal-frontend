@@ -1,48 +1,71 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { surveysService, type Work } from '@/services/surveys.service';
+import { toast } from 'sonner';
+import { surveysService, type Work, type WorkActa, type ActaStatus } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft, Plus, Search, Edit, Eye, AlertCircle } from 'lucide-react';
+import { Home, ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PermissionGuard } from '@/components/PermissionGuard';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+
+type ViewMode = 'individual' | 'agrupado';
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
   const [activeTab, setActiveTab] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('individual');
   const [works, setWorks] = useState<Work[]>([]);
-  const [filteredWorks, setFilteredWorks] = useState<Work[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [actaInput, setActaInput] = useState('');
+  const [showActaInput, setShowActaInput] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [editingActa, setEditingActa] = useState<string | null>(null);
+  const [editActaValue, setEditActaValue] = useState('');
+  const [savingActa, setSavingActa] = useState(false);
+  const [removingWorkId, setRemovingWorkId] = useState<number | null>(null);
+  const [actaStatuses, setActaStatuses] = useState<Map<string, WorkActa>>(new Map());
+  const [submittingActa, setSubmittingActa] = useState<string | null>(null);
+  const [reviewDialog, setReviewDialog] = useState<{ acta: string } | null>(null);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [approveDialog, setApproveDialog] = useState<{ acta: string } | null>(null);
+  const [approveProjectCode, setApproveProjectCode] = useState('');
+  const [approveSubmitting, setApproveSubmitting] = useState(false);
 
-  // Mapear empresas a departamentos
   const departments = useMemo(() => {
-    console.log('🔍 [ObrasListPage] Access:', access);
-    console.log('🔍 [ObrasListPage] Access.companies:', access?.companies);
-    if (!access?.companies) {
-      console.log('⚠️ [ObrasListPage] No hay companies en access');
-      return [];
-    }
-    const depts = mapCompaniesToDepartments(access.companies);
-    console.log('🔍 [ObrasListPage] Departments mapeados:', depts);
-    return depts;
+    if (!access?.companies) return [];
+    return mapCompaniesToDepartments(access.companies);
   }, [access]);
 
-  // Obtener IDs de empresas del departamento activo
-  const activeCompanyIds = useMemo(() => {
-    const dept = departments.find((d) => d.name === activeTab);
-    return dept?.companyIds || [];
-  }, [activeTab, departments]);
+  const activeDept = useMemo(
+    () => departments.find((d) => d.name === activeTab),
+    [departments, activeTab],
+  );
 
-  // Establecer el primer departamento como activo al cargar
+  const activeCompanyIds = useMemo(() => {
+    if (!activeDept) return [];
+    if (selectedCompanyId !== null) return [selectedCompanyId];
+    return activeDept.companyIds;
+  }, [activeDept, selectedCompanyId]);
+
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
       setActiveTab(departments[0].name);
@@ -55,55 +78,228 @@ export default function ObrasListPage() {
     }
   }, [user?.userId, activeCompanyIds]);
 
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredWorks(works);
-    } else {
-      const term = searchTerm.toLowerCase();
-      setFilteredWorks(
-        works.filter(
-          (w) =>
-            w.recordNumber?.toLowerCase().includes(term)
-        )
-      );
-    }
-  }, [searchTerm, works]);
-
   const loadWorks = async () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔍 [loadWorks] Cargando obras para:', {
-        departamento: activeTab,
-        companyIds: activeCompanyIds,
-        userId: user?.userId
-      });
-      // Filter by company IDs of active department and current user
+      const rol = user?.nombreRol;
+      const isDirectorProyecto = rol?.startsWith('Director de Proyecto');
       const response = await surveysService.getWorks({
         companyId: activeCompanyIds,
-        createdBy: user?.userId
+        createdBy: isDirectorProyecto ? user?.userId : undefined,
       });
-      console.log('🔍 [loadWorks] API Response for works:', response);
-      // Handle both response structures: { data: Work[] } or Work[]
       const worksData = Array.isArray(response) ? response : (response.data || []);
-      console.log('🔍 [loadWorks] Works data:', worksData);
-      console.log('🔍 [loadWorks] CompanyIds en las obras:', worksData.map(w => ({
-        workId: w.workId,
-        name: w.name,
-        companyId: w.companyId,
-        companyName: w.company?.name
-      })));
       setWorks(worksData);
-      setFilteredWorks(worksData);
     } catch (err: any) {
-      console.error('Error loading works:', err);
       setError(err.response?.data?.message || 'Error al cargar las obras');
     } finally {
       setLoading(false);
     }
   };
 
-  // Loading state
+  // Works with record number → grouped by acta (only groups with 2+ works qualify)
+  const groupedWorksMap = useMemo(() => {
+    const map = new Map<string, Work[]>();
+    works
+      .filter((w) => w.recordNumber)
+      .forEach((w) => {
+        const key = w.recordNumber!;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(w);
+      });
+    // Remove singleton actas — a single work with a recordNumber is still individual
+    map.forEach((ws, key) => { if (ws.length < 2) map.delete(key); });
+    return map;
+  }, [works]);
+
+  // Individual = no recordNumber OR recordNumber that doesn't form a group (< 2 works)
+  const individualWorks = useMemo(
+    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(w.recordNumber)),
+    [works, groupedWorksMap],
+  );
+
+  // Filtered individual works (search by name / address / neighborhood)
+  const filteredIndividualWorks = useMemo(() => {
+    if (!searchTerm.trim()) return individualWorks;
+    const term = searchTerm.toLowerCase();
+    return individualWorks.filter(
+      (w) =>
+        w.name?.toLowerCase().includes(term) ||
+        w.address?.toLowerCase().includes(term) ||
+        w.neighborhood?.toLowerCase().includes(term),
+    );
+  }, [searchTerm, individualWorks]);
+
+  // Filtered grouped works (search by acta number)
+  const filteredGroupedMap = useMemo(() => {
+    if (!searchTerm.trim()) return groupedWorksMap;
+    const term = searchTerm.toLowerCase();
+    const result = new Map<string, Work[]>();
+    groupedWorksMap.forEach((actaWorks, acta) => {
+      if (acta.toLowerCase().includes(term)) {
+        result.set(acta, actaWorks);
+      }
+    });
+    return result;
+  }, [searchTerm, groupedWorksMap]);
+
+  const toggleSelect = (workId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(workId) ? next.delete(workId) : next.add(workId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredIndividualWorks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredIndividualWorks.map((w) => w.workId)));
+    }
+  };
+
+  const handleAssignActa = async () => {
+    if (!actaInput.trim() || selectedIds.size === 0) return;
+    try {
+      setAssigning(true);
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          surveysService.updateWork(id, { recordNumber: actaInput.trim() } as any),
+        ),
+      );
+      toast.success(`N° Acta "${actaInput.trim()}" asignado a ${selectedIds.size} obra(s)`);
+      setSelectedIds(new Set());
+      setActaInput('');
+      setShowActaInput(false);
+      await loadWorks();
+    } catch {
+      toast.error('Error al asignar el número de acta');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleRenameActa = async (oldActa: string, actaWorks: Work[]) => {
+    const newName = editActaValue.trim();
+    if (!newName || newName === oldActa) { setEditingActa(null); return; }
+    try {
+      setSavingActa(true);
+      await Promise.all(actaWorks.map((w) => surveysService.updateWork(w.workId, { recordNumber: newName } as any)));
+      toast.success(`N° Acta renombrado a "${newName}"`);
+      setEditingActa(null);
+      await loadWorks();
+    } catch {
+      toast.error('Error al renombrar el acta');
+    } finally {
+      setSavingActa(false);
+    }
+  };
+
+  const handleRemoveFromActa = async (workId: number) => {
+    try {
+      setRemovingWorkId(workId);
+      await surveysService.updateWork(workId, { recordNumber: null } as any);
+      toast.success('Obra removida del acta');
+      await loadWorks();
+    } catch {
+      toast.error('Error al remover la obra del acta');
+    } finally {
+      setRemovingWorkId(null);
+    }
+  };
+
+  useEffect(() => {
+    const actaNumbers = Array.from(groupedWorksMap.keys());
+    if (actaNumbers.length === 0) { setActaStatuses(new Map()); return; }
+    surveysService.getWorkActasBulk(actaNumbers)
+      .then((actas) => {
+        const map = new Map<string, WorkActa>();
+        actas.forEach((a) => map.set(a.actaNumber, a));
+        setActaStatuses(map);
+      })
+      .catch(() => { /* actas sin estado se tratan como BORRADOR */ });
+  }, [groupedWorksMap]);
+
+  const handleSubmitActa = async (actaNumber: string) => {
+    try {
+      setSubmittingActa(actaNumber);
+      const updated = await surveysService.submitActaForReview(actaNumber);
+      setActaStatuses((prev) => new Map(prev).set(actaNumber, updated));
+      toast.success('Acta enviada a revisión al Director Técnico');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al enviar el acta');
+    } finally {
+      setSubmittingActa(null);
+    }
+  };
+
+  const handleReviewActa = async (approved: boolean) => {
+    if (!reviewDialog) return;
+    try {
+      setReviewSubmitting(true);
+      const updated = await surveysService.reviewActa(reviewDialog.acta, approved, reviewComment || undefined);
+      setActaStatuses((prev) => new Map(prev).set(reviewDialog.acta, updated));
+      toast.success(approved ? 'Acta enviada a aprobación de Gerencia' : 'Acta devuelta al Director de Proyecto');
+      setReviewDialog(null);
+      setReviewComment('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al revisar el acta');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const handleApproveActa = async () => {
+    if (!approveDialog || !approveProjectCode.trim()) return;
+    try {
+      setApproveSubmitting(true);
+      const updated = await surveysService.approveActa(approveDialog.acta, approveProjectCode.trim());
+      setActaStatuses((prev) => new Map(prev).set(approveDialog.acta, updated));
+      toast.success('Acta aprobada con código de proyecto asignado');
+      setApproveDialog(null);
+      setApproveProjectCode('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al aprobar el acta');
+    } finally {
+      setApproveSubmitting(false);
+    }
+  };
+
+  const getActaStatusBadge = (acta: WorkActa | undefined) => {
+    if (!acta || acta.status === 'borrador') return null;
+    switch (acta.status) {
+      case 'en_revision':
+        return <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium"><Clock className="w-3 h-3" />En revisión</span>;
+      case 'en_aprobacion':
+        return <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium"><ThumbsUp className="w-3 h-3" />En aprobación</span>;
+      case 'aprobada':
+        return <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium"><BadgeCheck className="w-3 h-3" />Aprobada</span>;
+      default:
+        return null;
+    }
+  };
+
+  const getMunicipality = (companyName: string) =>
+    companyName.replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '').trim() || companyName;
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSelectedCompanyId(null);
+    setSelectedIds(new Set());
+    setShowActaInput(false);
+    setActaInput('');
+    setSearchTerm('');
+  };
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setSelectedIds(new Set());
+    setShowActaInput(false);
+    setActaInput('');
+    setSearchTerm('');
+  };
+
   if (accessLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -115,7 +311,6 @@ export default function ObrasListPage() {
     );
   }
 
-  // Error state
   if (accessError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -127,7 +322,6 @@ export default function ObrasListPage() {
     );
   }
 
-  // No access state
   if (departments.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -141,13 +335,22 @@ export default function ObrasListPage() {
     );
   }
 
+  const pageTitle =
+    viewMode === 'agrupado'
+      ? `Actas - ${activeTab}`
+      : `Mis Obras - ${activeTab}`;
+
+  const pageSubtitle =
+    viewMode === 'agrupado'
+      ? `${groupedWorksMap.size} grupo${groupedWorksMap.size !== 1 ? 's' : ''} de obras`
+      : `${filteredIndividualWorks.length} obras creadas por ti`;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4">
-            {/* Left: Logo + Navigation */}
             <div className="flex items-center gap-3">
               <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
                 <img
@@ -176,17 +379,15 @@ export default function ObrasListPage() {
               </Button>
             </div>
 
-            {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Mis Obras - {activeTab}
+                {pageTitle}
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                {filteredWorks.length} obras creadas por ti
+                {pageSubtitle}
               </p>
             </div>
 
-            {/* Right: Actions */}
             <div className="flex items-center gap-2">
               <PermissionGuard permission="levantamientos:crear">
                 <Button
@@ -204,8 +405,44 @@ export default function ObrasListPage() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
+        {/* View mode toggle */}
+        <div className="flex items-center gap-2 mb-5">
+          <button
+            onClick={() => handleViewModeChange('individual')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              viewMode === 'individual'
+                ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
+                : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
+            }`}
+          >
+            Obras Individuales
+          </button>
+          <button
+            onClick={() => handleViewModeChange('agrupado')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              viewMode === 'agrupado'
+                ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
+                : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Actas
+            {groupedWorksMap.size > 0 && (
+              <span
+                className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
+                  viewMode === 'agrupado'
+                    ? 'bg-white/30 text-white'
+                    : 'bg-[hsl(var(--canalco-primary))]/15 text-[hsl(var(--canalco-primary))]'
+                }`}
+              >
+                {groupedWorksMap.size}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Tabs por Departamento */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground mx-auto">
             {departments.map((dept) => (
               <TabsTrigger key={dept.name} value={dept.name}>
@@ -214,127 +451,494 @@ export default function ObrasListPage() {
             ))}
           </TabsList>
 
+          {/* Municipality filter pills */}
+          {activeDept && activeDept.companies.length > 1 && (
+            <div className="flex items-center gap-2 mb-5 flex-wrap">
+              <button
+                onClick={() => setSelectedCompanyId(null)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedCompanyId === null
+                    ? 'bg-[hsl(var(--canalco-primary))] text-white'
+                    : 'bg-white border border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]'
+                }`}
+              >
+                Todos
+              </button>
+              {activeDept.companies.map((c) => (
+                <button
+                  key={c.companyId}
+                  onClick={() => setSelectedCompanyId(c.companyId)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    selectedCompanyId === c.companyId
+                      ? 'bg-[hsl(var(--canalco-primary))] text-white'
+                      : 'bg-white border border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]'
+                  }`}
+                >
+                  {getMunicipality(c.name)}
+                </button>
+              ))}
+            </div>
+          )}
+
           {departments.map((dept) => (
             <TabsContent key={dept.name} value={dept.name}>
-        {/* Search Bar */}
-        <div className="mb-6 flex gap-4">
-          <div className="relative flex-grow max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
-            <Input
-              type="text"
-              placeholder="Buscar por número de acta..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
+              {/* Search Bar */}
+              <div className="mb-4 flex gap-4">
+                <div className="relative flex-grow max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+                  <Input
+                    type="text"
+                    placeholder={
+                      viewMode === 'agrupado'
+                        ? 'Buscar por número de acta...'
+                        : 'Buscar por nombre, dirección...'
+                    }
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-            {error}
-          </div>
-        )}
+              {/* Error */}
+              {error && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                  {error}
+                </div>
+              )}
 
-        {/* Loading */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
-          </div>
-        ) : (
-          /* Works Table */
-          <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      N° Acta
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      Nombre
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      Dirección
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      Barrio
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      Empresa
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorks.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
-                        {searchTerm ? 'No se encontraron obras con ese criterio' : 'No has creado ninguna obra aún'}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredWorks.map((work, index) => (
-                      <tr
-                        key={work.workId}
-                        className={index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}
+              {/* Loading */}
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
+                </div>
+              ) : viewMode === 'individual' ? (
+                /* ── INDIVIDUAL VIEW ── */
+                <>
+                  {/* Bulk action bar */}
+                  {selectedIds.size > 0 && (
+                    <div className="mb-4 flex items-center gap-3 bg-[hsl(var(--canalco-primary))]/10 border border-[hsl(var(--canalco-primary))]/30 rounded-lg px-4 py-2.5">
+                      <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-800))]">
+                        {selectedIds.size} obra{selectedIds.size > 1 ? 's' : ''} seleccionada{selectedIds.size > 1 ? 's' : ''}
+                      </span>
+                      {!showActaInput ? (
+                        <Button
+                          size="sm"
+                          className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 h-8"
+                          onClick={() => setShowActaInput(true)}
+                        >
+                          <Hash className="w-3.5 h-3.5 mr-1.5" />
+                          Asignar N° Acta
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            autoFocus
+                            placeholder="Número de acta..."
+                            value={actaInput}
+                            onChange={(e) => setActaInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAssignActa();
+                              if (e.key === 'Escape') { setShowActaInput(false); setActaInput(''); }
+                            }}
+                            className="h-8 w-48 text-sm"
+                          />
+                          <Button
+                            size="sm"
+                            className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 h-8"
+                            onClick={handleAssignActa}
+                            disabled={assigning || !actaInput.trim()}
+                          >
+                            {assigning ? (
+                              <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                            ) : 'Confirmar'}
+                          </Button>
+                          <button
+                            onClick={() => { setShowActaInput(false); setActaInput(''); }}
+                            className="text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-700))]"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        className="ml-auto text-xs text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-700))] underline"
+                        onClick={() => { setSelectedIds(new Set()); setShowActaInput(false); setActaInput(''); }}
                       >
-                        <td className="px-4 py-3 font-mono font-medium text-[hsl(var(--canalco-primary))]">
-                          {work.recordNumber || '-'}
-                        </td>
-                        <td className="px-4 py-3 font-medium">
-                          {work.name}
-                        </td>
-                        <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
-                          {work.address}
-                        </td>
-                        <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
-                          {work.neighborhood}
-                        </td>
-                        <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">
-                          {work.company?.name || '-'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <PermissionGuard permission="levantamientos:editar">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => navigate(`/dashboard/levantamiento-obras/obras/editar/${work.workId}`)}
-                                className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
-                                title="Editar"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                            </PermissionGuard>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => alert('Ver detalle - Próximamente')}
-                              className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
-                              title="Ver detalle"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                        Deseleccionar todo
+                      </button>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+
+                  <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
+                          <tr>
+                            <th className="px-3 py-3 w-10">
+                              <input
+                                type="checkbox"
+                                className="rounded cursor-pointer"
+                                checked={filteredIndividualWorks.length > 0 && selectedIds.size === filteredIndividualWorks.length}
+                                onChange={toggleSelectAll}
+                                title="Seleccionar todas"
+                              />
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Nombre</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Dirección</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Barrio</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Empresa</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredIndividualWorks.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-8 text-center text-[hsl(var(--canalco-neutral-500))]">
+                                {searchTerm
+                                  ? 'No se encontraron obras con ese criterio'
+                                  : individualWorks.length === 0 && works.length > 0
+                                  ? 'Todas las obras de este departamento ya tienen número de acta'
+                                  : 'No has creado ninguna obra aún'}
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredIndividualWorks.map((work, index) => (
+                              <tr
+                                key={work.workId}
+                                className={`cursor-pointer ${selectedIds.has(work.workId) ? 'bg-[hsl(var(--canalco-primary))]/5' : index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}
+                                onClick={() => toggleSelect(work.workId)}
+                              >
+                                <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    className="rounded cursor-pointer"
+                                    checked={selectedIds.has(work.workId)}
+                                    onChange={() => toggleSelect(work.workId)}
+                                  />
+                                </td>
+                                <td className="px-4 py-3 font-medium">{work.name}</td>
+                                <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.address}</td>
+                                <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.neighborhood}</td>
+                                <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.company?.name || '-'}</td>
+                                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-2">
+                                    <PermissionGuard permission="levantamientos:editar">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => navigate(`/dashboard/levantamiento-obras/obras/editar/${work.workId}`)}
+                                        className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
+                                        title="Editar"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </Button>
+                                    </PermissionGuard>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ── GROUPED VIEW ── */
+                <>
+                  {filteredGroupedMap.size === 0 ? (
+                    <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] px-4 py-10 text-center text-[hsl(var(--canalco-neutral-500))]">
+                      {searchTerm
+                        ? 'No se encontraron grupos con ese número de acta'
+                        : 'No hay actas en este departamento'}
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {Array.from(filteredGroupedMap.entries()).map(([acta, actaWorks]) => (
+                        <div
+                          key={acta}
+                          className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden"
+                        >
+                          {/* Group header */}
+                          {(() => {
+                            const actaInfo = actaStatuses.get(acta);
+                            const status = actaInfo?.status ?? 'borrador';
+                            const rol = user?.nombreRol;
+                            const canSubmit = (rol?.startsWith('Director de Proyecto') || rol === 'Analista PMO') && status === 'borrador';
+                            const canReview = (rol === 'Director Técnico' || rol === 'Analista PMO') && status === 'en_revision';
+                            const canApprove = (rol === 'Gerencia de Proyectos' || rol === 'Analista PMO') && status === 'en_aprobacion';
+                            return (
+                              <div className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-primary))]/20 px-4 py-3 flex flex-wrap items-center gap-3">
+                                <Layers className="w-4 h-4 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
+                                {editingActa === acta ? (
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      autoFocus
+                                      value={editActaValue}
+                                      onChange={(e) => setEditActaValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleRenameActa(acta, actaWorks);
+                                        if (e.key === 'Escape') setEditingActa(null);
+                                      }}
+                                      className="h-7 w-48 text-sm font-mono"
+                                    />
+                                    <Button
+                                      size="icon"
+                                      className="h-7 w-7 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90"
+                                      onClick={() => handleRenameActa(acta, actaWorks)}
+                                      disabled={savingActa}
+                                    >
+                                      {savingActa
+                                        ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                        : <Check className="w-3.5 h-3.5" />}
+                                    </Button>
+                                    <button onClick={() => setEditingActa(null)} className="text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-700))]">
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="font-semibold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-1.5">
+                                    N° Acta:&nbsp;
+                                    <span className="font-mono text-[hsl(var(--canalco-primary))]">{acta}</span>
+                                    <PermissionGuard permission="levantamientos:editar">
+                                      <button
+                                        onClick={() => { setEditingActa(acta); setEditActaValue(acta); }}
+                                        className="text-[hsl(var(--canalco-neutral-400))] hover:text-[hsl(var(--canalco-primary))] ml-1"
+                                        title="Renombrar acta"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                    </PermissionGuard>
+                                  </span>
+                                )}
+                                <span className="text-xs text-[hsl(var(--canalco-neutral-500))] bg-[hsl(var(--canalco-neutral-200))] px-2 py-0.5 rounded-full">
+                                  {actaWorks.length} obra{actaWorks.length !== 1 ? 's' : ''}
+                                </span>
+
+                                {/* Status badge */}
+                                {getActaStatusBadge(actaInfo)}
+
+                                {/* Rejection comment */}
+                                {status === 'borrador' && actaInfo?.rejectionComment && (
+                                  <span className="flex items-center gap-1 text-xs text-red-600">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {actaInfo.rejectionComment}
+                                  </span>
+                                )}
+
+                                {/* Project code badge when approved */}
+                                {status === 'aprobada' && actaInfo?.projectCode && (
+                                  <span className="text-xs font-mono bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">
+                                    Cód: {actaInfo.projectCode}
+                                  </span>
+                                )}
+
+                                <div className="ml-auto flex items-center gap-2">
+                                  {/* Workflow buttons */}
+                                  {canSubmit && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+                                      onClick={() => handleSubmitActa(acta)}
+                                      disabled={submittingActa === acta}
+                                    >
+                                      {submittingActa === acta
+                                        ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
+                                        : <Send className="w-3 h-3 mr-1.5" />}
+                                      Enviar a revisión
+                                    </Button>
+                                  )}
+                                  {canReview && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                                      onClick={() => setReviewDialog({ acta })}
+                                    >
+                                      <ThumbsUp className="w-3 h-3 mr-1.5" />
+                                      Revisar acta
+                                    </Button>
+                                  )}
+                                  {canApprove && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                                      onClick={() => setApproveDialog({ acta })}
+                                    >
+                                      <BadgeCheck className="w-3 h-3 mr-1.5" />
+                                      Aprobar acta
+                                    </Button>
+                                  )}
+
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
+                                    onClick={() =>
+                                      navigate(
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(acta)}`,
+                                        { state: { works: actaWorks } },
+                                      )
+                                    }
+                                  >
+                                    <FileText className="w-3.5 h-3.5 mr-1.5" />
+                                    Resumen de Acta
+                                  </Button>
+
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Works table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Nombre</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Dirección</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Barrio</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Empresa</th>
+                                  <th className="px-4 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Acciones</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {actaWorks.map((work, index) => (
+                                  <tr
+                                    key={work.workId}
+                                    className={index % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}
+                                  >
+                                    <td className="px-4 py-3 font-medium">{work.name}</td>
+                                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.address}</td>
+                                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.neighborhood}</td>
+                                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.company?.name || '-'}</td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <PermissionGuard permission="levantamientos:editar">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => navigate(`/dashboard/levantamiento-obras/obras/editar/${work.workId}`)}
+                                            className="h-8 w-8 text-[hsl(var(--canalco-neutral-600))] hover:text-[hsl(var(--canalco-primary))]"
+                                            title="Editar"
+                                          >
+                                            <Edit className="w-4 h-4" />
+                                          </Button>
+                                        </PermissionGuard>
+                                        <PermissionGuard permission="levantamientos:editar">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleRemoveFromActa(work.workId)}
+                                            disabled={removingWorkId === work.workId}
+                                            className="h-8 w-8 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
+                                            title="Quitar del acta"
+                                          >
+                                            {removingWorkId === work.workId
+                                              ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                              : <X className="w-4 h-4" />}
+                                          </Button>
+                                        </PermissionGuard>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </TabsContent>
           ))}
         </Tabs>
       </main>
 
       <Footer />
+
+      {/* Review Dialog — Director Técnico */}
+      <Dialog open={!!reviewDialog} onOpenChange={(open) => { if (!open) { setReviewDialog(null); setReviewComment(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Revisar Acta: {reviewDialog?.acta}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+              ¿Aprueba el acta para que pase a Gerencia de Proyectos, o la devuelve al Director de Proyecto?
+            </p>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1 block">
+                Comentario (obligatorio si rechaza)
+              </label>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder="Motivo del rechazo o comentarios..."
+                className="w-full text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md p-2 resize-none h-20 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="border-red-300 text-red-600 hover:bg-red-50"
+              onClick={() => handleReviewActa(false)}
+              disabled={reviewSubmitting || !reviewComment.trim()}
+            >
+              {reviewSubmitting ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" /> : <ThumbsDown className="w-3.5 h-3.5 mr-1.5" />}
+              Rechazar
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => handleReviewActa(true)}
+              disabled={reviewSubmitting}
+            >
+              {reviewSubmitting ? <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" /> : <ThumbsUp className="w-3.5 h-3.5 mr-1.5" />}
+              Aprobar y enviar a Gerencia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Dialog — Gerencia de Proyectos */}
+      <Dialog open={!!approveDialog} onOpenChange={(open) => { if (!open) { setApproveDialog(null); setApproveProjectCode(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Aprobar Acta: {approveDialog?.acta}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+              Asigna el código de proyecto para finalizar la aprobación del acta.
+            </p>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1 block">
+                Código de proyecto <span className="text-red-500">*</span>
+              </label>
+              <Input
+                autoFocus
+                value={approveProjectCode}
+                onChange={(e) => setApproveProjectCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleApproveActa(); }}
+                placeholder="Ej: PRY-2026-001"
+                className="font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleApproveActa}
+              disabled={approveSubmitting || !approveProjectCode.trim()}
+            >
+              {approveSubmitting ? <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" /> : <BadgeCheck className="w-3.5 h-3.5 mr-1.5" />}
+              Aprobar acta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

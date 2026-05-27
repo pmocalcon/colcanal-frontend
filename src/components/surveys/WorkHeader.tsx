@@ -74,6 +74,7 @@ interface WorkHeaderProps {
     areaType: string;
     requestType: string;
     filingNumber: string;
+    annualPlan: string;
     requestDate: string;
     receivedById: number | null;
     assignedReviewerId: number | null;
@@ -133,6 +134,7 @@ export function WorkHeader({
         areaType: work.areaType,
         requestType: work.requestType,
         filingNumber: work.filingNumber,
+        annualPlan: work.annualPlan ? String(work.annualPlan) : undefined,
         requestDate: work.requestDate,
       };
       return fieldMap[field] || '';
@@ -449,6 +451,13 @@ export function WorkHeader({
               label="No. Radicado"
               value={getValue('filingNumber')}
               field="filingNumber"
+            />
+
+            <Field
+              label="Plan Anual"
+              value={getValue('annualPlan')}
+              field="annualPlan"
+              type="text"
             />
           </div>
         </div>

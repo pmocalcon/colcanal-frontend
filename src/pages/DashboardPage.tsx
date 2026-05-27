@@ -31,6 +31,11 @@ const SLUG_MAPPING: Record<string, string> = {
   'reportes': 'levantamiento-obras',
 };
 
+// Sobrescribir nombres de módulos que vienen del backend
+const MODULE_NAME_OVERRIDES: Record<string, string> = {
+  'levantamiento-obras': 'Obras',
+};
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -41,11 +46,14 @@ export default function DashboardPage() {
   // Procesar y ordenar módulos según el orden definido
   const sortedModules = useMemo(() => {
     return modules
-      .map((module) => ({
-        ...module,
-        // Mapear slugs antiguos a nuevos
-        slug: SLUG_MAPPING[module.slug] || module.slug,
-      }))
+      .map((module) => {
+        const slug = SLUG_MAPPING[module.slug] || module.slug;
+        return {
+          ...module,
+          slug,
+          nombre: MODULE_NAME_OVERRIDES[slug] || module.nombre,
+        };
+      })
       .sort((a, b) => {
         const indexA = MODULE_ORDER.indexOf(a.slug);
         const indexB = MODULE_ORDER.indexOf(b.slug);

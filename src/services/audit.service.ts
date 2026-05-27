@@ -44,9 +44,6 @@ export interface FilterAuditParams {
   userName?: string;
   fromDate?: string;
   toDate?: string;
-  requisitionNumber?: string;
-  companyName?: string;
-  userName?: string;
 }
 
 export interface TimelineEvent {
@@ -95,6 +92,26 @@ export interface RequisitionDetailResponse {
   timeline: TimelineEvent[];
 }
 
+export interface AuditStats {
+  totalRequisitions: number;
+  totalPurchaseOrders: number;
+  totalLogs: number;
+  recentLogs: number;
+}
+
+export interface MatrixRow {
+  requisitionId: number;
+  requisitionNumber: string;
+  companyName: string;
+  currentStatus: { name: string; color: string } | null;
+  events: Record<string, string>;
+}
+
+export interface MatrixResponse {
+  actions: string[];
+  rows: MatrixRow[];
+}
+
 export const auditService = {
   async getAuditLogs(filters?: FilterAuditParams): Promise<AuditLogsResponse> {
     const params = new URLSearchParams();
@@ -109,9 +126,6 @@ export const auditService = {
     if (filters?.userName) params.append('userName', filters.userName);
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
     if (filters?.toDate) params.append('toDate', filters.toDate);
-    if (filters?.requisitionNumber) params.append('requisitionNumber', filters.requisitionNumber);
-    if (filters?.companyName) params.append('companyName', filters.companyName);
-    if (filters?.userName) params.append('userName', filters.userName);
 
     const response = await api.get<AuditLogsResponse>(`/audit/logs?${params.toString()}`);
     return response.data;
@@ -119,6 +133,26 @@ export const auditService = {
 
   async getRequisitionDetail(requisitionId: number): Promise<RequisitionDetailResponse> {
     const response = await api.get<RequisitionDetailResponse>(`/audit/requisition/${requisitionId}`);
+    return response.data;
+  },
+
+  async getMatrix(filters?: {
+    fromDate?: string;
+    toDate?: string;
+    requisitionNumber?: string;
+    companyName?: string;
+  }): Promise<MatrixResponse> {
+    const params = new URLSearchParams();
+    if (filters?.fromDate) params.append('fromDate', filters.fromDate);
+    if (filters?.toDate) params.append('toDate', filters.toDate);
+    if (filters?.requisitionNumber) params.append('requisitionNumber', filters.requisitionNumber);
+    if (filters?.companyName) params.append('companyName', filters.companyName);
+    const response = await api.get<MatrixResponse>(`/audit/matrix?${params.toString()}`);
+    return response.data;
+  },
+
+  async getStats(): Promise<AuditStats> {
+    const response = await api.get<AuditStats>('/audit/stats');
     return response.data;
   },
 };

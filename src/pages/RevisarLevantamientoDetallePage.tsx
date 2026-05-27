@@ -487,7 +487,7 @@ export default function RevisarLevantamientoDetallePage() {
             </div>
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Mes Anterior:</span>
-              <p className="font-medium text-cyan-700">{survey.previousMonthIpp ?? '-'}</p>
+              <p className="font-medium text-amber-700">{survey.previousMonthIpp ?? '-'}</p>
             </div>
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">Recibido por:</span>
@@ -510,7 +510,7 @@ export default function RevisarLevantamientoDetallePage() {
                   href={survey.sketchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm mt-1"
+                  className="text-amber-600 hover:text-amber-800 flex items-center gap-1 text-sm mt-1"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Ver Croquis
@@ -526,7 +526,7 @@ export default function RevisarLevantamientoDetallePage() {
                   href={survey.mapUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-cyan-600 hover:text-cyan-800 flex items-center gap-1 text-sm mt-1"
+                  className="text-amber-600 hover:text-amber-800 flex items-center gap-1 text-sm mt-1"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Ver Mapa
@@ -547,7 +547,7 @@ export default function RevisarLevantamientoDetallePage() {
             return (
               <Card key={block.key} className="overflow-hidden">
                 {/* Block Header */}
-                <div className="bg-cyan-600 text-white px-6 py-3 flex items-center justify-between">
+                <div className="bg-[hsl(var(--canalco-primary))] text-white px-6 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {block.icon}
                     <h3 className="font-semibold">{block.title}</h3>
@@ -754,7 +754,7 @@ function BudgetBlockContent({
     <div>
       {/* IPP Info */}
       {previousMonthIpp && (
-        <div className="mb-4 p-3 bg-cyan-50 rounded-lg border border-cyan-200">
+        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
           <div className="flex items-center gap-6 text-sm">
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Base:</span>
@@ -762,7 +762,7 @@ function BudgetBlockContent({
             </div>
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">IPP Mes Anterior:</span>
-              <span className="font-medium ml-2 text-cyan-700">{previousMonthIpp}</span>
+              <span className="font-medium ml-2 text-amber-700">{previousMonthIpp}</span>
             </div>
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">Factor de Ajuste:</span>
@@ -774,13 +774,13 @@ function BudgetBlockContent({
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-cyan-50">
+          <thead className="bg-amber-50">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Item</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">UCAP</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Valor Unitario</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cantidad</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Total</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Item</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">UCAP</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Valor Unitario</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cantidad</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -795,7 +795,7 @@ function BudgetBlockContent({
                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-2">{idx + 1}</td>
                   <td className="px-3 py-2">
-                    <span className="font-mono text-cyan-700">{item.ucap?.code}</span>
+                    <span className="font-mono text-amber-700">{item.ucap?.code}</span>
                     {item.ucap?.description && (
                       <span className="text-[hsl(var(--canalco-neutral-500))] ml-2">
                         - {item.ucap.description}
@@ -812,12 +812,12 @@ function BudgetBlockContent({
             )}
           </tbody>
           {budgetItems.length > 0 && (
-            <tfoot className="bg-cyan-100">
+            <tfoot className="bg-amber-100">
               <tr>
                 <td colSpan={4} className="px-3 py-2 text-right font-semibold">
                   SUBTOTAL:
                 </td>
-                <td className="px-3 py-2 text-right font-bold text-cyan-800">
+                <td className="px-3 py-2 text-right font-bold text-amber-800">
                   {formatCurrency(totalBase)}
                 </td>
               </tr>
@@ -875,16 +875,16 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
       {/* Investment Items Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-cyan-50">
+          <thead className="bg-amber-50">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">No. Orden</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Punto</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Descripcion</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cant. Lum.</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Lum. Reub.</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cant. Poste</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Red Trenzada</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Coordenadas</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">No. Orden</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Punto</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Lum.</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Lum. Reub.</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Poste</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Red Trenzada</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Coordenadas</th>
             </tr>
           </thead>
           <tbody>
@@ -898,7 +898,7 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
               investmentItems.map((item, idx) => (
                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-2">{item.orderNumber || '-'}</td>
-                  <td className="px-3 py-2 font-medium text-cyan-700">{item.point}</td>
+                  <td className="px-3 py-2 font-medium text-amber-700">{item.point}</td>
                   <td className="px-3 py-2">{item.description || '-'}</td>
                   <td className="px-3 py-2 text-right">{item.luminaireQuantity || 0}</td>
                   <td className="px-3 py-2 text-right">{item.relocatedLuminaireQuantity || 0}</td>
@@ -925,14 +925,14 @@ function MaterialsBlockContent({ survey }: { survey: Survey }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-cyan-50">
+        <thead className="bg-amber-50">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Item</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Codigo</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Descripcion</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Unidad</th>
-            <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cantidad</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Observaciones</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Item</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Codigo</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Unidad</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cantidad</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Observaciones</th>
           </tr>
         </thead>
         <tbody>
@@ -946,7 +946,7 @@ function MaterialsBlockContent({ survey }: { survey: Survey }) {
             materialItems.map((item, idx) => (
               <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <td className="px-3 py-2">{idx + 1}</td>
-                <td className="px-3 py-2 font-mono text-cyan-700">{item.material?.code || '-'}</td>
+                <td className="px-3 py-2 font-mono text-amber-700">{item.material?.code || '-'}</td>
                 <td className="px-3 py-2">{item.material?.description || '-'}</td>
                 <td className="px-3 py-2">{item.unitOfMeasure}</td>
                 <td className="px-3 py-2 text-right">{item.quantity}</td>
@@ -989,12 +989,12 @@ function TravelExpensesBlockContent({ survey }: { survey: Survey }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-cyan-50">
+        <thead className="bg-amber-50">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Item</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Descripcion</th>
-            <th className="px-3 py-2 text-right text-xs font-semibold text-cyan-800">Cantidad</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-cyan-800">Observaciones</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Item</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cantidad</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Observaciones</th>
           </tr>
         </thead>
         <tbody>

@@ -1,4 +1,32 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
+
+function FormattedNumberInput({
+  defaultValue,
+  onCommit,
+  className,
+}: {
+  defaultValue: string;
+  onCommit: (value: string) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [raw, setRaw] = useState(defaultValue);
+  const formatted = raw !== '' && !isNaN(Number(raw))
+    ? Number(raw).toLocaleString('es-CO')
+    : raw;
+  return (
+    <Input
+      type={editing ? 'number' : 'text'}
+      min="0"
+      step="any"
+      value={editing ? raw : formatted}
+      onChange={(e) => setRaw(e.target.value)}
+      onFocus={() => setEditing(true)}
+      onBlur={() => { setEditing(false); onCommit(raw); }}
+      className={className}
+    />
+  );
+}
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -46,6 +74,7 @@ export interface TravelExpenseItemData {
   expenseType: string;
   description: string;
   quantity: string;
+  unitPrice: string;
   observations: string;
   isCustom?: boolean;
 }
@@ -62,6 +91,7 @@ export const createInitialTravelExpenses = (): TravelExpenseItemData[] => {
     expenseType,
     description: EXPENSE_TYPE_LABELS[expenseType],
     quantity: '',
+    unitPrice: '',
     observations: '',
   }));
 };
@@ -70,7 +100,7 @@ export const createInitialTravelExpenses = (): TravelExpenseItemData[] => {
 interface TravelExpenseRowProps {
   item: TravelExpenseItemData;
   index: number;
-  onFieldChange: (index: number, field: 'quantity' | 'observations' | 'description', value: string) => void;
+  onFieldChange: (index: number, field: 'quantity' | 'unitPrice' | 'observations' | 'description', value: string) => void;
 }
 
 const TravelExpenseRow = memo(function TravelExpenseRow({
@@ -107,12 +137,38 @@ const TravelExpenseRow = memo(function TravelExpenseRow({
       <td className="px-1 py-1 w-32">
         <Input
           type="number"
-          step="0.01"
+          step="any"
           min="0"
           defaultValue={item.quantity}
           onBlur={(e) => onFieldChange(index, 'quantity', e.target.value)}
           className="h-7 text-xs text-center"
         />
+      </td>
+      {/* V. UNITARIO */}
+      <td className="px-1 py-1 w-32">
+        <FormattedNumberInput
+          defaultValue={item.unitPrice}
+          onCommit={(v) => onFieldChange(index, 'unitPrice', v)}
+          className="h-7 text-xs text-center"
+        />
+      </td>
+      {/* V. TOTAL */}
+      <td className="px-1 py-1 w-36">
+        <div className="h-7 flex items-center justify-center text-xs font-medium text-[hsl(var(--canalco-neutral-800))] bg-[hsl(var(--canalco-neutral-100))] border border-[hsl(var(--canalco-neutral-200))] rounded-md px-2">
+          {(() => {
+            const q = parseFloat(item.quantity);
+            const u = parseFloat(item.unitPrice);
+            if (!isNaN(q) && !isNaN(u) && (q !== 0 || u !== 0)) {
+              return new Intl.NumberFormat('es-CO', {
+                style: 'currency',
+                currency: 'COP',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(q * u);
+            }
+            return '-';
+          })()}
+        </div>
       </td>
       {/* OBSERVACIONES */}
       <td className="px-1 py-1 min-w-[200px]">
@@ -134,7 +190,7 @@ export function TravelExpensesSection({
 }: TravelExpensesSectionProps) {
   // Handle field change - updates on blur
   const handleFieldChange = useCallback(
-    (index: number, field: 'quantity' | 'observations' | 'description', value: string) => {
+    (index: number, field: 'quantity' | 'unitPrice' | 'observations' | 'description', value: string) => {
       const newItems = [...items];
       if (field === 'description') {
         // For custom rows, description is also stored as expenseType for backend
@@ -154,6 +210,7 @@ export function TravelExpensesSection({
       expenseType: '',
       description: '',
       quantity: '',
+      unitPrice: '',
       observations: '',
       isCustom: true,
     };
@@ -182,6 +239,12 @@ export function TravelExpensesSection({
               </th>
               <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-32">
                 CANTIDAD
+              </th>
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-32">
+                V. UNITARIO
+              </th>
+              <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-36">
+                V. TOTAL
               </th>
               <th className="px-2 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] min-w-[200px]">
                 OBSERVACIONES

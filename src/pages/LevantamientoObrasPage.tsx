@@ -3,39 +3,39 @@ import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LevantamientoObrasPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { hasPermission } = useGranularPermissions();
+
+  const isDirectorTecnico = user?.nombreRol === 'Director Técnico';
 
   const getSubModuleAccess = (slug: string): boolean => {
     switch (slug) {
       case 'obras':
-        return hasPermission('levantamientos:ver');
+        return hasPermission('levantamientos:obras');
       case 'crear-obra':
-        return hasPermission('levantamientos:crear');
+        return hasPermission('levantamientos:nueva-obra') || isDirectorTecnico;
       case 'levantamientos':
-        return hasPermission('levantamientos:ver');
-      case 'revisar-levantamientos':
-        return hasPermission('levantamientos:revisar');
+        return hasPermission('levantamientos:levantamientos');
       case 'ucaps':
-        return hasPermission('levantamientos:ver');
+        return hasPermission('levantamientos:ucaps');
       case 'presupuesto':
-        return hasPermission('levantamientos:ver');
+        return hasPermission('levantamientos:presupuesto');
+      case 'presupuestos-list':
+        return !isDirectorTecnico && (hasPermission('levantamientos:presupuesto') || hasPermission('levantamientos:aprobar'));
+      case 'plan-anual':
+        return hasPermission('levantamientos:plan-anual') || hasPermission('levantamientos:autorizar');
+      case 'cronograma':
+        return hasPermission('levantamientos:cronograma');
       default:
         return false;
     }
   };
 
   const subModules = [
-    {
-      gestionId: 401,
-      nombre: 'Obras',
-      slug: 'obras',
-      icono: 'Building2',
-      hasAccess: getSubModuleAccess('obras'),
-      description: 'Ver listado de obras registradas',
-    },
     {
       gestionId: 402,
       nombre: 'Nueva Obra',
@@ -53,12 +53,36 @@ export default function LevantamientoObrasPage() {
       description: 'Ver levantamientos realizados',
     },
     {
-      gestionId: 404,
-      nombre: 'Revisar Levantamientos',
-      slug: 'revisar-levantamientos',
-      icono: 'CheckSquare',
-      hasAccess: getSubModuleAccess('revisar-levantamientos'),
-      description: 'Aprobar o rechazar levantamientos pendientes',
+      gestionId: 401,
+      nombre: 'Obras',
+      slug: 'obras',
+      icono: 'Building2',
+      hasAccess: getSubModuleAccess('obras'),
+      description: 'Ver listado de obras registradas',
+    },
+    {
+      gestionId: 406,
+      nombre: 'Presupuesto',
+      slug: 'presupuesto',
+      icono: 'Calculator',
+      hasAccess: getSubModuleAccess('presupuesto'),
+      description: 'Elaborar presupuesto director de proyectos',
+    },
+    {
+      gestionId: 407,
+      nombre: 'Ver Presupuestos',
+      slug: 'presupuestos-list',
+      icono: 'FolderOpen',
+      hasAccess: getSubModuleAccess('presupuestos-list'),
+      description: 'Ver y editar presupuestos guardados',
+    },
+    {
+      gestionId: 409,
+      nombre: 'Plan Anual',
+      slug: 'plan-anual',
+      icono: 'CalendarDays',
+      hasAccess: getSubModuleAccess('plan-anual'),
+      description: 'Asignar obras al plan anual por año',
     },
     {
       gestionId: 405,
@@ -69,12 +93,12 @@ export default function LevantamientoObrasPage() {
       description: 'Ver y crear UCAPs por municipio',
     },
     {
-      gestionId: 406,
-      nombre: 'Presupuesto',
-      slug: 'presupuesto',
-      icono: 'Calculator',
-      hasAccess: getSubModuleAccess('presupuesto'),
-      description: 'Elaborar presupuesto director de proyectos',
+      gestionId: 410,
+      nombre: 'Cronograma',
+      slug: 'cronograma',
+      icono: 'CalendarRange',
+      hasAccess: getSubModuleAccess('cronograma'),
+      description: 'Ver avance y fechas de ejecución por obra',
     },
   ];
 
@@ -95,14 +119,20 @@ export default function LevantamientoObrasPage() {
       case 'levantamientos':
         navigate('/dashboard/levantamiento-obras/levantamientos');
         break;
-      case 'revisar-levantamientos':
-        navigate('/dashboard/levantamiento-obras/levantamientos/revisar');
-        break;
       case 'ucaps':
         navigate('/dashboard/levantamiento-obras/ucaps');
         break;
       case 'presupuesto':
         navigate('/dashboard/levantamiento-obras/presupuesto');
+        break;
+      case 'presupuestos-list':
+        navigate('/dashboard/levantamiento-obras/presupuestos');
+        break;
+      case 'plan-anual':
+        navigate('/dashboard/levantamiento-obras/plan-anual');
+        break;
+      case 'cronograma':
+        navigate('/dashboard/levantamiento-obras/cronograma');
         break;
     }
   };
@@ -134,7 +164,7 @@ export default function LevantamientoObrasPage() {
               </Button>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                  Levantamiento de Obras
+                  Obras
                 </h1>
                 <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
                   Gestión de obras y levantamientos de campo
@@ -150,7 +180,7 @@ export default function LevantamientoObrasPage() {
         {/* Welcome Section */}
         <div className="mb-12 text-center">
           <h2 className="text-3xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-3">
-            Módulo de Levantamiento de Obras
+            Módulo de Obras
           </h2>
           <p className="text-lg text-[hsl(var(--canalco-neutral-600))]">
             Selecciona una opción para gestionar obras y levantamientos
@@ -180,12 +210,6 @@ export default function LevantamientoObrasPage() {
             <li className="flex items-start gap-2">
               <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
               <span>
-                <strong>Obras:</strong> Consulta y administra el listado de obras registradas en el sistema.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
-              <span>
                 <strong>Nueva Obra:</strong> Registra una nueva obra con todos sus datos de presentación.
               </span>
             </li>
@@ -193,6 +217,42 @@ export default function LevantamientoObrasPage() {
               <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
               <span>
                 <strong>Levantamientos:</strong> Gestiona los levantamientos de campo asociados a las obras.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Obras:</strong> Consulta y administra el listado de obras registradas en el sistema (individuales y agrupadas).
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Presupuesto:</strong> Elabora presupuestos del director de proyectos con materiales, mano de obra y costos adicionales.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Ver Presupuestos:</strong> Consulta y edita los presupuestos guardados, filtrados por departamento.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Plan Anual:</strong> Asigna obras al plan anual por año y departamento.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>UCAPs:</strong> Consulta y crea Unidades de Capacidad por municipio y tipo de red.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Cronograma:</strong> Consulta y registra el avance y las fechas de ejecución por obra.
               </span>
             </li>
             <li className="flex items-start gap-2">

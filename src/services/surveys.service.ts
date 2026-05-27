@@ -7,6 +7,7 @@ export interface Work {
   workId: number;
   workCode: string;
   companyId: number;
+  projectId?: number;
   name: string;
   address: string;
   neighborhood: string;
@@ -19,6 +20,7 @@ export interface Work {
   areaType: string;
   requestType: string;
   filingNumber?: string;
+  annualPlan?: number;
   requestDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +33,7 @@ export interface Work {
 
 export interface CreateWorkDto {
   companyId: number;
+  projectId?: number;
   name: string;
   address: string;
   neighborhood: string;
@@ -43,6 +46,7 @@ export interface CreateWorkDto {
   areaType: string;
   requestType: string;
   filingNumber?: string;
+  annualPlan?: number;
   requestDate?: string;
 }
 
@@ -161,6 +165,7 @@ export interface Survey {
     travelExpenseId?: number;
     expenseType: string;
     quantity: number;
+    unitPrice?: number;
     observations?: string;
   }>;
 }
@@ -229,6 +234,7 @@ export interface ReviewBlockDto {
 export interface SurveyDatabaseFilters {
   companyId?: number | number[];
   projectId?: number;
+  projectIds?: number[];
   page?: number;
   limit?: number;
   search?: string;
@@ -250,6 +256,18 @@ export interface SurveyDatabaseItem {
   recordNumber?: string;
   companyId: number;
   companyName: string;
+  projectId?: number;
+  projectName?: string;
+  workCode?: string;
+  neighborhood?: string;
+  sectorVillage?: string;
+  address?: string;
+  zone?: string;
+  areaType?: string;
+  requestType?: string;
+  userName?: string;
+  userAddress?: string;
+  requestingEntity?: string;
   // Block statuses
   budgetStatus: BlockStatus;
   budgetComments?: string;
@@ -279,11 +297,13 @@ export interface SurveyFilters {
   page?: number;
   limit?: number;
   companyId?: number | number[];
+  projectIds?: number[];
   workId?: number;
-  statusCode?: string;
+  status?: string;
   search?: string;
   startDate?: string;
   endDate?: string;
+  createdBy?: number;
 }
 
 export interface SurveysListResponse {
@@ -377,12 +397,7 @@ export const surveysService = {
   },
 
   async getWorks(params?: { companyId?: number | number[]; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
-    // Convert companyId array to comma-separated string if needed
-    const queryParams = { ...params };
-    if (Array.isArray(queryParams.companyId)) {
-      (queryParams as any).companyId = queryParams.companyId.join(',');
-    }
-    const response = await api.get('/surveys/works', { params: queryParams });
+    const response = await api.get('/surveys/works', { params });
     return response.data;
   },
 
@@ -408,12 +423,7 @@ export const surveysService = {
   },
 
   async getSurveys(filters?: SurveyFilters): Promise<SurveysListResponse> {
-    // Convert companyId array to comma-separated string if needed
-    const queryParams = { ...filters };
-    if (queryParams && Array.isArray(queryParams.companyId)) {
-      (queryParams as any).companyId = queryParams.companyId.join(',');
-    }
-    const response = await api.get('/surveys', { params: queryParams });
+    const response = await api.get('/surveys', { params: filters });
     return response.data;
   },
 
@@ -466,12 +476,7 @@ export const surveysService = {
   // ---- DATABASE VIEW ----
 
   async getSurveysDatabase(filters?: SurveyDatabaseFilters): Promise<SurveyDatabaseResponse> {
-    // Convert companyId array to comma-separated string if needed
-    const queryParams = { ...filters };
-    if (queryParams && Array.isArray(queryParams.companyId)) {
-      (queryParams as any).companyId = queryParams.companyId.join(',');
-    }
-    const response = await api.get('/surveys/database', { params: queryParams });
+    const response = await api.get('/surveys/database', { params: filters });
     return response.data;
   },
 
@@ -568,6 +573,33 @@ export const surveysService = {
   async deleteUserAccess(accessId: number): Promise<void> {
     await api.delete(`/surveys/user-access/${accessId}`);
   },
+
+  // ---- WORK ACTA WORKFLOW ----
+
+  async getWorkActa(actaNumber: string): Promise<WorkActa | null> {
+    const response = await api.get(`/surveys/actas/${encodeURIComponent(actaNumber)}`);
+    return response.data;
+  },
+
+  async getWorkActasBulk(actaNumbers: string[]): Promise<WorkActa[]> {
+    const response = await api.post('/surveys/actas/bulk-status', { actaNumbers });
+    return response.data;
+  },
+
+  async submitActaForReview(actaNumber: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/submit`);
+    return response.data;
+  },
+
+  async reviewActa(actaNumber: string, approved: boolean, comment?: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/review`, { approved, comment });
+    return response.data;
+  },
+
+  async approveActa(actaNumber: string, projectCode: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/approve`, { projectCode });
+    return response.data;
+  },
 };
 
 // Reviewer Access Types
@@ -601,6 +633,26 @@ export interface UserAccessRecord {
   companyId?: number;
   projectId?: number;
   createdAt: string;
+}
+
+// ============================================
+// TYPES - Work Acta Workflow
+// ============================================
+export type ActaStatus = 'borrador' | 'en_revision' | 'en_aprobacion' | 'aprobada';
+
+export interface WorkActa {
+  actaId: number;
+  actaNumber: string;
+  status: ActaStatus;
+  projectCode: string | null;
+  createdBy: number;
+  reviewedBy: number | null;
+  reviewedAt: string | null;
+  approvedBy: number | null;
+  approvedAt: string | null;
+  rejectionComment: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default surveysService;

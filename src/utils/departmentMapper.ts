@@ -1,116 +1,116 @@
 /**
- * Mapeo de departamentos a empresas
- * Agrupa las empresas por departamento geográfico
+ * Mapeo de departamentos a empresas y proyectos
+ * Agrupa las entidades por departamento geográfico
  */
 
-export const DEPARTMENT_MAPPING: Record<string, string[]> = {
-  Antioquia: [
-    'Jericó',
-    'Ciudad Bolívar',
-    'Tarso',
-    'Pueblo Rico',
-    'Unión Temporal Alumbrado Público Santa Bárbara'
-  ],
-  'Valle del Cauca': [
-    'Unión Temporal Alumbrado Público El Cerrito',
-    'Unión Temporal Alumbrado Público Guacarí',
-    'Unión Temporal Alumbrado Público Jamundí'
-  ],
-  Quindío: [
-    'Unión Temporal Alumbrado Público Circasia',
-    'Unión Temporal Alumbrado Público Quimbaya'
-  ],
-  Putumayo: [
-    'Unión Temporal Alumbrado Público Puerto Asís'
-  ],
+const normalizeMunicipalityName = (name: string): string =>
+  name
+    .replace(/^UniÃ³n Temporal Alumbrado PÃºblico\s+/i, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^union temporal alumbrado publico\s+/i, '')
+    .toLowerCase()
+    .trim();
+
+export function getMunicipioName(name: string): string {
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^union temporal alumbrado publico\s+/i, '')
+    .trim();
+  if (normalized !== name) return normalized || name;
+  const prefix = 'Unión Temporal Alumbrado Público ';
+  return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects: string[] }> = {
+  Antioquia: {
+    companies: ['Unión Temporal Alumbrado Público Santa Bárbara'],
+    projects: ['Jericó', 'Ciudad Bolívar', 'Tarso', 'Pueblo Rico'],
+  },
+  'Valle del Cauca': {
+    companies: [
+      'Unión Temporal Alumbrado Público El Cerrito',
+      'Unión Temporal Alumbrado Público Guacarí',
+    ],
+    projects: [],
+  },
+  Quindío: {
+    companies: [
+      'Unión Temporal Alumbrado Público Circasia',
+      'Unión Temporal Alumbrado Público Quimbaya',
+    ],
+    projects: [],
+  },
+  Putumayo: {
+    companies: ['Unión Temporal Alumbrado Público Puerto Asís'],
+    projects: [],
+  },
 };
+
+export interface Municipality {
+  id: number;
+  name: string;
+  type: 'company' | 'project';
+}
 
 export interface Department {
   name: string;
   companyIds: number[];
+  projectIds: number[];
+  municipalities: Municipality[];
+  /** @deprecated Use municipalities instead */
   companies: Array<{ companyId: number; name: string }>;
-  projectIds?: number[];
-  projects?: Array<{ projectId: number; name: string; companyId: number }>;
+  /** @deprecated Use municipalities instead */
+  projects: Array<{ projectId: number; name: string; companyId: number }>;
 }
 
-/**
- * Mapea una lista de empresas a departamentos
- * Solo retorna departamentos donde el usuario tiene al menos una empresa
- *
- * @param companies - Lista de empresas a las que el usuario tiene acceso
- * @returns Array de departamentos con sus empresas asociadas
- */
-export function mapCompaniesToDepartments(
-  companies: Array<{ companyId: number; name: string }>
+export function mapToDepartments(
+  companies: Array<{ companyId: number; name: string }>,
+  projects: Array<{ projectId: number; name: string; companyId: number }>,
 ): Department[] {
-  console.log('🔍 [departmentMapper] Empresas recibidas:', companies);
-  console.log('🔍 [departmentMapper] Mapeo de departamentos:', DEPARTMENT_MAPPING);
-
   const departments: Department[] = [];
 
-  for (const [deptName, companyNames] of Object.entries(DEPARTMENT_MAPPING)) {
-    // Filtrar empresas que pertenecen a este departamento
-    const deptCompanies = companies.filter((c) =>
-      companyNames.includes(c.name)
+  for (const [deptName, mapping] of Object.entries(DEPARTMENT_MAPPING)) {
+    const allowedNames = new Set(
+      [...mapping.companies, ...mapping.projects].map(normalizeMunicipalityName),
     );
+    const deptCompanies = companies.filter((c) => allowedNames.has(normalizeMunicipalityName(c.name)));
+    const deptProjects = projects.filter((p) => allowedNames.has(normalizeMunicipalityName(p.name)));
 
-    console.log(`🔍 [departmentMapper] ${deptName}:`, {
-      expectedCompanies: companyNames,
-      foundCompanies: deptCompanies,
-      allCompanyNames: companies.map(c => c.name),
-      comparisons: companies.map(c => ({
-        name: c.name,
-        matchesAny: companyNames.some(expected => {
-          const match = expected === c.name;
-          console.log(`  "${expected}" === "${c.name}" ? ${match}`);
-          return match;
-        })
-      }))
+    if (deptCompanies.length === 0 && deptProjects.length === 0) continue;
+
+    const municipalities = [
+      ...deptCompanies.map((c) => ({ id: c.companyId, name: c.name, type: 'company' as const })),
+      ...deptProjects.map((p) => ({ id: p.projectId, name: p.name, type: 'project' as const })),
+    ].filter((municipality, index, all) => {
+      const name = normalizeMunicipalityName(municipality.name);
+      return all.findIndex((item) => normalizeMunicipalityName(item.name) === name) === index;
     });
 
-    // Solo agregar departamento si el usuario tiene acceso a al menos una empresa
-    if (deptCompanies.length > 0) {
-      departments.push({
-        name: deptName,
-        companyIds: deptCompanies.map((c) => c.companyId),
-        companies: deptCompanies,
-      });
-    }
+    departments.push({
+      name: deptName,
+      companyIds: deptCompanies.map((c) => c.companyId),
+      projectIds: deptProjects.map((p) => p.projectId),
+      companies: deptCompanies.map((c) => ({ companyId: c.companyId, name: c.name })),
+      projects: deptProjects.map((p) => ({ projectId: p.projectId, name: p.name, companyId: p.companyId })),
+      municipalities,
+    });
   }
 
-  console.log('🔍 [departmentMapper] Departamentos finales:', departments);
   return departments;
 }
 
-/**
- * Mapea una lista de proyectos a departamentos
- * Solo retorna departamentos donde el usuario tiene al menos un proyecto
- *
- * @param projects - Lista de proyectos a los que el usuario tiene acceso
- * @returns Array de departamentos con sus proyectos asociados
- */
-export function mapProjectsToDepartments(
-  projects: Array<{ projectId: number; name: string; companyId: number }>
+/** @deprecated Use mapToDepartments instead */
+export function mapCompaniesToDepartments(
+  companies: Array<{ companyId: number; name: string }>,
 ): Department[] {
-  const departments: Department[] = [];
+  return mapToDepartments(companies, []);
+}
 
-  for (const [deptName, locationNames] of Object.entries(DEPARTMENT_MAPPING)) {
-    // Filtrar proyectos que pertenecen a este departamento
-    const deptProjects = projects.filter((p) =>
-      locationNames.includes(p.name)
-    );
-
-    // Solo agregar departamento si el usuario tiene acceso a al menos un proyecto
-    if (deptProjects.length > 0) {
-      departments.push({
-        name: deptName,
-        companyIds: [],
-        companies: [],
-        projectIds: deptProjects.map((p) => p.projectId),
-        projects: deptProjects,
-      });
-    }
-  }
-
-  return departments;
+/** @deprecated Use mapToDepartments instead */
+export function mapProjectsToDepartments(
+  projects: Array<{ projectId: number; name: string; companyId: number }>,
+): Department[] {
+  return mapToDepartments([], projects);
 }

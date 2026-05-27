@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto, type CreateSurveyDto } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
-import { usersService, type User } from '@/services/users.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
 import { InvestmentSection, createInitialInvestmentData, type InvestmentSectionData } from '@/components/surveys/InvestmentSection';
@@ -14,10 +13,24 @@ import { Home, ArrowLeft, Save, CheckCircle, X, Loader2 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
-// IDs de roles para PQRS y Coordinador Operativo (recibedores)
-const RECEIVER_ROLE_IDS = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 32];
-// IDs de roles para revisores
-const REVIEWER_ROLE_IDS = [8, 9, 10, 11];
+const STATIC_RECEIVERS = [
+  { userId: 1, nombre: 'Angela Franco' },
+  { userId: 2, nombre: 'Sandra Calero' },
+  { userId: 3, nombre: 'Yamile Rodriguez Marin' },
+  { userId: 4, nombre: 'Laura Barón' },
+  { userId: 5, nombre: 'Danelly Ramirez' },
+  { userId: 6, nombre: 'Yuliana Taborda' },
+  { userId: 7, nombre: 'Estefania Serna' },
+  { userId: 8, nombre: 'Edwin Salazar' },
+  { userId: 9, nombre: 'Yazmin Salcedo' },
+];
+
+const STATIC_REVIEWERS = [
+  { userId: 101, nombre: 'Alexander Becerra' },
+  { userId: 102, nombre: 'Andrés Izquierdo' },
+  { userId: 103, nombre: 'Juan Gomez' },
+  { userId: 104, nombre: 'Carlos Chamorro' },
+];
 
 interface FormData {
   companyId: number | null;
@@ -34,6 +47,7 @@ interface FormData {
   areaType: string;
   requestType: string;
   filingNumber: string;
+  annualPlan: string;
   requestDate: string;
   receivedById: number | null;
   assignedReviewerId: number | null;
@@ -54,6 +68,7 @@ const INITIAL_FORM_DATA: FormData = {
   areaType: '',
   requestType: '',
   filingNumber: '',
+  annualPlan: '',
   requestDate: new Date().toISOString().split('T')[0],
   receivedById: null,
   assignedReviewerId: null,
@@ -68,8 +83,8 @@ export default function CrearObraPage() {
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [receivers, setReceivers] = useState<User[]>([]);
-  const [reviewers, setReviewers] = useState<User[]>([]);
+  const [receivers] = useState(STATIC_RECEIVERS);
+  const [reviewers] = useState(STATIC_REVIEWERS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,30 +150,18 @@ export default function CrearObraPage() {
 
       // Cargar empresas (resiliente a errores de permisos)
       try {
+        const EXCLUDED_COMPANIES = ['Canales & Contactos', 'Inversiones Garcés Escalante', 'Uniones y Alianzas', 'Unión Temporal Alumbrado Público Jamundí'];
         const companiesData = await masterDataService.getCompanies();
-        setCompanies(Array.isArray(companiesData) ? companiesData : []);
+        setCompanies(
+          (Array.isArray(companiesData) ? companiesData : []).filter(
+            (c) => !EXCLUDED_COMPANIES.includes(c.name),
+          ),
+        );
       } catch (err: any) {
         console.warn('Error loading companies (continuando de todos modos):', err);
         setCompanies([]);
       }
 
-      // Cargar usuarios recibedores (resiliente a errores de permisos)
-      try {
-        const receiversData = await usersService.getByRoles(RECEIVER_ROLE_IDS);
-        setReceivers(receiversData);
-      } catch (err: any) {
-        console.warn('Error loading receivers (continuando de todos modos):', err);
-        setReceivers([]);
-      }
-
-      // Cargar usuarios revisores (resiliente a errores de permisos)
-      try {
-        const reviewersData = await usersService.getByRoles(REVIEWER_ROLE_IDS);
-        setReviewers(reviewersData);
-      } catch (err: any) {
-        console.warn('Error loading reviewers (continuando de todos modos):', err);
-        setReviewers([]);
-      }
 
       // Si es modo edición, cargar la obra y su levantamiento
       if (isEditMode && id) {
@@ -179,6 +182,7 @@ export default function CrearObraPage() {
           areaType: work.areaType || '',
           requestType: work.requestType || '',
           filingNumber: work.filingNumber || '',
+          annualPlan: work.annualPlan ? String(work.annualPlan) : '',
           requestDate: work.requestDate || '',
           receivedById: null, // TODO: Cargar desde work si existe
           assignedReviewerId: null, // TODO: Cargar desde work si existe
@@ -291,6 +295,7 @@ export default function CrearObraPage() {
                   loadedTravelExpenses[expenseIndex] = {
                     ...loadedTravelExpenses[expenseIndex],
                     quantity: expense.quantity?.toString() || '',
+                    unitPrice: expense.unitPrice?.toString() || '',
                     observations: expense.observations || '',
                   };
                 } else if (!FIXED_EXPENSE_TYPES.has(expense.expenseType)) {
@@ -299,6 +304,7 @@ export default function CrearObraPage() {
                     expenseType: expense.expenseType,
                     description: expense.expenseType,
                     quantity: expense.quantity?.toString() || '',
+                    unitPrice: expense.unitPrice?.toString() || '',
                     observations: expense.observations || '',
                     isCustom: true,
                   });
@@ -387,6 +393,7 @@ export default function CrearObraPage() {
       // Step 1: Create or update Work
       const workData: CreateWorkDto = {
         companyId: formData.companyId!,
+        projectId: formData.projectId ?? undefined,
         name: formData.name.trim(),
         address: formData.address.trim(),
         neighborhood: formData.neighborhood.trim(),
@@ -399,6 +406,7 @@ export default function CrearObraPage() {
         areaType: formData.areaType.trim() || '',
         requestType: formData.requestType,
         filingNumber: formData.filingNumber.trim() || '',
+        annualPlan: formData.annualPlan ? parseInt(formData.annualPlan, 10) || undefined : undefined,
       };
 
       let workResult;
@@ -447,8 +455,8 @@ export default function CrearObraPage() {
             relocatedLuminaireQuantity: parseFloat(item.lumRelocatedQuantity) || undefined,
             poleQuantity: parseFloat(item.poleQuantity) || undefined,
             braidedNetwork: item.twistedNetwork || undefined,
-            latitude: item.latitude || undefined,
-            longitude: item.longitude || undefined,
+            latitude: item.latitude ? parseFloat(item.latitude) : undefined,
+            longitude: item.longitude ? parseFloat(item.longitude) : undefined,
           })),
         // Material items (filter only items with materialId)
         materialItems: materialItems
@@ -465,6 +473,7 @@ export default function CrearObraPage() {
           .map((item) => ({
             expenseType: item.expenseType,
             quantity: parseFloat(item.quantity) || 0,
+            unitPrice: item.unitPrice ? parseFloat(item.unitPrice) : undefined,
             observations: item.observations || undefined,
           })),
       };
@@ -566,7 +575,7 @@ export default function CrearObraPage() {
             {/* Center: Title */}
             <div className="flex-grow text-center">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Levantamiento de Obras
+                Obras
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
                 {isEditMode ? 'Editar Obra' : 'Nueva Obra'}

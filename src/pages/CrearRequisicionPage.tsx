@@ -12,6 +12,8 @@ import type {
   ProjectCode,
 } from '@/services/master-data.service';
 import type { CreateRequisitionItemDto } from '@/services/requisitions.service';
+import { surveysService } from '@/services/surveys.service';
+import type { Survey } from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,13 +32,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Home, Menu, Save, Plus, Trash2, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Home, Menu, Save, Plus, Trash2, CheckCircle, ArrowLeft, Loader2, FileText } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
 interface RequisitionItem extends CreateRequisitionItemDto {
   tempId: string; // Temporary ID for React key
   material?: Material; // Material details for display
+}
+
+interface ActaGroup {
+  recordNumber: string;
+  surveys: Survey[];
+  companyId: number;
+  obraCount: number;
 }
 
 export default function CrearRequisicionPage() {
@@ -62,6 +71,14 @@ export default function CrearRequisicionPage() {
   const [priority, setPriority] = useState<'alta' | 'normal'>('normal');
   const [items, setItems] = useState<RequisitionItem[]>([]);
 
+  // Actas aprobadas (auto-fill)
+  const [approvedActas, setApprovedActas] = useState<Survey[]>([]);
+  const [actaGroups, setActaGroups] = useState<ActaGroup[]>([]);
+  const [loadingActas, setLoadingActas] = useState(false);
+  const [loadingActaDetails, setLoadingActaDetails] = useState(false);
+  const [selectedActaId, setSelectedActaId] = useState<number | null>(null);
+  const [selectedActaGroup, setSelectedActaGroup] = useState<string>('');
+
   // Success/Error state
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +91,146 @@ export default function CrearRequisicionPage() {
   // Load master data on mount
   useEffect(() => {
     loadMasterData();
+    loadApprovedActas();
   }, []);
+
+  const loadApprovedActas = async () => {
+    try {
+      setLoadingActas(true);
+      const result = await surveysService.getSurveys({ status: 'approved', limit: 500 });
+      // Restricción: solo mostrar actas con presupuesto aprobado
+      const withApprovedBudget = result.data.filter((s) => s.budgetStatus === 'approved');
+      setApprovedActas(withApprovedBudget);
+
+      // Group surveys by recordNumber (número de acta)
+      const groupMap = new Map<string, Survey[]>();
+      withApprovedBudget.forEach((survey) => {
+        const key = survey.work?.recordNumber || survey.projectCode || `${survey.surveyId}`;
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key)!.push(survey);
+      });
+      const groups: ActaGroup[] = [];
+      groupMap.forEach((surveys, recordNumber) => {
+        groups.push({
+          recordNumber,
+          surveys,
+          companyId: surveys[0].work?.companyId || 0,
+          obraCount: surveys.length,
+        });
+      });
+      // Actas multi-obra primero, luego por nombre
+      groups.sort((a, b) => b.obraCount - a.obraCount || a.recordNumber.localeCompare(b.recordNumber));
+      setActaGroups(groups);
+    } catch (err) {
+      console.error('Error loading approved actas:', err);
+    } finally {
+      setLoadingActas(false);
+    }
+  };
+
+  const handleActaSelected = async (surveyId: number) => {
+    setSelectedActaId(surveyId);
+    setLoadingActaDetails(true);
+    try {
+      // Use already-loaded data from the list (includes materialItems + work relations)
+      // to avoid an extra API call and permission issues
+      let survey = approvedActas.find((s) => s.surveyId === surveyId) || null;
+      if (!survey) {
+        survey = await surveysService.getSurveyById(surveyId);
+      }
+
+      // Auto-fill empresa
+      if (survey.work?.companyId) {
+        setCompanyId(survey.work.companyId);
+      }
+
+      // Código de obra se deja vacío para ingreso manual
+
+      // Auto-fill ítems desde los materiales del levantamiento
+      if (survey.materialItems && survey.materialItems.length > 0) {
+        const newItems: RequisitionItem[] = survey.materialItems
+          .filter((mi) => mi.materialId && Number(mi.quantity) > 0)
+          .map((mi, idx) => ({
+            tempId: `acta-${surveyId}-${mi.materialId}-${idx}`,
+            materialId: mi.materialId,
+            quantity: Math.max(1, Math.round(Number(mi.quantity))),
+            observation: mi.observations || '',
+            material: mi.material
+              ? {
+                  materialId: mi.material.materialId,
+                  code: mi.material.code,
+                  description: mi.material.description,
+                  groupId: materials.find((m) => m.materialId === mi.material!.materialId)?.groupId ?? 0,
+                  materialGroup: materials.find((m) => m.materialId === mi.material!.materialId)?.materialGroup ?? {
+                    groupId: 0,
+                    name: 'Sin grupo',
+                    categoryId: 0,
+                    category: { categoryId: 0, name: '', description: '' },
+                  },
+                }
+              : undefined,
+          }));
+        setItems(newItems);
+      }
+
+      // Prioridad alta por ser desde acta aprobada
+      setPriority('alta');
+    } catch (err) {
+      console.error('Error loading survey details:', err);
+    } finally {
+      setLoadingActaDetails(false);
+    }
+  };
+
+  const handleActaGroupSelected = (recordNumber: string) => {
+    setSelectedActaGroup(recordNumber);
+    setSelectedActaId(null);
+    setLoadingActaDetails(true);
+    try {
+      const group = actaGroups.find((g) => g.recordNumber === recordNumber);
+      if (!group) return;
+
+      if (group.companyId) setCompanyId(group.companyId);
+
+      // Consolidar materialItems de todos los levantamientos del acta
+      const itemMap = new Map<number, RequisitionItem>();
+      group.surveys.forEach((survey) => {
+        (survey.materialItems || [])
+          .filter((mi) => mi.materialId && Number(mi.quantity) > 0)
+          .forEach((mi) => {
+            const existing = itemMap.get(mi.materialId);
+            if (existing) {
+              existing.quantity += Math.max(1, Math.round(Number(mi.quantity)));
+            } else {
+              itemMap.set(mi.materialId, {
+                tempId: `acta-group-${recordNumber}-${mi.materialId}`,
+                materialId: mi.materialId,
+                quantity: Math.max(1, Math.round(Number(mi.quantity))),
+                observation: mi.observations || '',
+                material: mi.material
+                  ? {
+                      materialId: mi.material.materialId,
+                      code: mi.material.code,
+                      description: mi.material.description,
+                      groupId: materials.find((m) => m.materialId === mi.material!.materialId)?.groupId ?? 0,
+                      materialGroup: materials.find((m) => m.materialId === mi.material!.materialId)?.materialGroup ?? {
+                        groupId: 0,
+                        name: 'Sin grupo',
+                        categoryId: 0,
+                        category: { categoryId: 0, name: '', description: '' },
+                      },
+                    }
+                  : undefined,
+              });
+            }
+          });
+      });
+      setItems(Array.from(itemMap.values()));
+      setPriority('alta');
+    } finally {
+      setLoadingActaDetails(false);
+    }
+  };
 
   const loadMasterData = async () => {
     try {
@@ -284,6 +440,12 @@ export default function CrearRequisicionPage() {
       return false;
     }
 
+    // Restricción: código de contabilidad obligatorio cuando viene de un acta
+    if ((selectedActaGroup || selectedActaId) && !codigoObra.trim()) {
+      alert('Debe ingresar el Código de Contabilidad (Código de obra) para requisiciones generadas desde un acta');
+      return false;
+    }
+
     if (items.length === 0) {
       alert('Debe agregar al menos un material a la requisición');
       return false;
@@ -470,6 +632,69 @@ export default function CrearRequisicionPage() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Cargar desde Acta Aprobada */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 hidden">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-sm font-semibold text-blue-800">
+                    Cargar desde Acta Aprobada <span className="font-normal text-blue-600">(opcional)</span>
+                  </h3>
+                </div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[260px] max-w-md">
+                    <Label htmlFor="acta-select" className="text-xs text-blue-700 mb-1 block">
+                      Número de Acta
+                    </Label>
+                    {loadingActas ? (
+                      <div className="flex items-center gap-2 text-sm text-blue-600 h-9">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Cargando actas aprobadas...
+                      </div>
+                    ) : (
+                      <Select
+                        value={selectedActaGroup || (selectedActaId ? String(selectedActaId) : '')}
+                        onValueChange={(val) => {
+                          const group = actaGroups.find((g) => g.recordNumber === val);
+                          if (group) {
+                            handleActaGroupSelected(val);
+                          } else {
+                            handleActaSelected(Number(val));
+                          }
+                        }}
+                      >
+                        <SelectTrigger id="acta-select" className="bg-white">
+                          <SelectValue placeholder="— Seleccione un acta aprobada —" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {actaGroups.map((g) => (
+                            <SelectItem key={g.recordNumber} value={g.recordNumber}>
+                              {g.recordNumber}
+                            </SelectItem>
+                          ))}
+                          {actaGroups.length === 0 && (
+                            <SelectItem value="none" disabled>
+                              No hay actas aprobadas disponibles
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  {loadingActaDetails && (
+                    <div className="flex items-center gap-2 text-sm text-blue-600 pb-1">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Cargando datos del acta...
+                    </div>
+                  )}
+                </div>
+                {(selectedActaGroup || selectedActaId) && !loadingActaDetails && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    {selectedActaGroup && actaGroups.find((g) => g.recordNumber === selectedActaGroup)?.obraCount >= 2
+                      ? `Materiales consolidados de ${actaGroups.find((g) => g.recordNumber === selectedActaGroup)?.obraCount} obras. Puede modificar los campos antes de guardar.`
+                      : 'Empresa, código de obra e ítems auto-completados desde el acta. Puede modificar los campos antes de guardar.'
+                    }
+                  </p>
+                )}
+              </div>
+
               {/* Grid for form fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Fecha */}
@@ -573,15 +798,34 @@ export default function CrearRequisicionPage() {
                   </Select>
                 </div>
 
-                {/* Código de obra (optional) */}
+                {/* Código de obra / Código de contabilidad */}
                 <div>
-                  <Label htmlFor="codigo-obra">Código de obra</Label>
+                  <Label htmlFor="codigo-obra">
+                    Código de obra
+                    {(selectedActaGroup || selectedActaId) && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
+                  </Label>
                   <Input
                     id="codigo-obra"
                     value={codigoObra}
                     onChange={(e) => setCodigoObra(e.target.value)}
-                    placeholder="Ingrese el código de obra (opcional)"
+                    placeholder={
+                      (selectedActaGroup || selectedActaId)
+                        ? 'Código de contabilidad (obligatorio)'
+                        : 'Ingrese el código de obra (opcional)'
+                    }
+                    className={
+                      (selectedActaGroup || selectedActaId) && !codigoObra.trim()
+                        ? 'border-red-400 focus-visible:ring-red-400'
+                        : ''
+                    }
                   />
+                  {(selectedActaGroup || selectedActaId) && !codigoObra.trim() && (
+                    <p className="text-xs text-red-500 mt-1">
+                      Requerido: ingrese el código de contabilidad para continuar
+                    </p>
+                  )}
                 </div>
 
                 {/* Prioridad */}
@@ -599,6 +843,52 @@ export default function CrearRequisicionPage() {
                       <SelectItem value="alta">Alta (Urgente)</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Número de Acta */}
+                <div>
+                  <Label htmlFor="acta-select-grid">Número de Acta</Label>
+                  {loadingActas ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 h-10">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Cargando actas...
+                    </div>
+                  ) : (
+                    <Select
+                      value={selectedActaGroup || (selectedActaId ? String(selectedActaId) : '')}
+                      onValueChange={(val) => {
+                        const group = actaGroups.find((g) => g.recordNumber === val);
+                        if (group) {
+                          handleActaGroupSelected(val);
+                        } else {
+                          handleActaSelected(Number(val));
+                        }
+                      }}
+                      disabled={!companyId}
+                    >
+                      <SelectTrigger id="acta-select-grid">
+                        <SelectValue placeholder={companyId ? '— Seleccione un acta —' : '— Seleccione una empresa primero —'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {actaGroups
+                          .filter((g) => g.companyId === companyId)
+                          .map((g) => (
+                            <SelectItem key={g.recordNumber} value={g.recordNumber}>
+                              {g.recordNumber}
+                            </SelectItem>
+                          ))}
+                        {actaGroups.filter((g) => g.companyId === companyId).length === 0 && (
+                          <SelectItem value="none" disabled>
+                            {companyId ? 'No hay actas aprobadas para esta empresa' : 'Seleccione una empresa primero'}
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {loadingActaDetails && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Cargando datos...
+                    </div>
+                  )}
                 </div>
               </div>
 

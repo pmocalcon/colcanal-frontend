@@ -32,6 +32,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+const EXCLUDED_COMPANY_NAMES = [
+  'Canales & Contactos',
+  'Inversiones Garcés Escalante',
+  'Uniones y Alianzas',
+  'Unión Temporal Alumbrado Público Jamundí'
+];
+
 const EMPTY_FORM: CreateUcapPayload = {
   companyId: 0,
   code: '',
@@ -59,7 +66,10 @@ export default function GestionarUcapsPage() {
 
   useEffect(() => {
     masterDataService.getCompanies().then((data) => {
-      setCompanies(data);
+      const filtered = data.filter((c) =>
+        !EXCLUDED_COMPANY_NAMES.some((excluded) => c.name.includes(excluded))
+      );
+      setCompanies(filtered);
       setLoadingCompanies(false);
     }).catch(() => {
       setError('Error al cargar empresas');

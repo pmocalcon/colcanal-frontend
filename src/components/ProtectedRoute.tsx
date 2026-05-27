@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Lock } from 'lucide-react';
 
@@ -16,6 +17,12 @@ interface ProtectedRouteProps {
    * Si es false (default), requiere AL MENOS UNO de los permisos
    */
   requireAll?: boolean;
+
+  /**
+   * Rol(es) que también pueden acceder (alternativa a permisos)
+   * Si el usuario tiene este rol, se concede acceso aunque no tenga el permiso
+   */
+  allowedRoles?: string | string[];
 
   /**
    * Ruta a la que redirigir si no tiene permiso
@@ -62,28 +69,40 @@ interface ProtectedRouteProps {
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   permission,
   requireAll = false,
+  allowedRoles,
   redirectTo,
   children,
 }) => {
   const { hasPermission, hasAnyPermission, hasAllPermissions, permissions } = useGranularPermissions();
+  const { user } = useAuth();
 
   const hasAccess = React.useMemo(() => {
-    const access = Array.isArray(permission)
+    const permAccess = Array.isArray(permission)
       ? requireAll
         ? hasAllPermissions(permission)
         : hasAnyPermission(permission)
       : hasPermission(permission);
 
+    const roleAccess = allowedRoles
+      ? Array.isArray(allowedRoles)
+        ? allowedRoles.includes(user?.nombreRol ?? '')
+        : user?.nombreRol === allowedRoles
+      : false;
+
+    const access = permAccess || roleAccess;
+
     // Debug logs
     console.log('🔐 [ProtectedRoute] Verificación de permisos:', {
       permisosRequeridos: permission,
-      requiereToods: requireAll,
+      requiereTodos: requireAll,
+      rolesPermitidos: allowedRoles,
+      rolDelUsuario: user?.nombreRol,
       permisosDelUsuario: permissions,
       tieneAcceso: access,
     });
 
     return access;
-  }, [permission, requireAll, hasPermission, hasAnyPermission, hasAllPermissions, permissions]);
+  }, [permission, requireAll, allowedRoles, hasPermission, hasAnyPermission, hasAllPermissions, permissions, user?.nombreRol]);
 
   if (!hasAccess) {
     // Opción 1: Redirigir al dashboard

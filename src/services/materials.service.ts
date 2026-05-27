@@ -148,6 +148,18 @@ export const materialsService = {
   },
 
   /**
+   * Obtener el último precio registrado (de órdenes de compra) para una lista de materiales
+   */
+  async getLastPrices(materialIds: number[]): Promise<{ materialId: number; lastPrice: number }[]> {
+    if (!materialIds.length) return [];
+    const response = await api.get<{ data: { materialId: number; lastPrice: number }[] }>(
+      `${BASE_URL}/materials/last-prices`,
+      { params: { ids: materialIds.join(',') } },
+    );
+    return response.data.data;
+  },
+
+  /**
    * Crear un nuevo material
    * Puede retornar error 409 si existe uno similar
    */
