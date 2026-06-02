@@ -1783,6 +1783,15 @@ export default function PresupuestoPage() {
                   <tr className="bg-[hsl(var(--canalco-primary))]/5">
                     <td className="py-1.5 font-bold text-[hsl(var(--canalco-neutral-900))]">UTILIDAD FINAL</td>
                     <td className={`py-1.5 text-right pr-3 font-bold ${totals.utilidadFinal < 0 ? 'text-red-600' : 'text-[hsl(var(--canalco-primary))]'}`}>
+                      {totals.utilidadFinal !== 0 ? fmt(totals.utilidadFinal) : '-'}
+                    </td>
+                    <td className={`py-1.5 text-right font-bold ${totals.utilidadFinalEj < 0 ? 'text-red-600' : 'text-[hsl(var(--canalco-primary))]'}`}>
+                      {totals.utilidadFinalEj !== 0 ? fmt(totals.utilidadFinalEj) : '-'}
+                    </td>
+                  </tr>
+                  <tr className="bg-[hsl(var(--canalco-primary))]/5">
+                    <td className="py-1.5 font-bold text-[hsl(var(--canalco-neutral-900))]">% UTILIDAD FINAL</td>
+                    <td className={`py-1.5 text-right pr-3 font-bold ${totals.utilidadFinal < 0 ? 'text-red-600' : 'text-[hsl(var(--canalco-primary))]'}`}>
                       {totals.valFact !== 0 ? `${(totals.utilidadFinal / totals.valFact * 100).toFixed(1)}%` : '-'}
                     </td>
                     <td className={`py-1.5 text-right font-bold ${totals.utilidadFinalEj < 0 ? 'text-red-600' : 'text-[hsl(var(--canalco-primary))]'}`}>

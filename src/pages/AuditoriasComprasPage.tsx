@@ -46,6 +46,7 @@ const MATRIX_ACTION_LABELS: Record<string, string> = {
   crear_ordenes_compra: 'Crear OC',
   aprobar_todas_ordenes_compra: 'Aprobar OC',
   registrar_recepcion: 'Recepción',
+  anular_requisicion: 'Anulación',
 };
 
 const MATRIX_ACTION_COLORS: Record<string, string> = {
@@ -61,6 +62,7 @@ const MATRIX_ACTION_COLORS: Record<string, string> = {
   crear_ordenes_compra: 'bg-indigo-100 text-indigo-800',
   aprobar_todas_ordenes_compra: 'bg-indigo-100 text-indigo-800',
   registrar_recepcion: 'bg-teal-100 text-teal-800',
+  anular_requisicion: 'bg-slate-100 text-slate-800',
 };
 
 function formatMatrixDate(iso: string): string {
@@ -301,17 +303,30 @@ export default function AuditoriasComprasPage() {
   const monthlyChartData = useMemo(() => {
     if (!matrixData) return [];
     const MONTH_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const counts: Record<string, { creadas: number; aprobadas: number; conOC: number }> = {};
+    const counts: Record<string, { requisiciones: number; cotizaciones: number; reqConOC: number; ordenesCompra: number; anuladas: number }> = {};
 
     matrixData.rows.forEach((row) => {
       const creacion = row.events['crear_requisicion'] || row.events['crear_requisicion_directo_gerencia'];
       if (!creacion) return;
       const d = new Date(creacion);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!counts[key]) counts[key] = { creadas: 0, aprobadas: 0, conOC: 0 };
-      counts[key].creadas += 1;
-      if (row.events['aprobar_gerencia']) counts[key].aprobadas += 1;
-      if (row.events['crear_ordenes_compra']) counts[key].conOC += 1;
+      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      counts[key].requisiciones += 1;
+      if (row.events['gestionar_cotizacion']) counts[key].cotizaciones += 1;
+      if (row.events['crear_ordenes_compra']) counts[key].reqConOC += 1;
+    });
+
+    // Merge real OC counts from backend
+    (matrixData.purchaseOrdersByMonth ?? []).forEach(({ year, month, count }) => {
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      counts[key].ordenesCompra = count;
+    });
+
+    (matrixData.voidedRequisitionsByMonth ?? []).forEach(({ year, month, count }) => {
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      counts[key].anuladas = count;
     });
 
     return Object.entries(counts)
@@ -899,35 +914,37 @@ export default function AuditoriasComprasPage() {
               <>
                 {/* Stat cards */}
                 {(() => {
-                  const aprobadas = matrixData?.rows.filter((r) => r.events['aprobar_gerencia']).length ?? 0;
+                  const cotizaciones = matrixData?.rows.filter((r) => r.events['gestionar_cotizacion']).length ?? 0;
+                  const ordenesCompra = matrixData?.totalPurchaseOrders ?? 0;
+                  const anuladas = matrixData?.totalVoidedRequisitions ?? 0;
                   const cards = [
                     {
-                      label: 'Total requisiciones',
-                      value: auditStats?.totalRequisitions ?? '—',
-                      sub: 'en la base de datos',
+                      label: 'N° Requisiciones',
+                      value: matrixData?.rows.length ?? '—',
+                      sub: 'en el período mostrado',
                       color: 'border-blue-400 bg-blue-50 text-blue-800',
                     },
                     {
-                      label: 'Órdenes de Compra',
-                      value: auditStats?.totalPurchaseOrders ?? '—',
-                      sub: 'en la base de datos',
+                      label: 'N° Cotizaciones',
+                      value: cotizaciones,
+                      sub: 'en el período mostrado',
+                      color: 'border-purple-400 bg-purple-50 text-purple-800',
+                    },
+                    {
+                      label: 'N° Órdenes de Compra',
+                      value: ordenesCompra,
+                      sub: 'en el período mostrado',
                       color: 'border-indigo-400 bg-indigo-50 text-indigo-800',
                     },
                     {
-                      label: 'Aprobadas por Gerencia',
-                      value: aprobadas,
+                      label: 'N° Requisiciones Anuladas',
+                      value: anuladas,
                       sub: 'en el período mostrado',
-                      color: 'border-green-400 bg-green-50 text-green-800',
-                    },
-                    {
-                      label: 'Actividad últimos 7 días',
-                      value: auditStats?.recentLogs ?? '—',
-                      sub: 'registros de actividad',
-                      color: 'border-orange-400 bg-orange-50 text-orange-800',
+                      color: 'border-slate-400 bg-slate-50 text-slate-800',
                     },
                   ];
                   return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                       {cards.map(({ label, value, sub, color }) => (
                         <div key={label} className={`rounded-lg border-l-4 p-4 ${color}`}>
                           <p className="text-3xl font-bold">{value}</p>
@@ -942,7 +959,7 @@ export default function AuditoriasComprasPage() {
                 {/* Bar chart */}
                 <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6">
                   <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
-                    Requisiciones por mes
+                    Actividad por mes
                   </h3>
                   <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
                     Basado en los datos cargados en la matriz · desde 10/01/2026
@@ -973,9 +990,10 @@ export default function AuditoriasComprasPage() {
                           cursor={{ fill: '#f9fafb' }}
                         />
                         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                        <Bar dataKey="creadas" name="Creadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="aprobadas" name="Aprobadas Gerencia" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="conOC" name="Con Orden de Compra" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="requisiciones" name="Requisiciones" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="cotizaciones" name="Cotizaciones" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="ordenesCompra" name="Órdenes de Compra" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="anuladas" name="Req. anuladas" fill="#64748b" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}

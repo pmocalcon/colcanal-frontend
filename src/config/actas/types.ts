@@ -1,5 +1,6 @@
 export interface ActaDocFields {
   municipio: string;
+  municipioNombreCompleto?: string;
   municipioNit: string;
   contrato: string;
   tipoActa: string;
@@ -34,4 +35,5 @@ export interface ActaConfig {
   docFields: ActaDocFields;
   consideraciones: string[];
   clausulas: Clausula[];
+  logoUrl?: string;
 }

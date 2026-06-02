@@ -47,9 +47,11 @@ export default function VerOrdenCompraIndividualPage() {
         console.log('Purchase order data:', data);
         setPurchaseOrder(data);
 
-        // Load shipping contact if we have company info
-        if (data.requisition?.operationCenter?.company?.companyId) {
-          await loadShippingContact(data.requisition.operationCenter.company.companyId);
+        // Load shipping contact using company + project (same logic as VerOrdenCompraPage)
+        const companyId = data.requisition?.company?.companyId ?? data.requisition?.operationCenter?.company?.companyId;
+        if (companyId) {
+          const projectId = data.requisition?.project?.projectId ?? data.requisition?.projectId;
+          await loadShippingContact(companyId, projectId);
         }
       } catch (err: any) {
         console.error('Error fetching purchase order:', err);
@@ -231,6 +233,12 @@ export default function VerOrdenCompraIndividualPage() {
                   <p className="text-[hsl(var(--canalco-neutral-600))]">Centro de Operación</p>
                   <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
                     {operationCenter}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[hsl(var(--canalco-neutral-600))]">Recibe</p>
+                  <p className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                    {purchaseOrder.requisition?.creator?.nombre || 'No registrado'}
                   </p>
                 </div>
               </div>

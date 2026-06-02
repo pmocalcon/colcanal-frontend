@@ -1,10 +1,12 @@
 import type { ActaConfig } from './types';
 
 export const circasiaConfig: ActaConfig = {
+  logoUrl: '/assets/images/logo-circasia.jpg',
   docFields: {
     municipio: 'CIRCASIA',
-    municipioNit: '',
-    contrato: '001 de 2015',
+    municipioNombreCompleto: 'CIRCASIA QUINDÍO',
+    municipioNit: '890.001.044-8',
+    contrato: '',
     tipoActa: '',
     actaYear: String(new Date().getFullYear()),
     actaFecha: '',

@@ -4,13 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ModuleCard } from '@/components/dashboard/ModuleCard';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { modulesService, type ModulePermissions } from '@/services/modules.service';
+import { modulesService, type ModulePermissions, type Module } from '@/services/modules.service';
 import { Footer } from '@/components/ui/footer';
 
 export default function ComprasPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [permissions, setPermissions] = useState<ModulePermissions | null>(null);
+  const [allModules, setAllModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch permissions from backend on mount
@@ -18,6 +19,7 @@ export default function ComprasPage() {
     const fetchPermissions = async () => {
       try {
         const modules = await modulesService.getUserModules();
+        setAllModules(modules);
         // Find the "Compras" module to get its permissions
         const comprasModule = modules.find(
           (m) => m.slug === 'compras' || m.nombre.toLowerCase().includes('compras')
@@ -95,6 +97,12 @@ export default function ComprasPage() {
     }
   };
 
+  const getExternalModuleAccess = (slug: string): boolean => {
+    // 'inventarios' is the backend slug for materiales
+    const slugsToCheck = slug === 'materiales' ? [slug, 'inventarios'] : [slug];
+    return allModules.some((m) => slugsToCheck.includes(m.slug) && m.hasAccess === true);
+  };
+
   // Sub-módulos de Compras (Flujo completo del proceso)
   const comprasModules = [
     {
@@ -103,13 +111,6 @@ export default function ComprasPage() {
       slug: 'requisiciones',
       icono: 'FileText',
       hasAccess: getSubModuleAccess('requisiciones'),
-    },
-    {
-      gestionId: 111,
-      nombre: 'Validación de Obra',
-      slug: 'validacion-obra',
-      icono: 'Building2',
-      hasAccess: getSubModuleAccess('validacion-obra'),
     },
     {
       gestionId: 102,
@@ -147,13 +148,6 @@ export default function ComprasPage() {
       hasAccess: getSubModuleAccess('ordenes-compra'),
     },
     {
-      gestionId: 108,
-      nombre: 'Gestión de Facturas',
-      slug: 'facturas',
-      icono: 'FileText',
-      hasAccess: getSubModuleAccess('facturas'),
-    },
-    {
       gestionId: 107,
       nombre: 'Aprobar Órdenes de Compra',
       slug: 'aprobacion-ordenes',
@@ -168,11 +162,39 @@ export default function ComprasPage() {
       hasAccess: getSubModuleAccess('recepciones'),
     },
     {
+      gestionId: 108,
+      nombre: 'Gestión de Facturas',
+      slug: 'facturas',
+      icono: 'FileText',
+      hasAccess: getSubModuleAccess('facturas'),
+    },
+    {
       gestionId: 110,
       nombre: 'Recepción Contabilidad',
       slug: 'recepcion-contabilidad',
       icono: 'Calculator',
       hasAccess: getSubModuleAccess('recepcion-contabilidad'),
+    },
+    {
+      gestionId: 112,
+      nombre: 'Proveedores',
+      slug: 'proveedores',
+      icono: 'Building2',
+      hasAccess: getExternalModuleAccess('proveedores'),
+    },
+    {
+      gestionId: 113,
+      nombre: 'Materiales',
+      slug: 'materiales',
+      icono: 'Package',
+      hasAccess: getExternalModuleAccess('materiales'),
+    },
+    {
+      gestionId: 114,
+      nombre: 'Auditorías',
+      slug: 'auditorias',
+      icono: 'ClipboardList',
+      hasAccess: getExternalModuleAccess('auditorias'),
     },
   ];
 
@@ -204,6 +226,12 @@ export default function ComprasPage() {
       navigate('/dashboard/compras/recepciones');
     } else if (subModule.slug === 'recepcion-contabilidad') {
       navigate('/dashboard/compras/recepcion-contabilidad');
+    } else if (subModule.slug === 'proveedores') {
+      navigate('/dashboard/proveedores');
+    } else if (subModule.slug === 'materiales') {
+      navigate('/dashboard/materiales');
+    } else if (subModule.slug === 'auditorias') {
+      navigate('/dashboard/auditorias');
     } else {
       // TODO: Implementar navegación a las otras sub-páginas
       alert(`Navegando a ${subModule.nombre}. Esta funcionalidad estará disponible próximamente.`);

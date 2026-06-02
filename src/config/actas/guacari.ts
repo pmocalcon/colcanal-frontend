@@ -1,10 +1,11 @@
 import type { ActaConfig } from './types';
 
 export const guacariConfig: ActaConfig = {
+  logoUrl: '/assets/images/logo-guacari.jpg',
   docFields: {
     municipio: 'GUACARÍ',
     municipioNit: '',
-    contrato: 'CSAP-001-2015',
+    contrato: '',
     tipoActa: '',
     actaYear: String(new Date().getFullYear()),
     actaFecha: '',

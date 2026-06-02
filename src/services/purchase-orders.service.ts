@@ -44,6 +44,20 @@ export interface PurchaseOrder {
     requisitionId: number;
     requisitionNumber: string;
     priority?: 'alta' | 'normal';
+    projectId?: number;
+    company?: {
+      companyId: number;
+      name: string;
+    };
+    project?: {
+      projectId: number;
+      name: string;
+    };
+    creator?: {
+      userId: number;
+      nombre: string;
+      email: string;
+    };
     operationCenter?: {
       centerId: number;
       code: string;

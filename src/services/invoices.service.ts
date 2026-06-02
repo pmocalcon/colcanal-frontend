@@ -11,6 +11,7 @@ export interface Invoice {
   issueDate: string;
   amount: number;
   materialQuantity: number;
+  observations: string | null;
   sentToAccounting: boolean;
   sentToAccountingDate: string | null;
   createdBy: number;
@@ -44,6 +45,7 @@ export interface PurchaseOrderForInvoicing {
   totalInvoicedAmount: number;
   totalInvoicedQuantity: number;
   invoiceStatus: string;
+  receptionStatus: string;
   approvalStatus?: {
     statusId: number;
     code: string;
@@ -111,6 +113,7 @@ export interface CreateInvoiceDto {
   issueDate: string; // YYYY-MM-DD
   amount?: number; // Opcional - si no se envía, usa el total de la OC
   materialQuantity?: number; // Opcional - si no se envía, usa la cantidad total de la OC
+  observations?: string;
 }
 
 export interface UpdateInvoiceDto {
@@ -118,6 +121,7 @@ export interface UpdateInvoiceDto {
   issueDate?: string; // YYYY-MM-DD
   amount?: number;
   materialQuantity?: number;
+  observations?: string;
 }
 
 export interface SendToAccountingDto {

@@ -110,6 +110,10 @@ export interface MatrixRow {
 export interface MatrixResponse {
   actions: string[];
   rows: MatrixRow[];
+  totalPurchaseOrders: number;
+  purchaseOrdersByMonth?: { year: number; month: number; count: number }[];
+  totalVoidedRequisitions?: number;
+  voidedRequisitionsByMonth?: { year: number; month: number; count: number }[];
 }
 
 export const auditService = {

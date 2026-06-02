@@ -45,6 +45,7 @@ import PresupuestosListPage from './pages/PresupuestosListPage'
 import PlanAnualPage from './pages/PlanAnualPage'
 import ResumenActaPage from './pages/ResumenActaPage'
 import CronogramaPage from './pages/CronogramaPage'
+import NotificacionesPage from './pages/NotificacionesPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
           <Route path="/dashboard/levantamiento-obras/cronograma" element={<CronogramaPage />} />
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber" element={<ResumenActaPage />} />
+          <Route path="/dashboard/notificaciones" element={<NotificacionesPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

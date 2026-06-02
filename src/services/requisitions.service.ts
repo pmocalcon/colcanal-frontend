@@ -198,6 +198,33 @@ export const requisitionsService = {
   },
 
   /**
+   * Get all requisitions (analista PMO / director PMO)
+   */
+  async getAllRequisitions(
+    filters?: FilterRequisitionsParams,
+  ): Promise<RequisitionsListResponse> {
+    const response = await api.get<RequisitionsListResponse>(
+      '/purchases/requisitions/all-requisitions',
+      { params: filters },
+    );
+    return response.data;
+  },
+
+  /**
+   * Void requisitions (analista PMO / director PMO only)
+   */
+  async voidRequisitions(
+    ids: number[],
+    comments?: string,
+  ): Promise<{ voided: number[]; errors: { id: number; reason: string }[] }> {
+    const response = await api.post<{ voided: number[]; errors: { id: number; reason: string }[] }>(
+      '/purchases/requisitions/void-requisitions',
+      { ids, comments },
+    );
+    return response.data;
+  },
+
+  /**
    * Get pending actions (requisitions waiting for review/approval)
    */
   async getPendingActions(

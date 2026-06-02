@@ -44,6 +44,7 @@ interface InvoiceFormData {
   issueDate: string;
   amount: string;
   materialQuantity: string;
+  observations: string;
 }
 
 const FacturasOrdenCompraPage: React.FC = () => {
@@ -63,6 +64,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
     issueDate: new Date().toISOString().split('T')[0],
     amount: '',
     materialQuantity: '',
+    observations: '',
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -102,23 +104,16 @@ const FacturasOrdenCompraPage: React.FC = () => {
         issueDate: invoice.issueDate.split('T')[0],
         amount: invoice.amount.toString(),
         materialQuantity: invoice.materialQuantity.toString(),
+        observations: invoice.observations ?? '',
       });
     } else {
       setEditingInvoice(null);
-      // Pre-llenar con valores por defecto de la OC (pendiente por facturar)
-      const defaultAmount = summary?.pendingAmount || purchaseOrder?.defaultInvoiceValues?.amount || purchaseOrder?.totalAmount || 0;
-      const totalExpectedQuantity = purchaseOrder?.items?.reduce(
-        (sum, item) => sum + Number(item.quantity),
-        0
-      ) || 0;
-      const defaultQuantity = purchaseOrder?.defaultInvoiceValues?.materialQuantity
-        || (totalExpectedQuantity - (summary?.totalInvoicedQuantity || 0));
-
       setFormData({
         invoiceNumber: '',
         issueDate: new Date().toISOString().split('T')[0],
-        amount: defaultAmount > 0 ? defaultAmount.toString() : '',
-        materialQuantity: defaultQuantity > 0 ? defaultQuantity.toString() : '',
+        amount: '',
+        materialQuantity: '',
+        observations: '',
       });
     }
     setFormError(null);
@@ -155,47 +150,6 @@ const FacturasOrdenCompraPage: React.FC = () => {
       return;
     }
 
-    // Validar que no se exceda el monto total de la orden de compra (solo si se proporcionó monto)
-    if (amountValue !== null) {
-      const currentInvoicedAmount = invoices
-        .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
-        .reduce((sum, inv) => sum + Number(inv.amount), 0);
-
-      const newTotalInvoiced = currentInvoicedAmount + amountValue;
-      const totalOrderAmount = Number(purchaseOrder?.totalAmount || 0);
-
-      if (newTotalInvoiced > totalOrderAmount) {
-        const remainingAmount = totalOrderAmount - currentInvoicedAmount;
-        setFormError(
-          `El monto excede el total de la orden de compra. ` +
-          `Monto disponible: ${formatCurrency(remainingAmount)}`
-        );
-        return;
-      }
-    }
-
-    // Validar que no se exceda la cantidad total de materiales (solo si se proporcionó cantidad)
-    if (quantityValue !== null) {
-      const totalExpectedQuantity = purchaseOrder?.items?.reduce(
-        (sum, item) => sum + Number(item.quantity),
-        0
-      ) || 0;
-
-      const currentInvoicedQuantity = invoices
-        .filter(inv => !editingInvoice || inv.invoiceId !== editingInvoice.invoiceId)
-        .reduce((sum, inv) => sum + Number(inv.materialQuantity), 0);
-
-      const newTotalInvoicedQuantity = currentInvoicedQuantity + quantityValue;
-
-      if (newTotalInvoicedQuantity > totalExpectedQuantity) {
-        const remainingQuantity = totalExpectedQuantity - currentInvoicedQuantity;
-        setFormError(
-          `La cantidad excede el total esperado de la orden de compra. ` +
-          `Cantidad disponible: ${remainingQuantity}`
-        );
-        return;
-      }
-    }
 
     try {
       setFormLoading(true);
@@ -207,6 +161,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
           issueDate: formData.issueDate,
           amount: amountValue !== null ? amountValue : undefined,
           materialQuantity: quantityValue !== null ? quantityValue : undefined,
+          observations: formData.observations.trim() || undefined,
         };
         await updateInvoice(editingInvoice.invoiceId, updateData);
       } else {
@@ -218,6 +173,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
           issueDate: formData.issueDate,
           ...(amountValue !== null && { amount: amountValue }),
           ...(quantityValue !== null && { materialQuantity: quantityValue }),
+          ...(formData.observations.trim() && { observations: formData.observations.trim() }),
         };
         await createInvoice(createData);
       }
@@ -618,6 +574,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
                     <TableHead className="text-xs font-semibold">Fecha Emisión</TableHead>
                     <TableHead className="text-xs font-semibold">Monto</TableHead>
                     <TableHead className="text-xs font-semibold">Cantidad Material</TableHead>
+                    <TableHead className="text-xs font-semibold">Observaciones</TableHead>
                     <TableHead className="text-xs font-semibold">Enviada a Contabilidad</TableHead>
                     <TableHead className="text-xs font-semibold">Fecha Envío</TableHead>
                     <TableHead className="text-xs font-semibold">Creada Por</TableHead>
@@ -633,6 +590,9 @@ const FacturasOrdenCompraPage: React.FC = () => {
                         {formatCurrency(invoice.amount)}
                       </TableCell>
                       <TableCell className="text-xs font-semibold">{invoice.materialQuantity}</TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate" title={invoice.observations ?? ''}>
+                        {invoice.observations || <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>}
+                      </TableCell>
                       <TableCell>
                         {invoice.sentToAccounting ? (
                           <CheckCircle className="w-4 h-4 text-green-600" />
@@ -749,7 +709,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
 
                 <div>
                   <Label htmlFor="amount" className="text-xs">
-                    Monto (COP) <span className="text-[hsl(var(--canalco-neutral-500))]">(pre-llenado)</span>
+                    Monto (COP)
                   </Label>
                   <Input
                     id="amount"
@@ -768,7 +728,7 @@ const FacturasOrdenCompraPage: React.FC = () => {
 
                 <div>
                   <Label htmlFor="materialQuantity" className="text-xs">
-                    Cantidad de Material <span className="text-[hsl(var(--canalco-neutral-500))]">(pre-llenado)</span>
+                    Cantidad de Material
                   </Label>
                   <Input
                     id="materialQuantity"
@@ -783,6 +743,20 @@ const FacturasOrdenCompraPage: React.FC = () => {
                   <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] mt-1">
                     Si se deja vacío, usará la cantidad pendiente de la OC
                   </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="observations" className="text-xs">
+                    Observaciones
+                  </Label>
+                  <textarea
+                    id="observations"
+                    value={formData.observations}
+                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
+                    placeholder="Observaciones opcionales sobre la factura"
+                    rows={3}
+                    className="w-full text-sm border border-input rounded-md px-3 py-2 bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3">

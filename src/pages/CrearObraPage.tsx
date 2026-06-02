@@ -13,6 +13,14 @@ import { Home, ArrowLeft, Save, CheckCircle, X, Loader2 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
+function getTodayLocal(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 const STATIC_RECEIVERS = [
   { userId: 1, nombre: 'Angela Franco' },
   { userId: 2, nombre: 'Sandra Calero' },
@@ -69,7 +77,7 @@ const INITIAL_FORM_DATA: FormData = {
   requestType: '',
   filingNumber: '',
   annualPlan: '',
-  requestDate: new Date().toISOString().split('T')[0],
+  requestDate: '',
   receivedById: null,
   assignedReviewerId: null,
 };
@@ -80,7 +88,7 @@ export default function CrearObraPage() {
   const isEditMode = !!id;
 
   // State
-  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
+  const [formData, setFormData] = useState<FormData>(() => ({ ...INITIAL_FORM_DATA, requestDate: getTodayLocal() }));
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [receivers] = useState(STATIC_RECEIVERS);
@@ -150,7 +158,7 @@ export default function CrearObraPage() {
 
       // Cargar empresas (resiliente a errores de permisos)
       try {
-        const EXCLUDED_COMPANIES = ['Canales & Contactos', 'Inversiones Garcés Escalante', 'Uniones y Alianzas', 'Unión Temporal Alumbrado Público Jamundí'];
+        const EXCLUDED_COMPANIES = ['Inversiones Garcés Escalante', 'Uniones y Alianzas', 'Unión Temporal Alumbrado Público Jamundí'];
         const companiesData = await masterDataService.getCompanies();
         setCompanies(
           (Array.isArray(companiesData) ? companiesData : []).filter(
@@ -424,7 +432,7 @@ export default function CrearObraPage() {
 
       const surveyData: CreateSurveyDto = {
         workId: workResult.workId,
-        surveyDate: new Date().toISOString().split('T')[0],
+        surveyDate: getTodayLocal(),
         requestDate: formData.requestDate || undefined,
         receivedBy: receiverName, // Send name, not ID
         // Document links

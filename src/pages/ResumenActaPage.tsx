@@ -198,6 +198,7 @@ export default function ResumenActaPage() {
     setDocFields((prev) => ({ ...prev, [field]: value }));
   const [consideraciones, setConsideraciones] = useState(() => getActaConfig().consideraciones);
   const [clausulas, setClausulas] = useState(() => getActaConfig().clausulas);
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(() => getActaConfig().logoUrl);
 
   const loadBudgetsForWorks = async (worksInput: Work[]) => {
     setLoading(true);
@@ -208,6 +209,7 @@ export default function ResumenActaPage() {
       setDocFields({ ...cfg.docFields, actaNumero: recordNumber, actaReferenciaAnterior: recordNumber });
       setConsideraciones(cfg.consideraciones);
       setClausulas(cfg.clausulas);
+      setLogoUrl(cfg.logoUrl);
       const [budgetResults, surveyListResults, ucapRes] = await Promise.all([
         Promise.all(worksInput.map((w) => directorBudgetsService.getAll({ workId: w.workId, limit: 10 }))),
         Promise.all(worksInput.map((w) => surveysService.getSurveys({ workId: w.workId, limit: 100 }).catch(() => ({ data: [] })))),
@@ -452,7 +454,35 @@ export default function ResumenActaPage() {
                 className="px-10 py-8 print:block"
                 style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '12pt', lineHeight: '1.7' }}
               >
-                {/* Encabezado */}
+                {/* Membrete */}
+                <div className="flex items-center mb-6">
+                  <div className="flex-none w-24">
+                    {logoUrl && (
+                      <img
+                        src={logoUrl}
+                        alt={`Logo ${docFields.municipio}`}
+                        className="h-24 w-auto object-contain"
+                        style={{ maxHeight: '96px' }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 text-center leading-snug">
+                    <p className="font-bold uppercase" style={{ fontSize: '13pt' }}>
+                      MUNICIPIO DE {docFields.municipioNombreCompleto || docFields.municipio}
+                    </p>
+                    {docFields.municipioNit && (
+                      <p style={{ fontSize: '11pt' }}>NIT: {docFields.municipioNit}</p>
+                    )}
+                  </div>
+                  <div className="flex-none w-24" />
+                </div>
+
+                {/* Separador */}
+                <div className="flex justify-center mt-1 mb-6">
+                  <div className="border-t-4 border-green-900 w-2/3" />
+                </div>
+
+                {/* Título del documento */}
                 <div className="text-center mb-6 space-y-0.5 leading-snug">
                   <p className="font-bold uppercase">
                     SISTEMA DE ALUMBRADO PÚBLICO DEL MUNICIPIO DE {docFields.municipio}

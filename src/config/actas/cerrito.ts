@@ -1,10 +1,11 @@
 import type { ActaConfig } from './types';
 
 export const cerritoConfig: ActaConfig = {
+  logoUrl: '/assets/images/logo-cerrito.jpg',
   docFields: {
     municipio: 'EL CERRITO',
     municipioNit: '',
-    contrato: '01 de 2014',
+    contrato: '',
     tipoActa: '',
     actaYear: String(new Date().getFullYear()),
     actaFecha: '',

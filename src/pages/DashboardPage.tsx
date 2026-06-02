@@ -10,18 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
+// Módulos que se muestran dentro de Compras (no en el dashboard principal)
+const MODULES_INSIDE_COMPRAS = ['proveedores', 'materiales', 'inventarios', 'auditorias'];
+
 // Orden definido para el grid de módulos (3 columnas)
-// Fila 1: Compras, Proveedores, Usuarios
-// Fila 2: Materiales, Levantamiento de Obras, Dashboard
-// Fila 3: Auditorías, Notificaciones
 const MODULE_ORDER = [
   'compras',
-  'proveedores',
-  'usuarios',
-  'materiales',
   'levantamiento-obras',
+  'usuarios',
   'dashboard',
-  'auditorias',
   'notificaciones',
 ];
 
@@ -54,6 +51,7 @@ export default function DashboardPage() {
           nombre: MODULE_NAME_OVERRIDES[slug] || module.nombre,
         };
       })
+      .filter((module) => !MODULES_INSIDE_COMPRAS.includes(module.slug))
       .sort((a, b) => {
         const indexA = MODULE_ORDER.indexOf(a.slug);
         const indexB = MODULE_ORDER.indexOf(b.slug);
@@ -144,10 +142,10 @@ export default function DashboardPage() {
             {/* Title */}
             <div className="flex-grow">
               <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Canalcongroup
+                Sistema de Gestión Empresarial
               </h1>
               <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-                Sistema de Gestión Empresarial
+                Canalcongroup
               </p>
             </div>
 

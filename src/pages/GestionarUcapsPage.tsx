@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { surveysService } from '@/services/surveys.service';
 import type { Ucap, CreateUcapPayload, UpdateUcapPayload } from '@/services/surveys.service';
 import { masterDataService } from '@/services/master-data.service';
-import type { Company } from '@/services/master-data.service';
+import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -33,10 +33,9 @@ import {
 } from '@/components/ui/select';
 
 const EXCLUDED_COMPANY_NAMES = [
-  'Canales & Contactos',
   'Inversiones Garcés Escalante',
   'Uniones y Alianzas',
-  'Unión Temporal Alumbrado Público Jamundí'
+  'Unión Temporal Alumbrado Público Jamundí',
 ];
 
 const EMPTY_FORM: CreateUcapPayload = {
@@ -52,6 +51,8 @@ export default function GestionarUcapsPage() {
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadingUcaps, setLoadingUcaps] = useState(false);
@@ -77,6 +78,19 @@ export default function GestionarUcapsPage() {
     });
   }, []);
 
+  const isCanalesContactos = companies.find((c) => c.companyId === selectedCompanyId)?.name === 'Canales & Contactos';
+
+  useEffect(() => {
+    if (!selectedCompanyId || !isCanalesContactos) {
+      setProjects([]);
+      setSelectedProjectId(null);
+      return;
+    }
+    masterDataService.getProjects(selectedCompanyId).then((data) => {
+      setProjects(Array.isArray(data) ? data : []);
+    }).catch(() => {});
+  }, [selectedCompanyId, isCanalesContactos]);
+
   useEffect(() => {
     if (!selectedCompanyId) {
       setUcaps([]);
@@ -84,14 +98,14 @@ export default function GestionarUcapsPage() {
     }
     setLoadingUcaps(true);
     setError(null);
-    surveysService.getUcaps(selectedCompanyId).then(({ ucaps }) => {
+    surveysService.getUcaps(selectedCompanyId, selectedProjectId ?? undefined).then(({ ucaps }) => {
       setUcaps(ucaps);
       setLoadingUcaps(false);
     }).catch(() => {
       setError('Error al cargar UCAPs');
       setLoadingUcaps(false);
     });
-  }, [selectedCompanyId]);
+  }, [selectedCompanyId, selectedProjectId]);
 
   const filteredUcaps = ucaps.filter((u) => {
     if (!search) return true;
@@ -107,7 +121,7 @@ export default function GestionarUcapsPage() {
 
   const openCreateModal = () => {
     setEditingUcap(null);
-    setForm({ ...EMPTY_FORM, companyId: selectedCompanyId ?? 0 });
+    setForm({ ...EMPTY_FORM, companyId: selectedCompanyId ?? 0, projectId: selectedProjectId ?? undefined });
     setFormError(null);
     setShowModal(true);
   };
@@ -190,29 +204,57 @@ export default function GestionarUcapsPage() {
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         {/* Selector de empresa */}
         <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-5">
-          <label className="block text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
-            Selecciona un municipio / empresa
-          </label>
           {loadingCompanies ? (
             <div className="flex items-center gap-2 text-sm text-[hsl(var(--canalco-neutral-600))]">
               <Loader2 className="w-4 h-4 animate-spin" /> Cargando empresas...
             </div>
           ) : (
-            <Select
-              value={selectedCompanyId ? String(selectedCompanyId) : ''}
-              onValueChange={(val) => setSelectedCompanyId(Number(val))}
-            >
-              <SelectTrigger className="max-w-md">
-                <SelectValue placeholder="— Selecciona una empresa —" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.map((c) => (
-                  <SelectItem key={c.companyId} value={String(c.companyId)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap items-end gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
+                  Municipio / empresa
+                </label>
+                <Select
+                  value={selectedCompanyId ? String(selectedCompanyId) : ''}
+                  onValueChange={(val) => { setSelectedCompanyId(Number(val)); setSelectedProjectId(null); }}
+                >
+                  <SelectTrigger className="w-72">
+                    <SelectValue placeholder="— Selecciona una empresa —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((c) => (
+                      <SelectItem key={c.companyId} value={String(c.companyId)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isCanalesContactos && projects.length > 0 && (
+                <div>
+                  <label className="block text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-2">
+                    Proyecto
+                  </label>
+                  <Select
+                    value={selectedProjectId ? String(selectedProjectId) : ''}
+                    onValueChange={(val) => setSelectedProjectId(val === 'all' ? null : Number(val))}
+                  >
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="— Todos los proyectos —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los proyectos</SelectItem>
+                      {projects.map((p) => (
+                        <SelectItem key={p.projectId} value={String(p.projectId)}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

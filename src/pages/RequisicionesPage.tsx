@@ -7,7 +7,7 @@ import type { Requisition, FilterRequisitionsParams } from '@/services/requisiti
 import type { ModulePermissions } from '@/services/modules.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle, Ban } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -38,6 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
   pendiente_recepcion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
   en_recepcion: 'bg-violet-500/10 text-violet-700 border-violet-500/20',
   recepcion_completa: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
+  anulada: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
 };
 
 // Estados que permiten edición
@@ -63,6 +64,10 @@ export default function RequisicionesPage() {
   // Paginación para sección de procesadas (10 por página)
   const [processedPage, setProcessedPage] = useState(1);
   const processedLimit = 10;
+
+  // Selección para anulación (solo PMO)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [voidLoading, setVoidLoading] = useState(false);
 
   // Filters state
   const [filters, setFilters] = useState<FilterValues>({
@@ -118,12 +123,15 @@ export default function RequisicionesPage() {
     loadRequisitions();
   }, [page, filters]);
 
+  const isPmoRole = user?.nombreRol
+    ? ['analista pmo', 'director pmo'].includes(user.nombreRol.toLowerCase())
+    : false;
+
   const loadRequisitions = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Map filter values to API parameters
       const params: FilterRequisitionsParams = {
         page,
         limit,
@@ -132,7 +140,10 @@ export default function RequisicionesPage() {
         toDate: filters.endDate || undefined,
       };
 
-      const response = await requisitionsService.getMyRequisitions(params);
+      const response = isPmoRole
+        ? await requisitionsService.getAllRequisitions(params)
+        : await requisitionsService.getMyRequisitions(params);
+
       setRequisitions(response.data);
       setTotal(response.total);
       setTotalPages(response.totalPages);
@@ -163,6 +174,36 @@ export default function RequisicionesPage() {
     navigate(`/dashboard/compras/requisiciones/editar/${requisition.requisitionId}`);
   };
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleVoid = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(
+      `¿Estás seguro de anular ${selectedIds.size} requisición(es)? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+
+    setVoidLoading(true);
+    try {
+      const result = await requisitionsService.voidRequisitions(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      await loadRequisitions();
+      if (result.errors.length > 0) {
+        alert(`Anuladas: ${result.voided.length}. Errores: ${result.errors.map(e => `ID ${e.id}: ${e.reason}`).join(', ')}`);
+      }
+    } catch {
+      alert('Error al anular las requisiciones');
+    } finally {
+      setVoidLoading(false);
+    }
+  };
+
   const handleCreateNew = () => {
     if (!canCreateRequisitions) {
       alert('Su rol no tiene permisos para crear requisiciones.');
@@ -191,6 +232,7 @@ export default function RequisicionesPage() {
       pendiente_recepcion: 'Pendiente de recepción',
       en_recepcion: 'En recepción',
       recepcion_completa: 'Recepción completa',
+      anulada: 'Anulada',
     };
     return labels[code] || code;
   };
@@ -330,7 +372,7 @@ export default function RequisicionesPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Action Button - Always visible but disabled if no permissions */}
-        <div className="mb-6">
+        <div className="mb-6 flex items-center gap-3 flex-wrap">
           <Button
             onClick={handleCreateNew}
             className={`shadow-lg transition-all ${
@@ -352,6 +394,18 @@ export default function RequisicionesPage() {
             )}
             Crear nueva requisición
           </Button>
+
+          {isPmoRole && selectedIds.size > 0 && (
+            <Button
+              onClick={handleVoid}
+              disabled={voidLoading}
+              className="bg-red-600 hover:bg-red-700 text-white shadow-lg"
+              size="lg"
+            >
+              <Ban className="w-5 h-5 mr-2" />
+              {voidLoading ? 'Anulando...' : `Anular seleccionadas (${selectedIds.size})`}
+            </Button>
+          )}
         </div>
 
         {/* Filters */}
@@ -417,6 +471,7 @@ export default function RequisicionesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          {isPmoRole && <TableHead className="w-10" />}
                           <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
                           <TableHead className="font-semibold">Empresa</TableHead>
                           <TableHead className="font-semibold">Proyecto/Obra</TableHead>
@@ -471,6 +526,16 @@ export default function RequisicionesPage() {
 
                       return (
                         <TableRow key={req.requisitionId} className="hover:bg-[hsl(var(--canalco-neutral-100))] transition-colors">
+                          {isPmoRole && (
+                            <TableCell className="w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(req.requisitionId)}
+                                onChange={() => toggleSelect(req.requisitionId)}
+                                className="w-4 h-4 cursor-pointer accent-red-600"
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">
                             <div className="flex items-center gap-2">
                               {req.requisitionNumber}
@@ -611,6 +676,7 @@ export default function RequisicionesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                          {isPmoRole && <TableHead className="w-10" />}
                           <TableHead className="font-semibold w-[120px]">N° Requisición</TableHead>
                           <TableHead className="font-semibold">Empresa</TableHead>
                           <TableHead className="font-semibold">Proyecto/Obra</TableHead>
@@ -645,6 +711,16 @@ export default function RequisicionesPage() {
 
                           return (
                             <TableRow key={req.requisitionId} className="bg-white hover:bg-green-50/30 transition-colors">
+                              {isPmoRole && (
+                                <TableCell className="w-10">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIds.has(req.requisitionId)}
+                                    onChange={() => toggleSelect(req.requisitionId)}
+                                    className="w-4 h-4 cursor-pointer accent-red-600"
+                                  />
+                                </TableCell>
+                              )}
                               <TableCell className="font-mono font-semibold text-[hsl(var(--canalco-neutral-600))]">
                                 <div className="flex items-center gap-2">
                                   {req.requisitionNumber}
