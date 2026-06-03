@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
+﻿import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, Printer, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Home, ArrowLeft, Printer, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
 import { surveysService, type Work, type IppConfig } from '@/services/surveys.service';
 import {
   directorBudgetsService,
   type DirectorBudget,
 } from '@/services/director-budgets.service';
 import { getActaConfig } from '@/config/actas';
+import type { EncabezadoTablaRow } from '@/config/actas/types';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { useAuth } from '@/contexts/AuthContext';
@@ -93,14 +94,19 @@ function AutoResizeTextarea({
     );
   }
   return (
-    <textarea
-      ref={ref}
-      value={value}
-      rows={1}
-      onChange={onChange}
-      className={className}
-      style={style}
-    />
+    <>
+      <textarea
+        ref={ref}
+        value={value}
+        rows={1}
+        onChange={onChange}
+        className={`print:hidden ${className ?? ''}`}
+        style={style}
+      />
+      <p className={`hidden print:block whitespace-pre-wrap ${className ?? ''}`} style={style}>
+        {value}
+      </p>
+    </>
   );
 }
 
@@ -163,6 +169,10 @@ interface ConsolidatedItem {
   vrUnitario: number;
 }
 
+type Block =
+  | { kind: 'clausula'; id: string; title: string; content: string }
+  | { kind: 'table'; id: string; tableId: string };
+
 export default function ResumenActaPage() {
   const navigate = useNavigate();
   const { recordNumber: encodedActa } = useParams<{ recordNumber: string }>();
@@ -197,19 +207,45 @@ export default function ResumenActaPage() {
   const setDF = (field: keyof typeof docFields) => (value: string) =>
     setDocFields((prev) => ({ ...prev, [field]: value }));
   const [consideraciones, setConsideraciones] = useState(() => getActaConfig().consideraciones);
-  const [clausulas, setClausulas] = useState(() => getActaConfig().clausulas);
+  const [blocks, setBlocks] = useState<Block[]>(() =>
+    getActaConfig().clausulas.map((c, i) => ({
+      kind: 'clausula' as const,
+      id: `c-${i}`,
+      title: c.title,
+      content: c.content,
+    }))
+  );
+  const [dragSrcId, setDragSrcId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>(() => getActaConfig().logoUrl);
+  const [hideMunicipioBanner, setHideMunicipioBanner] = useState<boolean>(() => getActaConfig().hideMunicipioBanner ?? false);
+  const [encabezadoTabla, setEncabezadoTabla] = useState<EncabezadoTablaRow[] | undefined>(() => getActaConfig().encabezadoTabla);
 
   const loadBudgetsForWorks = async (worksInput: Work[]) => {
     setLoading(true);
     setWorks(worksInput);
     try {
       const companyId = worksInput[0]?.companyId;
-      const cfg = getActaConfig(companyId);
+      const projectId = worksInput[0]?.projectId;
+      const cfg = getActaConfig(companyId, projectId);
       setDocFields({ ...cfg.docFields, actaNumero: recordNumber, actaReferenciaAnterior: recordNumber });
       setConsideraciones(cfg.consideraciones);
-      setClausulas(cfg.clausulas);
+      const ts = Date.now();
+      const clausulaBlocks: Block[] = cfg.clausulas.map((c, i) => ({
+        kind: 'clausula',
+        id: `c-${i}-${ts}`,
+        title: c.title,
+        content: c.content,
+      }));
+      const tableBlocks: Block[] = [
+        { kind: 'table', id: 'tbl-consolidated', tableId: 'consolidated' },
+        ...worksInput.map((w) => ({ kind: 'table' as const, id: `tbl-work-${w.workId}`, tableId: `work-${w.workId}` })),
+        { kind: 'table', id: 'tbl-detail', tableId: 'detail' },
+      ];
+      setBlocks([...clausulaBlocks, ...tableBlocks]);
       setLogoUrl(cfg.logoUrl);
+      setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
+      setEncabezadoTabla(cfg.encabezadoTabla);
       const [budgetResults, surveyListResults, ucapRes] = await Promise.all([
         Promise.all(worksInput.map((w) => directorBudgetsService.getAll({ workId: w.workId, limit: 10 }))),
         Promise.all(worksInput.map((w) => surveysService.getSurveys({ workId: w.workId, limit: 100 }).catch(() => ({ data: [] })))),
@@ -389,10 +425,11 @@ export default function ResumenActaPage() {
       return text;
     };
 
-    setClausulas((prev) =>
-      prev.map((c) => {
-        const content = substituteText(c.content);
-        return content !== c.content ? { ...c, content } : c;
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.kind !== 'clausula') return b;
+        const content = substituteText(b.content);
+        return content !== b.content ? { ...b, content } : b;
       })
     );
     setConsideraciones((prev) =>
@@ -404,6 +441,34 @@ export default function ResumenActaPage() {
 
     lastContratoRef.current = docFields.contrato;
   }, [valorTotal, docFields.contrato, recordNumber]);
+
+  const handleDragStart = (id: string) => (e: React.DragEvent) => {
+    setDragSrcId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (id: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id !== dragSrcId) setDragOverId(id);
+  };
+  const handleDrop = (id: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!dragSrcId || dragSrcId === id) return;
+    setBlocks((prev) => {
+      const src = prev.find((b) => b.id === dragSrcId);
+      if (!src) return prev;
+      const without = prev.filter((b) => b.id !== dragSrcId);
+      const idx = without.findIndex((b) => b.id === id);
+      if (idx === -1) return [...without, src];
+      return [...without.slice(0, idx), src, ...without.slice(idx)];
+    });
+    setDragSrcId(null);
+    setDragOverId(null);
+  };
+  const handleDragEnd = () => {
+    setDragSrcId(null);
+    setDragOverId(null);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white print:bg-white">
@@ -455,32 +520,47 @@ export default function ResumenActaPage() {
                 style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '12pt', lineHeight: '1.7' }}
               >
                 {/* Membrete */}
-                <div className="flex items-center mb-6">
-                  <div className="flex-none w-24">
+                {hideMunicipioBanner ? (
+                  <div className="flex justify-center mb-6">
                     {logoUrl && (
                       <img
                         src={logoUrl}
                         alt={`Logo ${docFields.municipio}`}
-                        className="h-24 w-auto object-contain"
-                        style={{ maxHeight: '96px' }}
+                        className="w-auto object-contain"
+                        style={{ maxHeight: '160px' }}
                       />
                     )}
                   </div>
-                  <div className="flex-1 text-center leading-snug">
-                    <p className="font-bold uppercase" style={{ fontSize: '13pt' }}>
-                      MUNICIPIO DE {docFields.municipioNombreCompleto || docFields.municipio}
-                    </p>
-                    {docFields.municipioNit && (
-                      <p style={{ fontSize: '11pt' }}>NIT: {docFields.municipioNit}</p>
-                    )}
+                ) : (
+                  <div className="flex items-center mb-6">
+                    <div className="flex-none w-24">
+                      {logoUrl && (
+                        <img
+                          src={logoUrl}
+                          alt={`Logo ${docFields.municipio}`}
+                          className="h-24 w-auto object-contain"
+                          style={{ maxHeight: '96px' }}
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 text-center leading-snug">
+                      <p className="font-bold uppercase" style={{ fontSize: '13pt' }}>
+                        MUNICIPIO DE {docFields.municipioNombreCompleto || docFields.municipio}
+                      </p>
+                      {docFields.municipioNit && (
+                        <p style={{ fontSize: '11pt' }}>NIT: {docFields.municipioNit}</p>
+                      )}
+                    </div>
+                    <div className="flex-none w-24" />
                   </div>
-                  <div className="flex-none w-24" />
-                </div>
+                )}
 
                 {/* Separador */}
-                <div className="flex justify-center mt-1 mb-6">
-                  <div className="border-t-4 border-green-900 w-2/3" />
-                </div>
+                {!hideMunicipioBanner && (
+                  <div className="flex justify-center mt-1 mb-6">
+                    <div className="border-t-4 border-green-900 w-2/3" />
+                  </div>
+                )}
 
                 {/* Título del documento */}
                 <div className="text-center mb-6 space-y-0.5 leading-snug">
@@ -501,6 +581,24 @@ export default function ResumenActaPage() {
                     (<InlineInput value={docFields.actaFecha} onChange={setDF('actaFecha')} bold placeholder="DD DE MES DE YYYY" />)
                   </p>
                 </div>
+
+                {/* Tabla de encabezado (opcional, ej. Jericó modernización) */}
+                {encabezadoTabla && encabezadoTabla.length > 0 && (
+                  <table className="w-full border-collapse mb-6 text-[11pt]">
+                    <tbody>
+                      {encabezadoTabla.map((row, i) => (
+                        <tr key={i}>
+                          <td className="border border-gray-700 px-3 py-1 font-semibold align-top w-[35%] whitespace-pre-line">
+                            {row.label}
+                          </td>
+                          <td className="border border-gray-700 px-3 py-1 align-top whitespace-pre-line">
+                            {row.value}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
                 {/* Párrafo de partes */}
                 <p className="text-justify mb-5">
@@ -587,143 +685,359 @@ export default function ResumenActaPage() {
 
                 {/* ACUERDAN */}
                 <p className="font-bold text-center mt-8 mb-5 uppercase tracking-wide">Acuerdan:</p>
-                {clausulas.map((c, i) => (
-                  <div key={i}>
-                    <div className="mb-4 flex gap-2 items-start">
-                      <div className="flex-1">
-                        <div className="text-justify">
-                          <AutoResizeTextarea
-                            value={c.title}
-                            onChange={(e) => {
-                              const updated = [...clausulas];
-                              updated[i] = { ...updated[i], title: e.target.value };
-                              setClausulas(updated);
-                            }}
-                            className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
-                            style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                          />
-                          <AutoResizeTextarea
-                            value={c.content}
-                            onChange={(e) => {
-                              const updated = [...clausulas];
-                              updated[i] = { ...updated[i], content: e.target.value };
-                              setClausulas(updated);
-                            }}
-                            className="w-full bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0 mt-1"
-                            style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                          />
+                {blocks.map((block) => {
+                  const isOver = block.id === dragOverId && block.id !== dragSrcId;
+                  const isDragging = block.id === dragSrcId;
+
+                  if (block.kind === 'table') {
+                    const workId = block.tableId.startsWith('work-')
+                      ? parseInt(block.tableId.replace('work-', ''), 10)
+                      : null;
+                    const wk = workId != null ? works.find((w) => w.workId === workId) : null;
+                    const wItems = wk ? (perWorkItems.get(wk.workId) ?? []) : [];
+                    const wUcapTotal = wItems.reduce((s, it) => s + it.cantidad * it.vrUnitario, 0);
+                    const wMdo = wk ? (Number(budgets.find((b) => b.workId === wk.workId)?.manoDeObra) || 0) : 0;
+                    const wTotal = (wUcapTotal + wMdo) * factor;
+                    return (
+                      <div
+                        key={block.id}
+                        className={`relative my-4 ${isDragging ? 'opacity-30' : ''}`}
+                        style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: '14px', lineHeight: '1.5' }}
+                        onDragOver={canEdit ? handleDragOver(block.id) : undefined}
+                        onDrop={canEdit ? handleDrop(block.id) : undefined}
+                      >
+                        {isOver && <div className="h-0.5 bg-blue-500 mb-2 rounded" />}
+                        <div className="flex gap-1 items-start">
+                          {canEdit && (
+                            <div
+                              draggable
+                              onDragStart={handleDragStart(block.id)}
+                              onDragEnd={handleDragEnd}
+                              className="cursor-grab text-gray-300 hover:text-gray-500 print:hidden shrink-0 mt-3"
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            {block.tableId === 'consolidated' && (
+                              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm">
+                                <div className="flex border-b border-[hsl(var(--canalco-neutral-200))]">
+                                  <div className="flex-1 bg-[hsl(var(--canalco-primary))]/5 px-6 py-3 flex items-center justify-center border-r border-[hsl(var(--canalco-neutral-200))]">
+                                    <p className="font-bold text-sm uppercase tracking-wide text-center text-[hsl(var(--canalco-neutral-900))]">
+                                      Presupuesto Proyecto — N° Acta:{' '}
+                                      <span className="text-[hsl(var(--canalco-primary))]">{recordNumber}</span>
+                                    </p>
+                                  </div>
+                                  <div className="w-20 flex items-center justify-center bg-[hsl(var(--canalco-primary))]/10">
+                                    <span className="font-bold text-lg text-[hsl(var(--canalco-neutral-700))]">{new Date().getFullYear()}</span>
+                                  </div>
+                                </div>
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-12" />
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">UCAPS</th>
+                                      <th className="px-3 py-2.5 text-center font-semibold text-[hsl(var(--canalco-neutral-700))] w-24">CANTIDAD</th>
+                                      <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-36">V. UNITARIO</th>
+                                      <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-36">V. TOTAL</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.length === 0 ? (
+                                      <tr><td colSpan={5} className="px-4 py-12 text-center text-[hsl(var(--canalco-neutral-400))]">No hay UCAPsen los levantamientos de esta acta.</td></tr>
+                                    ) : items.map((item, i) => (
+                                      <tr key={item.key} className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}>
+                                        <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">1.{i + 1}</td>
+                                        <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-900))]">{item.descripcion || '—'}</td>
+                                        <td className="px-3 py-2.5 text-center font-medium text-[hsl(var(--canalco-neutral-900))]">{item.cantidad}</td>
+                                        <td className="px-3 py-2.5 text-right text-[hsl(var(--canalco-neutral-700))]">$ {item.vrUnitario.toLocaleString('es-CO')}</td>
+                                        <td className="px-3 py-2.5 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">{fmtCOP(item.cantidad * item.vrUnitario)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot>
+                                    {manoDeObraTotal > 0 && (
+                                      <tr className="border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))]">
+                                        <td colSpan={4} className="px-3 py-2 text-right text-[hsl(var(--canalco-neutral-600))]">Mano de Obra</td>
+                                        <td className="px-3 py-2 text-right font-medium">{fmtCOP(manoDeObraTotal)}</td>
+                                      </tr>
+                                    )}
+                                    <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
+                                      <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-xs tracking-wide">Total Obra (Pesos base)</td>
+                                      <td className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-900))]">{fmtCOP(totalObra)}</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                                <div className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                  <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
+                                    <div className="flex-1 px-4 py-2.5"><span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">Índice de Precios al Productor Inicial ({baseLabel})</span></div>
+                                    <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right"><span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">{baseVal > 0 ? baseVal.toFixed(2) : '—'}</span></div>
+                                  </div>
+                                  <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
+                                    <div className="flex-1 px-4 py-2.5"><span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">Índice de Precios al Productor del Mes</span></div>
+                                    <div className="px-4 py-2.5 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right"><span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">{currentVal > 0 ? currentVal.toFixed(2) : '—'}</span></div>
+                                  </div>
+                                  <div className="flex items-center">
+                                    <div className="flex-1 px-4 py-3" />
+                                    <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/10 border-l border-[hsl(var(--canalco-neutral-200))] flex items-center gap-6 w-80">
+                                      <span className="font-bold text-xs uppercase text-[hsl(var(--canalco-neutral-700))]">Valor Total</span>
+                                      <span className="font-bold text-base text-[hsl(var(--canalco-primary))] ml-auto">{fmtCOP(valorTotal)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {wk && (
+                              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm">
+                                <div className="px-4 py-2 bg-[hsl(var(--canalco-neutral-100))] flex items-center gap-2">
+                                  <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{wk.name}</span>
+                                  {wk.address && <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">— {wk.address}</span>}
+                                </div>
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-100))]">
+                                      <th className="px-3 py-2 text-left font-semibold text-[hsl(var(--canalco-neutral-600))] w-10" />
+                                      <th className="px-3 py-2 text-left font-semibold text-[hsl(var(--canalco-neutral-600))]">UCAP</th>
+                                      <th className="px-3 py-2 text-center font-semibold text-[hsl(var(--canalco-neutral-600))] w-24">CANTIDAD</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-[hsl(var(--canalco-neutral-600))] w-36">V. UNITARIO</th>
+                                      <th className="px-3 py-2 text-right font-semibold text-[hsl(var(--canalco-neutral-600))] w-36">V. TOTAL</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {wItems.length === 0 ? (
+                                      <tr><td colSpan={5} className="px-4 py-6 text-center text-[hsl(var(--canalco-neutral-400))]">Sin UCAPsen este proyecto.</td></tr>
+                                    ) : wItems.map((item, i) => (
+                                      <tr key={item.key} className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}>
+                                        <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">{i + 1}</td>
+                                        <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-900))]">{item.descripcion || '—'}</td>
+                                        <td className="px-3 py-2 text-center font-medium text-[hsl(var(--canalco-neutral-900))]">{item.cantidad}</td>
+                                        <td className="px-3 py-2 text-right text-[hsl(var(--canalco-neutral-700))]">$ {item.vrUnitario.toLocaleString('es-CO')}</td>
+                                        <td className="px-3 py-2 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">{fmtCOP(item.cantidad * item.vrUnitario)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot>
+                                    {wMdo > 0 && (
+                                      <tr className="border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))]">
+                                        <td colSpan={4} className="px-3 py-1.5 text-right text-sm text-[hsl(var(--canalco-neutral-600))]">Mano de Obra</td>
+                                        <td className="px-3 py-1.5 text-right text-sm font-medium">{fmtCOP(wMdo)}</td>
+                                      </tr>
+                                    )}
+                                    <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
+                                      <td colSpan={4} className="px-3 py-2 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-sm tracking-wide">Subtotal pesos base</td>
+                                      <td className="px-3 py-2 text-right font-bold text-[hsl(var(--canalco-neutral-900))]">{fmtCOP(wUcapTotal + wMdo)}</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                                <div className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                  <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
+                                    <div className="flex-1 px-4 py-2"><span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">{baseLabel}</span></div>
+                                    <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right"><span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">{baseVal > 0 ? baseVal.toFixed(2) : '—'}</span></div>
+                                  </div>
+                                  <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
+                                    <div className="flex-1 px-4 py-2"><span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">IPP del Mes</span></div>
+                                    <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right"><span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">{currentVal > 0 ? currentVal.toFixed(2) : '—'}</span></div>
+                                  </div>
+                                  <div className="flex items-center">
+                                    <div className="flex-1 px-4 py-3" />
+                                    <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/10 border-l border-[hsl(var(--canalco-neutral-200))] flex items-center gap-6 w-80">
+                                      <span className="font-bold text-xs uppercase text-[hsl(var(--canalco-neutral-700))]">Subtotal con IPP</span>
+                                      <span className="font-bold text-base text-[hsl(var(--canalco-primary))] ml-auto">{fmtCOP(wTotal)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {block.tableId === 'detail' && works.length > 0 && (
+                              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm">
+                                <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/5 border-b border-[hsl(var(--canalco-neutral-200))]">
+                                  <p className="font-bold text-sm uppercase tracking-wide text-[hsl(var(--canalco-neutral-900))]">Detalle por Proyecto</p>
+                                </div>
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-8">#</th>
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">Obra</th>
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">Dirección</th>
+                                      <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-28">Zona</th>
+                                      <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-40">Presupuesto</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {works.map((w, i) => {
+                                      const raw = perWorkTotals.get(w.workId) ?? 0;
+                                      const total = raw * factor;
+                                      return (
+                                        <tr key={w.workId} className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}>
+                                          <td className="px-3 py-2.5 text-center text-[hsl(var(--canalco-neutral-400))] text-xs font-mono">{i + 1}</td>
+                                          <td className="px-3 py-2.5 font-medium text-[hsl(var(--canalco-neutral-900))]">{w.name}</td>
+                                          <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-600))]">{w.address || '—'}</td>
+                                          <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-600))]">{w.zone || '—'}</td>
+                                          <td className="px-3 py-2.5 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">{total > 0 ? fmtCOP(total) : '—'}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
+                                      <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-xs tracking-wide">Total</td>
+                                      <td className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-primary))]">{fmtCOP(valorTotal)}</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      {canEdit && (
-                        <button
-                          className="shrink-0 text-red-400 hover:text-red-600 mt-1 print:hidden"
-                          onClick={() => setClausulas(clausulas.filter((_, idx) => idx !== i))}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    );
+                  }
+
+                  // — bloque de cláusula —
+                  return (
+                    <div
+                      key={block.id}
+                      className={`relative ${isDragging ? 'opacity-30' : ''}`}
+                      onDragOver={canEdit ? handleDragOver(block.id) : undefined}
+                      onDrop={canEdit ? handleDrop(block.id) : undefined}
+                    >
+                      {isOver && <div className="h-0.5 bg-blue-500 mb-1 rounded" />}
+                      <div className="mb-4 flex gap-1 items-start">
+                        {canEdit && (
+                          <div
+                            draggable
+                            onDragStart={handleDragStart(block.id)}
+                            onDragEnd={handleDragEnd}
+                            className="cursor-grab text-gray-300 hover:text-gray-500 print:hidden shrink-0 mt-1.5"
+                          >
+                            <GripVertical className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="text-justify">
+                            <AutoResizeTextarea
+                              value={block.title}
+                              onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, title: e.target.value } : b))}
+                              className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
+                              style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                            />
+                            <AutoResizeTextarea
+                              value={block.content}
+                              onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, content: e.target.value } : b))}
+                              className="w-full bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0 mt-1"
+                              style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                            />
+                          </div>
+                        </div>
+                        {canEdit && (
+                          <button
+                            className="shrink-0 text-red-400 hover:text-red-600 mt-1 print:hidden"
+                            onClick={() => setBlocks((prev) => prev.filter((b) => b.id !== block.id))}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      {/* Tabla de garantías — se muestra tras la cláusula que tenga GARANTÍAS en el título */}
+                      {block.title.toUpperCase().includes('GARANTÍAS') && (
+                        <div className="mb-6 ml-2 text-[11pt]">
+                          <p className="font-semibold mb-2" contentEditable={canEdit} suppressContentEditableWarning>I. GARANTÍA DE CUMPLIMIENTO DEL CONTRATO Y DEVOLUCIÓN DEL PAGO ANTICIPADO:</p>
+                          <table className="w-full border-collapse text-[10.5pt]" style={{ borderColor: '#555' }}>
+                            <tbody>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Asegurado/<br/>beneficiario</td>
+                                <td className="border border-gray-500 px-2 py-1" colSpan={3}><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-middle" rowSpan={3} contentEditable={canEdit} suppressContentEditableWarning>Amparos,<br/>vigencia y<br/>valores<br/>asegurados</td>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>AMPARO</td>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>% DE AMPARO</td>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>VIGENCIA</td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>CUMPLIMIENTO DEL CONTRATO.</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>, contados a</EditableText></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del acta de obra No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>PÓLIZA PARA GARANTIZAR EL BUEN MANEJO Y CORRECTA INVERSIÓN DEL ANTICIPO.</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de obra </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre esté cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
+                                <td className="border border-gray-500 px-2 py-1" colSpan={3}><InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} /><EditableText>, identificada con Nit. </EditableText><InlineInput value={docFields.conNit} onChange={setDF('conNit')} /></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Información<br/>necesaria<br/>dentro de la<br/>póliza</td>
+                                <td className="border border-gray-500 px-2 py-1" colSpan={3}>
+                                  <ul className="list-disc list-inside space-y-0.5">
+                                    <li><EditableText>Número y año del contrato</EditableText></li>
+                                    <li><EditableText>Objeto del contrato</EditableText></li>
+                                    <li><EditableText>Firma del Contratista</EditableText></li>
+                                  </ul>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          <p className="font-semibold mt-5 mb-1" contentEditable={canEdit} suppressContentEditableWarning>II. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:</p>
+                          <p className="mb-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá contratar un seguro que ampare la responsabilidad civil extracontractual de la empresa con las siguientes características:</p>
+                          <table className="w-full border-collapse text-[10.5pt]">
+                            <tbody>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Clase</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Contrato de seguro contenido en una póliza</td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Asegurados</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /><EditableText> y terceros afectados y el Contratista.</EditableText></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} /><EditableText>, identificada con Nit. </EditableText><InlineInput value={docFields.conNit} onChange={setDF('conNit')} /></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Valor</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>No debe ser inferior a: Doscientos (200) SMMLV para contratos cuyo valor sea inferior o igual a mil quinientos (1.500) SMMLV. En razón a que el presupuesto oficial del presente contrato expresado en SMMLV asciende a la suma de </EditableText><InlineInput value={docFields.smmlvPresupuesto} onChange={setDF('smmlvPresupuesto')} /><EditableText> SMMLV.</EditableText></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Vigencia</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Igual al período de ejecución del contrato y un mes más</td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Beneficiarios</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /><EditableText> y terceros afectados y el Contratista.</EditableText></td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Amparos</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Responsabilidad Civil Extracontractual de la Entidad, derivada de las actuaciones, hechos u omisiones del Contratista o Subcontratistas autorizados. El seguro de responsabilidad civil extracontractual debe contener como mínimo los amparos descritos en el numeral 3° del artículo 2.2.1.2.3.2.9 del Decreto 1082 de 2015.</td>
+                              </tr>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Información<br/>necesaria<br/>dentro de la<br/>póliza</td>
+                                <td className="border border-gray-500 px-2 py-1 align-top">
+                                  <ul className="list-disc list-inside space-y-0.5">
+                                    <li><EditableText>Número y año del contrato</EditableText></li>
+                                    <li><EditableText>Objeto del contrato</EditableText></li>
+                                    <li><EditableText>Firma del representante legal del Contratista</EditableText></li>
+                                    <li><EditableText>En caso de no usar centavos, los valores deben aproximarse al mayor. Ej. Cumplimiento si el valor a asegurar es $14.980.420,20 aproximar a $14.980.421</EditableText></li>
+                                  </ul>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          <p className="mt-3 text-justify" contentEditable={canEdit} suppressContentEditableWarning>En esta póliza solamente se podrán pactar deducibles con un tope máximo del diez por ciento (10%) del valor de cada pérdida sin que en ningún caso puedan ser superiores a dos mil (2.000) SMMLV.</p>
+                          <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Este seguro deberá constituirse y presentarse para aprobación de la empresa, dentro del mismo término establecido para la garantía única de cumplimiento.</p>
+                          <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Las franquicias, coaseguros obligatorios y demás formas de estipulación que conlleven asunción de parte de la pérdida por la empresa asegurada no serán admisibles.</p>
+                          <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá anexar el comprobante de pago de la prima del seguro de responsabilidad civil extracontractual.</p>
+                        </div>
                       )}
                     </div>
-                    {/* Tabla de garantías — se muestra tras la cláusula que tenga GARANTÍAS en el título */}
-                    {c.title.toUpperCase().includes('GARANTÍAS') && (
-                      <div className="mb-6 ml-2 text-[11pt]">
-                        <p className="font-semibold mb-2" contentEditable={canEdit} suppressContentEditableWarning>I. GARANTÍA DE CUMPLIMIENTO DEL CONTRATO Y DEVOLUCIÓN DEL PAGO ANTICIPADO:</p>
-                        <table className="w-full border-collapse text-[10.5pt]" style={{ borderColor: '#555' }}>
-                          <tbody>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Asegurado/<br/>beneficiario</td>
-                              <td className="border border-gray-500 px-2 py-1" colSpan={3}><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-middle" rowSpan={3} contentEditable={canEdit} suppressContentEditableWarning>Amparos,<br/>vigencia y<br/>valores<br/>asegurados</td>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>AMPARO</td>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>% DE AMPARO</td>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>VIGENCIA</td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>CUMPLIMIENTO DEL CONTRATO.</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>, contados a</EditableText></td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del acta de obra No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>PÓLIZA PARA GARANTIZAR EL BUEN MANEJO Y CORRECTA INVERSIÓN DEL ANTICIPO.</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de obra </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre esté cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
-                              <td className="border border-gray-500 px-2 py-1" colSpan={3}><InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} /><EditableText>, identificada con Nit. </EditableText><InlineInput value={docFields.conNit} onChange={setDF('conNit')} /></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Información<br/>necesaria<br/>dentro de la<br/>póliza</td>
-                              <td className="border border-gray-500 px-2 py-1" colSpan={3}>
-                                <ul className="list-disc list-inside space-y-0.5">
-                                  <li><EditableText>Número y año del contrato</EditableText></li>
-                                  <li><EditableText>Objeto del contrato</EditableText></li>
-                                  <li><EditableText>Firma del Contratista</EditableText></li>
-                                </ul>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-
-                        {/* II. Garantía de responsabilidad civil extracontractual */}
-                        <p className="font-semibold mt-5 mb-1" contentEditable={canEdit} suppressContentEditableWarning>II. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:</p>
-                        <p className="mb-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá contratar un seguro que ampare la responsabilidad civil extracontractual de la empresa con las siguientes características:</p>
-                        <table className="w-full border-collapse text-[10.5pt]">
-                          <tbody>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Clase</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Contrato de seguro contenido en una póliza</td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Asegurados</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /><EditableText> y terceros afectados y el Contratista.</EditableText></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} /><EditableText>, identificada con Nit. </EditableText><InlineInput value={docFields.conNit} onChange={setDF('conNit')} /></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Valor</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>No debe ser inferior a: Doscientos (200) SMMLV para contratos cuyo valor sea inferior o igual a mil quinientos (1.500) SMMLV. En razón a que el presupuesto oficial del presente contrato expresado en SMMLV asciende a la suma de </EditableText><InlineInput value={docFields.smmlvPresupuesto} onChange={setDF('smmlvPresupuesto')} /><EditableText> SMMLV.</EditableText></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Vigencia</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Igual al período de ejecución del contrato y un mes más</td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Beneficiarios</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /><EditableText> y terceros afectados y el Contratista.</EditableText></td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Amparos</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Responsabilidad Civil Extracontractual de la Entidad, derivada de las actuaciones, hechos u omisiones del Contratista o Subcontratistas autorizados. El seguro de responsabilidad civil extracontractual debe contener como mínimo los amparos descritos en el numeral 3° del artículo 2.2.1.2.3.2.9 del Decreto 1082 de 2015.</td>
-                            </tr>
-                            <tr>
-                              <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Información<br/>necesaria<br/>dentro de la<br/>póliza</td>
-                              <td className="border border-gray-500 px-2 py-1 align-top">
-                                <ul className="list-disc list-inside space-y-0.5">
-                                  <li><EditableText>Número y año del contrato</EditableText></li>
-                                  <li><EditableText>Objeto del contrato</EditableText></li>
-                                  <li><EditableText>Firma del representante legal del Contratista</EditableText></li>
-                                  <li><EditableText>En caso de no usar centavos, los valores deben aproximarse al mayor. Ej. Cumplimiento si el valor a asegurar es $14.980.420,20 aproximar a $14.980.421</EditableText></li>
-                                </ul>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                        <p className="mt-3 text-justify" contentEditable={canEdit} suppressContentEditableWarning>En esta póliza solamente se podrán pactar deducibles con un tope máximo del diez por ciento (10%) del valor de cada pérdida sin que en ningún caso puedan ser superiores a dos mil (2.000) SMMLV.</p>
-                        <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Este seguro deberá constituirse y presentarse para aprobación de la empresa, dentro del mismo término establecido para la garantía única de cumplimiento.</p>
-                        <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Las franquicias, coaseguros obligatorios y demás formas de estipulación que conlleven asunción de parte de la pérdida por la empresa asegurada no serán admisibles.</p>
-                        <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá anexar el comprobante de pago de la prima del seguro de responsabilidad civil extracontractual.</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
                 {canEdit && (
                   <button
                     className="text-sm text-blue-600 hover:underline mt-2 print:hidden"
-                    onClick={() => setClausulas([...clausulas, { title: 'CLÁUSULA', content: '' }])}
+                    onClick={() => setBlocks((prev) => [...prev, { kind: 'clausula', id: `c-new-${Date.now()}`, title: 'CLÁUSULA', content: '' }])}
                   >
                     + Agregar cláusula
                   </button>
@@ -773,319 +1087,6 @@ export default function ResumenActaPage() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm text-base">
-
-            {/* ── Document header ── */}
-            <div className="flex border-b border-[hsl(var(--canalco-neutral-200))]">
-              <div className="flex-1 bg-[hsl(var(--canalco-primary))]/5 px-6 py-3 flex items-center justify-center border-r border-[hsl(var(--canalco-neutral-200))]">
-                <p className="font-bold text-sm uppercase tracking-wide text-center text-[hsl(var(--canalco-neutral-900))]">
-                  Presupuesto Proyecto — N° Acta:{' '}
-                  <span className="text-[hsl(var(--canalco-primary))]">{recordNumber}</span>
-                </p>
-              </div>
-              <div className="w-20 flex items-center justify-center bg-[hsl(var(--canalco-primary))]/10">
-                <span className="font-bold text-lg text-[hsl(var(--canalco-neutral-700))]">
-                  {new Date().getFullYear()}
-                </span>
-              </div>
-            </div>
-
-            {/* ── Materials table ── */}
-            <table className="w-full">
-              <thead>
-                <tr className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[hsl(var(--canalco-neutral-200))]">
-                  <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-12" />
-                  <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">UCAPS</th>
-                  <th className="px-3 py-2.5 text-center font-semibold text-[hsl(var(--canalco-neutral-700))] w-24">CANTIDAD</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-36">V. UNITARIO</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-36">V. TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-[hsl(var(--canalco-neutral-400))]">
-                      No hay UCAPsen los levantamientos de esta acta.
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item, i) => (
-                    <tr
-                      key={item.key}
-                      className={`border-b border-[hsl(var(--canalco-neutral-100))] ${
-                        i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'
-                      }`}
-                    >
-                      <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">
-                        1.{i + 1}
-                      </td>
-                      <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-900))]">
-                        {item.descripcion || '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-center font-medium text-[hsl(var(--canalco-neutral-900))]">
-                        {item.cantidad}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-[hsl(var(--canalco-neutral-700))]">
-                        $ {item.vrUnitario.toLocaleString('es-CO')}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">
-                        {fmtCOP(item.cantidad * item.vrUnitario)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              <tfoot>
-                {manoDeObraTotal > 0 && (
-                  <tr className="border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))]">
-                    <td colSpan={4} className="px-3 py-2 text-right text-[hsl(var(--canalco-neutral-600))]">
-                      Mano de Obra
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium">
-                      {fmtCOP(manoDeObraTotal)}
-                    </td>
-                  </tr>
-                )}
-                <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
-                  <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-xs tracking-wide">
-                    Total Obra (Pesos base)
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-900))]">
-                    {fmtCOP(totalObra)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-
-            {/* ── IPP rows ── */}
-            <div className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-
-              {/* Row 1: IPP Inicial (auto desde UCap config) */}
-              <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
-                <div className="flex-1 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">
-                    Índice de Precios al Productor Inicial ({baseLabel})
-                  </span>
-                </div>
-                <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right">
-                  <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                    {baseVal > 0 ? baseVal.toFixed(2) : '—'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Row 2: IPP del Mes (fijo) */}
-              <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
-                <div className="flex-1 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">
-                    Índice de Precios al Productor del Mes
-                  </span>
-                </div>
-                <div className="px-4 py-2.5 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right">
-                  <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                    {currentVal > 0 ? currentVal.toFixed(2) : '—'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Row 3: Valor Total */}
-              <div className="flex items-center">
-                <div className="flex-1 px-4 py-3" />
-                <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/10 border-l border-[hsl(var(--canalco-neutral-200))] flex items-center gap-6 w-80">
-                  <span className="font-bold text-xs uppercase text-[hsl(var(--canalco-neutral-700))]">
-                    Valor Total
-                  </span>
-                  <span className="font-bold text-base text-[hsl(var(--canalco-primary))] ml-auto">
-                    {fmtCOP(valorTotal)}
-                  </span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          {/* ── UCAPsper proyecto ── */}
-          {works.length > 0 && works.map((w) => {
-            const wItems = perWorkItems.get(w.workId) ?? [];
-            const wUcapTotal = wItems.reduce((s, it) => s + it.cantidad * it.vrUnitario, 0);
-            const wMdo = Number(budgets.find((b) => b.workId === w.workId)?.manoDeObra) || 0;
-            const wTotal = (wUcapTotal + wMdo) * factor;
-            return (
-              <div key={w.workId} className="mt-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm text-base">
-                    {/* Sub-header: nombre de obra */}
-                    <div className="px-4 py-2 bg-[hsl(var(--canalco-neutral-100))] flex items-center gap-2">
-                      <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{w.name}</span>
-                      {w.address && (
-                        <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">— {w.address}</span>
-                      )}
-                    </div>
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-[hsl(var(--canalco-neutral-50))] border-b border-[hsl(var(--canalco-neutral-100))]">
-                          <th className="px-3 py-2 text-left font-semibold text-[hsl(var(--canalco-neutral-600))] w-10" />
-                          <th className="px-3 py-2 text-left font-semibold text-[hsl(var(--canalco-neutral-600))]">UCAP</th>
-                          <th className="px-3 py-2 text-center font-semibold text-[hsl(var(--canalco-neutral-600))] w-24">CANTIDAD</th>
-                          <th className="px-3 py-2 text-right font-semibold text-[hsl(var(--canalco-neutral-600))] w-36">V. UNITARIO</th>
-                          <th className="px-3 py-2 text-right font-semibold text-[hsl(var(--canalco-neutral-600))] w-36">V. TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {wItems.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="px-4 py-6 text-center text-[hsl(var(--canalco-neutral-400))]">
-                              Sin UCAPsen este proyecto.
-                            </td>
-                          </tr>
-                        ) : (
-                          wItems.map((item, i) => (
-                            <tr
-                              key={item.key}
-                              className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}
-                            >
-                              <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">
-                                {i + 1}
-                              </td>
-                              <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-900))]">
-                                {item.descripcion || '—'}
-                              </td>
-                              <td className="px-3 py-2 text-center font-medium text-[hsl(var(--canalco-neutral-900))]">
-                                {item.cantidad}
-                              </td>
-                              <td className="px-3 py-2 text-right text-[hsl(var(--canalco-neutral-700))]">
-                                $ {item.vrUnitario.toLocaleString('es-CO')}
-                              </td>
-                              <td className="px-3 py-2 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">
-                                {fmtCOP(item.cantidad * item.vrUnitario)}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                      <tfoot>
-                        {wMdo > 0 && (
-                          <tr className="border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))]">
-                            <td colSpan={4} className="px-3 py-1.5 text-right text-sm text-[hsl(var(--canalco-neutral-600))]">
-                              Mano de Obra
-                            </td>
-                            <td className="px-3 py-1.5 text-right text-sm font-medium">
-                              {fmtCOP(wMdo)}
-                            </td>
-                          </tr>
-                        )}
-                        <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
-                          <td colSpan={4} className="px-3 py-2 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-sm tracking-wide">
-                            Subtotal pesos base
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold text-[hsl(var(--canalco-neutral-900))]">
-                            {fmtCOP(wUcapTotal + wMdo)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-
-                    {/* IPP section */}
-                    <div className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                      <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
-                        <div className="flex-1 px-4 py-2">
-                          <span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">
-                            {baseLabel}
-                          </span>
-                        </div>
-                        <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right">
-                          <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                            {baseVal > 0 ? baseVal.toFixed(2) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center border-b border-[hsl(var(--canalco-neutral-200))]">
-                        <div className="flex-1 px-4 py-2">
-                          <span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase">
-                            IPP del Mes
-                          </span>
-                        </div>
-                        <div className="px-4 py-2 border-l border-[hsl(var(--canalco-neutral-200))] w-36 text-right">
-                          <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                            {currentVal > 0 ? currentVal.toFixed(2) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="flex-1 px-4 py-3" />
-                        <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/10 border-l border-[hsl(var(--canalco-neutral-200))] flex items-center gap-6 w-80">
-                          <span className="font-bold text-xs uppercase text-[hsl(var(--canalco-neutral-700))]">
-                            Subtotal con IPP
-                          </span>
-                          <span className="font-bold text-base text-[hsl(var(--canalco-primary))] ml-auto">
-                            {fmtCOP(wTotal)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-          })}
-
-          {/* ── Per-project detail table ── */}
-          {works.length > 0 && (
-            <div className="mt-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm text-base">
-              <div className="px-6 py-3 bg-[hsl(var(--canalco-primary))]/5 border-b border-[hsl(var(--canalco-neutral-200))]">
-                <p className="font-bold text-sm uppercase tracking-wide text-[hsl(var(--canalco-neutral-900))]">
-                  Detalle por Proyecto
-                </p>
-              </div>
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[hsl(var(--canalco-neutral-200))]">
-                    <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-8">#</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">Obra</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))]">Dirección</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[hsl(var(--canalco-neutral-700))] w-28">Zona</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-[hsl(var(--canalco-neutral-700))] w-40">Presupuesto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {works.map((w, i) => {
-                    const raw = perWorkTotals.get(w.workId) ?? 0;
-                    const total = raw * factor;
-                    return (
-                      <tr
-                        key={w.workId}
-                        className={`border-b border-[hsl(var(--canalco-neutral-100))] ${
-                          i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'
-                        }`}
-                      >
-                        <td className="px-3 py-2.5 text-center text-[hsl(var(--canalco-neutral-400))] text-xs font-mono">
-                          {i + 1}
-                        </td>
-                        <td className="px-3 py-2.5 font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {w.name}
-                        </td>
-                        <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-600))]">
-                          {w.address || '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-600))]">
-                          {w.zone || '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {total > 0 ? fmtCOP(total) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))]">
-                    <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-neutral-700))] uppercase text-xs tracking-wide">
-                      Total
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-bold text-[hsl(var(--canalco-primary))]">
-                      {fmtCOP(valorTotal)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
           </>
         )}
       </main>

@@ -1,7 +1,8 @@
 import type { ActaConfig } from './types';
 
 export const cerritoConfig: ActaConfig = {
-  logoUrl: '/assets/images/logo-cerrito.jpg',
+  logoUrl: '/assets/images/logo-cerrito.png',
+  hideMunicipioBanner: true,
   docFields: {
     municipio: 'EL CERRITO',
     municipioNit: '',

@@ -91,6 +91,11 @@ export interface Survey {
   requiresCivilWork?: boolean;
   // IPP del mes anterior (ingresado por Director Técnico)
   previousMonthIpp?: number;
+  ippConfig?: {
+    baseYear: number | null;
+    baseMonth: number | null;
+    initialValue: number | string | null;
+  };
   description?: string;
   // Block review statuses
   budgetStatus?: BlockStatus;

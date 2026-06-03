@@ -177,7 +177,7 @@ export default function CrearObraPage() {
         const work = await surveysService.getWorkById(workId);
         setFormData({
           companyId: work.companyId,
-          projectId: null, // TODO: Agregar projectId a Work si es necesario
+          projectId: work.projectId ?? null,
           name: work.name,
           address: work.address,
           neighborhood: work.neighborhood,

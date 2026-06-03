@@ -1,20 +1,22 @@
 import type { ActaConfig } from './types';
 
 export const quimbayaConfig: ActaConfig = {
-  logoUrl: '/assets/images/logo-quimbaya.jpg',
+
+  hideMunicipioBanner: true,
+  logoUrl: '/assets/images/logo-quimbaya.png',
   docFields: {
     municipio: 'QUIMBAYA',
     municipioNombreCompleto: 'QUIMBAYA QUINDÍO',
     municipioNit: '880.000.613-4',
-    contrato: '001 DE 2015',
+    contrato: '',
     tipoActa: '',
     actaYear: String(new Date().getFullYear()),
     actaFecha: '',
     actaNumero: '',
     actaReferenciaAnterior: '',
     smmlvPresupuesto: '',
-    munNombre: 'JUAN MANUEL RODRÍGUEZ BRITO',
-    munCc: '18.471.146',
+    munNombre: '',
+    munCc: '',
     munCcCiudad: 'Quimbaya',
     munCargo: 'Alcalde Municipal',
     munPosesionFecha: '',
@@ -23,8 +25,8 @@ export const quimbayaConfig: ActaConfig = {
     conCcCiudad: 'Cerrito Valle',
     conEmpresa: 'UNIÓN TEMPORAL ALUMBRADO PÚBLICO QUIMBAYA',
     conNit: '900.826.725-1',
-    intNombre: 'SOFONÍAS BANGUERO ZAPATA',
-    intCc: '900.280.232',
+    intNombre: '',
+    intCc: '',
     intCcCiudad: 'Bogotá',
     intEmpresa: 'INGENIERÍA Y SOPORTE S.B.Z S.A.S',
     intCargo: 'Director de Interventoría',
@@ -53,32 +55,50 @@ export const quimbayaConfig: ActaConfig = {
     'Que la presente Acta se suscribe con fundamento en lo establecido en: i) La cláusula primera del Contrato de Concesión No. 001 de 2015, según la cual se contrató a UNION TEMPORAL ALUMBRADO PÚBLICO QUIMBAYA, para "ATENCIÓN DEL SERVICIO DE ALUMBRADO PÚBLICO EN EL MUNICIPIO DE QUIMBAYA EN LO RELATIVO A INVERSIÓN, MODERNIZACIÓN, REHABILITACIÓN, REPOSICIÓN DEL SISTEMA DE ALUMBRADO PÚBLICO, OPERACIÓN, MANTENIMIENTO PÚBLICA CON DEL SERVICIO Y LA OPERACIÓN DEL SISTEMA DE ALUMBRADO PÚBLICO – SALP - CORRESPONDIENTE INCLUYENDO EL SUMINISTRO, INSTALACIÓN, REEMPLAZO, RENOVACIÓN, EXPANSIÓN Y MANTENIMIENTO DE LAS LUMINARIAS Y DE LOS ACCESORIOS ELECTRÓNICOS Y EN FIN TODO LO INHERENTE Y RELACIONADO CON EL SERVICIO DEL ALUMBRADO PÚBLICO., DE CONFORMIDAD CON LOS REQUISITOS Y CONDICIONES ESTABLECIDAS EN LOS PLIEGOS DE CONDICIONES DE LA LICITACIÓN PÚBLICA NO. 003 DE 2014 Y LA PROPUESTA PRESENTADA POR EL CONCESIONARIO DANDO TOTAL CUMPLIMIENTO A TODAS LAS ESPECIFICACIONES TÉCNICAS, CONDICIONES Y OBLIGACIONES ESTIPULADAS Y EMANADAS DE ESTE CONTRATO, LA OFERTA Y DE LOS TÉRMINOS DE REFERENCIA DE LA LICITACIÓN. EL CONCESIONARIO SUMINISTRARÁ LOS BIENES Y PRESTARÁ LOS SERVICIOS EN LAS CANTIDADES Y EN LA FORMA ESTABLECIDA EN LOS DOCUMENTOS QUE HACEN PARTE DEL PRESENTE CONTRATO."',
     // K
     'En el otro sí modificatorio No 004 del 11 de octubre de 2017 al contrato de concesión No 001 de 2015, del sistema de alumbrado público del municipio de Quimbaya (Q), en la cláusula 1 se estableció: ADICIÓNESE el párrafo cuarto a la cláusula novena del contrato de concesión No. 01 de 2015 así: "PÁRRAFO CUARTO: El recurso recaudado por concepto del tributo de alumbrado público será destinado para la atención continua de las actividades del suministro de energía eléctrica al Sistema de Alumbrado Público, la aplicación, facturación y recaudo del tributo, la gestión de cartera del mismo, la administración, la operación, el mantenimiento, la modernización, la reposición, la expansión del sistema, desarrollo tecnológico asociado, algunas de infraestructura de uso exclusivo para el alumbrado y la gestión de interventoría integral del modelo, así como a la actividad de iluminación ornamental y navideña en los espacios públicos del Municipio, para cuyo propósito se suscribirán actas de obra en las que se establezca con exactitud el monto de la obra a ejecutar, la fuente de financiamiento, las especificaciones técnicas, la forma de pago y la disposición de los recursos necesarios para garantizar su ejecución".',
-    // Pendiente: siguientes consideraciones
+    // L
+    'Que el Concesionario, como operador del servicio ha velado por dar pleno cumplimiento a las obligaciones contractuales y en ese sentido se han desarrollado los esfuerzos para lograr la ejecución de las expansiones pendientes.\n\nNo obstante, la obligación a cargo del Concesionario en materia de expansiones no ha podido cumplirse, debido a circunstancias externas, imprevisibles y ajenas a su voluntad, consistentes en la falta de autorización para la aprobación e instalación de luminarias. Esta situación se deriva de la insuficiencia de los recursos y/o excedentes provenientes del recaudo del impuesto de Alumbrado Público del municipio de Quimbaya, lo cual imposibilita financieramente la ejecución de dichas expansiones.',
   ],
+
+  printConfig: {
+    municipioNombre: 'MUNICIPIO DE QUIMBAYA',
+    municipioRegion: 'QUINDÍO',
+    nit: '890.000.613-4',
+    oficina: 'OFICINA PLANEACION',
+    footerSignatureRows: [
+      { label: 'Elaborado por:', value: 'P. U de Planificación y Modernización–S.P', fecha: 'Enero 21/2026' },
+      { label: 'Revisado por:', value: 'Secretaria de Planeación', fecha: 'Enero 21/2026' },
+      { label: 'Aprobado por:', value: 'Comité Institucional de Gestión y Desempeño', fecha: 'Enero 22/2026' },
+    ],
+    footerContactLines: [
+      'Teléfono: (57 + 6) 7520533 - 7520533 Ext 37  Correo electrónico: alcaldia@quimbaya-quindio.gov.co',
+      'Dirección: Carrera 6 Calle 12 Esquina - Quimbaya Quindío  Horario de atención: lunes a viernes de 08:00 am a 12:00 – 02:00 pm a 6:00 pm',
+      'Código postal urbano 634020, código postal rural 634027',
+    ],
+  },
 
   clausulas: [
     {
-      title: 'ACUERDO I — OBJETO',
+      title: 'I.',
       content: 'Dada la necesidad que tiene el Municipio de Quimbaya en realizar expansión y atender las diferentes necesidades para la iluminación sobre la vía que comunica a los barrios González y Agualinda, la administración Municipal avala la expansión para la iluminación de la Vía que comunica al barrio González con el barrio Agualinda y su remuneración se realizará agregando las unidades constructivas al cobro en el tiempo para que el Concesionario se remunere en 8 años la inversión, conforme a lo establecido en el contrato de Concesión y cobro que debe realizarse mediante la resolución CREG 123 de 2011.\n\nA continuación, el Concesionario presenta los proyectos en los cuales se tiene en cuenta toda la infraestructura necesaria para la iluminación de la vía que comunica al barrio González y el barrio Agualinda, garantizando los niveles de iluminación adecuados de conformidad con el RETILAP.',
     },
     {
-      title: 'ACUERDO II — INTERVENTORÍA',
+      title: 'II.',
       content: 'Por parte de la Interventoría, se ha hecho la revisión y verificación de las cantidades de la infraestructura requerida que incluyen postes, redes y luminarias con la potencia adecuada y que cumplen con el diseño de iluminación proporcionado por el Concesionario del municipio de Quimbaya. La interventoría conceptúa que las Unidades Constructivas de Alumbrado Público (UCAs) consideradas en el presupuesto del proyecto de expansión para la vía que comunica al barrio González y al barrio Agualinda, se encuentran avaladas y fueron aprobadas por EL CONTRATANTE (MUNICIPIO DE QUIMBAYA), al momento de la aceptación de la oferta, por lo que no hay lugar a incluir unidades constructivas diferentes a las pactadas en el marco del contrato de Concesión y su valor corresponde a la presentada por el Contratista.',
     },
     {
-      title: 'ACUERDO III — DISEÑO DE ILUMINACIÓN',
+      title: 'III.',
       content: 'La interventoría informa que el diseño de iluminación cumple con los niveles mínimos exigidos en el Reglamento Técnico de Iluminación y Alumbrado Público (RETILAP), para el tipo de vía que fue considerado en el estudio para la vía que comunica los barrios González y Agualinda.',
     },
     {
-      title: 'ACUERDO IV — PLAZO DE EJECUCIÓN',
+      title: 'IV.',
       content: 'Que luego del perfeccionamiento del Modificatorio, se establezca un tiempo máximo para la ejecución de la expansión de la vía que comunica al barrio González y el barrio Agualinda de treinta (30) días hábiles, por parte del Concesionario para que de esta manera se logré culminar con la ejecución de la inversión.',
     },
     {
-      title: 'ACUERDO V — REMUNERACIÓN',
+      title: 'V.',
       content: 'La remuneración se realizará agregando las unidades constructivas al cobro en el tiempo para que el Concesionario se remunere en 8 años la inversión, conformidad con lo establecido en el contrato de Concesión y la resolución actual de cobro. Este cobro deberá ser verificado por la interventoría y aprobada mediante la liquidación de costos de Inversión y AOM autorizada por la CREG.',
     },
     {
-      title: 'PERFECCIONAMIENTO',
+      title: '',
       content: 'En constancia de aceptación se firma por las partes el día 3 de marzo de 2026.',
     },
   ],

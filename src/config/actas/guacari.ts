@@ -2,6 +2,7 @@ import type { ActaConfig } from './types';
 
 export const guacariConfig: ActaConfig = {
   logoUrl: '/assets/images/logo-guacari.jpg',
+  hideMunicipioBanner: true,
   docFields: {
     municipio: 'GUACARÍ',
     municipioNit: '',

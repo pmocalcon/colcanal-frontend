@@ -737,7 +737,7 @@ function BudgetBlockContent({
 }) {
   const budgetItems = survey.budgetItems || [];
   const previousMonthIpp = survey.previousMonthIpp;
-  const baseIpp = 100; // IPP base (configurable si viene del backend)
+  const baseIpp = Number(survey.ippConfig?.initialValue) || 100;
 
   // Calculate totals
   const totalBase = budgetItems.reduce(
