@@ -169,7 +169,7 @@ const RevisarRequisicionesPage: React.FC = () => {
         else if (permissions.revisar && !permissions.aprobar) {
           filteredData = response.data.filter(
             (req) => [
-              'pendiente', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion',
+              'pendiente', 'pendiente_validacion', 'en_revision', 'aprobada_revisor', 'pendiente_autorizacion',
               'autorizado', 'aprobada_gerencia', 'rechazada_revisor',
               // Estados posteriores (requisiciones que ya fueron procesadas completamente)
               'en_cotizacion', 'cotizada', 'en_orden_compra', 'pendiente_recepcion',
