@@ -44,6 +44,7 @@ import PresupuestoPage from './pages/PresupuestoPage'
 import PresupuestosListPage from './pages/PresupuestosListPage'
 import PlanAnualPage from './pages/PlanAnualPage'
 import ResumenActaPage from './pages/ResumenActaPage'
+import RevisarCantidadesActaPage from './pages/RevisarCantidadesActaPage'
 import CronogramaPage from './pages/CronogramaPage'
 import NotificacionesPage from './pages/NotificacionesPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -128,6 +129,7 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
           <Route path="/dashboard/levantamiento-obras/cronograma" element={<CronogramaPage />} />
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber" element={<ResumenActaPage />} />
+          <Route path="/dashboard/levantamiento-obras/acta/:recordNumber/cantidades" element={<RevisarCantidadesActaPage />} />
           <Route path="/dashboard/notificaciones" element={<NotificacionesPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>

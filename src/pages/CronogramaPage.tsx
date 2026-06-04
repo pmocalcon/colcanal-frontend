@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal, Plus, X } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 
@@ -115,6 +115,9 @@ export default function CronogramaPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [showOnlyWithData, setShowOnlyWithData] = useState(false);
   const [ucapSectionCollapsed, setUcapSectionCollapsed] = useState(false);
+  const [activityWeekOffset, setActivityWeekOffset] = useState(0);
+  const [activityRows, setActivityRows] = useState<Array<{ id: string; name: string }>>([]);
+  const [activityDailyMap, setActivityDailyMap] = useState<Record<string, Record<string, number>>>({});
 
   // ── set active tab on first load
   useEffect(() => {
@@ -185,6 +188,9 @@ export default function CronogramaPage() {
       setSurveyMaterials([]);
       setMaterialDailyMap({});
       setMaterialWeekOffset(0);
+      setActivityWeekOffset(0);
+      setActivityRows([]);
+      setActivityDailyMap({});
       setIsDirty(false);
     } catch {
       toast.error('Error al cargar el cronograma');
@@ -279,10 +285,25 @@ export default function CronogramaPage() {
             executed: String(p.executedQuantity ?? 0),
           };
         });
-        setDailyPlans(map);
+        setDailyPlans((prev) => {
+          const next = { ...prev };
+          days.forEach((d) => { next[d] = map[d] ?? {}; });
+          return next;
+        });
       })
       .catch(() => {});
   }, [schedule?.scheduleId, weekOffset]);
+
+  // ── load activity rows from localStorage when schedule changes
+  useEffect(() => {
+    if (!schedule) { setActivityRows([]); setActivityDailyMap({}); return; }
+    try {
+      const storedRows = localStorage.getItem(`activity-rows-${schedule.scheduleId}`);
+      if (storedRows) setActivityRows(JSON.parse(storedRows));
+      const storedMap = localStorage.getItem(`activity-map-${schedule.scheduleId}`);
+      if (storedMap) setActivityDailyMap(JSON.parse(storedMap));
+    } catch {}
+  }, [schedule?.scheduleId]);
 
   // ── save material logs
   const handleSaveMaterials = async () => {
@@ -311,6 +332,30 @@ export default function CronogramaPage() {
     } finally {
       setSavingMaterials(false);
     }
+  };
+
+  // ── activity row handlers
+  const addActivityRow = () => {
+    setActivityRows((prev) => [...prev, { id: `act-${Date.now()}`, name: '' }]);
+  };
+
+  const removeActivityRow = (id: string) => {
+    setActivityRows((prev) => prev.filter((r) => r.id !== id));
+    setActivityDailyMap((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((date) => {
+        const { [id]: _, ...rest } = next[date];
+        next[date] = rest;
+      });
+      return next;
+    });
+  };
+
+  const handleSaveActivities = () => {
+    if (!schedule) return;
+    localStorage.setItem(`activity-rows-${schedule.scheduleId}`, JSON.stringify(activityRows));
+    localStorage.setItem(`activity-map-${schedule.scheduleId}`, JSON.stringify(activityDailyMap));
+    toast.success('Actividades guardadas');
   };
 
   // ── save daily plans
@@ -448,7 +493,7 @@ export default function CronogramaPage() {
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(w);
       });
-    map.forEach((ws, key) => { if (ws.length < 2) map.delete(key); });
+    map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
     return map;
   }, [works]);
 
@@ -722,7 +767,7 @@ export default function CronogramaPage() {
                                 <table className="w-full text-sm border-collapse" style={{ minWidth: 620 }}>
                                   <thead>
                                     <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
-                                      <th colSpan={2} className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2 w-40">UCAP</th>
+                                      <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2 w-40">UCAP</th>
                                       {days.map((date, i) => {
                                         const d = new Date(date + 'T12:00:00');
                                         const isToday = date === today;
@@ -745,132 +790,57 @@ export default function CronogramaPage() {
                                   <tbody>
                                     {schedule.items.map((item) => {
                                       const rowPlan = days.reduce((s, d) => s + (parseFloat(dailyPlans[d]?.[item.ucapId]?.planned ?? '') || 0), 0);
-                                      const rowExec = days.reduce((s, d) => s + (parseFloat(dailyPlans[d]?.[item.ucapId]?.executed ?? '') || 0), 0);
                                       return (
-                                        <Fragment key={item.ucapId}>
-                                          {/* Plan row */}
-                                          <tr>
-                                            <td rowSpan={2} className="py-2 pr-1 align-middle border-b border-[hsl(var(--canalco-neutral-100))] w-32">
-                                              <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.ucapCode}</p>
-                                              <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
-                                            </td>
-                                            <td className="pr-1 pt-2 w-8">
-                                              <span className="text-[10px] font-semibold text-[hsl(var(--canalco-neutral-400))] uppercase">P</span>
-                                            </td>
-                                            {days.map((date) => {
-                                              const isHoliday = weekHolidaySet.has(date);
-                                              return (
-                                                <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
-                                                  <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={dailyPlans[date]?.[item.ucapId]?.planned ?? ''}
-                                                    placeholder="0"
-                                                    disabled={isHoliday}
-                                                    onChange={(e) => setDailyPlans((prev) => ({
-                                                      ...prev,
-                                                      [date]: {
-                                                        ...prev[date],
-                                                        [item.ucapId]: { ...prev[date]?.[item.ucapId] ?? { planned: '', executed: '' }, planned: e.target.value },
-                                                      },
-                                                    }))}
-                                                    className="h-7 w-14 text-xs text-center px-1"
-                                                  />
-                                                </td>
-                                              );
-                                            })}
-                                            <td className="pt-2 text-center">
-                                              <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                                                {rowPlan > 0 ? rowPlan : '—'}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                          {/* Executed row — editable per day */}
-                                          <tr className="border-b border-[hsl(var(--canalco-neutral-100))]">
-                                            <td className="pr-1 pb-2 w-8">
-                                              <span className="text-[10px] font-semibold text-green-600 uppercase">R</span>
-                                            </td>
-                                            {days.map((date) => {
-                                              const isToday = date === today;
-                                              const isHoliday = weekHolidaySet.has(date);
-                                              const dayExec = parseFloat(dailyPlans[date]?.[item.ucapId]?.executed ?? '') || 0;
-                                              const dayPlan = parseFloat(dailyPlans[date]?.[item.ucapId]?.planned ?? '') || 0;
-                                              const color = dayPlan > 0
-                                                ? dayExec >= dayPlan ? 'border-green-400 text-green-700' : 'border-red-400 text-red-600'
-                                                : '';
-                                              return (
-                                                <td key={date} className={`py-0.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
-                                                  <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={dailyPlans[date]?.[item.ucapId]?.executed ?? ''}
-                                                    placeholder="0"
-                                                    disabled={isHoliday}
-                                                    onChange={(e) => setDailyPlans((prev) => ({
-                                                      ...prev,
-                                                      [date]: {
-                                                        ...prev[date],
-                                                        [item.ucapId]: { ...prev[date]?.[item.ucapId] ?? { planned: '', executed: '' }, executed: e.target.value },
-                                                      },
-                                                    }))}
-                                                    className={`h-7 w-14 text-xs text-center px-1 ${color}`}
-                                                  />
-                                                </td>
-                                              );
-                                            })}
-                                            <td className="pb-2 text-center">
-                                              <span className="text-xs font-semibold text-green-600">
-                                                {rowExec > 0 ? rowExec : '—'}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        </Fragment>
+                                        <tr key={item.ucapId} className="border-b border-[hsl(var(--canalco-neutral-100))]">
+                                          <td className="py-2 pr-1 align-middle w-32">
+                                            <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.ucapCode}</p>
+                                            <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
+                                          </td>
+                                          {days.map((date) => {
+                                            const isHoliday = weekHolidaySet.has(date);
+                                            return (
+                                              <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                <Input
+                                                  type="number"
+                                                  min="0"
+                                                  step="0.01"
+                                                  value={dailyPlans[date]?.[item.ucapId]?.planned ?? ''}
+                                                  placeholder="0"
+                                                  disabled={isHoliday}
+                                                  onChange={(e) => setDailyPlans((prev) => ({
+                                                    ...prev,
+                                                    [date]: {
+                                                      ...prev[date],
+                                                      [item.ucapId]: { ...prev[date]?.[item.ucapId] ?? { planned: '', executed: '' }, planned: e.target.value },
+                                                    },
+                                                  }))}
+                                                  className="h-7 w-14 text-xs text-center px-1"
+                                                />
+                                              </td>
+                                            );
+                                          })}
+                                          <td className="py-2 text-center">
+                                            <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                              {rowPlan > 0 ? rowPlan : '—'}
+                                            </span>
+                                          </td>
+                                        </tr>
                                       );
                                     })}
                                   </tbody>
                                   <tfoot>
                                     <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                                      <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total plan</td>
+                                      <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total plan</td>
                                       {days.map((date) => {
                                         const t = schedule.items.reduce((s, item) => s + (parseFloat(dailyPlans[date]?.[item.ucapId]?.planned ?? '') || 0), 0);
                                         return (
-                                          <td key={date} className={`pt-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                          <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
                                             {t > 0 ? t : '—'}
                                           </td>
                                         );
                                       })}
-                                      <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                      <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                                         {(() => { const g = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (parseFloat(dailyPlans[d]?.[i.ucapId]?.planned ?? '') || 0), 0), 0); return g > 0 ? g : '—'; })()}
-                                      </td>
-                                    </tr>
-                                    <tr>
-                                      <td colSpan={2} className="pt-1 pb-2 text-xs font-semibold text-green-600">Total real</td>
-                                      {days.map((date) => {
-                                        const isToday = date === today;
-                                        const totalExec = schedule.items.reduce((s, i) => s + (parseFloat(dailyPlans[date]?.[i.ucapId]?.executed ?? '') || 0), 0);
-                                        const totalPlan = schedule.items.reduce((s, i) => s + (parseFloat(dailyPlans[date]?.[i.ucapId]?.planned ?? '') || 0), 0);
-                                        const color = totalPlan > 0
-                                          ? totalExec >= totalPlan ? 'text-green-600' : 'text-red-500'
-                                          : 'text-green-600';
-                                        return (
-                                          <td key={date} className={`pt-1 pb-2 text-center text-xs font-bold ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : weekHolidaySet.has(date) ? 'bg-red-50' : ''}`}>
-                                            {totalExec > 0
-                                              ? <span className={color}>{totalExec}</span>
-                                              : <span className="text-[hsl(var(--canalco-neutral-300))]">—</span>
-                                            }
-                                          </td>
-                                        );
-                                      })}
-                                      <td className="pt-1 pb-2 text-center text-xs font-bold">
-                                        {(() => {
-                                          const g = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (parseFloat(dailyPlans[d]?.[i.ucapId]?.executed ?? '') || 0), 0), 0);
-                                          const gp = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (parseFloat(dailyPlans[d]?.[i.ucapId]?.planned ?? '') || 0), 0), 0);
-                                          if (g <= 0) return <span className="text-[hsl(var(--canalco-neutral-300))]">—</span>;
-                                          const color = gp > 0 ? (g >= gp ? 'text-green-600' : 'text-red-500') : 'text-green-600';
-                                          return <span className={color}>{g}</span>;
-                                        })()}
                                       </td>
                                     </tr>
                                   </tfoot>
@@ -886,6 +856,297 @@ export default function CronogramaPage() {
                                 <Button onClick={handleSaveDailyPlans} disabled={savingDailyPlans} variant="outline" className="gap-2 text-sm">
                                   <Save className="w-4 h-4" />
                                   {savingDailyPlans ? 'Guardando...' : 'Guardar plan'}
+                                </Button>
+                              </div>
+                            </section>
+                          );
+                        })()}
+
+                        {/* ── Plan Diario Materiales ── */}
+                        {schedule && (() => {
+                          const days = getWeekDays(materialWeekOffset);
+                          const today = formatDate(new Date());
+                          const matWeekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                          const matWeekHolidaySet = new Set(matWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                          return (
+                            <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
+                                  Plan Diario Materiales
+                                </h3>
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => setMaterialWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
+                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
+                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                                    {' – '}
+                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </span>
+                                  <button onClick={() => setMaterialWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
+                                  {materialWeekOffset !== 0 && (
+                                    <button onClick={() => setMaterialWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
+                                      Hoy
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {surveyMaterials.length === 0 ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
+                                  Esta obra no tiene materiales registrados en sus levantamientos.
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm border-collapse" style={{ minWidth: 700 }}>
+                                    <thead>
+                                      <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                        <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Material</th>
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-16">Unidad</th>
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
+                                        {days.map((date, i) => {
+                                          const d = new Date(date + 'T12:00:00');
+                                          const isToday = date === today;
+                                          const isHoliday = matWeekHolidaySet.has(date);
+                                          const headerCls = isToday
+                                            ? 'text-[hsl(var(--canalco-primary))] font-bold'
+                                            : isHoliday
+                                            ? 'text-red-500 font-semibold'
+                                            : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                          return (
+                                            <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
+                                              <div>{DAY_LABELS[i]}</div>
+                                              <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                            </th>
+                                          );
+                                        })}
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {surveyMaterials.map((mat) => {
+                                        const weekTotal = days.reduce((s, d) => s + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0);
+                                        return (
+                                          <tr key={mat.materialCode} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                            <td className="py-1.5 pr-2">
+                                              <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{mat.materialCode}</p>
+                                              <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[200px]">{mat.materialDescription}</p>
+                                            </td>
+                                            <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                              {mat.unitOfMeasure ?? '—'}
+                                            </td>
+                                            <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                              {mat.totalQuantity}
+                                            </td>
+                                            {days.map((date) => {
+                                              const isToday = date === today;
+                                              const isHoliday = matWeekHolidaySet.has(date);
+                                              const qty = materialDailyMap[date]?.[mat.materialCode] ?? 0;
+                                              return (
+                                                <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                  <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={qty || ''}
+                                                    placeholder="0"
+                                                    disabled={isHoliday}
+                                                    onChange={(e) => {
+                                                      const val = parseFloat(e.target.value) || 0;
+                                                      setMaterialDailyMap((prev) => ({
+                                                        ...prev,
+                                                        [date]: { ...prev[date], [mat.materialCode]: val },
+                                                      }));
+                                                    }}
+                                                    className="h-7 w-14 text-xs text-center px-1"
+                                                  />
+                                                </td>
+                                              );
+                                            })}
+                                            <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                              {weekTotal > 0 ? weekTotal : '—'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                        <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
+                                        <td className="pt-2" />
+                                        {days.map((date) => {
+                                          const isToday = date === today;
+                                          const dayTotal = surveyMaterials.reduce((s, mat) => s + (materialDailyMap[date]?.[mat.materialCode] ?? 0), 0);
+                                          return (
+                                            <td key={date} className={`pt-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                              {dayTotal > 0 ? dayTotal : '—'}
+                                            </td>
+                                          );
+                                        })}
+                                        <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                          {(() => { const g = days.reduce((s, d) => s + surveyMaterials.reduce((ss, mat) => ss + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                        </td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )}
+
+                              <div className="flex justify-end mt-4">
+                                <Button onClick={handleSaveMaterials} disabled={savingMaterials} variant="outline" className="gap-2 text-sm">
+                                  <Save className="w-4 h-4" />
+                                  {savingMaterials ? 'Guardando...' : 'Guardar materiales'}
+                                </Button>
+                              </div>
+                            </section>
+                          );
+                        })()}
+
+                        {/* ── Plan Diario Actividades ── */}
+                        {schedule && (() => {
+                          const days = getWeekDays(activityWeekOffset);
+                          const today = formatDate(new Date());
+                          const actWeekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                          const actWeekHolidaySet = new Set(actWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                          return (
+                            <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
+                                  Plan Diario Actividades
+                                </h3>
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => setActivityWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
+                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
+                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                                    {' – '}
+                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </span>
+                                  <button onClick={() => setActivityWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
+                                  {activityWeekOffset !== 0 && (
+                                    <button onClick={() => setActivityWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
+                                      Hoy
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {activityRows.length === 0 ? (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mb-4">
+                                  No hay actividades. Agrega una con el botón de abajo.
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm border-collapse" style={{ minWidth: 700 }}>
+                                    <thead>
+                                      <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                        <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Actividad</th>
+                                        {days.map((date, i) => {
+                                          const d = new Date(date + 'T12:00:00');
+                                          const isToday = date === today;
+                                          const isHoliday = actWeekHolidaySet.has(date);
+                                          const headerCls = isToday
+                                            ? 'text-[hsl(var(--canalco-primary))] font-bold'
+                                            : isHoliday
+                                            ? 'text-red-500 font-semibold'
+                                            : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                          return (
+                                            <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
+                                              <div>{DAY_LABELS[i]}</div>
+                                              <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                            </th>
+                                          );
+                                        })}
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                        <th className="w-6 pb-2" />
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {activityRows.map((row) => {
+                                        const weekTotal = days.reduce((s, d) => s + (activityDailyMap[d]?.[row.id] ?? 0), 0);
+                                        return (
+                                          <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                            <td className="py-1.5 pr-2">
+                                              <Input
+                                                type="text"
+                                                value={row.name}
+                                                placeholder="Nombre de actividad"
+                                                onChange={(e) => setActivityRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))}
+                                                className="h-7 text-xs min-w-[160px]"
+                                              />
+                                            </td>
+                                            {days.map((date) => {
+                                              const isToday = date === today;
+                                              const isHoliday = actWeekHolidaySet.has(date);
+                                              const qty = activityDailyMap[date]?.[row.id] ?? 0;
+                                              return (
+                                                <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                  <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={qty || ''}
+                                                    placeholder="0"
+                                                    disabled={isHoliday}
+                                                    onChange={(e) => {
+                                                      const val = parseFloat(e.target.value) || 0;
+                                                      setActivityDailyMap((prev) => ({
+                                                        ...prev,
+                                                        [date]: { ...prev[date], [row.id]: val },
+                                                      }));
+                                                    }}
+                                                    className="h-7 w-14 text-xs text-center px-1"
+                                                  />
+                                                </td>
+                                              );
+                                            })}
+                                            <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                              {weekTotal > 0 ? weekTotal : '—'}
+                                            </td>
+                                            <td className="py-1.5 pl-1">
+                                              <button
+                                                onClick={() => removeActivityRow(row.id)}
+                                                className="p-0.5 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                        <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
+                                        {days.map((date) => {
+                                          const isToday = date === today;
+                                          const dayTotal = activityRows.reduce((s, row) => s + (activityDailyMap[date]?.[row.id] ?? 0), 0);
+                                          return (
+                                            <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                              {dayTotal > 0 ? dayTotal : '—'}
+                                            </td>
+                                          );
+                                        })}
+                                        <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                          {(() => { const g = days.reduce((s, d) => s + activityRows.reduce((ss, row) => ss + (activityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                        </td>
+                                        <td />
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between items-center mt-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={addActivityRow}
+                                  className="gap-1.5 text-xs"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Agregar actividad
+                                </Button>
+                                <Button onClick={handleSaveActivities} variant="outline" className="gap-2 text-sm">
+                                  <Save className="w-4 h-4" />
+                                  Guardar actividades
                                 </Button>
                               </div>
                             </section>
@@ -1148,145 +1409,6 @@ export default function CronogramaPage() {
                             </div>
                           ))}
                         </section>
-
-                        {/* ── Materiales utilizados ── */}
-                        {schedule && (() => {
-                          const days = getWeekDays(materialWeekOffset);
-                          const today = formatDate(new Date());
-                          const matWeekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
-                          const matWeekHolidaySet = new Set(matWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
-                          return (
-                            <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                              <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                                  Materiales Utilizados
-                                </h3>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => setMaterialWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
-                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
-                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
-                                    {' – '}
-                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                  <button onClick={() => setMaterialWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
-                                  {materialWeekOffset !== 0 && (
-                                    <button onClick={() => setMaterialWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
-                                      Hoy
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {surveyMaterials.length === 0 ? (
-                                <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
-                                  Esta obra no tiene materiales registrados en sus levantamientos.
-                                </p>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-sm border-collapse" style={{ minWidth: 700 }}>
-                                    <thead>
-                                      <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
-                                        <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Material</th>
-                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-16">Unidad</th>
-                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
-                                        {days.map((date, i) => {
-                                          const d = new Date(date + 'T12:00:00');
-                                          const isToday = date === today;
-                                          const isHoliday = matWeekHolidaySet.has(date);
-                                          const headerCls = isToday
-                                            ? 'text-[hsl(var(--canalco-primary))] font-bold'
-                                            : isHoliday
-                                            ? 'text-red-500 font-semibold'
-                                            : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
-                                          return (
-                                            <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
-                                              <div>{DAY_LABELS[i]}</div>
-                                              <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
-                                            </th>
-                                          );
-                                        })}
-                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {surveyMaterials.map((mat) => {
-                                        const weekTotal = days.reduce((s, d) => s + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0);
-                                        return (
-                                          <tr key={mat.materialCode} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
-                                            <td className="py-1.5 pr-2">
-                                              <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{mat.materialCode}</p>
-                                              <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[200px]">{mat.materialDescription}</p>
-                                            </td>
-                                            <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">
-                                              {mat.unitOfMeasure ?? '—'}
-                                            </td>
-                                            <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
-                                              {mat.totalQuantity}
-                                            </td>
-                                            {days.map((date) => {
-                                              const isToday = date === today;
-                                              const isHoliday = matWeekHolidaySet.has(date);
-                                              const qty = materialDailyMap[date]?.[mat.materialCode] ?? 0;
-                                              return (
-                                                <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
-                                                  <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={qty || ''}
-                                                    placeholder="0"
-                                                    disabled={isHoliday}
-                                                    onChange={(e) => {
-                                                      const val = parseFloat(e.target.value) || 0;
-                                                      setMaterialDailyMap((prev) => ({
-                                                        ...prev,
-                                                        [date]: { ...prev[date], [mat.materialCode]: val },
-                                                      }));
-                                                    }}
-                                                    className="h-7 w-14 text-xs text-center px-1"
-                                                  />
-                                                </td>
-                                              );
-                                            })}
-                                            <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                                              {weekTotal > 0 ? weekTotal : '—'}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                                        <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
-                                        <td className="pt-2" />
-                                        {days.map((date) => {
-                                          const isToday = date === today;
-                                          const dayTotal = surveyMaterials.reduce((s, mat) => s + (materialDailyMap[date]?.[mat.materialCode] ?? 0), 0);
-                                          return (
-                                            <td key={date} className={`pt-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
-                                              {dayTotal > 0 ? dayTotal : '—'}
-                                            </td>
-                                          );
-                                        })}
-                                        <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                          {(() => { const g = days.reduce((s, d) => s + surveyMaterials.reduce((ss, mat) => ss + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
-                                        </td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
-                              )}
-
-                              <div className="flex justify-end mt-4">
-                                <Button onClick={handleSaveMaterials} disabled={savingMaterials} variant="outline" className="gap-2 text-sm">
-                                  <Save className="w-4 h-4" />
-                                  {savingMaterials ? 'Guardando...' : 'Guardar materiales'}
-                                </Button>
-                              </div>
-                            </section>
-                          );
-                        })()}
-
 
                         {/* ── Save button ── */}
                         <div className="flex justify-end pb-6">

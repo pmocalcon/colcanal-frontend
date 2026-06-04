@@ -8,7 +8,7 @@ import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle } from 'lucide-react';
+import { Home, ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle, ClipboardList } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PermissionGuard } from '@/components/PermissionGuard';
@@ -107,8 +107,7 @@ export default function ObrasListPage() {
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(w);
       });
-    // Remove singleton actas — a single work with a recordNumber is still individual
-    map.forEach((ws, key) => { if (ws.length < 2) map.delete(key); });
+    map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
     return map;
   }, [works]);
 
@@ -770,6 +769,20 @@ export default function ObrasListPage() {
                                     </Button>
                                   )}
 
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs border-[hsl(var(--canalco-neutral-400))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]"
+                                    onClick={() =>
+                                      navigate(
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(acta)}/cantidades`,
+                                        { state: { works: actaWorks } },
+                                      )
+                                    }
+                                  >
+                                    <ClipboardList className="w-3.5 h-3.5 mr-1.5" />
+                                    Revisar cantidades
+                                  </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"

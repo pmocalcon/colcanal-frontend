@@ -110,7 +110,7 @@ export default function PlanAnualPage() {
           actaMap.get(w.recordNumber)!.push(w);
         }
       });
-      actaMap.forEach((ws, key) => { if (ws.length < 2) actaMap.delete(key); });
+      actaMap.forEach((ws, key) => { if (ws.length < 1) actaMap.delete(key); });
 
       // Individual = no recordNumber OR singleton acta
       const preselected = new Set(
@@ -151,7 +151,7 @@ export default function PlanAnualPage() {
     works.forEach((w) => {
       if (w.recordNumber) actaCounts.set(w.recordNumber, (actaCounts.get(w.recordNumber) ?? 0) + 1);
     });
-    let result = works.filter((w) => !w.recordNumber || (actaCounts.get(w.recordNumber!) ?? 0) < 2);
+    let result = works.filter((w) => !w.recordNumber || (actaCounts.get(w.recordNumber!) ?? 0) < 1);
 
     if (!isNaN(year)) {
       result = result.filter((w) => !w.annualPlan || w.annualPlan === year);
@@ -180,8 +180,7 @@ export default function PlanAnualPage() {
       map.get(w.recordNumber)!.push(w);
     });
 
-    // Only include true actas (2+ works)
-    map.forEach((ws, key) => { if (ws.length < 2) map.delete(key); });
+    map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
 
     let result = Array.from(map.entries()).map(([recordNumber, actaWorks]) => {
       const firstPlan = actaWorks[0].annualPlan;

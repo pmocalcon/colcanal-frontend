@@ -335,8 +335,7 @@ export default function PresupuestoPage() {
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(w);
       });
-    // Solo es agrupado si 2+ obras comparten el mismo número de acta
-    map.forEach((ws, key) => { if (ws.length < 2) map.delete(key); });
+    map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
     return map;
   }, [works]);
 
@@ -402,7 +401,6 @@ export default function PresupuestoPage() {
             hasIva: item.hasIva !== false,
             isManual: false,
           }));
-          while (loaded.length < 10) loaded.push(createEmptyRow(loaded.length + 1));
           const fixedRows: PresupuestoRow[] = FIXED_ROW_NAMES.map((name) => {
             const saved = b.items.find((item) => item.descripcion === name);
             return {
@@ -412,6 +410,7 @@ export default function PresupuestoPage() {
               cantBodega: saved?.cantBodega != null ? String(saved.cantBodega) : '',
               costoTransporte: saved?.costoTransporte != null ? String(saved.costoTransporte) : '',
               ejecutado: saved?.ejecutado != null ? String(saved.ejecutado) : '',
+              hasIva: saved?.hasIva ?? false,
             };
           });
           setRows([...loaded, ...fixedRows].map((r, i) => ({ ...r, id: i + 1 })));
