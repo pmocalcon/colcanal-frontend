@@ -18,6 +18,7 @@ import {
   getPendingActions,
   getRequisitionById,
   reviewRequisition,
+  validateRequisition,
   approveRequisition,
   rejectRequisition,
   type Requisition,
@@ -410,6 +411,11 @@ const RevisarRequisicionesPage: React.FC = () => {
             comments: consolidatedComments,
           });
         }
+      } else if (selectedRequisition.status?.code === 'pendiente_validacion') {
+        await validateRequisition(selectedRequisition.requisitionId, {
+          decision: finalDecision === 'approve' ? 'validate' : 'reject',
+          comments: consolidatedComments,
+        });
       } else {
         await reviewRequisition(selectedRequisition.requisitionId, {
           decision: finalDecision,
