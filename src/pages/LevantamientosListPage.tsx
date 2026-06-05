@@ -9,6 +9,7 @@ import {
 } from '@/services/surveys.service';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
+import { useAuth } from '@/contexts/AuthContext';
 import { mapToDepartments, getMunicipioName, type Municipality } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +59,8 @@ export default function LevantamientosListPage() {
   const navigate = useNavigate();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
   const { hasPermission } = useGranularPermissions();
+  const { user } = useAuth();
+  const canSeeAllSurveys = user?.nombreRol === 'Director Técnico' || user?.nombreRol === 'Gerencia de Proyectos' || user?.nombreRol === 'Analista PMO';
   const [mainView, setMainView] = useState<MainView>('list');
   const [activeTab, setActiveTab] = useState('');
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -102,14 +105,20 @@ export default function LevantamientosListPage() {
       return filteredSurveys.filter(
         (s) =>
           s.work?.companyId === activeMunicipality.id ||
-          normalizeLocationName(s.work?.company?.name) === municipalityName,
+          normalizeLocationName(s.work?.company?.name) === municipalityName ||
+          // Surveys stored under a related project (e.g. companyId=CanalesYContratos + projectId=CB)
+          (activeMunicipality.linkedProjectId !== undefined &&
+            s.work?.projectId === activeMunicipality.linkedProjectId),
       );
     }
+    // Project-type: match by projectId/name, or company-level surveys (no projectId) under the same company
     return filteredSurveys.filter(
       (s) =>
-        (s.work as any)?.projectId === activeMunicipality.id ||
+        s.work?.projectId === activeMunicipality.id ||
         normalizeLocationName((s.work as any)?.project?.name) === municipalityName ||
-        normalizeLocationName(s.work?.company?.name) === municipalityName,
+        (!s.work?.projectId &&
+          activeMunicipality.companyId !== undefined &&
+          s.work?.companyId === activeMunicipality.companyId),
     );
   }, [filteredSurveys, activeMunicipality]);
 
@@ -120,10 +129,15 @@ export default function LevantamientosListPage() {
     }
   }, [departments, activeTab]);
 
-  // Resetear municipio al cambiar de departamento
+  // Al cambiar de departamento, seleccionar el primer municipio automáticamente
   useEffect(() => {
-    setActiveMunicipality(null);
-  }, [activeTab]);
+    const dept = departments.find((d) => d.name === activeTab);
+    if (dept && dept.municipalities.length > 0) {
+      setActiveMunicipality(dept.municipalities[0]);
+    } else {
+      setActiveMunicipality(null);
+    }
+  }, [activeTab, departments]);
 
   useEffect(() => {
     if (activeCompanyIds.length > 0 || activeProjectIds.length > 0) {
@@ -160,7 +174,10 @@ export default function LevantamientosListPage() {
     try {
       setLoading(true);
       setError(null);
-      const filters: Parameters<typeof surveysService.getSurveysDatabase>[0] = { limit: 500 };
+      const filters: Parameters<typeof surveysService.getSurveysDatabase>[0] = {
+        limit: 500,
+        ...(!canSeeAllSurveys && user?.userId ? { createdBy: user.userId } : {}),
+      };
       const data = await surveysService.getSurveysDatabase(filters);
       const mappedSurveys = (data.data || [])
         .map(mapDatabaseItemToSurvey)
@@ -300,7 +317,7 @@ export default function LevantamientosListPage() {
   };
 
   const getOverallStatusBadge = (survey: Survey) => {
-    const { allApproved, hasRejections, pending, approved } = getReviewSummary(survey);
+    const { allApproved, hasRejections, approved } = getReviewSummary(survey);
 
     if (allApproved) {
       return (
@@ -522,18 +539,8 @@ export default function LevantamientosListPage() {
             {departments.map((dept) => (
               <TabsContent key={dept.name} value={dept.name}>
                 {/* Municipality filter pills */}
-                {dept.municipalities.length > 1 && (
+                {dept.municipalities.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <button
-                      onClick={() => setActiveMunicipality(null)}
-                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                        activeMunicipality === null
-                          ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
-                          : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
-                      }`}
-                    >
-                      Todos
-                    </button>
                     {dept.municipalities.map((muni) => (
                       <button
                         key={`${muni.type}-${muni.id}`}

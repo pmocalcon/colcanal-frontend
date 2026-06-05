@@ -445,6 +445,7 @@ export default function CrearObraPage() {
         requiresCivilWork: investmentData.questions.requiresCivilWork,
         // IPP del mes anterior (ingresado por Director Técnico)
         previousMonthIpp: ippValue || undefined,
+        description: investmentData.description || undefined,
         // Budget items (filter only items with ucapId)
         budgetItems: budgetItems
           .filter((item) => item.ucapId !== null && item.quantity > 0)

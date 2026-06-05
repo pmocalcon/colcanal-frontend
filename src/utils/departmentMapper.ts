@@ -26,7 +26,7 @@ export function getMunicipioName(name: string): string {
 export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects: string[] }> = {
   Antioquia: {
     companies: ['Unión Temporal Alumbrado Público Santa Bárbara'],
-    projects: ['Jericó', 'Ciudad Bolívar', 'Tarso', 'Pueblo Rico'],
+    projects: ['Jericó', 'Ciudad Bolívar', 'Tarso', 'Pueblo Rico', 'Pueblorrico'],
   },
   'Valle del Cauca': {
     companies: [
@@ -52,6 +52,10 @@ export interface Municipality {
   id: number;
   name: string;
   type: 'company' | 'project';
+  /** Parent company ID — only set for project-type municipalities */
+  companyId?: number;
+  /** When a company-type municipality also has a same-named project, this holds that project's ID */
+  linkedProjectId?: number;
 }
 
 export interface Department {
@@ -71,6 +75,30 @@ export function mapToDepartments(
 ): Department[] {
   const departments: Department[] = [];
 
+  // Merge same-name entries: company wins, but keeps the project's ID for cross-filtering
+  const buildMunicipalities = (
+    deptCompanies: Array<{ companyId: number; name: string }>,
+    deptProjects: Array<{ projectId: number; name: string; companyId: number }>,
+  ): Municipality[] => {
+    const rawMunicipalities: Municipality[] = [
+      ...deptCompanies.map((c) => ({ id: c.companyId, name: c.name, type: 'company' as const })),
+      ...deptProjects.map((p) => ({ id: p.projectId, name: p.name, type: 'project' as const, companyId: p.companyId })),
+    ];
+    const seen = new Map<string, Municipality>();
+    for (const muni of rawMunicipalities) {
+      const key = normalizeMunicipalityName(muni.name);
+      if (seen.has(key)) {
+        const existing = seen.get(key)!;
+        if (existing.type === 'company' && muni.type === 'project') {
+          existing.linkedProjectId = muni.id;
+        }
+      } else {
+        seen.set(key, { ...muni });
+      }
+    }
+    return [...seen.values()];
+  };
+
   for (const [deptName, mapping] of Object.entries(DEPARTMENT_MAPPING)) {
     const allowedNames = new Set(
       [...mapping.companies, ...mapping.projects].map(normalizeMunicipalityName),
@@ -80,21 +108,13 @@ export function mapToDepartments(
 
     if (deptCompanies.length === 0 && deptProjects.length === 0) continue;
 
-    const municipalities = [
-      ...deptCompanies.map((c) => ({ id: c.companyId, name: c.name, type: 'company' as const })),
-      ...deptProjects.map((p) => ({ id: p.projectId, name: p.name, type: 'project' as const })),
-    ].filter((municipality, index, all) => {
-      const name = normalizeMunicipalityName(municipality.name);
-      return all.findIndex((item) => normalizeMunicipalityName(item.name) === name) === index;
-    });
-
     departments.push({
       name: deptName,
       companyIds: deptCompanies.map((c) => c.companyId),
       projectIds: deptProjects.map((p) => p.projectId),
       companies: deptCompanies.map((c) => ({ companyId: c.companyId, name: c.name })),
       projects: deptProjects.map((p) => ({ projectId: p.projectId, name: p.name, companyId: p.companyId })),
-      municipalities,
+      municipalities: buildMunicipalities(deptCompanies, deptProjects),
     });
   }
 

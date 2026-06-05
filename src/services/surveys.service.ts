@@ -97,6 +97,7 @@ export interface Survey {
     initialValue: number | string | null;
   };
   description?: string;
+  rejectionComments?: string;
   // Block review statuses
   budgetStatus?: BlockStatus;
   budgetComments?: string;
@@ -191,6 +192,8 @@ export interface CreateSurveyDto {
   requiresCivilWork?: boolean;
   // IPP del mes anterior (ingresado por Director Técnico)
   previousMonthIpp?: number;
+  // Descripción general
+  description?: string;
   // Budget items
   budgetItems?: {
     ucapId: number;
@@ -226,8 +229,9 @@ export interface CreateSurveyDto {
 export interface UpdateSurveyDto extends Partial<CreateSurveyDto> {}
 
 export interface ReviewSurveyDto {
-  approved: boolean;
-  comments?: string;
+  action: 'approve' | 'reject';
+  previousMonthIpp?: number;
+  rejectionComments?: string;
 }
 
 export interface ReviewBlockDto {
@@ -247,6 +251,7 @@ export interface SurveyDatabaseFilters {
   investmentStatus?: BlockStatus;
   materialsStatus?: BlockStatus;
   travelExpensesStatus?: BlockStatus;
+  createdBy?: number;
 }
 
 export interface SurveyDatabaseItem {

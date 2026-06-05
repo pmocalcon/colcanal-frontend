@@ -10,7 +10,6 @@ const TRAVEL_EXPENSE_LABELS: Record<string, string> = {
   parking: 'Parqueadero',
   lodging: 'Hospedaje',
   food: 'Alimentación',
-  fuel: 'Combustible',
   additional_crew: 'Cuadrilla Adicional',
   day_hours: 'Horas Diurnas',
   holiday_overtime: 'Horas Festivas/Nocturnas',

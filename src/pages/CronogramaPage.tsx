@@ -2,16 +2,18 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
-import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
+import { mapToDepartments, getMunicipioName, type Municipality } from '@/utils/departmentMapper';
 import { surveysService, type Work } from '@/services/surveys.service';
-import { schedulesService, type ScheduleDetail, type DailyPlanEntry, type MaterialLogEntry, type SurveyMaterialItem } from '@/services/schedules.service';
+import { schedulesService, type ScheduleDetail, type DailyPlanEntry, type MaterialLogEntry, type SurveyMaterialItem, type DailyExecutionEntry, type ExecutionItem } from '@/services/schedules.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal, Plus, X } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
+import { ResponsiveContainer, ComposedChart, Area, Line as RLine, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, PieChart, Pie, Cell } from 'recharts';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,14 @@ function getWeekDays(offset: number): string[] {
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
+const normalizeLocationName = (name?: string | null) =>
+  getMunicipioName(name || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/^union temporal alumbrado publico\s+/i, '')
+    .toLowerCase()
+    .trim();
+
 // ─── sub-components ─────────────────────────────────────────────────────────
 
 function ProgressBar({ value, color = 'primary' }: { value: number; color?: 'primary' | 'green' | 'amber' | 'red' }) {
@@ -71,6 +81,21 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: 'pri
   );
 }
 
+const DEFAULT_ACTIVITY_OPTIONS = [
+  'Instalación de sistema puesta tierra',
+  'Conexiones eléctricas',
+  'Tendido de cableado',
+  'Montaje luminaria',
+  'Instalación de brazos y soporte',
+  'Obra civil',
+  'Izado de poste',
+  'Segmentación de postes',
+  'Instalación de ductos escavación y apertura de zanjas',
+  'Recepción de material',
+  'Escavación y apertura para postes',
+  'Construcción de cajas de inspección',
+];
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 export default function CronogramaPage() {
@@ -79,10 +104,11 @@ export default function CronogramaPage() {
 
   const departments = useMemo(() => {
     if (!access?.companies) return [];
-    return mapCompaniesToDepartments(access.companies);
+    return mapToDepartments(access.companies, access.projects || []);
   }, [access]);
 
   const [activeTab, setActiveTab] = useState('');
+  const [activeMunicipality, setActiveMunicipality] = useState<Municipality | null>(null);
   const [works, setWorks] = useState<Work[]>([]);
   const [loadingWorks, setLoadingWorks] = useState(false);
   const [search, setSearch] = useState('');
@@ -114,10 +140,25 @@ export default function CronogramaPage() {
   const [savingMaterials, setSavingMaterials] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showOnlyWithData, setShowOnlyWithData] = useState(false);
-  const [ucapSectionCollapsed, setUcapSectionCollapsed] = useState(false);
   const [activityWeekOffset, setActivityWeekOffset] = useState(0);
+  const [cronogramaTab, setCronogramaTab] = useState('plan');
   const [activityRows, setActivityRows] = useState<Array<{ id: string; name: string }>>([]);
+  const [customActivityOptions, setCustomActivityOptions] = useState<string[]>([]);
+  const [newCustomActivity, setNewCustomActivity] = useState('');
+  const [showAddActivityInput, setShowAddActivityInput] = useState(false);
   const [activityDailyMap, setActivityDailyMap] = useState<Record<string, Record<string, number>>>({});
+
+  // ── Ejecución states
+  const [execWeekOffset, setExecWeekOffset] = useState(0);
+  const [execMaterialWeekOffset, setExecMaterialWeekOffset] = useState(0);
+  const [execActivityWeekOffset, setExecActivityWeekOffset] = useState(0);
+  const [execDailyMap, setExecDailyMap] = useState<Record<string, Record<string, number>>>({});
+  const [execMaterialDailyMap, setExecMaterialDailyMap] = useState<Record<string, Record<string, number>>>({});
+  const [execActivityRows, setExecActivityRows] = useState<Array<{ id: string; name: string }>>([]);
+  const [execActivityDailyMap, setExecActivityDailyMap] = useState<Record<string, Record<string, number>>>({});
+
+  // ── Informe: full daily-plan history for the S-curve
+  const [reportPlans, setReportPlans] = useState<DailyPlanEntry[]>([]);
 
   // ── set active tab on first load
   useEffect(() => {
@@ -126,11 +167,26 @@ export default function CronogramaPage() {
     }
   }, [departments, activeTab]);
 
+  // ── active department + auto-select its first municipality when the tab changes
+  const activeDept = useMemo(() => departments.find((d) => d.name === activeTab), [activeTab, departments]);
+
+  useEffect(() => {
+    if (activeDept && activeDept.municipalities.length > 0) {
+      setActiveMunicipality(activeDept.municipalities[0]);
+    } else {
+      setActiveMunicipality(null);
+    }
+  }, [activeDept]);
+
   // ── load works when tab changes
+  //    incluye el companyId del departamento + el companyId padre de sus proyectos
+  //    (ej. Ciudad Bolívar / Pueblorrico son proyectos de "Canales & Contactos" → trae sus obras)
   const activeCompanyIds = useMemo(() => {
-    const dept = departments.find((d) => d.name === activeTab);
-    return dept?.companyIds ?? [];
-  }, [activeTab, departments]);
+    if (!activeDept) return [];
+    const ids = new Set<number>(activeDept.companyIds);
+    activeDept.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
+    return [...ids];
+  }, [activeDept]);
 
   const loadWorks = useCallback(async () => {
     if (!activeCompanyIds.length) return;
@@ -191,6 +247,13 @@ export default function CronogramaPage() {
       setActivityWeekOffset(0);
       setActivityRows([]);
       setActivityDailyMap({});
+      setExecWeekOffset(0);
+      setExecMaterialWeekOffset(0);
+      setExecActivityWeekOffset(0);
+      setExecDailyMap({});
+      setExecMaterialDailyMap({});
+      setExecActivityRows([]);
+      setExecActivityDailyMap({});
       setIsDirty(false);
     } catch {
       toast.error('Error al cargar el cronograma');
@@ -294,6 +357,63 @@ export default function CronogramaPage() {
       .catch(() => {});
   }, [schedule?.scheduleId, weekOffset]);
 
+  // ── load full daily-plan history for the Informe S-curve
+  useEffect(() => {
+    if (!schedule) { setReportPlans([]); return; }
+    schedulesService.getDailyPlans(schedule.scheduleId, '2000-01-01', '2100-12-31')
+      .then((data) => setReportPlans(data.plans))
+      .catch(() => setReportPlans([]));
+  }, [schedule?.scheduleId, lastSavedDailyPlan]);
+
+  // ── load Ejecución (UCAPs, materiales, actividades) from backend when schedule changes
+  useEffect(() => {
+    if (!schedule) {
+      setExecDailyMap({}); setExecMaterialDailyMap({}); setExecActivityRows([]); setExecActivityDailyMap({});
+      return;
+    }
+    const sid = schedule.scheduleId;
+    // Ejecución UCAPs → executed_quantity del plan diario
+    schedulesService.getDailyPlans(sid, '2000-01-01', '2100-12-31')
+      .then((data) => {
+        const map: Record<string, Record<string, number>> = {};
+        data.plans.forEach((p) => {
+          if ((p.executedQuantity ?? 0) !== 0) {
+            if (!map[p.planDate]) map[p.planDate] = {};
+            map[p.planDate][p.ucapId] = p.executedQuantity ?? 0;
+          }
+        });
+        setExecDailyMap(map);
+      }).catch(() => {});
+    // Ejecución materiales
+    schedulesService.getExecutions(sid, 'material')
+      .then((data) => {
+        const map: Record<string, Record<string, number>> = {};
+        data.items.forEach((it) => {
+          if (it.executionDate) {
+            if (!map[it.executionDate]) map[it.executionDate] = {};
+            map[it.executionDate][it.itemKey] = it.quantity;
+          }
+        });
+        setExecMaterialDailyMap(map);
+      }).catch(() => {});
+    // Ejecución actividades (reconstruye filas + mapa diario)
+    schedulesService.getExecutions(sid, 'activity')
+      .then((data) => {
+        const names = new Map<string, string>();
+        const dmap: Record<string, Record<string, number>> = {};
+        data.items.forEach((it) => {
+          if (it.label && !names.get(it.itemKey)) names.set(it.itemKey, it.label);
+          else if (!names.has(it.itemKey)) names.set(it.itemKey, it.label ?? '');
+          if (it.executionDate) {
+            if (!dmap[it.executionDate]) dmap[it.executionDate] = {};
+            dmap[it.executionDate][it.itemKey] = it.quantity;
+          }
+        });
+        setExecActivityRows([...names.entries()].map(([id, name]) => ({ id, name })));
+        setExecActivityDailyMap(dmap);
+      }).catch(() => {});
+  }, [schedule?.scheduleId]);
+
   // ── load activity rows from localStorage when schedule changes
   useEffect(() => {
     if (!schedule) { setActivityRows([]); setActivityDailyMap({}); return; }
@@ -358,6 +478,74 @@ export default function CronogramaPage() {
     toast.success('Actividades guardadas');
   };
 
+  // ── ejecución handlers (persisten en backend)
+  const handleSaveExecUcaps = async () => {
+    if (!schedule) return;
+    try {
+      const items: DailyExecutionEntry[] = [];
+      Object.entries(execDailyMap).forEach(([date, ucapMap]) => {
+        Object.entries(ucapMap).forEach(([ucapId, qty]) => {
+          items.push({ ucapId: Number(ucapId), planDate: date, executedQuantity: qty || 0 });
+        });
+      });
+      await schedulesService.saveDailyExecution(schedule.scheduleId, items);
+      toast.success('Ejecución UCAPs guardada');
+    } catch {
+      toast.error('Error al guardar la ejecución de UCAPs');
+    }
+  };
+
+  const handleSaveExecMaterials = async () => {
+    if (!schedule) return;
+    try {
+      const items: ExecutionItem[] = [];
+      Object.entries(execMaterialDailyMap).forEach(([date, matMap]) => {
+        Object.entries(matMap).forEach(([code, qty]) => {
+          if (qty > 0) {
+            const mat = surveyMaterials.find((m) => m.materialCode === code);
+            items.push({ itemKey: code, label: mat?.materialDescription ?? null, unitOfMeasure: mat?.unitOfMeasure ?? null, executionDate: date, quantity: qty });
+          }
+        });
+      });
+      await schedulesService.saveExecutions(schedule.scheduleId, 'material', items);
+      toast.success('Ejecución materiales guardada');
+    } catch {
+      toast.error('Error al guardar la ejecución de materiales');
+    }
+  };
+
+  const handleSaveExecActivities = async () => {
+    if (!schedule) return;
+    try {
+      const items: ExecutionItem[] = [];
+      // fila "etiqueta" por actividad para conservar nombre/id aunque no tenga cantidades
+      execActivityRows.forEach((row) => {
+        items.push({ itemKey: row.id, label: row.name, executionDate: null, quantity: 0 });
+      });
+      Object.entries(execActivityDailyMap).forEach(([date, rowMap]) => {
+        Object.entries(rowMap).forEach(([rowId, qty]) => {
+          if (qty > 0) {
+            const row = execActivityRows.find((r) => r.id === rowId);
+            items.push({ itemKey: rowId, label: row?.name ?? null, executionDate: date, quantity: qty });
+          }
+        });
+      });
+      await schedulesService.saveExecutions(schedule.scheduleId, 'activity', items);
+      toast.success('Ejecución actividades guardada');
+    } catch {
+      toast.error('Error al guardar la ejecución de actividades');
+    }
+  };
+
+  const removeExecActivityRow = (id: string) => {
+    setExecActivityRows((prev) => prev.filter((r) => r.id !== id));
+    setExecActivityDailyMap((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((date) => { const d = { ...next[date] }; delete d[id]; next[date] = d; });
+      return next;
+    });
+  };
+
   // ── save daily plans
   const handleSaveDailyPlans = async () => {
     if (!schedule) return;
@@ -379,30 +567,6 @@ export default function CronogramaPage() {
       toast.error('Error al guardar el plan diario');
     } finally {
       setSavingDailyPlans(false);
-    }
-  };
-
-  // ── sync executed quantities from daily plan totals
-  const handleSyncExecutedFromPlan = async () => {
-    if (!schedule) return;
-    const today = formatDate(new Date());
-    try {
-      const data = await schedulesService.getDailyPlans(schedule.scheduleId, '2000-01-01', today);
-      const execMap: Record<number, number> = {};
-      data.plans.forEach((p) => {
-        execMap[p.ucapId] = (execMap[p.ucapId] ?? 0) + (p.executedQuantity ?? 0);
-      });
-      setExecuted((prev) => {
-        const next = { ...prev };
-        schedule.items.forEach((item) => {
-          next[item.ucapId] = String(execMap[item.ucapId] ?? 0);
-        });
-        return next;
-      });
-      setIsDirty(true);
-      toast.success('Ejecutado actualizado desde Plan Diario');
-    } catch {
-      toast.error('Error al sincronizar ejecutados');
     }
   };
 
@@ -483,10 +647,181 @@ export default function CronogramaPage() {
     setWorkStatuses((prev) => ({ ...prev, [selectedWork.workId]: currentStatus }));
   }, [selectedWork, currentStatus]);
 
+  // ── Informe: aggregated report data built from the acta (UCAPs, materiales, plan diario)
+  const reportData = useMemo(() => {
+    if (!schedule) return null;
+    const totalPlannedUnits = schedule.items.reduce((s, i) => s + i.plannedQuantity, 0);
+    const totalExecutedUnits = schedule.items.reduce((s, i) => s + (parseFloat(executed[i.ucapId] ?? '0') || 0), 0);
+    const physical = totalPlannedUnits ? clamp01(totalExecutedUnits / totalPlannedUnits) * 100 : 0;
+
+    // Materiales: ejecutado (suma de registros diarios) vs cantidad de levantamiento (PPTO)
+    const materialRows = surveyMaterials.map((m) => {
+      const exec = Object.values(materialDailyMap).reduce((s, day) => s + (day[m.materialCode] ?? 0), 0);
+      const usage = m.totalQuantity ? clamp01(exec / m.totalQuantity) * 100 : 0;
+      const estado: 'En rango' | 'Vigilar' | 'Excedido' = usage >= 100 ? 'Excedido' : usage >= 85 ? 'Vigilar' : 'En rango';
+      return { code: m.materialCode, desc: m.materialDescription, unit: m.unitOfMeasure, ppto: m.totalQuantity, exec, usage, estado };
+    });
+
+    // Alcance por capítulo: cada UCAP con su % real y la marca de % esperado a la fecha
+    const chapters = schedule.items.map((i) => {
+      const exec = parseFloat(executed[i.ucapId] ?? '0') || 0;
+      const real = i.plannedQuantity ? clamp01(exec / i.plannedQuantity) * 100 : 0;
+      const expQty = expectedByToday?.perUcap[i.ucapId];
+      const expectedPct = expQty !== undefined && i.plannedQuantity ? clamp01(expQty / i.plannedQuantity) * 100 : null;
+      return { code: i.ucapCode, desc: i.ucapDescription, planned: i.plannedQuantity, exec, real, expectedPct };
+    });
+
+    // Curva S: acumulado programado vs real por mes (desde el plan diario)
+    const monthly: Record<string, { plan: number; exec: number }> = {};
+    reportPlans.forEach((p) => {
+      const mk = p.planDate.slice(0, 7);
+      if (!monthly[mk]) monthly[mk] = { plan: 0, exec: 0 };
+      monthly[mk].plan += p.plannedQuantity || 0;
+      monthly[mk].exec += p.executedQuantity || 0;
+    });
+    const planKeys = Object.keys(monthly).sort();
+    const rangeStart = contractualStart || startDate || planKeys[0];
+    const rangeEnd = contractualEnd || endDate || planKeys[planKeys.length - 1];
+    const months: string[] = [];
+    if (rangeStart && rangeEnd) {
+      const cursor = new Date(rangeStart.slice(0, 7) + '-01T12:00:00');
+      const last = new Date(rangeEnd.slice(0, 7) + '-01T12:00:00');
+      while (cursor <= last && months.length < 60) {
+        months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
+    const denom = totalPlannedUnits || Object.values(monthly).reduce((s, m) => s + m.plan, 0) || 1;
+    const todayMk = formatDate(new Date()).slice(0, 7);
+    let progCum = 0, realCum = 0;
+    const curva = months.map((mk) => {
+      progCum += monthly[mk]?.plan ?? 0;
+      realCum += monthly[mk]?.exec ?? 0;
+      const isFuture = mk > todayMk;
+      const label = new Date(mk + '-01T12:00:00').toLocaleDateString('es-CO', { month: 'short' });
+      let real: number | null = isFuture ? null : clamp01(realCum / denom) * 100;
+      if (mk === todayMk && (real === null || real < physical)) real = physical;
+      return { month: label.charAt(0).toUpperCase() + label.slice(1), programado: clamp01(progCum / denom) * 100, real };
+    });
+
+    return { totalPlannedUnits, totalExecutedUnits, physical, materialRows, chapters, curva };
+  }, [schedule, executed, surveyMaterials, materialDailyMap, expectedByToday, reportPlans, contractualStart, contractualEnd, startDate, endDate]);
+
+  // ── Avance Operativo: promedio ponderado de ejecutado vs planeado, con desglose por ítem.
+  //    Ejecutado = tablas de Ejecución. Planeado: UCAPs→alcance, Materiales→levantamiento, Actividades→Plan Diario.
+  //    Pesos: UCAPs 30% · Materiales 30% · Actividades 40% (se renormalizan si alguna no tiene plan)
+  const operativeProgress = useMemo(() => {
+    if (!schedule) return null;
+    const ratio = (e: number, p: number) => (p > 0 ? clamp01(e / p) * 100 : 0);
+    const spanOf = (dates: string[]): { start: string | null; end: string | null } => {
+      if (!dates.length) return { start: null, end: null };
+      const sorted = [...dates].sort();
+      return { start: sorted[0], end: sorted[sorted.length - 1] };
+    };
+    const datesWith = (map: Record<string, Record<string, number>>, has: (day: Record<string, number>) => boolean) =>
+      Object.entries(map).filter(([, day]) => has(day)).map(([d]) => d);
+
+    // Fracción temporal transcurrida del periodo del ítem (para el "esperado a hoy")
+    const todayMs = parseLocalDate(formatDate(new Date())).getTime();
+    const frac = (start: string | null, end: string | null): number | null => {
+      if (!start || !end) return null;
+      const s = parseLocalDate(start).getTime();
+      const e = parseLocalDate(end).getTime();
+      if (e <= s) return todayMs >= e ? 1 : 0;
+      return clamp01((todayMs - s) / (e - s));
+    };
+
+    // Días planificados (Plan Diario UCAPs) por ucap — ubican la barra en la línea de tiempo
+    const ucapPlanDates: Record<number, string[]> = {};
+    reportPlans.forEach((p) => { if ((p.plannedQuantity || 0) > 0) (ucapPlanDates[p.ucapId] ||= []).push(p.planDate); });
+
+    // UCAPs: ejecutado (Ejecución UCAPs) vs alcance · fechas = Plan Diario UCAPs (respaldo: ejecución / Inicio-Fin)
+    const ucapItems = schedule.items.map((it) => {
+      const executed = Object.values(execDailyMap).reduce((s, day) => s + (day[it.ucapId] ?? 0), 0);
+      const planned = it.plannedQuantity;
+      const planDates = ucapPlanDates[it.ucapId] || [];
+      const execDates = datesWith(execDailyMap, (day) => (day[it.ucapId] ?? 0) > 0);
+      let { start, end } = spanOf(planDates.length ? planDates : execDates);
+      if (!start || !end) { const d = ucapDates[it.ucapId]; start = d?.start || null; end = d?.end || null; }
+      const fromPlan = expectedByToday?.perUcap[it.ucapId];
+      const f = frac(start, end);
+      const expectedQty = fromPlan !== undefined ? fromPlan : (f !== null ? planned * f : null);
+      const expectedPct = expectedQty !== null && planned > 0 ? clamp01(expectedQty / planned) * 100 : null;
+      return { label: it.ucapCode, sublabel: it.ucapDescription, executed, planned, pct: ratio(executed, planned), start, end, expectedQty, expectedPct };
+    });
+
+    // Materiales: ejecutado vs levantamiento · fechas = Plan Diario Materiales (respaldo: ejecución)
+    const matItems = surveyMaterials.map((m) => {
+      const executed = Object.values(execMaterialDailyMap).reduce((s, day) => s + (day[m.materialCode] ?? 0), 0);
+      const planned = m.totalQuantity;
+      const planDates = datesWith(materialDailyMap, (day) => (day[m.materialCode] ?? 0) > 0);
+      const execDates = datesWith(execMaterialDailyMap, (day) => (day[m.materialCode] ?? 0) > 0);
+      const { start, end } = spanOf(planDates.length ? planDates : execDates);
+      const f = frac(start, end);
+      const expectedQty = f !== null ? planned * f : null;
+      const expectedPct = expectedQty !== null && planned > 0 ? clamp01(expectedQty / planned) * 100 : null;
+      return { label: m.materialCode, sublabel: m.materialDescription ?? '', executed, planned, pct: ratio(executed, planned), start, end, expectedQty, expectedPct };
+    });
+
+    // Actividades: agrupadas por nombre · fechas = Plan Diario Actividades (respaldo: ejecución)
+    const sumByName = (rows: Array<{ id: string; name: string }>, map: Record<string, Record<string, number>>, name: string) => {
+      const ids = rows.filter((r) => r.name === name).map((r) => r.id);
+      return Object.values(map).reduce((s, day) => s + ids.reduce((ss, id) => ss + (day[id] ?? 0), 0), 0);
+    };
+    const datesByName = (rows: Array<{ id: string; name: string }>, map: Record<string, Record<string, number>>, name: string) => {
+      const ids = rows.filter((r) => r.name === name).map((r) => r.id);
+      return datesWith(map, (day) => ids.some((id) => (day[id] ?? 0) > 0));
+    };
+    const actNames = [...new Set([...activityRows, ...execActivityRows].map((r) => r.name).filter(Boolean))];
+    const actItems = actNames.map((name) => {
+      const planned = sumByName(activityRows, activityDailyMap, name);
+      const executed = sumByName(execActivityRows, execActivityDailyMap, name);
+      const planDates = datesByName(activityRows, activityDailyMap, name);
+      const execDates = datesByName(execActivityRows, execActivityDailyMap, name);
+      const { start, end } = spanOf(planDates.length ? planDates : execDates);
+      const f = frac(start, end);
+      const expectedQty = f !== null ? planned * f : null;
+      const expectedPct = expectedQty !== null && planned > 0 ? clamp01(expectedQty / planned) * 100 : null;
+      return { label: name, sublabel: '', executed, planned, pct: ratio(executed, planned), start, end, expectedQty, expectedPct };
+    });
+
+    const buildGroup = (key: string, weight: number, items: Array<{ executed: number; planned: number }>) => {
+      const executed = items.reduce((s, i) => s + i.executed, 0);
+      const planned = items.reduce((s, i) => s + i.planned, 0);
+      return { key, weight, executed, planned, pct: ratio(executed, planned), hasPlan: planned > 0 };
+    };
+    const groups = [
+      { ...buildGroup('UCAPs', 0.30, ucapItems), items: ucapItems },
+      { ...buildGroup('Materiales', 0.30, matItems), items: matItems },
+      { ...buildGroup('Actividades', 0.40, actItems), items: actItems },
+    ];
+    const active = groups.filter((g) => g.hasPlan);
+    const wsum = active.reduce((s, g) => s + g.weight, 0);
+    const total = wsum > 0 ? active.reduce((s, g) => s + g.pct * (g.weight / wsum), 0) : null;
+    return { total, groups };
+  }, [schedule, execDailyMap, reportPlans, ucapDates, expectedByToday, surveyMaterials, materialDailyMap, execMaterialDailyMap, activityRows, activityDailyMap, execActivityRows, execActivityDailyMap]);
+
+  // ── filter works by the selected municipality within the active department
+  const municipalityWorks = useMemo(() => {
+    if (!activeMunicipality) return works;
+    const muniName = normalizeLocationName(activeMunicipality.name);
+    if (activeMunicipality.type === 'company') {
+      return works.filter((w) =>
+        w.companyId === activeMunicipality.id ||
+        normalizeLocationName(w.company?.name) === muniName ||
+        (activeMunicipality.linkedProjectId !== undefined && w.projectId === activeMunicipality.linkedProjectId),
+      );
+    }
+    return works.filter((w) =>
+      w.projectId === activeMunicipality.id ||
+      (!w.projectId && activeMunicipality.companyId !== undefined && w.companyId === activeMunicipality.companyId),
+    );
+  }, [works, activeMunicipality]);
+
   // ── grouping: actas with 2+ works
   const groupedWorksMap = useMemo(() => {
     const map = new Map<string, Work[]>();
-    works
+    municipalityWorks
       .filter((w) => w.recordNumber)
       .forEach((w) => {
         const key = w.recordNumber!;
@@ -495,11 +830,11 @@ export default function CronogramaPage() {
       });
     map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
     return map;
-  }, [works]);
+  }, [municipalityWorks]);
 
   const individualWorks = useMemo(
-    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(w.recordNumber)),
-    [works, groupedWorksMap],
+    () => municipalityWorks.filter((w) => !w.recordNumber || !groupedWorksMap.has(w.recordNumber)),
+    [municipalityWorks, groupedWorksMap],
   );
 
   // ── filtered works
@@ -575,6 +910,28 @@ export default function CronogramaPage() {
                 <div className="flex gap-6" style={{ minHeight: '70vh' }}>
                   {/* ── Left: work list ── */}
                   <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+                    {/* Municipality selector within the department */}
+                    {dept.municipalities.length > 1 && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide">Municipio</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {dept.municipalities.map((muni) => (
+                            <button
+                              key={`${muni.type}-${muni.id}`}
+                              onClick={() => { setActiveMunicipality(muni); setSelectedWork(null); setSchedule(null); }}
+                              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                activeMunicipality?.id === muni.id && activeMunicipality?.type === muni.type
+                                  ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
+                                  : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
+                              }`}
+                            >
+                              {getMunicipioName(muni.name)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
                       <Input
@@ -735,6 +1092,63 @@ export default function CronogramaPage() {
                           )}
                         </div>
 
+                        {/* ── Plan / Ejecución / Informe tabs ── */}
+                        <Tabs value={cronogramaTab} onValueChange={setCronogramaTab} className="w-full">
+                          <TabsList className="mb-4">
+                            <TabsTrigger value="plan">Plan</TabsTrigger>
+                            <TabsTrigger value="ejecucion">Ejecución</TabsTrigger>
+                            <TabsTrigger value="informe">Informe</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="plan" className="space-y-4 mt-0">
+                        {/* ── Fechas Contractual / Operativo ── */}
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Contractual */}
+                          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
+                            <div className="px-5 pt-5 pb-4">
+                              <div className="flex items-start justify-between gap-2 mb-3">
+                                <h3 className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mt-2">
+                                  Contractual
+                                </h3>
+                                <span className="text-xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
+                                  {temporalProgress.contractual !== null
+                                    ? `${temporalProgress.contractual.elapsed} / ${temporalProgress.contractual.total} días`
+                                    : '—'}
+                                </span>
+                              </div>
+                              <ProgressBar value={temporalProgress.contractual?.pct ?? 0} color="primary" />
+                            </div>
+                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] flex gap-3">
+                              <div className="flex-1">
+                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Inicio</Label>
+                                <Input
+                                  type="date"
+                                  value={contractualStart}
+                                  onChange={(e) => { setContractualStart(e.target.value); setIsDirty(true); }}
+                                  className="mt-0.5 h-8 text-sm w-full"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin</Label>
+                                <Input
+                                  type="date"
+                                  value={contractualEnd}
+                                  onChange={(e) => { setContractualEnd(e.target.value); setIsDirty(true); }}
+                                  className="mt-0.5 h-8 text-sm w-full"
+                                />
+                              </div>
+                            </div>
+                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))]">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
+                                <span className="font-semibold text-[hsl(var(--canalco-neutral-600))]">
+                                  {monthProgress.elapsed} / {monthProgress.total} días hábiles
+                                </span>
+                              </div>
+                            </div>
+                          </section>
+                        </div>
+
                         {/* ── Plan Diario ── */}
                         {schedule && schedule.items.length > 0 && (() => {
                           const days = getWeekDays(weekOffset);
@@ -745,7 +1159,7 @@ export default function CronogramaPage() {
                             <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
                               <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                                  Plan Diario
+                                  Plan Diario UCAPs
                                 </h3>
                                 <div className="flex items-center gap-2">
                                   <button onClick={() => setWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
@@ -768,6 +1182,7 @@ export default function CronogramaPage() {
                                   <thead>
                                     <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
                                       <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2 w-40">UCAP</th>
+                                      <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
                                       {days.map((date, i) => {
                                         const d = new Date(date + 'T12:00:00');
                                         const isToday = date === today;
@@ -795,6 +1210,9 @@ export default function CronogramaPage() {
                                           <td className="py-2 pr-1 align-middle w-32">
                                             <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.ucapCode}</p>
                                             <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
+                                          </td>
+                                          <td className="py-2 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                            {item.plannedQuantity}
                                           </td>
                                           {days.map((date) => {
                                             const isHoliday = weekHolidaySet.has(date);
@@ -831,6 +1249,7 @@ export default function CronogramaPage() {
                                   <tfoot>
                                     <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
                                       <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total plan</td>
+                                      <td className="pt-2 pb-2" />
                                       {days.map((date) => {
                                         const t = schedule.items.reduce((s, item) => s + (parseFloat(dailyPlans[date]?.[item.ucapId]?.planned ?? '') || 0), 0);
                                         return (
@@ -1064,13 +1483,19 @@ export default function CronogramaPage() {
                                         return (
                                           <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                             <td className="py-1.5 pr-2">
-                                              <Input
-                                                type="text"
+                                              <Select
                                                 value={row.name}
-                                                placeholder="Nombre de actividad"
-                                                onChange={(e) => setActivityRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))}
-                                                className="h-7 text-xs min-w-[160px]"
-                                              />
+                                                onValueChange={(val) => setActivityRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: val } : r))}
+                                              >
+                                                <SelectTrigger className="h-7 text-xs min-w-[200px]">
+                                                  <SelectValue placeholder="Seleccionar actividad" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {[...DEFAULT_ACTIVITY_OPTIONS, ...customActivityOptions].map((opt) => (
+                                                    <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
                                             </td>
                                             {days.map((date) => {
                                               const isToday = date === today;
@@ -1134,16 +1559,66 @@ export default function CronogramaPage() {
                                 </div>
                               )}
 
+                              {showAddActivityInput && (
+                                <div className="flex items-center gap-2 mt-3">
+                                  <Input
+                                    autoFocus
+                                    value={newCustomActivity}
+                                    onChange={(e) => setNewCustomActivity(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && newCustomActivity.trim()) {
+                                        setCustomActivityOptions((prev) => [...prev, newCustomActivity.trim()]);
+                                        setNewCustomActivity('');
+                                        setShowAddActivityInput(false);
+                                      }
+                                      if (e.key === 'Escape') { setShowAddActivityInput(false); setNewCustomActivity(''); }
+                                    }}
+                                    placeholder="Nombre de la nueva actividad"
+                                    className="h-7 text-xs flex-1"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    className="h-7 text-xs px-3"
+                                    onClick={() => {
+                                      if (newCustomActivity.trim()) {
+                                        setCustomActivityOptions((prev) => [...prev, newCustomActivity.trim()]);
+                                        setNewCustomActivity('');
+                                        setShowAddActivityInput(false);
+                                      }
+                                    }}
+                                  >
+                                    Guardar
+                                  </Button>
+                                  <button
+                                    onClick={() => { setShowAddActivityInput(false); setNewCustomActivity(''); }}
+                                    className="p-1 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+
                               <div className="flex justify-between items-center mt-4">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={addActivityRow}
-                                  className="gap-1.5 text-xs"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  Agregar actividad
-                                </Button>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={addActivityRow}
+                                    className="gap-1.5 text-xs"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    Agregar fila
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowAddActivityInput(true)}
+                                    className="gap-1.5 text-xs"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    Nueva actividad
+                                  </Button>
+                                </div>
                                 <Button onClick={handleSaveActivities} variant="outline" className="gap-2 text-sm">
                                   <Save className="w-4 h-4" />
                                   Guardar actividades
@@ -1152,118 +1627,693 @@ export default function CronogramaPage() {
                             </section>
                           );
                         })()}
+                          </TabsContent>
 
-                        {/* ── Dates + Progress (merged cards) ── */}
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* Contractual */}
-                          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
-                            <div className="px-5 pt-5 pb-4">
-                              <div className="flex items-start justify-between gap-2 mb-3">
-                                <h3 className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mt-2">
-                                  Contractual
-                                </h3>
-                                <span className="text-4xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
-                                  {temporalProgress.contractual !== null ? `${Math.round(temporalProgress.contractual.pct)}%` : '—'}
-                                </span>
-                              </div>
-                              <ProgressBar value={temporalProgress.contractual?.pct ?? 0} color="primary" />
-                            </div>
-                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] flex gap-3">
-                              <div className="flex-1">
-                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Inicio</Label>
-                                <Input
-                                  type="date"
-                                  value={contractualStart}
-                                  onChange={(e) => { setContractualStart(e.target.value); setIsDirty(true); }}
-                                  className="mt-0.5 h-8 text-sm w-full"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin</Label>
-                                <Input
-                                  type="date"
-                                  value={contractualEnd}
-                                  onChange={(e) => { setContractualEnd(e.target.value); setIsDirty(true); }}
-                                  className="mt-0.5 h-8 text-sm w-full"
-                                />
-                              </div>
-                            </div>
-                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))] space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-[hsl(var(--canalco-neutral-400))]">Contrato</span>
-                                <span className="font-semibold text-[hsl(var(--canalco-primary))]">
-                                  {temporalProgress.contractual !== null
-                                    ? `${temporalProgress.contractual.elapsed} / ${temporalProgress.contractual.total} días`
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
-                                <span className="font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                                  {monthProgress.elapsed} / {monthProgress.total} días hábiles
-                                </span>
-                              </div>
-                            </div>
-                          </section>
+                          <TabsContent value="ejecucion" className="space-y-4 mt-0">
 
-                          {/* Operativo */}
-                          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
-                            <div className="px-5 pt-5 pb-4">
-                              <div className="flex items-start justify-between gap-2 mb-3">
-                                <h3 className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mt-2">
-                                  Operativo
-                                </h3>
-                                <span className="text-4xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
-                                  {temporalProgress.operational !== null ? `${Math.round(temporalProgress.operational.pct)}%` : '—'}
-                                </span>
-                              </div>
-                              <ProgressBar value={temporalProgress.operational?.pct ?? 0} color="primary" />
-                            </div>
-                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] flex gap-3">
-                              <div className="flex-1">
-                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Inicio</Label>
-                                <Input
-                                  type="date"
-                                  value={startDate}
-                                  onChange={(e) => { setStartDate(e.target.value); setIsDirty(true); }}
-                                  className="mt-0.5 h-8 text-sm w-full"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin</Label>
-                                <Input
-                                  type="date"
-                                  value={endDate}
-                                  onChange={(e) => { setEndDate(e.target.value); setIsDirty(true); }}
-                                  className="mt-0.5 h-8 text-sm w-full"
-                                />
-                              </div>
-                            </div>
-                            <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))] space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-[hsl(var(--canalco-neutral-400))]">Operativo</span>
-                                <span className="font-semibold text-[hsl(var(--canalco-primary))]">
-                                  {temporalProgress.operational !== null
-                                    ? `${temporalProgress.operational.elapsed} / ${temporalProgress.operational.total} días`
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
-                                <span className="font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                                  {monthProgress.elapsed} / {monthProgress.total} días hábiles
-                                </span>
-                              </div>
-                            </div>
-                          </section>
-                        </div>
+                            {/* ── Avance Operativo (resumen ponderado) ── */}
+                            {schedule && operativeProgress && (
+                              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                  <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
+                                    Avance Operativo
+                                  </h3>
+                                  <span className="text-2xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
+                                    {operativeProgress.total !== null ? `${Math.round(operativeProgress.total)}%` : '—'}
+                                  </span>
+                                </div>
+                                <ProgressBar value={operativeProgress.total ?? 0} color="primary" />
+                                <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-1.5">
+                                  Promedio ponderado de ejecutado vs planeado · UCAPs 30% · Materiales 30% · Actividades 40%
+                                </p>
+                                <div className="grid grid-cols-3 gap-3 mt-4">
+                                  {operativeProgress.groups.map((g) => (
+                                    <div key={g.key} className="border border-[hsl(var(--canalco-neutral-200))] rounded-lg p-3">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))]">{g.key}</span>
+                                        <span className="text-xs font-bold text-[hsl(var(--canalco-neutral-900))]">{g.hasPlan ? `${Math.round(g.pct)}%` : '—'}</span>
+                                      </div>
+                                      <div className="mt-2"><ProgressBar value={g.hasPlan ? g.pct : 0} color="primary" /></div>
+                                      <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-1.5">
+                                        {g.executed.toLocaleString('es-CO')} / {g.planned.toLocaleString('es-CO')} · peso {Math.round(g.weight * 100)}%
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+                            )}
 
+                            {/* ── Desglose por ítem — línea de tiempo ── */}
+                            {schedule && operativeProgress && (() => {
+                              const items = operativeProgress.groups.flatMap((g) => g.items);
+                              const dateStrs = [
+                                ...(contractualStart ? [contractualStart] : []),
+                                ...(contractualEnd ? [contractualEnd] : []),
+                                ...items.flatMap((i) => [i.start, i.end].filter(Boolean) as string[]),
+                              ];
+                              const ms = dateStrs.map((d) => parseLocalDate(d).getTime());
+                              const minMs = ms.length ? Math.min(...ms) : 0;
+                              const maxMs = ms.length ? Math.max(...ms) : 0;
+                              const range = maxMs - minMs;
+                              const hasAxis = ms.length >= 2 && range > 0;
+                              const toPos = (d: string) => (hasAxis ? Math.max(0, Math.min(100, ((parseLocalDate(d).getTime() - minMs) / range) * 100)) : 0);
+                              const todayLocal = new Date(); todayLocal.setHours(0, 0, 0, 0);
+                              const todayPct = hasAxis ? ((todayLocal.getTime() - minMs) / range) * 100 : -1;
+                              const showToday = hasAxis && todayPct >= 0 && todayPct <= 100;
+                              const labels: Array<{ label: string; pct: number }> = [];
+                              if (hasAxis) {
+                                const DAY = 86_400_000; const totalDays = range / DAY;
+                                const step = totalDays <= 21 ? 3 : totalDays <= 60 ? 7 : totalDays <= 120 ? 14 : 30;
+                                const cur = new Date(minMs); const maxD = new Date(maxMs);
+                                while (cur <= maxD) { labels.push({ label: cur.toLocaleDateString('es-CO', { month: 'short', day: 'numeric' }), pct: ((cur.getTime() - minMs) / range) * 100 }); cur.setDate(cur.getDate() + step); }
+                              }
+                              const LBL = 'w-44 flex-shrink-0';
+                              const PCT = 'w-16 flex-shrink-0';
+                              return (
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                  <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide mb-4">
+                                    Desglose por ítem — Línea de tiempo
+                                  </h3>
+                                  <div className="overflow-x-auto">
+                                    <div style={{ minWidth: 720 }}>
+                                      {hasAxis && (
+                                        <div className="flex gap-2 h-6 mb-1">
+                                          <div className={LBL} />
+                                          <div className="flex-1 relative">
+                                            {labels.map(({ label, pct }) => (
+                                              <span key={`${label}-${pct}`} className="absolute bottom-0 text-[10px] text-[hsl(var(--canalco-neutral-400))] -translate-x-1/2 whitespace-nowrap" style={{ left: `${pct}%` }}>{label}</span>
+                                            ))}
+                                          </div>
+                                          <div className={PCT} />
+                                        </div>
+                                      )}
+                                      {/* Línea Contractual */}
+                                      {hasAxis && contractualStart && contractualEnd && (() => {
+                                        const cLeft = toPos(contractualStart);
+                                        const cWidth = Math.max(0.5, toPos(contractualEnd) - cLeft);
+                                        return (
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <div className={`${LBL} text-xs font-semibold text-[hsl(var(--canalco-primary))] pr-2`}>Contractual</div>
+                                            <div className="flex-1 relative h-4">
+                                              {showToday && <div className="absolute top-0 bottom-0 w-px bg-red-300 z-10" style={{ left: `${todayPct}%` }} />}
+                                              <div className="absolute top-0.5 h-3 rounded-full" style={{ left: `${cLeft}%`, width: `${cWidth}%`, background: 'hsl(var(--canalco-primary))', opacity: 0.55 }} />
+                                            </div>
+                                            <div className={PCT} />
+                                          </div>
+                                        );
+                                      })()}
+                                      {operativeProgress.groups.map((g) => (
+                                        <div key={g.key} className="mb-3">
+                                          <div className="flex items-center gap-2 my-1.5">
+                                            <div className={`${LBL} text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide`}>
+                                              {g.key} <span className="text-[10px] font-normal text-[hsl(var(--canalco-neutral-400))]">{g.hasPlan ? `${Math.round(g.pct)}%` : '—'}</span>
+                                            </div>
+                                            <div className="flex-1 border-t border-[hsl(var(--canalco-neutral-200))]" />
+                                            <div className={PCT} />
+                                          </div>
+                                          {g.items.length === 0 ? (
+                                            <div className="flex gap-2"><div className={LBL} /><div className="flex-1 text-xs text-[hsl(var(--canalco-neutral-400))] py-1">Sin ítems</div><div className={PCT} /></div>
+                                          ) : g.items.map((it, idx) => {
+                                            const hasDates = !!(it.start && it.end);
+                                            const left = hasDates ? toPos(it.start!) : 0;
+                                            const barW = hasDates ? Math.max(1, toPos(it.end!) - left) : 100;
+                                            const fillW = clamp01(it.pct / 100) * barW;
+                                            const expLeft = it.expectedPct !== null ? left + clamp01(it.expectedPct / 100) * barW : null;
+                                            const behind = it.expectedPct !== null && it.pct < it.expectedPct - 5;
+                                            const fillColor = it.pct >= 100 ? '#22c55e' : behind ? '#ef4444' : 'hsl(var(--canalco-primary))';
+                                            return (
+                                              <div key={idx} className="flex items-center gap-2 mb-1.5">
+                                                <div className={`${LBL} pr-2`}>
+                                                  <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate leading-tight">{it.label || '—'}</p>
+                                                  {it.sublabel && <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight" title={it.sublabel}>{it.sublabel}</p>}
+                                                </div>
+                                                <div className="flex-1 relative h-6">
+                                                  {showToday && <div className="absolute top-0 bottom-0 w-px bg-red-300 z-10" style={{ left: `${todayPct}%` }} />}
+                                                  <div className="absolute top-1.5 h-3 rounded-full bg-[hsl(var(--canalco-neutral-200))]" style={{ left: `${left}%`, width: `${barW}%` }} />
+                                                  <div className="absolute top-1.5 h-3 rounded-l-full" style={{ left: `${left}%`, width: `${fillW}%`, background: fillColor }} />
+                                                  {expLeft !== null && (
+                                                    <div className="absolute top-0.5 h-5 w-0.5 bg-[hsl(var(--canalco-neutral-700))] z-20" style={{ left: `${expLeft}%` }} title={`Esperado a hoy: ${it.expectedQty?.toFixed(2)}`} />
+                                                  )}
+                                                </div>
+                                                <div className={`${PCT} text-right leading-tight`}>
+                                                  <span className="text-[11px] font-semibold" style={{ color: fillColor }}>{it.planned > 0 ? `${Math.round(it.pct)}%` : '—'}</span>
+                                                  {it.expectedQty !== null && (
+                                                    <span className="block text-[9px] text-[hsl(var(--canalco-neutral-400))]">esp {it.expectedQty.toFixed(it.expectedQty % 1 === 0 ? 0 : 1)}</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ))}
+                                      {showToday && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <div className={LBL} />
+                                          <div className="flex-1 relative h-4"><span className="absolute text-[10px] text-red-400 font-semibold -translate-x-1/2" style={{ left: `${todayPct}%` }}>hoy</span></div>
+                                          <div className={PCT} />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-2">
+                                    Barra = periodo del ítem · relleno = % ejecutado · marca vertical oscura = esperado a hoy · "esp" = cantidad esperada
+                                  </p>
+                                </section>
+                              );
+                            })()}
 
+                            {/* ── Ejecución UCAPs ── */}
+                            {schedule && schedule.items.length > 0 && (() => {
+                              const days = getWeekDays(execWeekOffset);
+                              const today = formatDate(new Date());
+                              const weekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                              const holidaySet = new Set(weekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                              return (
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">Ejecución UCAPs</h3>
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => setExecWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
+                                      <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
+                                        {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                                        {' – '}
+                                        {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                      </span>
+                                      <button onClick={() => setExecWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
+                                      {execWeekOffset !== 0 && <button onClick={() => setExecWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">Hoy</button>}
+                                    </div>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm border-collapse" style={{ minWidth: 580 }}>
+                                      <thead>
+                                        <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                          <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2 w-40">UCAP</th>
+                                          {days.map((date, i) => {
+                                            const d = new Date(date + 'T12:00:00');
+                                            const isToday = date === today;
+                                            const isHoliday = holidaySet.has(date);
+                                            const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                            return (
+                                              <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
+                                                <div>{DAY_LABELS[i]}</div>
+                                                <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                              </th>
+                                            );
+                                          })}
+                                          <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-12">Total</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {schedule.items.map((item) => {
+                                          const rowTotal = days.reduce((s, d) => s + (execDailyMap[d]?.[item.ucapId] ?? 0), 0);
+                                          return (
+                                            <tr key={item.ucapId} className="border-b border-[hsl(var(--canalco-neutral-100))]">
+                                              <td className="py-2 pr-1 align-middle w-32">
+                                                <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.ucapCode}</p>
+                                                <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
+                                              </td>
+                                              {days.map((date) => {
+                                                const isHoliday = holidaySet.has(date);
+                                                const val = execDailyMap[date]?.[item.ucapId] ?? 0;
+                                                return (
+                                                  <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                    <Input type="number" min="0" step="0.01" value={val || ''} placeholder="0" disabled={isHoliday}
+                                                      onChange={(e) => { const v = parseFloat(e.target.value) || 0; setExecDailyMap((prev) => ({ ...prev, [date]: { ...prev[date], [item.ucapId]: v } })); }}
+                                                      className="h-7 w-14 text-xs text-center px-1" />
+                                                  </td>
+                                                );
+                                              })}
+                                              <td className="py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">{rowTotal > 0 ? rowTotal : '—'}</td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                          <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
+                                          {days.map((date) => {
+                                            const t = schedule.items.reduce((s, item) => s + (execDailyMap[date]?.[item.ucapId] ?? 0), 0);
+                                            return <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
+                                          })}
+                                          <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                            {(() => { const g = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (execDailyMap[d]?.[i.ucapId] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                  <div className="flex justify-end mt-4">
+                                    <Button onClick={handleSaveExecUcaps} variant="outline" className="gap-2 text-sm"><Save className="w-4 h-4" />Guardar ejecución</Button>
+                                  </div>
+                                </section>
+                              );
+                            })()}
+
+                            {/* ── Ejecución Materiales ── */}
+                            {schedule && (() => {
+                              const days = getWeekDays(execMaterialWeekOffset);
+                              const today = formatDate(new Date());
+                              const matYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                              const matHolidaySet = new Set(matYears.flatMap((y) => [...getColombianHolidays(y)]));
+                              return (
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">Ejecución Materiales</h3>
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => setExecMaterialWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
+                                      <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
+                                        {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                                        {' – '}
+                                        {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                      </span>
+                                      <button onClick={() => setExecMaterialWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
+                                      {execMaterialWeekOffset !== 0 && <button onClick={() => setExecMaterialWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">Hoy</button>}
+                                    </div>
+                                  </div>
+                                  {surveyMaterials.length === 0 ? (
+                                    <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">Esta obra no tiene materiales registrados en sus levantamientos.</p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-sm border-collapse" style={{ minWidth: 620 }}>
+                                        <thead>
+                                          <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                            <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Material</th>
+                                            <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-16">Unidad</th>
+                                            {days.map((date, i) => {
+                                              const d = new Date(date + 'T12:00:00');
+                                              const isToday = date === today;
+                                              const isHoliday = matHolidaySet.has(date);
+                                              const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                              return (
+                                                <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
+                                                  <div>{DAY_LABELS[i]}</div>
+                                                  <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                                </th>
+                                              );
+                                            })}
+                                            <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {surveyMaterials.map((mat) => {
+                                            const weekTotal = days.reduce((s, d) => s + (execMaterialDailyMap[d]?.[mat.materialCode] ?? 0), 0);
+                                            return (
+                                              <tr key={mat.materialCode} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                                <td className="py-1.5 pr-2">
+                                                  <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{mat.materialCode}</p>
+                                                  <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[200px]">{mat.materialDescription}</p>
+                                                </td>
+                                                <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">{mat.unitOfMeasure ?? '—'}</td>
+                                                {days.map((date) => {
+                                                  const isToday = date === today;
+                                                  const isHoliday = matHolidaySet.has(date);
+                                                  const qty = execMaterialDailyMap[date]?.[mat.materialCode] ?? 0;
+                                                  return (
+                                                    <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                      <Input type="number" min="0" step="0.01" value={qty || ''} placeholder="0" disabled={isHoliday}
+                                                        onChange={(e) => { const v = parseFloat(e.target.value) || 0; setExecMaterialDailyMap((prev) => ({ ...prev, [date]: { ...prev[date], [mat.materialCode]: v } })); }}
+                                                        className="h-7 w-14 text-xs text-center px-1" />
+                                                    </td>
+                                                  );
+                                                })}
+                                                <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">{weekTotal > 0 ? weekTotal : '—'}</td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                        <tfoot>
+                                          <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                            <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
+                                            {days.map((date) => {
+                                              const isToday = date === today;
+                                              const t = surveyMaterials.reduce((s, mat) => s + (execMaterialDailyMap[date]?.[mat.materialCode] ?? 0), 0);
+                                              return <td key={date} className={`pt-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
+                                            })}
+                                            <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                              {(() => { const g = days.reduce((s, d) => s + surveyMaterials.reduce((ss, mat) => ss + (execMaterialDailyMap[d]?.[mat.materialCode] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                            </td>
+                                          </tr>
+                                        </tfoot>
+                                      </table>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-end mt-4">
+                                    <Button onClick={handleSaveExecMaterials} variant="outline" className="gap-2 text-sm"><Save className="w-4 h-4" />Guardar ejecución</Button>
+                                  </div>
+                                </section>
+                              );
+                            })()}
+
+                            {/* ── Ejecución Actividades ── */}
+                            {schedule && (() => {
+                              const days = getWeekDays(execActivityWeekOffset);
+                              const today = formatDate(new Date());
+                              const actYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                              const actHolidaySet = new Set(actYears.flatMap((y) => [...getColombianHolidays(y)]));
+                              return (
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">Ejecución Actividades</h3>
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => setExecActivityWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
+                                      <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
+                                        {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                                        {' – '}
+                                        {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                      </span>
+                                      <button onClick={() => setExecActivityWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
+                                      {execActivityWeekOffset !== 0 && <button onClick={() => setExecActivityWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">Hoy</button>}
+                                    </div>
+                                  </div>
+                                  {execActivityRows.length === 0 ? (
+                                    <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mb-4">No hay actividades. Agrega una con el botón de abajo.</p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-sm border-collapse" style={{ minWidth: 700 }}>
+                                        <thead>
+                                          <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                            <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Actividad</th>
+                                            {days.map((date, i) => {
+                                              const d = new Date(date + 'T12:00:00');
+                                              const isToday = date === today;
+                                              const isHoliday = actHolidaySet.has(date);
+                                              const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                              return (
+                                                <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
+                                                  <div>{DAY_LABELS[i]}</div>
+                                                  <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                                </th>
+                                              );
+                                            })}
+                                            <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                            <th className="w-6 pb-2" />
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {execActivityRows.map((row) => {
+                                            const weekTotal = days.reduce((s, d) => s + (execActivityDailyMap[d]?.[row.id] ?? 0), 0);
+                                            return (
+                                              <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                                <td className="py-1.5 pr-2">
+                                                  <Select value={row.name} onValueChange={(val) => setExecActivityRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: val } : r))}>
+                                                    <SelectTrigger className="h-7 text-xs min-w-[200px]"><SelectValue placeholder="Seleccionar actividad" /></SelectTrigger>
+                                                    <SelectContent>
+                                                      {[...DEFAULT_ACTIVITY_OPTIONS, ...customActivityOptions].map((opt) => (
+                                                        <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                                                      ))}
+                                                    </SelectContent>
+                                                  </Select>
+                                                </td>
+                                                {days.map((date) => {
+                                                  const isToday = date === today;
+                                                  const isHoliday = actHolidaySet.has(date);
+                                                  const qty = execActivityDailyMap[date]?.[row.id] ?? 0;
+                                                  return (
+                                                    <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                      <Input type="number" min="0" step="0.01" value={qty || ''} placeholder="0" disabled={isHoliday}
+                                                        onChange={(e) => { const v = parseFloat(e.target.value) || 0; setExecActivityDailyMap((prev) => ({ ...prev, [date]: { ...prev[date], [row.id]: v } })); }}
+                                                        className="h-7 w-14 text-xs text-center px-1" />
+                                                    </td>
+                                                  );
+                                                })}
+                                                <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">{weekTotal > 0 ? weekTotal : '—'}</td>
+                                                <td className="py-1.5 pl-1">
+                                                  <button onClick={() => removeExecActivityRow(row.id)} className="p-0.5 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500">
+                                                    <X className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                        <tfoot>
+                                          <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                            <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
+                                            {days.map((date) => {
+                                              const isToday = date === today;
+                                              const t = execActivityRows.reduce((s, row) => s + (execActivityDailyMap[date]?.[row.id] ?? 0), 0);
+                                              return <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
+                                            })}
+                                            <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                              {(() => { const g = days.reduce((s, d) => s + execActivityRows.reduce((ss, row) => ss + (execActivityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                            </td>
+                                            <td />
+                                          </tr>
+                                        </tfoot>
+                                      </table>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between items-center mt-4">
+                                    <Button variant="outline" size="sm" onClick={() => setExecActivityRows((prev) => [...prev, { id: `exec-act-${Date.now()}`, name: '' }])} className="gap-1.5 text-xs">
+                                      <Plus className="w-3.5 h-3.5" />Agregar fila
+                                    </Button>
+                                    <Button onClick={handleSaveExecActivities} variant="outline" className="gap-2 text-sm"><Save className="w-4 h-4" />Guardar ejecución</Button>
+                                  </div>
+                                </section>
+                              );
+                            })()}
+
+                          </TabsContent>
+
+                          <TabsContent value="informe" className="mt-0">
+                            {!schedule ? (
+                              <div className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-8 text-center text-sm text-[hsl(var(--canalco-neutral-400))]">
+                                Selecciona una obra para ver su informe.
+                              </div>
+                            ) : (() => {
+                              const tiempo = temporalProgress.contractual?.pct ?? temporalProgress.operational?.pct ?? null;
+                              const esperado = expectedByToday?.pct ?? null;
+                              const fisico = reportData?.physical ?? 0;
+                              const spi = esperado && esperado > 0 ? fisico / esperado : null;
+                              const dev = fisico - (esperado ?? 0);
+                              const fmt = (x: string | null | undefined) => x ? new Date(x + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                              const corte = formatDate(new Date());
+                              const inicio = startDate || contractualStart;
+                              const fin = endDate || contractualEnd;
+                              const statusInfo = currentStatus === 'on-track'
+                                ? { label: 'En tiempo', color: '#22c55e', cls: 'text-emerald-400' }
+                                : currentStatus === 'at-risk'
+                                ? { label: 'En riesgo', color: '#f59e0b', cls: 'text-amber-400' }
+                                : currentStatus === 'delayed'
+                                ? { label: 'Atrasada', color: '#ef4444', cls: 'text-red-400' }
+                                : { label: '—', color: '#94a3b8', cls: 'text-slate-400' };
+                              const ubicacion = [selectedWork.neighborhood, selectedWork.zone].filter(Boolean).join(' · ') || selectedWork.address || '—';
+                              const donutData = [
+                                { name: 'Ejecutado', value: reportData?.totalExecutedUnits ?? 0 },
+                                { name: 'Pendiente', value: Math.max(0, (reportData?.totalPlannedUnits ?? 0) - (reportData?.totalExecutedUnits ?? 0)) },
+                              ];
+                              return (
+                                <div className="rounded-xl bg-[#0d1117] border border-slate-800 p-5 space-y-5 text-slate-200">
+                                  {/* ── Header ── */}
+                                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-4">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <div className="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+                                        <BarChart3 className="w-6 h-6 text-amber-400" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h3 className="text-lg font-bold text-white leading-tight truncate">{selectedWork.name}</h3>
+                                        <p className="text-[11px] tracking-wide text-slate-400 uppercase">
+                                          Dashboard de Control de Obra{selectedWork.recordNumber ? ` · Acta ${selectedWork.recordNumber}` : ''}{selectedWork.workCode ? ` · ${selectedWork.workCode}` : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" />Ubicación</div>
+                                        <div className="font-semibold text-slate-200 mt-0.5 max-w-[200px] truncate" title={ubicacion}>{ubicacion}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-500">Inicio</div>
+                                        <div className="font-semibold text-slate-200 mt-0.5">{fmt(inicio)}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-500">Fin Programado</div>
+                                        <div className="font-semibold text-slate-200 mt-0.5">{fmt(fin)}</div>
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-500">Corte</div>
+                                        <div className="font-semibold text-amber-400 mt-0.5">{fmt(corte)}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* ── KPI cards ── */}
+                                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Clock className="w-3 h-3" />Avance en Tiempo</div>
+                                      <div className="mt-2 flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{tiempo !== null ? Math.round(tiempo) : '—'}</span><span className="text-sm text-slate-400">%</span></div>
+                                      <div className="mt-2 text-[11px] text-slate-500">Esperado a la fecha: {esperado !== null ? `${Math.round(esperado)}%` : '—'}</div>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Activity className="w-3 h-3" />Avance Físico (Alcance)</div>
+                                      <div className="mt-2 flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{Math.round(fisico)}</span><span className="text-sm text-slate-400">%</span></div>
+                                      <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+                                        {spi !== null && (
+                                          <span className={`px-1.5 py-0.5 rounded font-medium ${spi >= 0.98 ? 'bg-emerald-500/15 text-emerald-400' : spi >= 0.9 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>SPI {spi.toFixed(2)}</span>
+                                        )}
+                                        <span className="text-slate-500">Ejecutado / Alcance</span>
+                                      </div>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5">{dev >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}Desviación de Avance</div>
+                                      <div className={`mt-2 flex items-baseline gap-1 ${dev >= 0 ? 'text-emerald-400' : 'text-red-400'}`}><span className="text-3xl font-bold">{dev >= 0 ? '+' : ''}{dev.toFixed(1)}</span><span className="text-sm opacity-70">pts</span></div>
+                                      <div className="mt-2 text-[11px] text-slate-500">Físico vs esperado a la fecha</div>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <div className="text-[10px] uppercase tracking-wider text-slate-400">Estado de la Obra</div>
+                                      <div className="mt-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: statusInfo.color }} /><span className={`text-2xl font-bold ${statusInfo.cls}`}>{statusInfo.label}</span></div>
+                                      <div className="mt-2 text-[11px] text-slate-500">Este mes: {monthProgress.elapsed} / {monthProgress.total} días hábiles</div>
+                                    </div>
+                                  </div>
+
+                                  {/* ── Curva S + Donut ── */}
+                                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    <div className="lg:col-span-2 rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-white flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-amber-400" />Avance en el Tiempo — Curva S</h4>
+                                          <p className="text-[10px] uppercase tracking-wider text-slate-500">% Acumulado · Programado vs Real</p>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-[11px]">
+                                          <span className="flex items-center gap-1 text-slate-300"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" />Programado</span>
+                                          <span className="flex items-center gap-1 text-slate-300"><span className="w-2.5 h-2.5 rounded-full bg-sky-400" />Real</span>
+                                        </div>
+                                      </div>
+                                      {reportData && reportData.curva.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={260}>
+                                          <ComposedChart data={reportData.curva} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                                            <defs>
+                                              <linearGradient id="progFill" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.25} />
+                                                <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                                              </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                            <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} stroke="#334155" />
+                                            <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} stroke="#334155" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                                            <RTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#e2e8f0' }} formatter={(v: number) => `${Math.round(v)}%`} />
+                                            <Area type="monotone" dataKey="programado" stroke="#f59e0b" strokeWidth={2} fill="url(#progFill)" name="Programado" />
+                                            <RLine type="monotone" dataKey="real" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 3, fill: '#38bdf8' }} connectNulls name="Real" />
+                                          </ComposedChart>
+                                        </ResponsiveContainer>
+                                      ) : (
+                                        <div className="h-[260px] flex items-center justify-center text-xs text-slate-500 text-center px-4">Registra el plan diario y las fechas del proyecto para ver la curva S.</div>
+                                      )}
+                                    </div>
+
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <h4 className="text-sm font-semibold text-white flex items-center gap-1.5"><Activity className="w-4 h-4 text-emerald-400" />Avance Físico</h4>
+                                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Ejecutado vs Pendiente (uds)</p>
+                                      <div className="relative">
+                                        <ResponsiveContainer width="100%" height={180}>
+                                          <PieChart>
+                                            <Pie data={donutData} dataKey="value" innerRadius={55} outerRadius={75} paddingAngle={2} stroke="none" startAngle={90} endAngle={-270}>
+                                              <Cell fill="#22c55e" />
+                                              <Cell fill="#1e293b" />
+                                            </Pie>
+                                            <RTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }} formatter={(v: number) => `${v.toLocaleString('es-CO')} uds`} />
+                                          </PieChart>
+                                        </ResponsiveContainer>
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                          <span className="text-2xl font-bold text-white">{Math.round(fisico)}%</span>
+                                          <span className="text-[10px] uppercase tracking-wider text-slate-500">Ejecutado</span>
+                                        </div>
+                                      </div>
+                                      <div className="mt-2 space-y-1.5 text-xs">
+                                        <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-slate-300"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />Ejecutado</span><span className="font-semibold text-white tabular-nums">{(reportData?.totalExecutedUnits ?? 0).toLocaleString('es-CO')} uds</span></div>
+                                        <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-slate-300"><span className="w-2.5 h-2.5 rounded-sm bg-slate-600" />Pendiente</span><span className="font-semibold text-slate-300 tabular-nums">{Math.max(0, (reportData?.totalPlannedUnits ?? 0) - (reportData?.totalExecutedUnits ?? 0)).toLocaleString('es-CO')} uds</span></div>
+                                        <div className="flex items-center justify-between border-t border-slate-800 pt-1.5"><span className="text-slate-400">Alcance total</span><span className="font-semibold text-white tabular-nums">{(reportData?.totalPlannedUnits ?? 0).toLocaleString('es-CO')} uds</span></div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* ── Alcance por UCAP + Materiales ── */}
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <h4 className="text-sm font-semibold text-white flex items-center gap-1.5 mb-1"><BarChart3 className="w-4 h-4 text-sky-400" />Alcance por UCAP</h4>
+                                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-3">Avance físico real · línea ámbar = esperado a la fecha</p>
+                                      {reportData && reportData.chapters.length > 0 ? (
+                                        <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                                          {reportData.chapters.map((c) => {
+                                            const behind = c.expectedPct !== null && c.real < c.expectedPct - 10;
+                                            const barColor = c.real >= 100 ? '#22c55e' : behind ? '#ef4444' : c.real >= (c.expectedPct ?? 0) ? '#22c55e' : '#38bdf8';
+                                            return (
+                                              <div key={c.code}>
+                                                <div className="flex items-center justify-between mb-1 gap-2">
+                                                  <span className="text-xs text-slate-300 truncate" title={c.desc || c.code}>{c.desc || c.code}</span>
+                                                  <span className="text-xs font-semibold text-white flex-shrink-0">{Math.round(c.real)}%</span>
+                                                </div>
+                                                <div className="relative h-2 rounded-full bg-slate-800">
+                                                  <div className="absolute inset-y-0 left-0 rounded-full transition-all" style={{ width: `${Math.min(100, c.real)}%`, background: barColor }} />
+                                                  {c.expectedPct !== null && (
+                                                    <div className="absolute inset-y-[-2px] w-0.5 bg-amber-400" style={{ left: `${Math.min(100, c.expectedPct)}%` }} title={`Esperado ${Math.round(c.expectedPct)}%`} />
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : <p className="text-xs text-slate-500">Esta obra no tiene UCAPs registradas.</p>}
+                                    </div>
+
+                                    <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                                      <h4 className="text-sm font-semibold text-white flex items-center gap-1.5 mb-1"><Package className="w-4 h-4 text-purple-400" />Ejecución de Materiales</h4>
+                                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-3">Cantidad instalada vs levantamiento</p>
+                                      {reportData && reportData.materialRows.length > 0 ? (
+                                        <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
+                                          <table className="w-full text-xs">
+                                            <thead className="text-[10px] uppercase tracking-wider text-slate-500">
+                                              <tr className="border-b border-slate-800">
+                                                <th className="text-left font-medium pb-2">Material</th>
+                                                <th className="text-right font-medium pb-2">PPTO</th>
+                                                <th className="text-right font-medium pb-2">Ejec.</th>
+                                                <th className="text-right font-medium pb-2 pl-2">% Uso</th>
+                                                <th className="text-right font-medium pb-2 pl-2">Estado</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {reportData.materialRows.map((m) => {
+                                                const estadoCls = m.estado === 'En rango' ? 'text-emerald-400 bg-emerald-500/10' : m.estado === 'Vigilar' ? 'text-amber-400 bg-amber-500/10' : 'text-red-400 bg-red-500/10';
+                                                const barCls = m.estado === 'En rango' ? 'bg-emerald-500' : m.estado === 'Vigilar' ? 'bg-amber-500' : 'bg-red-500';
+                                                return (
+                                                  <tr key={m.code} className="border-b border-slate-800/60">
+                                                    <td className="py-2 pr-2 max-w-[150px]">
+                                                      <div className="text-slate-200 truncate" title={m.desc ?? m.code}>{m.desc ?? m.code}</div>
+                                                      <div className="text-[10px] text-slate-500 font-mono">{m.code}{m.unit ? ` · ${m.unit}` : ''}</div>
+                                                    </td>
+                                                    <td className="py-2 text-right text-slate-300 tabular-nums">{m.ppto.toLocaleString('es-CO')}</td>
+                                                    <td className="py-2 text-right text-slate-300 tabular-nums">{m.exec.toLocaleString('es-CO')}</td>
+                                                    <td className="py-2 pl-2 text-right">
+                                                      <div className="flex items-center justify-end gap-1.5">
+                                                        <div className="w-10 h-1.5 rounded-full bg-slate-800 overflow-hidden"><div className={`h-full ${barCls}`} style={{ width: `${Math.min(100, m.usage)}%` }} /></div>
+                                                        <span className="text-slate-200 tabular-nums w-9 text-right">{Math.round(m.usage)}%</span>
+                                                      </div>
+                                                    </td>
+                                                    <td className="py-2 pl-2 text-right"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${estadoCls}`}>{m.estado}</span></td>
+                                                  </tr>
+                                                );
+                                              })}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      ) : <p className="text-xs text-slate-500">Esta obra no tiene materiales registrados en sus levantamientos.</p>}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-center text-[10px] text-slate-600 pt-1">
+                                    Informe generado del acta{selectedWork.recordNumber ? ` ${selectedWork.recordNumber}` : ''} · Corte {fmt(corte)} · SPI = avance real / esperado · Datos de UCAPs y materiales del levantamiento
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </TabsContent>
+                        </Tabs>
+
+                        {cronogramaTab === 'ejecucion' && (<>
                         {/* ── Gantt timeline ── */}
                         {schedule && schedule.items.length > 0 && (() => {
                           const ganttMetas = [
                             ...(contractualStart && contractualEnd ? [{ label: 'Contractual', start: contractualStart, end: contractualEnd, color: 'hsl(var(--canalco-primary))' }] : []),
-                            ...(startDate && endDate ? [{ label: 'Operativo', start: startDate, end: endDate, color: '#64748b' }] : []),
                           ];
                           const ganttRows: GanttRow[] = schedule.items
                             .filter((item) => ucapDates[item.ucapId]?.start && ucapDates[item.ucapId]?.end)
@@ -1286,130 +2336,6 @@ export default function CronogramaPage() {
                           );
                         })()}
 
-                        {/* ── UCAP progress ── */}
-                        <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                              Avance por UCAP
-                            </h3>
-                            <div className="flex items-center gap-2">
-                              {schedule && schedule.items.length > 0 && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={handleSyncExecutedFromPlan}
-                                  className="h-7 gap-1.5 text-xs"
-                                  title="Suma el ejecutado del Plan Diario y lo vuelca aquí"
-                                >
-                                  <RefreshCw className="w-3 h-3" />
-                                  Actualizar desde Plan Diario
-                                </Button>
-                              )}
-                              <button
-                                onClick={() => setUcapSectionCollapsed((v) => !v)}
-                                className="p-1 rounded hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))]"
-                                title={ucapSectionCollapsed ? 'Expandir' : 'Colapsar'}
-                              >
-                                {ucapSectionCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                              </button>
-                            </div>
-                          </div>
-
-                          {!ucapSectionCollapsed && ((!schedule || schedule.items.length === 0) ? (
-                            <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
-                              Esta obra no tiene UCAPs registradas en sus levantamientos.
-                            </p>
-                          ) : (
-                            <div className="space-y-5">
-                              {schedule.items.map((item) => {
-                                const execVal = parseFloat(executed[item.ucapId] ?? '0') || 0;
-                                const p = pct(execVal, item.plannedQuantity);
-                                const d = ucapDates[item.ucapId] ?? { start: '', end: '' };
-                                return (
-                                  <div key={item.ucapId} className="border border-[hsl(var(--canalco-neutral-200))] rounded-lg p-4">
-                                    <div className="flex items-start justify-between gap-3 mb-3">
-                                      <div className="min-w-0">
-                                        <span className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">
-                                          {item.ucapCode}
-                                        </span>
-                                        <p className="text-sm text-[hsl(var(--canalco-neutral-800))] leading-tight">
-                                          {item.ucapDescription}
-                                        </p>
-                                      </div>
-                                      <span className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))] flex-shrink-0">
-                                        {Math.round(p)}%
-                                      </span>
-                                    </div>
-
-                                    {/* Per-UCAP date pickers */}
-                                    <div className="flex gap-4 mb-3">
-                                      <div>
-                                        <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Inicio</Label>
-                                        <Input
-                                          type="date"
-                                          value={d.start}
-                                          onChange={(e) => { setUcapDates((prev) => ({ ...prev, [item.ucapId]: { ...prev[item.ucapId] ?? { start: '', end: '' }, start: e.target.value } })); setIsDirty(true); }}
-                                          className="mt-0.5 w-36 h-8 text-sm"
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label className="text-xs text-[hsl(var(--canalco-neutral-500))]">Fin</Label>
-                                        <Input
-                                          type="date"
-                                          value={d.end}
-                                          onChange={(e) => { setUcapDates((prev) => ({ ...prev, [item.ucapId]: { ...prev[item.ucapId] ?? { start: '', end: '' }, end: e.target.value } })); setIsDirty(true); }}
-                                          className="mt-0.5 w-36 h-8 text-sm"
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <ProgressBar value={p} color="primary" />
-
-                                    {(() => {
-                                      const expectedQty = expectedByToday?.perUcap[item.ucapId];
-                                      if (expectedQty === undefined) return null;
-                                      const execVal = parseFloat(executed[item.ucapId] ?? '0') || 0;
-                                      const delta = execVal - expectedQty;
-                                      return (
-                                        <p className="text-xs mt-2">
-                                          <span className="text-[hsl(var(--canalco-neutral-500))]">Esperado hoy: </span>
-                                          <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{expectedQty.toFixed(2)} uds</span>
-                                          {delta < -0.01 && (
-                                            <span className="ml-2 text-red-500 font-semibold">
-                                              ({delta.toFixed(2)} uds)
-                                            </span>
-                                          )}
-                                          {delta >= -0.01 && (
-                                            <span className="ml-2 text-green-600 font-semibold">
-                                              (+{Math.max(0, delta).toFixed(2)} uds)
-                                            </span>
-                                          )}
-                                        </p>
-                                      );
-                                    })()}
-
-                                    <div className="flex items-center gap-4 mt-3">
-                                      <div className="flex items-center gap-1.5 text-sm text-[hsl(var(--canalco-neutral-600))]">
-                                        <span>Programado:</span>
-                                        <span className="font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                                          {item.plannedQuantity} uds
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-1.5 text-sm">
-                                        <span className="text-[hsl(var(--canalco-neutral-600))]">Ejecutado:</span>
-                                        <span className="inline-flex items-center justify-center w-24 h-8 rounded-md border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] select-none">
-                                          {executed[item.ucapId] ?? '0'}
-                                        </span>
-                                        <span className="text-[hsl(var(--canalco-neutral-600))]">uds</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </section>
-
                         {/* ── Save button ── */}
                         <div className="flex justify-end pb-6">
                           <Button
@@ -1421,6 +2347,7 @@ export default function CronogramaPage() {
                             {saving ? 'Guardando...' : 'Guardar Cronograma'}
                           </Button>
                         </div>
+                        </>)}
                       </div>
                     )}
                   </div>

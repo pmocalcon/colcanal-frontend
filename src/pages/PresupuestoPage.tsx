@@ -50,7 +50,6 @@ const TRAVEL_EXPENSE_LABELS: Record<string, string> = {
   parking: 'Parqueadero',
   lodging: 'Hospedaje',
   food: 'Alimentación',
-  fuel: 'Combustible',
   additional_crew: 'Cuadrilla Adicional',
   day_hours: 'Horas Diurnas',
   holiday_overtime: 'Horas Festivas/Nocturnas',
@@ -114,6 +113,40 @@ function buildTravelRows(surveys: { travelExpenses?: Array<{ expenseType: string
       vrUnitario: v.unitPrice != null ? String(v.unitPrice) : '',
       hasIva: false,
     }));
+}
+
+function FormattedInput({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const formatted =
+    value !== '' && !isNaN(Number(value))
+      ? Number(value).toLocaleString('es-CO')
+      : value;
+  return (
+    <Input
+      type={editing ? 'number' : 'text'}
+      min="0"
+      step="any"
+      value={editing ? value : formatted}
+      onChange={(e) => onChange(e.target.value)}
+      onFocus={() => setEditing(true)}
+      onBlur={() => setEditing(false)}
+      disabled={disabled}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
 }
 
 const parseNum = (val: string) => parseFloat(val) || 0;
@@ -1442,11 +1475,9 @@ export default function PresupuestoPage() {
                         />
                       </td>
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
-                        <Input
-                          type="number"
-                          min="0"
+                        <FormattedInput
                           value={row.costoTransporte}
-                          onChange={(e) => updateRow(row.id, 'costoTransporte', e.target.value)}
+                          onChange={(v) => updateRow(row.id, 'costoTransporte', v)}
                           disabled={isReadOnly}
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
@@ -1455,11 +1486,9 @@ export default function PresupuestoPage() {
                         {calc.vrTotalConTransporte > 0 ? fmtTable(calc.vrTotalConTransporte) : '-'}
                       </td>
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
-                        <Input
-                          type="number"
-                          min="0"
+                        <FormattedInput
                           value={row.ejecutado}
-                          onChange={(e) => updateRow(row.id, 'ejecutado', e.target.value)}
+                          onChange={(v) => updateRow(row.id, 'ejecutado', v)}
                           disabled={isReadOnly}
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
@@ -1552,11 +1581,9 @@ export default function PresupuestoPage() {
                         />
                       </td>
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
-                        <Input
-                          type="number"
-                          min="0"
+                        <FormattedInput
                           value={row.costoTransporte}
-                          onChange={(e) => updateTravelRow(i, 'costoTransporte', e.target.value)}
+                          onChange={(v) => updateTravelRow(i, 'costoTransporte', v)}
                           disabled={isReadOnly}
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
@@ -1565,11 +1592,9 @@ export default function PresupuestoPage() {
                         {calc.vrTotalConTransporte > 0 ? fmtTable(calc.vrTotalConTransporte) : '-'}
                       </td>
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
-                        <Input
-                          type="number"
-                          min="0"
+                        <FormattedInput
                           value={row.ejecutado}
-                          onChange={(e) => updateTravelRow(i, 'ejecutado', e.target.value)}
+                          onChange={(v) => updateTravelRow(i, 'ejecutado', v)}
                           disabled={isReadOnly}
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
@@ -1639,11 +1664,9 @@ export default function PresupuestoPage() {
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
                   Valor Mínimo de los Excedentes
                 </p>
-                <Input
-                  type="number"
-                  min="0"
+                <FormattedInput
                   value={valorMinimoExcedentes}
-                  onChange={(e) => setValorMinimoExcedentes(e.target.value)}
+                  onChange={setValorMinimoExcedentes}
                   disabled={isReadOnly}
                   placeholder="0"
                   className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"
@@ -1653,11 +1676,9 @@ export default function PresupuestoPage() {
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
                   Valor Actual de Excedentes
                 </p>
-                <Input
-                  type="number"
-                  min="0"
+                <FormattedInput
                   value={valorActualExcedentes}
-                  onChange={(e) => setValorActualExcedentes(e.target.value)}
+                  onChange={setValorActualExcedentes}
                   disabled={isReadOnly}
                   placeholder="0"
                   className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"

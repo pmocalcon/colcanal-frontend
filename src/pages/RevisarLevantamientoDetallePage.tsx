@@ -96,6 +96,13 @@ export default function RevisarLevantamientoDetallePage() {
   const [reopenReason, setReopenReason] = useState('');
   const [reopening, setReopening] = useState(false);
 
+  // Survey-level approve/reject
+  const [surveyApproveModal, setSurveyApproveModal] = useState(false);
+  const [surveyApproveIpp, setSurveyApproveIpp] = useState('');
+  const [surveyRejectModal, setSurveyRejectModal] = useState(false);
+  const [surveyRejectComments, setSurveyRejectComments] = useState('');
+  const [reviewingSurvey, setReviewingSurvey] = useState(false);
+
   useEffect(() => {
     if (surveyId) {
       loadSurvey();
@@ -163,6 +170,43 @@ export default function RevisarLevantamientoDetallePage() {
       setError(err.response?.data?.message || 'Error al aprobar todo');
     } finally {
       setApprovingAll(false);
+    }
+  };
+
+  const handleSurveyApprove = async () => {
+    const ipp = parseFloat(surveyApproveIpp);
+    if (!ipp || isNaN(ipp)) return;
+    try {
+      setReviewingSurvey(true);
+      const updated = await surveysService.reviewSurvey(Number(surveyId), {
+        action: 'approve',
+        previousMonthIpp: ipp,
+      });
+      setSurvey(updated);
+      setSurveyApproveModal(false);
+      setSurveyApproveIpp('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Error al aprobar el levantamiento');
+    } finally {
+      setReviewingSurvey(false);
+    }
+  };
+
+  const handleSurveyReject = async () => {
+    if (!surveyRejectComments.trim()) return;
+    try {
+      setReviewingSurvey(true);
+      const updated = await surveysService.reviewSurvey(Number(surveyId), {
+        action: 'reject',
+        rejectionComments: surveyRejectComments,
+      });
+      setSurvey(updated);
+      setSurveyRejectModal(false);
+      setSurveyRejectComments('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Error al rechazar el levantamiento');
+    } finally {
+      setReviewingSurvey(false);
     }
   };
 
@@ -470,7 +514,7 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.work?.requestType || '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">N. Radicado:</span>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Orden de Visita:</span>
               <p className="font-medium">{survey.work?.filingNumber || '-'}</p>
             </div>
             <div>
@@ -536,6 +580,49 @@ export default function RevisarLevantamientoDetallePage() {
               )}
             </div>
           </div>
+
+          {/* Rejection banner */}
+          {(survey as any).status === 'rejected' && survey.rejectionComments && (
+            <div className="mt-4 pt-4 border-t border-red-200">
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+                <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-700">Levantamiento rechazado</p>
+                  <p className="text-sm text-red-600 mt-0.5">{survey.rejectionComments}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Survey-level Approve / Reject */}
+          <PermissionGuard permission="levantamientos:revisar">
+            {(['pending', 'in_review'] as string[]).includes((survey as any).status) && (
+              <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))] flex items-center gap-3">
+                <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
+                  Revisión general:
+                </span>
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    setSurveyApproveIpp(survey.previousMonthIpp?.toString() ?? '');
+                    setSurveyApproveModal(true);
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
+                  Aprobar
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  onClick={() => setSurveyRejectModal(true)}
+                >
+                  <XCircle className="w-4 h-4 mr-1.5" />
+                  Rechazar
+                </Button>
+              </div>
+            )}
+          </PermissionGuard>
         </Card>
 
         {/* Blocks */}
@@ -716,6 +803,86 @@ export default function RevisarLevantamientoDetallePage() {
                 <RotateCcw className="w-4 h-4 mr-2" />
               )}
               Reabrir Levantamiento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Survey Approve Dialog */}
+      <Dialog open={surveyApproveModal} onOpenChange={(open) => { if (!open) { setSurveyApproveModal(false); setSurveyApproveIpp(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-green-700 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5" />
+              Aprobar Levantamiento
+            </DialogTitle>
+            <DialogDescription>
+              Confirma el IPP del mes anterior para aprobar el levantamiento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-2 block">
+              IPP Mes Anterior <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={surveyApproveIpp}
+              onChange={(e) => setSurveyApproveIpp(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSurveyApprove(); }}
+              placeholder="Ej: 188.84"
+              className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSurveyApproveModal(false); setSurveyApproveIpp(''); }} disabled={reviewingSurvey}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleSurveyApprove}
+              disabled={reviewingSurvey || !surveyApproveIpp.trim()}
+            >
+              {reviewingSurvey ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              Aprobar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Survey Reject Dialog */}
+      <Dialog open={surveyRejectModal} onOpenChange={(open) => { if (!open) { setSurveyRejectModal(false); setSurveyRejectComments(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <XCircle className="w-5 h-5" />
+              Rechazar Levantamiento
+            </DialogTitle>
+            <DialogDescription>
+              Ingresa el motivo del rechazo. Será visible para el creador del levantamiento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Motivo del rechazo..."
+              value={surveyRejectComments}
+              onChange={(e) => setSurveyRejectComments(e.target.value)}
+              rows={4}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSurveyRejectModal(false); setSurveyRejectComments(''); }} disabled={reviewingSurvey}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSurveyReject}
+              disabled={reviewingSurvey || !surveyRejectComments.trim()}
+            >
+              {reviewingSurvey ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Rechazar
             </Button>
           </DialogFooter>
         </DialogContent>

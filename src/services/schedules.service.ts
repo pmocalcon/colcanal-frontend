@@ -65,6 +65,28 @@ export interface MaterialLogsResponse {
   logs: MaterialLogEntry[];
 }
 
+export interface DailyExecutionEntry {
+  ucapId: number;
+  planDate: string;        // YYYY-MM-DD
+  executedQuantity: number;
+}
+
+export type ExecutionType = 'material' | 'activity';
+
+export interface ExecutionItem {
+  itemKey: string;
+  label?: string | null;
+  unitOfMeasure?: string | null;
+  executionDate?: string | null;   // YYYY-MM-DD or null (label-only row)
+  quantity: number;
+}
+
+export interface ExecutionsResponse {
+  scheduleId: number;
+  execType: ExecutionType;
+  items: ExecutionItem[];
+}
+
 export const schedulesService = {
   async getByWork(workId: number): Promise<ScheduleDetail> {
     const response = await api.get(`/schedules/work/${workId}`);
@@ -98,6 +120,22 @@ export const schedulesService = {
 
   async saveMaterialLogs(scheduleId: number, items: MaterialLogEntry[]): Promise<MaterialLogsResponse> {
     const response = await api.put(`/schedules/${scheduleId}/material-logs`, { items });
+    return response.data;
+  },
+
+  // ── Ejecución (lo real)
+  async saveDailyExecution(scheduleId: number, items: DailyExecutionEntry[]): Promise<{ scheduleId: number; ok: boolean }> {
+    const response = await api.put(`/schedules/${scheduleId}/daily-execution`, { items });
+    return response.data;
+  },
+
+  async getExecutions(scheduleId: number, type: ExecutionType): Promise<ExecutionsResponse> {
+    const response = await api.get(`/schedules/${scheduleId}/executions`, { params: { type } });
+    return response.data;
+  },
+
+  async saveExecutions(scheduleId: number, execType: ExecutionType, items: ExecutionItem[]): Promise<ExecutionsResponse> {
+    const response = await api.put(`/schedules/${scheduleId}/executions`, { execType, items });
     return response.data;
   },
 };

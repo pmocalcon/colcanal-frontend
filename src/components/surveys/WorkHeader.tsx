@@ -327,31 +327,6 @@ export function WorkHeader({
               type="date"
             />
 
-            {/* Recibe - Select de usuarios PQRS y Coordinador Operativo */}
-            {isEditable ? (
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                  Recibe
-                </Label>
-                <Select
-                  value={formData?.receivedById?.toString() || ''}
-                  onValueChange={(val) => onFormChange?.('receivedById', parseInt(val))}
-                >
-                  <SelectTrigger className="h-8 text-sm bg-white">
-                    <SelectValue placeholder="Seleccione quien recibe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {receivers.map((user) => (
-                      <SelectItem key={user.userId} value={user.userId.toString()}>
-                        {user.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : surveyData?.receivedBy ? (
-              <Field label="Recibe" value={surveyData.receivedBy} readOnly />
-            ) : null}
 
             {/* Revisor Designado - Select de usuarios revisores */}
             {isEditable ? (
@@ -448,7 +423,7 @@ export function WorkHeader({
             />
 
             <Field
-              label="No. Radicado"
+              label="Orden de Visita"
               value={getValue('filingNumber')}
               field="filingNumber"
             />

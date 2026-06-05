@@ -38,7 +38,6 @@ export type ExpenseType =
   | 'parking'
   | 'lodging'
   | 'food'
-  | 'fuel'
   | 'additional_crew'
   | 'day_hours'
   | 'holiday_overtime';
@@ -49,7 +48,6 @@ const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   parking: 'Parqueaderos',
   lodging: 'Hospedaje',
   food: 'Alimentación',
-  fuel: 'Combustible',
   additional_crew: 'Cuadrilla adicional',
   day_hours: 'Horas Diurnas',
   holiday_overtime: 'Horas Extras Festivas',
@@ -61,7 +59,6 @@ const EXPENSE_TYPES_ORDER: ExpenseType[] = [
   'parking',
   'lodging',
   'food',
-  'fuel',
   'additional_crew',
   'day_hours',
   'holiday_overtime',

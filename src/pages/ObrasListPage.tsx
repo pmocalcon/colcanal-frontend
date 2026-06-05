@@ -22,6 +22,10 @@ import {
 
 type ViewMode = 'individual' | 'agrupado';
 
+const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
+  `${companyId ?? 0}:${recordNumber}`;
+const getActaRecordNumber = (key: string) => key.slice(key.indexOf(':') + 1);
+
 export default function ObrasListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -97,13 +101,13 @@ export default function ObrasListPage() {
     }
   };
 
-  // Works with record number → grouped by acta (only groups with 2+ works qualify)
+  // Works with record number → grouped by company + acta (prevents mixing companies)
   const groupedWorksMap = useMemo(() => {
     const map = new Map<string, Work[]>();
     works
       .filter((w) => w.recordNumber)
       .forEach((w) => {
-        const key = w.recordNumber!;
+        const key = makeActaKey(w.companyId, w.recordNumber!);
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(w);
       });
@@ -111,9 +115,9 @@ export default function ObrasListPage() {
     return map;
   }, [works]);
 
-  // Individual = no recordNumber OR recordNumber that doesn't form a group (< 2 works)
+  // Individual = no recordNumber OR not present in grouped map (uses composite key)
   const individualWorks = useMemo(
-    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(w.recordNumber)),
+    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(makeActaKey(w.companyId, w.recordNumber!))),
     [works, groupedWorksMap],
   );
 
@@ -129,15 +133,14 @@ export default function ObrasListPage() {
     );
   }, [searchTerm, individualWorks]);
 
-  // Filtered grouped works (search by acta number)
+  // Filtered grouped works (search by acta record number)
   const filteredGroupedMap = useMemo(() => {
     if (!searchTerm.trim()) return groupedWorksMap;
     const term = searchTerm.toLowerCase();
     const result = new Map<string, Work[]>();
-    groupedWorksMap.forEach((actaWorks, acta) => {
-      if (acta.toLowerCase().includes(term)) {
-        result.set(acta, actaWorks);
-      }
+    groupedWorksMap.forEach((actaWorks, key) => {
+      const rn = getActaRecordNumber(key);
+      if (rn.toLowerCase().includes(term)) result.set(key, actaWorks);
     });
     return result;
   }, [searchTerm, groupedWorksMap]);
@@ -179,7 +182,8 @@ export default function ObrasListPage() {
     }
   };
 
-  const handleRenameActa = async (oldActa: string, actaWorks: Work[]) => {
+  const handleRenameActa = async (oldKey: string, actaWorks: Work[]) => {
+    const oldActa = getActaRecordNumber(oldKey);
     const newName = editActaValue.trim();
     if (!newName || newName === oldActa) { setEditingActa(null); return; }
     try {
@@ -209,12 +213,19 @@ export default function ObrasListPage() {
   };
 
   useEffect(() => {
-    const actaNumbers = Array.from(groupedWorksMap.keys());
-    if (actaNumbers.length === 0) { setActaStatuses(new Map()); return; }
-    surveysService.getWorkActasBulk(actaNumbers)
+    const keys = Array.from(groupedWorksMap.keys());
+    if (keys.length === 0) { setActaStatuses(new Map()); return; }
+    const uniqueRecordNumbers = [...new Set(keys.map(getActaRecordNumber))];
+    surveysService.getWorkActasBulk(uniqueRecordNumbers)
       .then((actas) => {
+        const rnMap = new Map<string, WorkActa>();
+        actas.forEach((a) => rnMap.set(a.actaNumber, a));
         const map = new Map<string, WorkActa>();
-        actas.forEach((a) => map.set(a.actaNumber, a));
+        keys.forEach((key) => {
+          const rn = getActaRecordNumber(key);
+          const acta = rnMap.get(rn);
+          if (acta) map.set(key, acta);
+        });
         setActaStatuses(map);
       })
       .catch(() => { /* actas sin estado se tratan como BORRADOR */ });
@@ -654,14 +665,18 @@ export default function ObrasListPage() {
                     </div>
                   ) : (
                     <div className="space-y-5">
-                      {Array.from(filteredGroupedMap.entries()).map(([acta, actaWorks]) => (
+                      {Array.from(filteredGroupedMap.entries()).map(([actaKey, actaWorks]) => {
+                        const recordNumber = getActaRecordNumber(actaKey);
+                        const companyName = actaWorks[0]?.company?.name ?? '';
+                        const municipality = getMunicipality(companyName);
+                        return (
                         <div
-                          key={acta}
+                          key={actaKey}
                           className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden"
                         >
                           {/* Group header */}
                           {(() => {
-                            const actaInfo = actaStatuses.get(acta);
+                            const actaInfo = actaStatuses.get(actaKey);
                             const status = actaInfo?.status ?? 'borrador';
                             const rol = user?.nombreRol;
                             const canSubmit = (rol?.startsWith('Director de Proyecto') || rol === 'Analista PMO') && status === 'borrador';
@@ -670,14 +685,14 @@ export default function ObrasListPage() {
                             return (
                               <div className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-primary))]/20 px-4 py-3 flex flex-wrap items-center gap-3">
                                 <Layers className="w-4 h-4 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
-                                {editingActa === acta ? (
+                                {editingActa === actaKey ? (
                                   <div className="flex items-center gap-2">
                                     <Input
                                       autoFocus
                                       value={editActaValue}
                                       onChange={(e) => setEditActaValue(e.target.value)}
                                       onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleRenameActa(acta, actaWorks);
+                                        if (e.key === 'Enter') handleRenameActa(actaKey, actaWorks);
                                         if (e.key === 'Escape') setEditingActa(null);
                                       }}
                                       className="h-7 w-48 text-sm font-mono"
@@ -685,7 +700,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="icon"
                                       className="h-7 w-7 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90"
-                                      onClick={() => handleRenameActa(acta, actaWorks)}
+                                      onClick={() => handleRenameActa(actaKey, actaWorks)}
                                       disabled={savingActa}
                                     >
                                       {savingActa
@@ -699,10 +714,10 @@ export default function ObrasListPage() {
                                 ) : (
                                   <span className="font-semibold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-1.5">
                                     N° Acta:&nbsp;
-                                    <span className="font-mono text-[hsl(var(--canalco-primary))]">{acta}</span>
+                                    <span className="font-mono text-[hsl(var(--canalco-primary))]">{recordNumber}</span>
                                     <PermissionGuard permission="levantamientos:editar">
                                       <button
-                                        onClick={() => { setEditingActa(acta); setEditActaValue(acta); }}
+                                        onClick={() => { setEditingActa(actaKey); setEditActaValue(recordNumber); }}
                                         className="text-[hsl(var(--canalco-neutral-400))] hover:text-[hsl(var(--canalco-primary))] ml-1"
                                         title="Renombrar acta"
                                       >
@@ -714,6 +729,13 @@ export default function ObrasListPage() {
                                 <span className="text-xs text-[hsl(var(--canalco-neutral-500))] bg-[hsl(var(--canalco-neutral-200))] px-2 py-0.5 rounded-full">
                                   {actaWorks.length} obra{actaWorks.length !== 1 ? 's' : ''}
                                 </span>
+
+                                {/* Municipality tag — visible when viewing "Todos" */}
+                                {selectedCompanyId === null && municipality && (
+                                  <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] bg-white border border-[hsl(var(--canalco-neutral-300))] px-2 py-0.5 rounded-full">
+                                    {municipality}
+                                  </span>
+                                )}
 
                                 {/* Status badge */}
                                 {getActaStatusBadge(actaInfo)}
@@ -739,10 +761,10 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
-                                      onClick={() => handleSubmitActa(acta)}
-                                      disabled={submittingActa === acta}
+                                      onClick={() => handleSubmitActa(recordNumber)}
+                                      disabled={submittingActa === actaKey}
                                     >
-                                      {submittingActa === acta
+                                      {submittingActa === actaKey
                                         ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
                                         : <Send className="w-3 h-3 mr-1.5" />}
                                       Enviar a revisión
@@ -752,7 +774,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => setReviewDialog({ acta })}
+                                      onClick={() => setReviewDialog({ acta: recordNumber })}
                                     >
                                       <ThumbsUp className="w-3 h-3 mr-1.5" />
                                       Revisar acta
@@ -762,7 +784,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-                                      onClick={() => setApproveDialog({ acta })}
+                                      onClick={() => setApproveDialog({ acta: recordNumber })}
                                     >
                                       <BadgeCheck className="w-3 h-3 mr-1.5" />
                                       Aprobar acta
@@ -775,7 +797,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-neutral-400))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(acta)}/cantidades`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}/cantidades`,
                                         { state: { works: actaWorks } },
                                       )
                                     }
@@ -789,7 +811,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(acta)}`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}`,
                                         { state: { works: actaWorks } },
                                       )
                                     }
@@ -860,7 +882,8 @@ export default function ObrasListPage() {
                             </table>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>
