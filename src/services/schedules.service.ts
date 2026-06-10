@@ -5,6 +5,7 @@ export interface ScheduleUcapItem {
   ucapId: number;
   ucapCode: string;
   ucapDescription: string;
+  unitValue: number;
   plannedQuantity: number;
   executedQuantity: number;
   ucapStartDate: string | null;
@@ -18,6 +19,7 @@ export interface ScheduleDetail {
   endDate: string | null;
   contractualStart: string | null;
   contractualEnd: string | null;
+  ippFactor: number;
   items: ScheduleUcapItem[];
 }
 
@@ -49,6 +51,7 @@ export interface SurveyMaterialItem {
   materialDescription: string | null;
   unitOfMeasure: string | null;
   totalQuantity: number;
+  unitValue: number;
 }
 
 export interface MaterialLogEntry {
@@ -79,12 +82,21 @@ export interface ExecutionItem {
   unitOfMeasure?: string | null;
   executionDate?: string | null;   // YYYY-MM-DD or null (label-only row)
   quantity: number;
+  unitPrice?: number | null;
 }
 
 export interface ExecutionsResponse {
   scheduleId: number;
   execType: ExecutionType;
   items: ExecutionItem[];
+}
+
+export interface PurchaseComparisonItem {
+  materialCode: string;
+  materialDescription: string | null;
+  requisitionedQty: number;
+  orderedQty: number;
+  orderedValue: number;
 }
 
 export const schedulesService = {
@@ -136,6 +148,11 @@ export const schedulesService = {
 
   async saveExecutions(scheduleId: number, execType: ExecutionType, items: ExecutionItem[]): Promise<ExecutionsResponse> {
     const response = await api.put(`/schedules/${scheduleId}/executions`, { execType, items });
+    return response.data;
+  },
+
+  async getWorkPurchaseComparison(workId: number): Promise<PurchaseComparisonItem[]> {
+    const response = await api.get(`/schedules/work/${workId}/purchase-comparison`);
     return response.data;
   },
 };

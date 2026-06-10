@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Home, ArrowLeft, Printer, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
@@ -177,7 +177,10 @@ export default function ResumenActaPage() {
   const navigate = useNavigate();
   const { recordNumber: encodedActa } = useParams<{ recordNumber: string }>();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const recordNumber = decodeURIComponent(encodedActa ?? '');
+  // El número de acta se reutiliza entre municipios; el companyId del query param identifica el correcto.
+  const actaCompanyId = searchParams.get('company') ? Number(searchParams.get('company')) : null;
 
   const { user } = useAuth();
   const rol = user?.nombreRol ?? '';
@@ -398,7 +401,11 @@ export default function ResumenActaPage() {
       .getWorks({ companyId: allCompanyIds, limit: 1000 } as any)
       .then((res) => {
         const all: Work[] = Array.isArray(res) ? res : (res as any).data ?? [];
-        const filtered = all.filter((w) => w.recordNumber === recordNumber);
+        const filtered = all.filter(
+          (w) =>
+            w.recordNumber === recordNumber &&
+            (actaCompanyId == null || w.companyId === actaCompanyId),
+        );
         return loadBudgetsForWorks(filtered);
       })
       .catch(() => setLoading(false));

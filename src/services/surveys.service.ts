@@ -586,28 +586,31 @@ export const surveysService = {
 
   // ---- WORK ACTA WORKFLOW ----
 
-  async getWorkActa(actaNumber: string): Promise<WorkActa | null> {
-    const response = await api.get(`/surveys/actas/${encodeURIComponent(actaNumber)}`);
+  // El acta se identifica por (companyId, actaNumber): el número se reutiliza entre municipios.
+  async getWorkActa(companyId: number, actaNumber: string): Promise<WorkActa | null> {
+    const response = await api.get(`/surveys/actas/${encodeURIComponent(actaNumber)}`, {
+      params: { companyId },
+    });
     return response.data;
   },
 
-  async getWorkActasBulk(actaNumbers: string[]): Promise<WorkActa[]> {
-    const response = await api.post('/surveys/actas/bulk-status', { actaNumbers });
+  async getWorkActasBulk(items: Array<{ companyId: number; actaNumber: string }>): Promise<WorkActa[]> {
+    const response = await api.post('/surveys/actas/bulk-status', { items });
     return response.data;
   },
 
-  async submitActaForReview(actaNumber: string): Promise<WorkActa> {
-    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/submit`);
+  async submitActaForReview(companyId: number, actaNumber: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/submit`, { companyId });
     return response.data;
   },
 
-  async reviewActa(actaNumber: string, approved: boolean, comment?: string): Promise<WorkActa> {
-    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/review`, { approved, comment });
+  async reviewActa(companyId: number, actaNumber: string, approved: boolean, comment?: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/review`, { companyId, approved, comment });
     return response.data;
   },
 
-  async approveActa(actaNumber: string, projectCode: string): Promise<WorkActa> {
-    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/approve`, { projectCode });
+  async approveActa(companyId: number, actaNumber: string, projectCode: string): Promise<WorkActa> {
+    const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/approve`, { companyId, projectCode });
     return response.data;
   },
 };
@@ -652,6 +655,7 @@ export type ActaStatus = 'borrador' | 'en_revision' | 'en_aprobacion' | 'aprobad
 
 export interface WorkActa {
   actaId: number;
+  companyId: number;
   actaNumber: string;
   status: ActaStatus;
   projectCode: string | null;

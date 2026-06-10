@@ -154,8 +154,6 @@ const parseNum = (val: string) => parseFloat(val) || 0;
 const fmt = (value: number): string => {
   if (value === 0) return '-';
   return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
@@ -606,6 +604,31 @@ export default function PresupuestoPage() {
     load();
   }, [selectedDept, selectedMunicipalityId]);
 
+  // VALOR FACTURADO = UCAPs (cantidad × valor unitario del catálogo) ajustadas por IPP del mes.
+  //   valor = base × (IPP del mes / IPP inicial). IPP inicial: ippConfig de la empresa; IPP del mes: del levantamiento.
+  const computeValorFacturado = useCallback(async (fullSurveys: any[], companyId?: number): Promise<number> => {
+    let valMap = new Map<number, number>();
+    let ippInicial = 0;
+    if (companyId) {
+      try {
+        const u = await surveysService.getUcaps(companyId);
+        valMap = new Map(u.ucaps.map((x) => [x.ucapId, Number(x.value) || 0]));
+        ippInicial = Number(u.ippConfig?.initialValue) || 0;
+      } catch { /* ignore — sin catálogo se usa el valor del levantamiento */ }
+    }
+    let base = 0;
+    for (const s of fullSurveys) {
+      for (const bi of (s.budgetItems ?? [])) {
+        if (!bi.ucapId) continue;
+        const vr = valMap.get(bi.ucapId) ?? Number(bi.unitValue) ?? 0;
+        base += (Number(bi.quantity) || 0) * vr;
+      }
+    }
+    const ippMes = fullSurveys.map((s) => s.previousMonthIpp).find((v) => v != null && Number(v) > 0);
+    const factor = ippInicial > 0 && ippMes ? Number(ippMes) / ippInicial : 1;
+    return base * factor;
+  }, []);
+
   // Load materials from a single work (individual mode)
   useEffect(() => {
     const skipRows = skipWorkMaterialsLoad.current;
@@ -629,6 +652,11 @@ export default function PresupuestoPage() {
         setTravelRows(buildTravelRows(fullSurveys));
 
         if (skipRows) return;
+
+        // VALOR FACTURADO automático desde las UCAPs (con IPP)
+        const selWork = works.find((w) => w.workId === selectedWorkId);
+        const vf = await computeValorFacturado(fullSurveys, selWork?.companyId);
+        setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
         const materialMap = new Map<number, { materialId: number; codigo: string; cantidad: number }>();
         for (const survey of fullSurveys) {
@@ -704,6 +732,10 @@ export default function PresupuestoPage() {
         setTravelRows(buildTravelRows(fullSurveys));
 
         if (skipRows) return;
+
+        // VALOR FACTURADO automático desde las UCAPs (con IPP) — todas las obras del acta
+        const vf = await computeValorFacturado(fullSurveys, actaWorks[0]?.companyId);
+        setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
         // Merge: same materialId → sum quantities (Number() handles decimal-as-string from TypeORM)
         const materialMap = new Map<number, { materialId: number; codigo: string; cantidad: number }>();
@@ -1727,10 +1759,10 @@ export default function PresupuestoPage() {
                   <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">VALOR FACTURADO</td>
                     <td className="py-1 pr-3">
-                      <Input type="number" min="0" value={valorFacturado} onChange={(e) => setValorFacturado(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={valorFacturado} onChange={setValorFacturado} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
                     </td>
                     <td className="py-1">
-                      <Input type="number" min="0" value={valorFacturadoEj} onChange={(e) => setValorFacturadoEj(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={valorFacturadoEj} onChange={setValorFacturadoEj} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
                     </td>
                   </tr>
                   <tr>

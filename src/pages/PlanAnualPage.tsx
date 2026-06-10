@@ -24,6 +24,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const VIEW_ONLY_ROLES = ['Director Técnico', 'Gerencia de Proyectos'];
 
+// El número de acta (recordNumber) se reutiliza entre municipios; la identidad real del acta
+// es (empresa, número). Las actas se agrupan/seleccionan por esta clave compuesta.
+const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
+  `${companyId ?? 0}:${recordNumber}`;
+
 export default function PlanAnualPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -102,12 +107,13 @@ export default function PlanAnualPage() {
   useEffect(() => {
     const year = parseInt(selectedYear, 10);
     if (!isNaN(year) && works.length > 0) {
-      // Build true acta groups (only record numbers with 2+ works qualify)
+      // Agrupar actas por (empresa, número) — el número se reutiliza entre municipios.
       const actaMap = new Map<string, Work[]>();
       works.forEach((w) => {
         if (w.recordNumber) {
-          if (!actaMap.has(w.recordNumber)) actaMap.set(w.recordNumber, []);
-          actaMap.get(w.recordNumber)!.push(w);
+          const key = makeActaKey(w.companyId, w.recordNumber);
+          if (!actaMap.has(key)) actaMap.set(key, []);
+          actaMap.get(key)!.push(w);
         }
       });
       actaMap.forEach((ws, key) => { if (ws.length < 1) actaMap.delete(key); });
@@ -115,15 +121,15 @@ export default function PlanAnualPage() {
       // Individual = no recordNumber OR singleton acta
       const preselected = new Set(
         works
-          .filter((w) => (!w.recordNumber || !actaMap.has(w.recordNumber)) && w.annualPlan === year)
+          .filter((w) => (!w.recordNumber || !actaMap.has(makeActaKey(w.companyId, w.recordNumber))) && w.annualPlan === year)
           .map((w) => w.workId),
       );
       setSelectedIds(preselected);
 
       // Acta groups — pre-select if ALL works in the acta are assigned to this year
       const preselectedActas = new Set<string>();
-      actaMap.forEach((actaWorks, recordNumber) => {
-        if (actaWorks.every((w) => w.annualPlan === year)) preselectedActas.add(recordNumber);
+      actaMap.forEach((actaWorks, key) => {
+        if (actaWorks.every((w) => w.annualPlan === year)) preselectedActas.add(key);
       });
       setSelectedActas(preselectedActas);
     } else {
@@ -176,17 +182,19 @@ export default function PlanAnualPage() {
     const map = new Map<string, Work[]>();
     works.forEach((w) => {
       if (!w.recordNumber) return;
-      if (!map.has(w.recordNumber)) map.set(w.recordNumber, []);
-      map.get(w.recordNumber)!.push(w);
+      const key = makeActaKey(w.companyId, w.recordNumber);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(w);
     });
 
     map.forEach((ws, key) => { if (ws.length < 1) map.delete(key); });
 
-    let result = Array.from(map.entries()).map(([recordNumber, actaWorks]) => {
+    let result = Array.from(map.entries()).map(([key, actaWorks]) => {
       const firstPlan = actaWorks[0].annualPlan;
       const allSame = actaWorks.every((w) => w.annualPlan === firstPlan);
       return {
-        recordNumber,
+        key,
+        recordNumber: actaWorks[0].recordNumber!,
         works: actaWorks,
         planActual: allSame ? (firstPlan ?? undefined) : undefined,
         mixed: !allSame && actaWorks.some((w) => w.annualPlan != null),
@@ -230,9 +238,13 @@ export default function PlanAnualPage() {
   }, [allBudgets]);
 
   const worksByMunicipio = useMemo(() => {
+    // Contar por (empresa, número de acta): el número se reutiliza entre municipios.
     const actaCounts = new Map<string, number>();
     allWorks.forEach((w) => {
-      if (w.recordNumber) actaCounts.set(w.recordNumber, (actaCounts.get(w.recordNumber) ?? 0) + 1);
+      if (w.recordNumber) {
+        const k = makeActaKey(w.companyId, w.recordNumber);
+        actaCounts.set(k, (actaCounts.get(k) ?? 0) + 1);
+      }
     });
 
     // key: `${year}__${municipio}`
@@ -244,7 +256,7 @@ export default function PlanAnualPage() {
       const key = `${w.annualPlan}__${municipio}`;
       if (!map.has(key)) map.set(key, { year: w.annualPlan, municipio, individual: [], actas: new Map() });
       const entry = map.get(key)!;
-      const isGrouped = w.recordNumber && (actaCounts.get(w.recordNumber) ?? 0) >= 2;
+      const isGrouped = w.recordNumber && (actaCounts.get(makeActaKey(w.companyId, w.recordNumber)) ?? 0) >= 2;
       if (isGrouped) {
         if (!entry.actas.has(w.recordNumber!)) entry.actas.set(w.recordNumber!, []);
         entry.actas.get(w.recordNumber!)!.push(w);
@@ -285,10 +297,10 @@ export default function PlanAnualPage() {
     }
   };
 
-  const toggleSelectActa = (recordNumber: string) => {
+  const toggleSelectActa = (actaKey: string) => {
     setSelectedActas((prev) => {
       const next = new Set(prev);
-      next.has(recordNumber) ? next.delete(recordNumber) : next.add(recordNumber);
+      next.has(actaKey) ? next.delete(actaKey) : next.add(actaKey);
       return next;
     });
   };
@@ -297,7 +309,7 @@ export default function PlanAnualPage() {
     if (selectedActas.size === groupedActas.length && groupedActas.length > 0) {
       setSelectedActas(new Set());
     } else {
-      setSelectedActas(new Set(groupedActas.map((a) => a.recordNumber)));
+      setSelectedActas(new Set(groupedActas.map((a) => a.key)));
     }
   };
 
@@ -324,9 +336,9 @@ export default function PlanAnualPage() {
       const actaToUnassign: Work[] = [];
       groupedActas.forEach((acta) => {
         acta.works.forEach((w) => {
-          if (selectedActas.has(acta.recordNumber) && w.annualPlan !== year) {
+          if (selectedActas.has(acta.key) && w.annualPlan !== year) {
             actaToAssign.push(w);
-          } else if (!selectedActas.has(acta.recordNumber) && w.annualPlan === year) {
+          } else if (!selectedActas.has(acta.key) && w.annualPlan === year) {
             actaToUnassign.push(w);
           }
         });
@@ -397,7 +409,7 @@ export default function PlanAnualPage() {
   const assignedCount =
     filteredWorks.filter((w) => selectedIds.has(w.workId)).length +
     groupedActas
-      .filter((a) => selectedActas.has(a.recordNumber))
+      .filter((a) => selectedActas.has(a.key))
       .reduce((sum, a) => sum + a.works.length, 0);
 
   return (
@@ -825,12 +837,12 @@ export default function PlanAnualPage() {
                       </TableHeader>
                       <TableBody>
                         {groupedActas.map((acta) => {
-                          const isSelected = selectedActas.has(acta.recordNumber);
+                          const isSelected = selectedActas.has(acta.key);
                           const year = parseInt(selectedYear, 10);
                           const isAssignedToYear = acta.planActual === year;
                           return (
                             <TableRow
-                              key={acta.recordNumber}
+                              key={acta.key}
                               className={`transition-colors ${
                                 isReadOnly
                                   ? 'hover:bg-[hsl(var(--canalco-neutral-50))]'
@@ -839,7 +851,7 @@ export default function PlanAnualPage() {
                                       : 'hover:bg-[hsl(var(--canalco-neutral-50))]'
                                     }`
                               }`}
-                              onClick={() => !isReadOnly && toggleSelectActa(acta.recordNumber)}
+                              onClick={() => !isReadOnly && toggleSelectActa(acta.key)}
                             >
                               {!isReadOnly && (
                                 <TableCell>

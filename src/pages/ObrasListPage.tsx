@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { surveysService, type Work, type WorkActa, type ActaStatus } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
-import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
+import { mapToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -25,6 +25,7 @@ type ViewMode = 'individual' | 'agrupado';
 const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
   `${companyId ?? 0}:${recordNumber}`;
 const getActaRecordNumber = (key: string) => key.slice(key.indexOf(':') + 1);
+const getActaCompanyId = (key: string) => Number(key.slice(0, key.indexOf(':')));
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
@@ -47,16 +48,16 @@ export default function ObrasListPage() {
   const [removingWorkId, setRemovingWorkId] = useState<number | null>(null);
   const [actaStatuses, setActaStatuses] = useState<Map<string, WorkActa>>(new Map());
   const [submittingActa, setSubmittingActa] = useState<string | null>(null);
-  const [reviewDialog, setReviewDialog] = useState<{ acta: string } | null>(null);
+  const [reviewDialog, setReviewDialog] = useState<{ acta: string; companyId: number } | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [approveDialog, setApproveDialog] = useState<{ acta: string } | null>(null);
+  const [approveDialog, setApproveDialog] = useState<{ acta: string; companyId: number } | null>(null);
   const [approveProjectCode, setApproveProjectCode] = useState('');
   const [approveSubmitting, setApproveSubmitting] = useState(false);
 
   const departments = useMemo(() => {
     if (!access?.companies) return [];
-    return mapCompaniesToDepartments(access.companies);
+    return mapToDepartments(access.companies, access.projects || []);
   }, [access]);
 
   const activeDept = useMemo(
@@ -67,7 +68,11 @@ export default function ObrasListPage() {
   const activeCompanyIds = useMemo(() => {
     if (!activeDept) return [];
     if (selectedCompanyId !== null) return [selectedCompanyId];
-    return activeDept.companyIds;
+    // "Todos": empresas del departamento + el companyId padre de sus proyectos
+    // (ej. Canales & Contactos, dueño de Ciudad Bolívar / Pueblorrico)
+    const ids = new Set<number>(activeDept.companyIds);
+    activeDept.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
+    return [...ids];
   }, [activeDept, selectedCompanyId]);
 
   useEffect(() => {
@@ -215,15 +220,15 @@ export default function ObrasListPage() {
   useEffect(() => {
     const keys = Array.from(groupedWorksMap.keys());
     if (keys.length === 0) { setActaStatuses(new Map()); return; }
-    const uniqueRecordNumbers = [...new Set(keys.map(getActaRecordNumber))];
-    surveysService.getWorkActasBulk(uniqueRecordNumbers)
+    const pairs = keys.map((k) => ({ companyId: getActaCompanyId(k), actaNumber: getActaRecordNumber(k) }));
+    surveysService.getWorkActasBulk(pairs)
       .then((actas) => {
-        const rnMap = new Map<string, WorkActa>();
-        actas.forEach((a) => rnMap.set(a.actaNumber, a));
+        // El acta se identifica por (companyId, actaNumber); se indexa por la misma clave compuesta.
+        const byKey = new Map<string, WorkActa>();
+        actas.forEach((a) => byKey.set(makeActaKey(a.companyId, a.actaNumber), a));
         const map = new Map<string, WorkActa>();
         keys.forEach((key) => {
-          const rn = getActaRecordNumber(key);
-          const acta = rnMap.get(rn);
+          const acta = byKey.get(key);
           if (acta) map.set(key, acta);
         });
         setActaStatuses(map);
@@ -231,11 +236,13 @@ export default function ObrasListPage() {
       .catch(() => { /* actas sin estado se tratan como BORRADOR */ });
   }, [groupedWorksMap]);
 
-  const handleSubmitActa = async (actaNumber: string) => {
+  const handleSubmitActa = async (actaKey: string) => {
+    const companyId = getActaCompanyId(actaKey);
+    const recordNumber = getActaRecordNumber(actaKey);
     try {
-      setSubmittingActa(actaNumber);
-      const updated = await surveysService.submitActaForReview(actaNumber);
-      setActaStatuses((prev) => new Map(prev).set(actaNumber, updated));
+      setSubmittingActa(actaKey);
+      const updated = await surveysService.submitActaForReview(companyId, recordNumber);
+      setActaStatuses((prev) => new Map(prev).set(actaKey, updated));
       toast.success('Acta enviada a revisión al Director Técnico');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al enviar el acta');
@@ -246,10 +253,11 @@ export default function ObrasListPage() {
 
   const handleReviewActa = async (approved: boolean) => {
     if (!reviewDialog) return;
+    const key = makeActaKey(reviewDialog.companyId, reviewDialog.acta);
     try {
       setReviewSubmitting(true);
-      const updated = await surveysService.reviewActa(reviewDialog.acta, approved, reviewComment || undefined);
-      setActaStatuses((prev) => new Map(prev).set(reviewDialog.acta, updated));
+      const updated = await surveysService.reviewActa(reviewDialog.companyId, reviewDialog.acta, approved, reviewComment || undefined);
+      setActaStatuses((prev) => new Map(prev).set(key, updated));
       toast.success(approved ? 'Acta enviada a aprobación de Gerencia' : 'Acta devuelta al Director de Proyecto');
       setReviewDialog(null);
       setReviewComment('');
@@ -262,10 +270,11 @@ export default function ObrasListPage() {
 
   const handleApproveActa = async () => {
     if (!approveDialog || !approveProjectCode.trim()) return;
+    const key = makeActaKey(approveDialog.companyId, approveDialog.acta);
     try {
       setApproveSubmitting(true);
-      const updated = await surveysService.approveActa(approveDialog.acta, approveProjectCode.trim());
-      setActaStatuses((prev) => new Map(prev).set(approveDialog.acta, updated));
+      const updated = await surveysService.approveActa(approveDialog.companyId, approveDialog.acta, approveProjectCode.trim());
+      setActaStatuses((prev) => new Map(prev).set(key, updated));
       toast.success('Acta aprobada con código de proyecto asignado');
       setApproveDialog(null);
       setApproveProjectCode('');
@@ -761,7 +770,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white"
-                                      onClick={() => handleSubmitActa(recordNumber)}
+                                      onClick={() => handleSubmitActa(actaKey)}
                                       disabled={submittingActa === actaKey}
                                     >
                                       {submittingActa === actaKey
@@ -774,7 +783,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => setReviewDialog({ acta: recordNumber })}
+                                      onClick={() => setReviewDialog({ acta: recordNumber, companyId: getActaCompanyId(actaKey) })}
                                     >
                                       <ThumbsUp className="w-3 h-3 mr-1.5" />
                                       Revisar acta
@@ -784,7 +793,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-                                      onClick={() => setApproveDialog({ acta: recordNumber })}
+                                      onClick={() => setApproveDialog({ acta: recordNumber, companyId: getActaCompanyId(actaKey) })}
                                     >
                                       <BadgeCheck className="w-3 h-3 mr-1.5" />
                                       Aprobar acta
@@ -797,7 +806,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-neutral-400))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}/cantidades`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}/cantidades?company=${getActaCompanyId(actaKey)}`,
                                         { state: { works: actaWorks } },
                                       )
                                     }
@@ -811,7 +820,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}?company=${getActaCompanyId(actaKey)}`,
                                         { state: { works: actaWorks } },
                                       )
                                     }

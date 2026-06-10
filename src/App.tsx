@@ -127,7 +127,14 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/presupuesto/:id" element={<PresupuestoPage />} />
           <Route path="/dashboard/levantamiento-obras/presupuestos" element={<PresupuestosListPage />} />
           <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
-          <Route path="/dashboard/levantamiento-obras/cronograma" element={<CronogramaPage />} />
+          <Route
+            path="/dashboard/levantamiento-obras/cronograma"
+            element={
+              <ProtectedRoute permission="levantamientos:cronograma" allowedRoles={['Super Admin', 'Analista PMO', 'Director PMO']}>
+                <CronogramaPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber" element={<ResumenActaPage />} />
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber/cantidades" element={<RevisarCantidadesActaPage />} />
           <Route path="/dashboard/notificaciones" element={<NotificacionesPage />} />

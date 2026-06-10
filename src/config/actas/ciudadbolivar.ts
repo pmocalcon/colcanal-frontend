@@ -6,7 +6,7 @@ export const ciudadBolivarConfig: ActaConfig = {
     municipio: 'CIUDAD BOLÍVAR',
     municipioNombreCompleto: 'CIUDAD BOLÍVAR ANTIOQUIA',
     municipioNit: '',
-    contrato: '001-2022',
+    contrato: '',
     tipoActa: '',
     actaYear: String(new Date().getFullYear()),
     actaFecha: '',

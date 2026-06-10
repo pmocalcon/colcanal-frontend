@@ -42,6 +42,7 @@ interface RequisitionItem extends CreateRequisitionItemDto {
 }
 
 interface ActaGroup {
+  key: string; // identidad compuesta `${companyId}:${recordNumber}` — el número de acta se repite entre municipios
   recordNumber: string;
   surveys: Survey[];
   companyId: number;
@@ -102,16 +103,20 @@ export default function CrearRequisicionPage() {
       const withApprovedBudget = result.data.filter((s) => s.budgetStatus === 'approved');
       setApprovedActas(withApprovedBudget);
 
-      // Group surveys by recordNumber (número de acta)
+      // Agrupar por (empresa, número de acta): el número se reutiliza entre municipios.
       const groupMap = new Map<string, Survey[]>();
       withApprovedBudget.forEach((survey) => {
-        const key = survey.work?.recordNumber || survey.projectCode || `${survey.surveyId}`;
+        const recordNumber = survey.work?.recordNumber || survey.projectCode || `${survey.surveyId}`;
+        const companyId = survey.work?.companyId || 0;
+        const key = `${companyId}:${recordNumber}`;
         if (!groupMap.has(key)) groupMap.set(key, []);
         groupMap.get(key)!.push(survey);
       });
       const groups: ActaGroup[] = [];
-      groupMap.forEach((surveys, recordNumber) => {
+      groupMap.forEach((surveys, key) => {
+        const recordNumber = surveys[0].work?.recordNumber || surveys[0].projectCode || `${surveys[0].surveyId}`;
         groups.push({
+          key,
           recordNumber,
           surveys,
           companyId: surveys[0].work?.companyId || 0,
@@ -182,12 +187,12 @@ export default function CrearRequisicionPage() {
     }
   };
 
-  const handleActaGroupSelected = (recordNumber: string) => {
-    setSelectedActaGroup(recordNumber);
+  const handleActaGroupSelected = (groupKey: string) => {
+    setSelectedActaGroup(groupKey);
     setSelectedActaId(null);
     setLoadingActaDetails(true);
     try {
-      const group = actaGroups.find((g) => g.recordNumber === recordNumber);
+      const group = actaGroups.find((g) => g.key === groupKey);
       if (!group) return;
 
       if (group.companyId) setCompanyId(group.companyId);
@@ -653,7 +658,7 @@ export default function CrearRequisicionPage() {
                       <Select
                         value={selectedActaGroup || (selectedActaId ? String(selectedActaId) : '')}
                         onValueChange={(val) => {
-                          const group = actaGroups.find((g) => g.recordNumber === val);
+                          const group = actaGroups.find((g) => g.key === val);
                           if (group) {
                             handleActaGroupSelected(val);
                           } else {
@@ -666,7 +671,7 @@ export default function CrearRequisicionPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {actaGroups.map((g) => (
-                            <SelectItem key={g.recordNumber} value={g.recordNumber}>
+                            <SelectItem key={g.key} value={g.key}>
                               {g.recordNumber}
                             </SelectItem>
                           ))}
@@ -687,8 +692,8 @@ export default function CrearRequisicionPage() {
                 </div>
                 {(selectedActaGroup || selectedActaId) && !loadingActaDetails && (
                   <p className="text-xs text-blue-600 mt-2">
-                    {selectedActaGroup && actaGroups.find((g) => g.recordNumber === selectedActaGroup)?.obraCount >= 2
-                      ? `Materiales consolidados de ${actaGroups.find((g) => g.recordNumber === selectedActaGroup)?.obraCount} obras. Puede modificar los campos antes de guardar.`
+                    {selectedActaGroup && (actaGroups.find((g) => g.key === selectedActaGroup)?.obraCount ?? 0) >= 2
+                      ? `Materiales consolidados de ${actaGroups.find((g) => g.key === selectedActaGroup)?.obraCount} obras. Puede modificar los campos antes de guardar.`
                       : 'Empresa, código de obra e ítems auto-completados desde el acta. Puede modificar los campos antes de guardar.'
                     }
                   </p>
@@ -856,7 +861,7 @@ export default function CrearRequisicionPage() {
                     <Select
                       value={selectedActaGroup || (selectedActaId ? String(selectedActaId) : '')}
                       onValueChange={(val) => {
-                        const group = actaGroups.find((g) => g.recordNumber === val);
+                        const group = actaGroups.find((g) => g.key === val);
                         if (group) {
                           handleActaGroupSelected(val);
                         } else {
@@ -872,7 +877,7 @@ export default function CrearRequisicionPage() {
                         {actaGroups
                           .filter((g) => g.companyId === companyId)
                           .map((g) => (
-                            <SelectItem key={g.recordNumber} value={g.recordNumber}>
+                            <SelectItem key={g.key} value={g.key}>
                               {g.recordNumber}
                             </SelectItem>
                           ))}
