@@ -91,11 +91,10 @@ export default function ObrasListPage() {
     try {
       setLoading(true);
       setError(null);
-      const rol = user?.nombreRol;
-      const isDirectorProyecto = rol?.startsWith('Director de Proyecto');
+      // El Director de Proyecto ve TODAS las obras de su departamento (no solo
+      // las que él creó). El alcance ya queda acotado por activeCompanyIds.
       const response = await surveysService.getWorks({
         companyId: activeCompanyIds,
-        createdBy: isDirectorProyecto ? user?.userId : undefined,
       });
       const worksData = Array.isArray(response) ? response : (response.data || []);
       setWorks(worksData);

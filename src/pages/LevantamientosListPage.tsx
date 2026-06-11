@@ -60,7 +60,14 @@ export default function LevantamientosListPage() {
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
   const { hasPermission } = useGranularPermissions();
   const { user } = useAuth();
-  const canSeeAllSurveys = user?.nombreRol === 'Director Técnico' || user?.nombreRol === 'Gerencia de Proyectos' || user?.nombreRol === 'Analista PMO';
+  // Roles que NO se limitan a "solo lo que yo creé". El backend ya acota los
+  // levantamientos por acceso (empresa/proyecto), así que el Director de Proyecto
+  // ve TODOS los de su departamento, no únicamente los que él registró.
+  const canSeeAllSurveys =
+    user?.nombreRol === 'Director Técnico' ||
+    user?.nombreRol === 'Gerencia de Proyectos' ||
+    user?.nombreRol === 'Analista PMO' ||
+    (user?.nombreRol?.startsWith('Director de Proyecto') ?? false);
   const [mainView, setMainView] = useState<MainView>('list');
   const [activeTab, setActiveTab] = useState('');
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -650,7 +657,7 @@ export default function LevantamientosListPage() {
                               N° Levantamiento
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
-                              Cod. Proyecto
+                              Cod. Contabilidad
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">
                               Obra

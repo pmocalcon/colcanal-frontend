@@ -32,6 +32,7 @@ export interface Material {
   description: string;
   groupId: number;
   materialGroup?: MaterialGroup;
+  isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -128,10 +129,12 @@ export const materialsService = {
   // ============ MATERIALES ============
 
   /**
-   * Obtener todos los materiales
+   * Obtener materiales. status: 'active' (por defecto) | 'inactive' | 'all'
    */
-  async getMaterials(): Promise<Material[]> {
-    const response = await api.get<{ data: Material[]; total: number }>(`${BASE_URL}/materials`);
+  async getMaterials(status?: 'active' | 'inactive' | 'all'): Promise<Material[]> {
+    const response = await api.get<{ data: Material[]; total: number }>(`${BASE_URL}/materials`, {
+      params: status ? { status } : undefined,
+    });
     return response.data.data;
   },
 
@@ -177,10 +180,20 @@ export const materialsService = {
   },
 
   /**
-   * Eliminar un material
+   * Eliminar un material (borrado lógico: lo desactiva)
    */
   async deleteMaterial(materialId: number): Promise<{ message: string }> {
     const response = await api.delete<{ message: string }>(`${BASE_URL}/materials/${materialId}`);
+    return response.data;
+  },
+
+  /**
+   * Reactivar un material desactivado
+   */
+  async reactivateMaterial(materialId: number): Promise<{ message: string }> {
+    const response = await api.patch<{ message: string }>(
+      `${BASE_URL}/materials/${materialId}/reactivate`,
+    );
     return response.data;
   },
 };

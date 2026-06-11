@@ -17,6 +17,7 @@ import { materialsService, type Material } from '@/services/materials.service';
 import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
+import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
 import { ResponsiveContainer, ComposedChart, Area, Line as RLine, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, PieChart, Pie, Cell } from 'recharts';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -56,6 +57,11 @@ function getWeekDays(offset: number): string[] {
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
+// Domingo (día no laboral): se marca en rojo y se deshabilita igual que un festivo.
+function isSunday(date: string): boolean {
+  return parseLocalDate(date).getDay() === 0;
+}
+
 const normalizeLocationName = (name?: string | null) =>
   getMunicipioName(name || '')
     .normalize('NFD')
@@ -90,7 +96,6 @@ const DEFAULT_ACTIVITY_OPTIONS = [
   'Conexiones eléctricas',
   'Tendido de cableado',
   'Montaje luminaria',
-  'Instalación de brazos y soporte',
   'Obra civil',
   'Izado de poste',
   'Segmentación de postes',
@@ -119,6 +124,11 @@ export default function CronogramaPage() {
 
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
   const [schedule, setSchedule] = useState<ScheduleDetail | null>(null);
+
+  // ── Vista de acta (Gantt de todas las obras del acta)
+  const [selectedActa, setSelectedActa] = useState<string | null>(null);
+  const [actaGanttObras, setActaGanttObras] = useState<ActaGanttObra[]>([]);
+  const [loadingActa, setLoadingActa] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -259,6 +269,7 @@ export default function CronogramaPage() {
       const ok = window.confirm('Tienes cambios sin guardar. ¿Deseas continuar y perder los cambios?');
       if (!ok) return;
     }
+    setSelectedActa(null);
     setSelectedWork(work);
     setSchedule(null);
     try {
@@ -310,6 +321,54 @@ export default function CronogramaPage() {
       toast.error('Error al cargar el cronograma');
     } finally {
       setLoadingSchedule(false);
+    }
+  }, [isDirty]);
+
+  // ── select an acta → load all its works' schedules and build the Gantt rows
+  const handleSelectActa = useCallback(async (acta: string, actaWorks: Work[]) => {
+    if (isDirty) {
+      const ok = window.confirm('Tienes cambios sin guardar. ¿Deseas continuar y perder los cambios?');
+      if (!ok) return;
+    }
+    setSelectedWork(null);
+    setSchedule(null);
+    setIsDirty(false);
+    setSelectedActa(acta);
+    setActaGanttObras([]);
+    try {
+      setLoadingActa(true);
+      const results = await Promise.all(
+        actaWorks.map(async (w) => {
+          try {
+            const s = await schedulesService.getByWork(w.workId);
+            // Ejecutado real = suma de la ejecución diaria registrada por UCAP
+            // (misma fuente que usa el Informe), no schedule_items.
+            const execByUcap = new Map<number, number>();
+            try {
+              const dp = await schedulesService.getDailyPlans(s.scheduleId, '2020-01-01', '2035-12-31');
+              for (const p of dp.plans) {
+                execByUcap.set(p.ucapId, (execByUcap.get(p.ucapId) ?? 0) + (p.executedQuantity ?? 0));
+              }
+            } catch { /* sin ejecución diaria */ }
+            const enriched: ScheduleDetail = {
+              ...s,
+              items: s.items.map((it) => ({
+                ...it,
+                executedQuantity: execByUcap.get(it.ucapId) ?? it.executedQuantity,
+              })),
+            };
+            return { work: w, schedule: enriched };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const valid = results.filter((r): r is { work: Work; schedule: ScheduleDetail } => r !== null);
+      setActaGanttObras(buildActaGanttObras(valid));
+    } catch {
+      toast.error('Error al cargar el cronograma del acta');
+    } finally {
+      setLoadingActa(false);
     }
   }, [isDirty]);
 
@@ -1057,7 +1116,7 @@ export default function CronogramaPage() {
             No tienes departamentos asignados.
           </div>
         ) : (
-          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedWork(null); setSchedule(null); }}>
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }}>
             <TabsList className="mb-4 flex-wrap h-auto">
               {departments.map((d) => (
                 <TabsTrigger key={d.name} value={d.name}>{d.name}</TabsTrigger>
@@ -1077,7 +1136,7 @@ export default function CronogramaPage() {
                           {dept.municipalities.map((muni) => (
                             <button
                               key={`${muni.type}-${muni.id}`}
-                              onClick={() => { setActiveMunicipality(muni); setSelectedWork(null); setSchedule(null); }}
+                              onClick={() => { setActiveMunicipality(muni); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }}
                               className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                                 activeMunicipality?.id === muni.id && activeMunicipality?.type === muni.type
                                   ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
@@ -1123,14 +1182,23 @@ export default function CronogramaPage() {
                               </div>
                               {Array.from(filteredGroupedMap.entries()).map(([acta, actaWorks]) => (
                                 <div key={acta}>
-                                  <div className="px-4 py-2 bg-[hsl(var(--canalco-neutral-50))] flex items-center gap-2 border-b border-[hsl(var(--canalco-neutral-200))]">
+                                  <button
+                                    onClick={() => handleSelectActa(acta, actaWorks)}
+                                    title="Ver cronograma (Gantt) del acta"
+                                    className={`w-full px-4 py-2 flex items-center gap-2 border-b border-[hsl(var(--canalco-neutral-200))] transition-colors hover:bg-[hsl(var(--canalco-primary))]/10 ${
+                                      selectedActa === acta
+                                        ? 'bg-[hsl(var(--canalco-primary))]/10 border-l-4 border-l-[hsl(var(--canalco-primary))]'
+                                        : 'bg-[hsl(var(--canalco-neutral-50))]'
+                                    }`}
+                                  >
+                                    <CalendarRange className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
                                     <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
                                       Acta {acta}
                                     </span>
                                     <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">
                                       ({actaWorks.length} obras)
                                     </span>
-                                  </div>
+                                  </button>
                                   {actaWorks.map((work) => (
                                     <button
                                       key={work.workId}
@@ -1220,10 +1288,33 @@ export default function CronogramaPage() {
 
                   {/* ── Right: schedule detail ── */}
                   <div className="flex-1 min-w-0">
-                    {!selectedWork ? (
+                    {selectedActa && !selectedWork ? (
+                      loadingActa ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="w-8 h-8 border-4 border-[hsl(var(--canalco-primary))]/30 border-t-[hsl(var(--canalco-primary))] rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div>
+                            <h2 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))]">
+                              Cronograma · Acta {selectedActa}
+                            </h2>
+                            <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
+                              Avance de las obras del acta. Haz clic en una obra para desplegar sus UCAPs.
+                            </p>
+                          </div>
+                          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                            <ActaGantt obras={actaGanttObras} />
+                          </section>
+                          <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">
+                            Selecciona una obra en la lista de la izquierda para editar su cronograma en detalle.
+                          </p>
+                        </div>
+                      )
+                    ) : !selectedWork ? (
                       <div className="flex flex-col items-center justify-center h-full text-[hsl(var(--canalco-neutral-400))] gap-3">
                         <ClipboardList className="w-12 h-12 opacity-40" />
-                        <p className="text-sm">Selecciona una obra para ver su cronograma</p>
+                        <p className="text-sm">Selecciona un acta o una obra para ver su cronograma</p>
                       </div>
                     ) : loadingSchedule ? (
                       <div className="flex items-center justify-center h-full">
@@ -1348,7 +1439,7 @@ export default function CronogramaPage() {
                                       {days.map((date, i) => {
                                         const d = new Date(date + 'T12:00:00');
                                         const isToday = date === today;
-                                        const isHoliday = weekHolidaySet.has(date);
+                                        const isHoliday = weekHolidaySet.has(date) || isSunday(date);
                                         const headerCls = isToday
                                           ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                           : isHoliday
@@ -1377,7 +1468,7 @@ export default function CronogramaPage() {
                                             {item.plannedQuantity}
                                           </td>
                                           {days.map((date) => {
-                                            const isHoliday = weekHolidaySet.has(date);
+                                            const isHoliday = weekHolidaySet.has(date) || isSunday(date);
                                             return (
                                               <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
                                                 <Input
@@ -1488,7 +1579,7 @@ export default function CronogramaPage() {
                                         {days.map((date, i) => {
                                           const d = new Date(date + 'T12:00:00');
                                           const isToday = date === today;
-                                          const isHoliday = matWeekHolidaySet.has(date);
+                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
                                           const headerCls = isToday
                                             ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                             : isHoliday
@@ -1521,7 +1612,7 @@ export default function CronogramaPage() {
                                             </td>
                                             {days.map((date) => {
                                               const isToday = date === today;
-                                              const isHoliday = matWeekHolidaySet.has(date);
+                                              const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
                                               const qty = materialDailyMap[date]?.[mat.materialCode] ?? 0;
                                               return (
                                                 <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -1626,7 +1717,7 @@ export default function CronogramaPage() {
                                         {days.map((date, i) => {
                                           const d = new Date(date + 'T12:00:00');
                                           const isToday = date === today;
-                                          const isHoliday = actWeekHolidaySet.has(date);
+                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
                                           const headerCls = isToday
                                             ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                             : isHoliday
@@ -1666,7 +1757,7 @@ export default function CronogramaPage() {
                                             </td>
                                             {days.map((date) => {
                                               const isToday = date === today;
-                                              const isHoliday = actWeekHolidaySet.has(date);
+                                              const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
                                               const qty = activityDailyMap[date]?.[row.id] ?? 0;
                                               return (
                                                 <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -1831,7 +1922,7 @@ export default function CronogramaPage() {
                                           {days.map((date, i) => {
                                             const d = new Date(date + 'T12:00:00');
                                             const isToday = date === today;
-                                            const isHoliday = holidaySet.has(date);
+                                            const isHoliday = holidaySet.has(date) || isSunday(date);
                                             const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                             return (
                                               <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
@@ -1853,7 +1944,7 @@ export default function CronogramaPage() {
                                                 <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
                                               </td>
                                               {days.map((date) => {
-                                                const isHoliday = holidaySet.has(date);
+                                                const isHoliday = holidaySet.has(date) || isSunday(date);
                                                 const val = execDailyMap[date]?.[item.ucapId] ?? 0;
                                                 return (
                                                   <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -1925,7 +2016,7 @@ export default function CronogramaPage() {
                                             {days.map((date, i) => {
                                               const d = new Date(date + 'T12:00:00');
                                               const isToday = date === today;
-                                              const isHoliday = matHolidaySet.has(date);
+                                              const isHoliday = matHolidaySet.has(date) || isSunday(date);
                                               const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                               return (
                                                 <th key={date} className={`text-center text-xs pb-2 w-14 ${cls}`}>
@@ -1949,7 +2040,7 @@ export default function CronogramaPage() {
                                                   <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{mat.materialDescription ?? ''}</p>
                                                 </td>
                                                 {days.map((date) => {
-                                                  const isHoliday = matHolidaySet.has(date);
+                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date);
                                                   const val = execMaterialDailyMap[date]?.[code] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -1974,7 +2065,7 @@ export default function CronogramaPage() {
                                                   <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{row.description || ''}</p>
                                                 </td>
                                                 {days.map((date) => {
-                                                  const isHoliday = matHolidaySet.has(date);
+                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date);
                                                   const val = execMaterialDailyMap[date]?.[code] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -2076,7 +2167,7 @@ export default function CronogramaPage() {
                                             {days.map((date, i) => {
                                               const d = new Date(date + 'T12:00:00');
                                               const isToday = date === today;
-                                              const isHoliday = actHolidaySet.has(date);
+                                              const isHoliday = actHolidaySet.has(date) || isSunday(date);
                                               const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                               return (
                                                 <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
@@ -2106,7 +2197,7 @@ export default function CronogramaPage() {
                                                 </td>
                                                 {days.map((date) => {
                                                   const isToday = date === today;
-                                                  const isHoliday = actHolidaySet.has(date);
+                                                  const isHoliday = actHolidaySet.has(date) || isSunday(date);
                                                   const qty = execActivityDailyMap[date]?.[row.id] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -3060,7 +3151,7 @@ export default function CronogramaPage() {
                               description: item.ucapDescription,
                               start: ucapDates[item.ucapId].start,
                               end: ucapDates[item.ucapId].end,
-                              progress: pct(parseFloat(executed[item.ucapId] ?? '0') || 0, item.plannedQuantity),
+                              progress: pct(Object.values(execDailyMap).reduce((s, day) => s + (day[item.ucapId] ?? 0), 0), item.plannedQuantity),
                             }));
                           if (ganttMetas.length === 0 && ganttRows.length === 0) return null;
                           return (

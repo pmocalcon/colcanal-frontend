@@ -49,7 +49,7 @@ const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   lodging: 'Hospedaje',
   food: 'Alimentación',
   additional_crew: 'Cuadrilla adicional',
-  day_hours: 'Horas Diurnas',
+  day_hours: 'Horas Extras Diurnas',
   holiday_overtime: 'Horas Extras Festivas',
 };
 

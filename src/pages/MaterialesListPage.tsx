@@ -11,6 +11,9 @@ import {
   CheckCircle,
   Package,
   Filter,
+  RotateCcw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +70,9 @@ export default function MaterialesListPage() {
   // Estados de filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroupId, setFilterGroupId] = useState<string>('');
+  // Ver catálogo de desactivados (para reactivar)
+  const [showInactive, setShowInactive] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState<number | null>(null);
 
   // Estados del modal de crear/editar
   const [showModal, setShowModal] = useState(false);
@@ -91,10 +97,11 @@ export default function MaterialesListPage() {
   const [deletingMaterial, setDeletingMaterial] = useState<Material | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Cargar datos al montar
+  // Cargar datos al montar y al alternar entre activos/desactivados
   useEffect(() => {
     loadData();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInactive]);
 
   // Filtrar materiales cuando cambian los filtros
   useEffect(() => {
@@ -131,7 +138,7 @@ export default function MaterialesListPage() {
       setLoading(true);
       setError(null);
       const [materialsData, groupsData] = await Promise.all([
-        materialsService.getMaterials(),
+        materialsService.getMaterials(showInactive ? 'inactive' : 'active'),
         materialsService.getGroups(),
       ]);
       // Validar que sean arrays
@@ -285,6 +292,20 @@ export default function MaterialesListPage() {
     }
   };
 
+  const handleReactivate = async (material: Material) => {
+    try {
+      setReactivatingId(material.materialId);
+      await materialsService.reactivateMaterial(material.materialId);
+      setSuccessMessage(`Material "${material.code}" reactivado correctamente`);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error reactivating material:', err);
+      setError(err.response?.data?.message || 'Error al reactivar el material');
+    } finally {
+      setReactivatingId(null);
+    }
+  };
+
   const getGroupName = (groupId: number): string => {
     const group = groups.find((g) => g.groupId === groupId);
     return group?.name || 'Sin grupo';
@@ -411,10 +432,20 @@ export default function MaterialesListPage() {
                   Limpiar filtros
                 </Button>
               )}
+
+              <Button
+                variant={showInactive ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowInactive((v) => !v)}
+                className="gap-1.5"
+              >
+                {showInactive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                {showInactive ? 'Ver activos' : 'Ver desactivados'}
+              </Button>
             </div>
 
             <span className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-              {filteredMaterials.length} materiales
+              {filteredMaterials.length} {showInactive ? 'desactivados' : 'materiales'}
             </span>
           </div>
         </Card>
@@ -432,6 +463,8 @@ export default function MaterialesListPage() {
               <p className="text-[hsl(var(--canalco-neutral-600))]">
                 {searchTerm || filterGroupId
                   ? 'No se encontraron materiales con los filtros aplicados'
+                  : showInactive
+                  ? 'No hay materiales desactivados'
                   : 'No hay materiales registrados'}
               </p>
             </div>
@@ -459,22 +492,41 @@ export default function MaterialesListPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenEditModal(material)}
-                          className="hover:bg-blue-100 hover:text-blue-600"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDeleteModal(material)}
-                          className="hover:bg-red-100 hover:text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {showInactive || material.isActive === false ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleReactivate(material)}
+                            disabled={reactivatingId === material.materialId}
+                            className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50"
+                          >
+                            {reactivatingId === material.materialId ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-4 h-4" />
+                            )}
+                            Reactivar
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenEditModal(material)}
+                              className="hover:bg-blue-100 hover:text-blue-600"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenDeleteModal(material)}
+                              className="hover:bg-red-100 hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

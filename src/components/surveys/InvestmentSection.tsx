@@ -159,7 +159,7 @@ const InvestmentRow = memo(function InvestmentRow({
           className="h-7 text-xs text-center"
         />
       </td>
-      {/* Red Trenzada */}
+      {/* Red Eléctrica */}
       <td className="px-1 py-1">
         <Input
           type="text"
@@ -340,7 +340,7 @@ export function InvestmentSection({
                 Cant Poste
               </th>
               <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-24">
-                Red Trenzada
+                Red Eléctrica
               </th>
               <th className="px-2 py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))] w-28">
                 Latitud

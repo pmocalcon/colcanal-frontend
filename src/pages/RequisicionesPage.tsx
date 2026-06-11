@@ -123,8 +123,10 @@ export default function RequisicionesPage() {
     loadRequisitions();
   }, [page, filters]);
 
+  // Roles que pueden ver TODAS las requisiciones y anularlas.
+  // Incluye Compras (Coordinadora de Compras) además de los roles PMO.
   const isPmoRole = user?.nombreRol
-    ? ['analista pmo', 'director pmo'].includes(user.nombreRol.toLowerCase())
+    ? ['analista pmo', 'director pmo', 'compras'].includes(user.nombreRol.toLowerCase())
     : false;
 
   const loadRequisitions = async () => {

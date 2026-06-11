@@ -534,8 +534,8 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium text-amber-700">{survey.previousMonthIpp ?? '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">Recibido por:</span>
-              <p className="font-medium">{survey.receiver?.nombre || '-'}</p>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Revisor Designado:</span>
+              <p className="font-medium">{survey.assignedReviewer?.nombre || '-'}</p>
             </div>
           </div>
 
@@ -642,7 +642,10 @@ export default function RevisarLevantamientoDetallePage() {
                   <div className="flex items-center gap-3">
                     {getStatusBadge(status)}
                     <PermissionGuard permission="levantamientos:revisar">
-                      {status === 'pending' && (
+                      {/* Botones visibles en pendiente Y en rechazado: tras corregir el bloque
+                          rechazado, el Director Técnico aprueba/rechaza solo esa sección sin
+                          reabrir todo (los bloques aprobados conservan su estado). */}
+                      {(status === 'pending' || status === 'rejected') && (
                         <div className="flex gap-2">
                           <Button
                             size="sm"
@@ -1050,7 +1053,7 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Lum.</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Lum. Reub.</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Poste</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Red Trenzada</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Red eléctrica</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Coordenadas</th>
             </tr>
           </thead>
@@ -1140,7 +1143,7 @@ function TravelExpensesBlockContent({ survey }: { survey: Survey }) {
     alimentacion: 'Alimentación',
     combustible: 'Combustible',
     cuadrilla_adicional: 'Cuadrilla Adicional',
-    horas_diurnas: 'Horas Diurnas',
+    horas_diurnas: 'Horas Extras Diurnas',
     horas_extras_festivas: 'Horas Extras Festivas',
     // English keys from backend
     tolls: 'Peajes',
@@ -1149,7 +1152,7 @@ function TravelExpensesBlockContent({ survey }: { survey: Survey }) {
     food: 'Alimentación',
     fuel: 'Combustible',
     additional_crew: 'Cuadrilla Adicional',
-    day_hours: 'Horas Diurnas',
+    day_hours: 'Horas Extras Diurnas',
     holiday_overtime: 'Horas Extras Festivas',
   };
 

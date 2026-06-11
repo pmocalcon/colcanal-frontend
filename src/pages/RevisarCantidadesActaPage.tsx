@@ -11,7 +11,7 @@ const TRAVEL_EXPENSE_LABELS: Record<string, string> = {
   lodging: 'Hospedaje',
   food: 'Alimentación',
   additional_crew: 'Cuadrilla Adicional',
-  day_hours: 'Horas Diurnas',
+  day_hours: 'Horas Extras Diurnas',
   holiday_overtime: 'Horas Festivas/Nocturnas',
 };
 

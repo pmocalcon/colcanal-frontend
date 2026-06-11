@@ -78,7 +78,11 @@ export interface Survey {
   surveyDate: string;
   requestDate?: string;
   receivedBy: number;
-  assignedReviewer?: number;
+  assignedReviewer?: {
+    userId: number;
+    nombre: string;
+    cargo?: string;
+  };
   statusId: number;
   projectCode?: string;
   // Document links

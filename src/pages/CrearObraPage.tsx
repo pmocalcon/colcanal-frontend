@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto, type CreateSurveyDto } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
@@ -9,7 +9,7 @@ import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksDat
 import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
 import { TravelExpensesSection, createInitialTravelExpenses, FIXED_EXPENSE_TYPES, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, Save, CheckCircle, X, Loader2 } from 'lucide-react';
+import { Home, ArrowLeft, Save, CheckCircle, X, Loader2, Lock } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
@@ -20,18 +20,6 @@ function getTodayLocal(): string {
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
-
-const STATIC_RECEIVERS = [
-  { userId: 1, nombre: 'Angela Franco' },
-  { userId: 2, nombre: 'Sandra Calero' },
-  { userId: 3, nombre: 'Yamile Rodriguez Marin' },
-  { userId: 4, nombre: 'Laura Barón' },
-  { userId: 5, nombre: 'Danelly Ramirez' },
-  { userId: 6, nombre: 'Yuliana Taborda' },
-  { userId: 7, nombre: 'Estefania Serna' },
-  { userId: 8, nombre: 'Edwin Salazar' },
-  { userId: 9, nombre: 'Yazmin Salcedo' },
-];
 
 const STATIC_REVIEWERS = [
   { userId: 101, nombre: 'Alexander Becerra' },
@@ -82,6 +70,23 @@ const INITIAL_FORM_DATA: FormData = {
   assignedReviewerId: null,
 };
 
+// Envuelve una sección y la bloquea (no editable) cuando su bloque ya fue aprobado.
+// Usa <fieldset disabled> para deshabilitar nativamente inputs/selects/botones (mouse y teclado)
+// y pointer-events-none por si hay handlers en divs; muestra una insignia de "Aprobado".
+function LockableSection({ locked, children }: { locked: boolean; children: ReactNode }) {
+  if (!locked) return <>{children}</>;
+  return (
+    <div className="relative">
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-full bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 border border-green-200 shadow-sm">
+        <Lock className="w-3 h-3" /> Aprobado — no editable
+      </div>
+      <fieldset disabled className="min-w-0 m-0 p-0 border-0 opacity-60 pointer-events-none">
+        {children}
+      </fieldset>
+    </div>
+  );
+}
+
 export default function CrearObraPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -91,7 +96,6 @@ export default function CrearObraPage() {
   const [formData, setFormData] = useState<FormData>(() => ({ ...INITIAL_FORM_DATA, requestDate: getTodayLocal() }));
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [receivers] = useState(STATIC_RECEIVERS);
   const [reviewers] = useState(STATIC_REVIEWERS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,6 +103,13 @@ export default function CrearObraPage() {
   const [success, setSuccess] = useState(false);
   const [createdWorkCode, setCreatedWorkCode] = useState<string | null>(null);
   const [existingSurveyId, setExistingSurveyId] = useState<number | null>(null);
+  // Estados de revisión por bloque (modo edición): los bloques 'approved' no se pueden editar.
+  const [blockStatuses, setBlockStatuses] = useState<{
+    budget?: string;
+    investment?: string;
+    materials?: string;
+    travelExpenses?: string;
+  }>({});
 
   // Budget state
   const [budgetItems, setBudgetItems] = useState<BudgetItemData[]>(createInitialBudgetItems());
@@ -207,6 +218,14 @@ export default function CrearObraPage() {
             // Cargar el survey completo con todos sus datos
             const fullSurvey = await surveysService.getSurveyById(surveyId);
             console.log('Full survey data:', fullSurvey);
+
+            // Guardar estados de revisión por bloque para bloquear los aprobados en el formulario
+            setBlockStatuses({
+              budget: fullSurvey.budgetStatus,
+              investment: fullSurvey.investmentStatus,
+              materials: fullSurvey.materialsStatus,
+              travelExpenses: fullSurvey.travelExpensesStatus,
+            });
 
             // Cargar fecha de solicitud si existe
             if (fullSurvey.requestDate) {
@@ -425,16 +444,10 @@ export default function CrearObraPage() {
       }
 
       // Step 2: Create Survey with the workId
-      // Get receiver name from receivers list
-      const receiverName = formData.receivedById
-        ? receivers.find((r) => r.userId === formData.receivedById)?.nombre
-        : undefined;
-
       const surveyData: CreateSurveyDto = {
         workId: workResult.workId,
         surveyDate: getTodayLocal(),
         requestDate: formData.requestDate || undefined,
-        receivedBy: receiverName, // Send name, not ID
         // Document links
         sketchUrl: documentLinks.sketchUrl || undefined,
         mapUrl: documentLinks.mapUrl || undefined,
@@ -633,26 +646,29 @@ export default function CrearObraPage() {
               selectedCompany={selectedCompany}
               projects={projects}
               isCanalesContactos={isCanalesContactos}
-              receivers={receivers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
               reviewers={reviewers.map((u) => ({ userId: u.userId, nombre: u.nombre }))}
             />
 
             {/* Budget Section */}
-            <BudgetSection
-              workName={formData.name}
-              companyId={formData.companyId}
-              projectId={formData.projectId}
-              items={budgetItems}
-              onItemsChange={setBudgetItems}
-              ippValue={ippValue}
-              onIppValueChange={handleIppValueChange}
-            />
+            <LockableSection locked={isEditMode && blockStatuses.budget === 'approved'}>
+              <BudgetSection
+                workName={formData.name}
+                companyId={formData.companyId}
+                projectId={formData.projectId}
+                items={budgetItems}
+                onItemsChange={setBudgetItems}
+                ippValue={ippValue}
+                onIppValueChange={handleIppValueChange}
+              />
+            </LockableSection>
 
             {/* Investment Section */}
-            <InvestmentSection
-              data={investmentData}
-              onDataChange={setInvestmentData}
-            />
+            <LockableSection locked={isEditMode && blockStatuses.investment === 'approved'}>
+              <InvestmentSection
+                data={investmentData}
+                onDataChange={setInvestmentData}
+              />
+            </LockableSection>
 
             {/* Document Links Section (Croquis y Mapa) */}
             <DocumentLinksSection
@@ -661,16 +677,20 @@ export default function CrearObraPage() {
             />
 
             {/* Materials Section */}
-            <MaterialsSection
-              items={materialItems}
-              onItemsChange={setMaterialItems}
-            />
+            <LockableSection locked={isEditMode && blockStatuses.materials === 'approved'}>
+              <MaterialsSection
+                items={materialItems}
+                onItemsChange={setMaterialItems}
+              />
+            </LockableSection>
 
             {/* Travel Expenses Section */}
-            <TravelExpensesSection
-              items={travelExpenses}
-              onItemsChange={setTravelExpenses}
-            />
+            <LockableSection locked={isEditMode && blockStatuses.travelExpenses === 'approved'}>
+              <TravelExpensesSection
+                items={travelExpenses}
+                onItemsChange={setTravelExpenses}
+              />
+            </LockableSection>
 
             {/* Submit Button */}
             <div className="flex justify-center mt-8">
