@@ -582,17 +582,50 @@ export default function PresupuestoPage() {
     load();
   }, []);
 
-  // Load works for the selected department / municipality
+  // Load works for the selected department / municipality.
+  // Las obras de Antioquia viven en la empresa "Canales & Contactos" separadas por proyecto
+  // (Ciudad Bolívar, Tarso, Jericó, Pueblo Rico). Al elegir un municipio cargamos por el
+  // proyecto de ese nombre; en "Todos" incluimos también la empresa dueña de esos proyectos.
   useEffect(() => {
     if (!selectedDept) {
       setWorks([]);
       return;
     }
-    const companyIds = selectedMunicipalityId !== null ? [selectedMunicipalityId] : selectedDept.companyIds;
+    const muniKey = (name: string) =>
+      getMunicipioName(name)
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .trim();
+
+    const deptMuniKeys = new Set(selectedDept.companies.map((c) => muniKey(c.name)));
+    const deptProjects = (access?.projects ?? []).filter((p) => deptMuniKeys.has(muniKey(p.name)));
+
+    let companyIds: number[] | undefined;
+    let projectId: number | undefined;
+
+    if (selectedMunicipalityId === null) {
+      // Todos: empresas del depto + empresas dueñas de sus proyectos (p. ej. Canales & Contactos)
+      companyIds = Array.from(
+        new Set([...selectedDept.companyIds, ...deptProjects.map((p) => p.companyId)]),
+      );
+    } else {
+      const selCompany = selectedDept.companies.find((c) => c.companyId === selectedMunicipalityId);
+      const matchProject = selCompany
+        ? deptProjects.find((p) => muniKey(p.name) === muniKey(selCompany.name))
+        : undefined;
+      if (matchProject) {
+        projectId = matchProject.projectId; // obras de la empresa dueña, filtradas por ese municipio
+      } else {
+        companyIds = [selectedMunicipalityId];
+      }
+    }
+
     const load = async () => {
       try {
         setLoadingWorks(true);
-        const response = await surveysService.getWorks({ companyId: companyIds, limit: 1000 });
+        const response = await surveysService.getWorks({ companyId: companyIds, projectId, limit: 1000 });
         const worksData = Array.isArray(response) ? response : (response.data ?? []);
         setWorks(worksData);
       } catch {
@@ -602,7 +635,7 @@ export default function PresupuestoPage() {
       }
     };
     load();
-  }, [selectedDept, selectedMunicipalityId]);
+  }, [selectedDept, selectedMunicipalityId, access]);
 
   // VALOR FACTURADO = UCAPs (cantidad × valor unitario del catálogo) ajustadas por IPP del mes.
   //   valor = base × (IPP del mes / IPP inicial). IPP inicial: ippConfig de la empresa; IPP del mes: del levantamiento.

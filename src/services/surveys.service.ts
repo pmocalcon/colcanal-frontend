@@ -411,7 +411,7 @@ export const surveysService = {
     return response.data;
   },
 
-  async getWorks(params?: { companyId?: number | number[]; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
+  async getWorks(params?: { companyId?: number | number[]; projectId?: number; search?: string; page?: number; limit?: number; createdBy?: number }): Promise<WorksListResponse> {
     const response = await api.get('/surveys/works', { params });
     return response.data;
   },
