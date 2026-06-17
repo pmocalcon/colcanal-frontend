@@ -25,7 +25,10 @@ export function getMunicipioName(name: string): string {
 
 export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects: string[] }> = {
   Antioquia: {
-    companies: ['Unión Temporal Alumbrado Público Santa Bárbara'],
+    // 'Canales & Contactos' (company_id 1) es la empresa real dueña de las obras de
+    // Antioquia (proyectos Ciudad Bolívar, Tarso, Jericó, Pueblo Rico). Las "UT ..." son
+    // empresas separadas y por ahora vacías, pero se mantienen como municipios.
+    companies: ['Canales & Contactos', 'Unión Temporal Alumbrado Público Santa Bárbara'],
     projects: ['Jericó', 'Ciudad Bolívar', 'Tarso', 'Pueblo Rico', 'Pueblorrico'],
   },
   'Valle del Cauca': {
