@@ -18,9 +18,12 @@ export interface ActaGanttObra {
   workId: number;
   workCode: string;
   name: string;
-  start: string | null; // barra de la obra (fechas contractuales o rango de UCAPs)
+  start: string | null; // barra de la obra = rango del plan (unión de sus UCAPs)
   end: string | null;
-  progress: number; // 0–100 (avance agregado, ponderado por valor)
+  contextStart: string | null; // fechas contractuales: solo dan contexto al eje, no se dibujan
+  contextEnd: string | null;
+  progress: number; // 0–100 (promedio simple del % de cada UCAP)
+  weight: number; // nº de UCAPs con plan (informativo; el avance general usa promedio simple)
   ucaps: ActaGanttUcap[];
 }
 
@@ -37,8 +40,7 @@ function ucapPct(executed: number, planned: number): number {
 
 /**
  * Transforma los schedules de las obras de un acta en filas para el Gantt.
- * - Progreso de la obra: ponderado por valor (Σ ejecutado·valor / Σ planeado·valor),
- *   con respaldo por cantidad si no hay valores.
+ * - Progreso de la obra: promedio simple del % de avance de cada UCAP (con plan > 0).
  * - Fechas de la obra: contractuales si existen; si no, el rango de fechas de sus UCAPs.
  */
 export function buildActaGanttObras(
@@ -57,34 +59,25 @@ export function buildActaGanttObras(
       progress: ucapPct(it.executedQuantity, it.plannedQuantity),
     }));
 
-    // Avance agregado ponderado por valor
-    let plannedValue = 0;
-    let executedValue = 0;
-    let plannedQty = 0;
-    let executedQty = 0;
-    for (const it of schedule.items) {
-      const v = it.unitValue || 0;
-      plannedValue += it.plannedQuantity * v;
-      executedValue += it.executedQuantity * v;
-      plannedQty += it.plannedQuantity;
-      executedQty += it.executedQuantity;
-    }
+    // Avance agregado = promedio simple del % de avance de cada UCAP (con plan > 0).
+    const ucapPcts = schedule.items
+      .filter((it) => it.plannedQuantity > 0)
+      .map((it) => ucapPct(it.executedQuantity, it.plannedQuantity));
     const progress =
-      plannedValue > 0
-        ? clamp01(executedValue / plannedValue) * 100
-        : plannedQty > 0
-        ? clamp01(executedQty / plannedQty) * 100
+      ucapPcts.length > 0
+        ? ucapPcts.reduce((sum, p) => sum + p, 0) / ucapPcts.length
         : 0;
 
-    // Fechas de la barra de la obra
-    let start = schedule.contractualStart;
-    let end = schedule.contractualEnd;
-    if (!start || !end) {
-      const starts = ucaps.map((u) => u.start).filter((d): d is string => !!d);
-      const ends = ucaps.map((u) => u.end).filter((d): d is string => !!d);
-      if (starts.length) start = start || starts.reduce((a, b) => (a < b ? a : b));
-      if (ends.length) end = end || ends.reduce((a, b) => (a > b ? a : b));
-    }
+    // Barra de la obra = rango del plan (unión de las fechas de sus UCAPs).
+    // Si no hay plan, se usan las fechas contractuales.
+    const starts = ucaps.map((u) => u.start).filter((d): d is string => !!d);
+    const ends = ucaps.map((u) => u.end).filter((d): d is string => !!d);
+    const start = starts.length
+      ? starts.reduce((a, b) => (a < b ? a : b))
+      : schedule.contractualStart || null;
+    const end = ends.length
+      ? ends.reduce((a, b) => (a > b ? a : b))
+      : schedule.contractualEnd || null;
 
     return {
       workId: work.workId,
@@ -92,7 +85,11 @@ export function buildActaGanttObras(
       name: work.name,
       start: start || null,
       end: end || null,
+      // Contractual: solo amplía el eje de tiempo para dar contexto (no se dibuja).
+      contextStart: schedule.contractualStart || null,
+      contextEnd: schedule.contractualEnd || null,
       progress,
+      weight: ucapPcts.length,
       ucaps,
     };
   });
@@ -106,7 +103,7 @@ function dateMs(s: string): number {
 
 const DAY_MS = 86_400_000;
 const LABEL = 'w-52 flex-shrink-0';
-const PCT = 'w-12 flex-shrink-0';
+const PCT = 'w-14 flex-shrink-0';
 
 /** Color de la barra según el desfase entre avance esperado (temporal) y real. */
 function fillColorFor(start: string | null, end: string | null, progress: number): string {
@@ -125,6 +122,21 @@ function fillColorFor(start: string | null, end: string | null, progress: number
   return diff <= 5 ? '#22c55e' : diff <= 20 ? '#f59e0b' : '#ef4444';
 }
 
+/** Texto + fondo tenue del badge de porcentaje, derivado del color de la barra. */
+function badgeStyle(color: string): { color: string; background: string } {
+  const map: Record<string, { color: string; background: string }> = {
+    '#22c55e': { color: '#15803d', background: 'rgba(34, 197, 94, 0.12)' },
+    '#f59e0b': { color: '#b45309', background: 'rgba(245, 158, 11, 0.15)' },
+    '#ef4444': { color: '#dc2626', background: 'rgba(239, 68, 68, 0.12)' },
+  };
+  return (
+    map[color] ?? {
+      color: 'hsl(var(--canalco-primary))',
+      background: 'hsl(var(--canalco-primary) / 0.13)',
+    }
+  );
+}
+
 export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -140,6 +152,9 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
     for (const o of obras) {
       if (o.start) allMs.push(dateMs(o.start));
       if (o.end) allMs.push(dateMs(o.end));
+      // Contractual amplía el eje para dar contexto, aunque no se dibuje.
+      if (o.contextStart) allMs.push(dateMs(o.contextStart));
+      if (o.contextEnd) allMs.push(dateMs(o.contextEnd));
       for (const u of o.ucaps) {
         if (u.start) allMs.push(dateMs(u.start));
         if (u.end) allMs.push(dateMs(u.end));
@@ -200,12 +215,17 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
       const color = fillColorFor(start, end, progress);
       return (
         <div className={`flex-1 ${height} flex items-center`}>
-          <div className={`w-full ${innerH} rounded-full bg-[hsl(var(--canalco-neutral-200))] overflow-hidden`}>
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${Math.min(100, progress)}%`, background: color }}
-            />
-          </div>
+          {progress > 0 ? (
+            <div className={`w-full ${innerH} rounded-full bg-[hsl(var(--canalco-neutral-100))] overflow-hidden`}>
+              <div
+                className="h-full rounded-full transition-all duration-500 shadow-sm"
+                style={{ width: `${Math.min(100, progress)}%`, background: color }}
+              />
+            </div>
+          ) : (
+            // 0% sin avance: línea punteada sutil ("planeado, sin iniciar"), no un riel gris lleno.
+            <div className="w-full border-t-2 border-dashed border-[hsl(var(--canalco-neutral-200))]" />
+          )}
         </div>
       );
     }
@@ -216,24 +236,68 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
     return (
       <div className={`flex-1 relative ${height} overflow-hidden`}>
         <TodayLine />
-        <div
-          className={`absolute top-1/2 -translate-y-1/2 ${innerH} rounded-full bg-[hsl(var(--canalco-neutral-200))]`}
-          style={{ left: `${left}%`, width: `${barWidth}%` }}
-        />
-        <div
-          className={`absolute top-1/2 -translate-y-1/2 ${innerH} rounded-full transition-all`}
-          style={{ left: `${left}%`, width: `${fillWidth}%`, background: color }}
-        />
+        {progress > 0 ? (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 ${innerH} rounded-full bg-[hsl(var(--canalco-neutral-100))]`}
+            style={{ left: `${left}%`, width: `${barWidth}%` }}
+          />
+        ) : (
+          // 0%: el tramo planeado se marca con línea punteada en vez de riel gris lleno.
+          <div
+            className="absolute top-1/2 -translate-y-1/2 border-t-2 border-dashed border-[hsl(var(--canalco-neutral-200))]"
+            style={{ left: `${left}%`, width: `${barWidth}%` }}
+          />
+        )}
+        {progress > 0 && (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 ${innerH} rounded-full transition-all duration-500 shadow-sm`}
+            style={{ left: `${left}%`, width: `${fillWidth}%`, background: color }}
+          />
+        )}
       </div>
     );
   };
 
+  // Avance general del acta = promedio del avance de cada obra. Cada proyecto
+  // cuenta igual: se promedia el % de llenado de la barra de cada obra.
+  const overall =
+    obras.length > 0
+      ? obras.reduce((s, o) => s + o.progress, 0) / obras.length
+      : 0;
+  const overallColor =
+    overall >= 100 ? '#22c55e' : overall >= 70 ? '#f59e0b' : 'hsl(var(--canalco-primary))';
+
   return (
-    <div className="overflow-x-auto">
-      <div style={{ minWidth: 680 }}>
-        {/* ── Etiquetas de fecha ── */}
+    <div>
+      {/* ── Avance general (promedio simple del avance de cada obra) ── */}
+      <div className="mb-5 rounded-xl border border-[hsl(var(--canalco-neutral-200))] bg-gradient-to-br from-white to-[hsl(var(--canalco-neutral-50))] px-5 py-4 shadow-sm">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-800))]">
+            Avance general del acta
+            <span className="ml-2 text-xs font-normal text-[hsl(var(--canalco-neutral-400))]">
+              ({obras.length} obras · promedio del avance)
+            </span>
+          </span>
+          <span
+            className="text-base font-bold tabular-nums rounded-full px-3 py-1"
+            style={badgeStyle(overallColor)}
+          >
+            {Math.round(overall)}%
+          </span>
+        </div>
+        <div className="h-2.5 w-full rounded-full bg-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500 shadow-sm"
+            style={{ width: `${Math.min(100, overall)}%`, background: overallColor }}
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: 680 }}>
+          {/* ── Etiquetas de fecha ── */}
         {timeline && (
-          <div className="flex gap-2 h-7 mb-1">
+          <div className="flex gap-2 h-7 mb-1.5 pb-1 border-b border-[hsl(var(--canalco-neutral-200))]">
             <div className={LABEL} />
             <div className="flex-1 relative">
               {timeline.labels.map(({ label, pct }) => (
@@ -251,21 +315,30 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
         )}
 
         {/* ── Filas de obras ── */}
-        {obras.map((obra) => {
+        {obras.map((obra, idx) => {
           const isOpen = expanded.has(obra.workId);
           const color = fillColorFor(obra.start, obra.end, obra.progress);
           return (
-            <div key={obra.workId} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+            <div
+              key={obra.workId}
+              className={`border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0 ${
+                isOpen
+                  ? 'bg-[hsl(var(--canalco-primary))]/[0.04]'
+                  : idx % 2 === 1
+                  ? 'bg-[hsl(var(--canalco-neutral-50))]/50'
+                  : ''
+              }`}
+            >
               {/* fila de la obra (clic = desplegar) */}
               <button
                 onClick={() => toggle(obra.workId)}
-                className="w-full flex items-center gap-2 py-2 hover:bg-[hsl(var(--canalco-neutral-50))] transition-colors text-left"
+                className="w-full flex items-center gap-2 py-2.5 hover:bg-[hsl(var(--canalco-neutral-100))]/60 transition-colors text-left group"
               >
                 <div className={`${LABEL} flex items-center gap-1 pr-2 min-w-0`}>
                   {isOpen ? (
-                    <ChevronDown className="w-4 h-4 flex-shrink-0 text-[hsl(var(--canalco-neutral-500))]" />
+                    <ChevronDown className="w-4 h-4 flex-shrink-0 text-[hsl(var(--canalco-primary))]" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 flex-shrink-0 text-[hsl(var(--canalco-neutral-500))]" />
+                    <ChevronRight className="w-4 h-4 flex-shrink-0 text-[hsl(var(--canalco-neutral-400))] group-hover:text-[hsl(var(--canalco-neutral-600))]" />
                   )}
                   <div className="min-w-0">
                     {obra.workCode && (
@@ -279,8 +352,11 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                   </div>
                 </div>
                 <Bar start={obra.start} end={obra.end} progress={obra.progress} height="h-7" />
-                <div className={`${PCT} text-right`}>
-                  <span className="text-xs font-bold" style={{ color }}>
+                <div className={`${PCT} flex justify-end`}>
+                  <span
+                    className="text-[11px] font-bold tabular-nums rounded-full px-2 py-0.5"
+                    style={badgeStyle(color)}
+                  >
                     {Math.round(obra.progress)}%
                   </span>
                 </div>
@@ -288,7 +364,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
 
               {/* sub-filas de UCAPs */}
               {isOpen && (
-                <div className="pb-1.5 bg-[hsl(var(--canalco-neutral-50))]/40">
+                <div className="pb-2 pt-0.5">
                   {obra.ucaps.length === 0 ? (
                     <div className="flex items-center gap-2 py-1">
                       <div className={LABEL} />
@@ -311,8 +387,11 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                             </p>
                           </div>
                           <Bar start={u.start} end={u.end} progress={u.progress} height="h-5" />
-                          <div className={`${PCT} text-right`}>
-                            <span className="text-[11px] font-semibold" style={{ color: uColor }}>
+                          <div className={`${PCT} flex justify-end`}>
+                            <span
+                              className="text-[10px] font-semibold tabular-nums rounded-full px-1.5 py-0.5"
+                              style={badgeStyle(uColor)}
+                            >
                               {Math.round(u.progress)}%
                             </span>
                           </div>
@@ -341,6 +420,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
             <div className={PCT} />
           </div>
         )}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck, FileText, ClipboardList } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 
 const NOTIFICATION_TYPES = [
@@ -60,6 +60,46 @@ const NOTIFICATION_TYPES = [
     description: 'Se notifica al solicitante cuando se genera una orden de compra para su requisición.',
     trigger: 'Al generar orden de compra',
   },
+  {
+    icon: ClipboardList,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: 'Levantamiento pendiente de revisión',
+    description: 'Se envía al revisor técnico cuando un levantamiento pasa a estado de revisión.',
+    trigger: 'Al enviar levantamiento a revisión',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
+    title: 'Bloque de levantamiento revisado',
+    description: 'Se notifica al creador cuando presupuesto, inversión, materiales o viajes son aprobados o rechazados.',
+    trigger: 'Al revisar un bloque',
+  },
+  {
+    icon: FileText,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: 'Acta pendiente de revisión técnica',
+    description: 'Se envía a Director Técnico y PMO cuando un acta es enviada a revisión.',
+    trigger: 'Al enviar acta a revisión',
+  },
+  {
+    icon: Bell,
+    color: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    title: 'Acta pendiente de aprobación',
+    description: 'Se envía a Gerencia de Proyectos cuando un acta revisada queda lista para aprobación.',
+    trigger: 'Al aprobar revisión técnica del acta',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Acta aprobada',
+    description: 'Se notifica al creador y al revisor cuando Gerencia de Proyectos aprueba el acta.',
+    trigger: 'Al aprobar acta',
+  },
 ];
 
 export default function NotificacionesPage() {
@@ -99,7 +139,7 @@ export default function NotificacionesPage() {
           <div>
             <h2 className="font-semibold text-blue-900 mb-1">Notificaciones por correo electrónico</h2>
             <p className="text-sm text-blue-800">
-              El sistema envía alertas automáticas por email a los usuarios involucrados en cada etapa del proceso de compras.
+              El sistema envía alertas automáticas por email a los usuarios involucrados en cada etapa de compras y obras.
               Las notificaciones se despachan en tiempo real cuando ocurre un evento relevante.
             </p>
           </div>

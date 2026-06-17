@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { surveysService, type CreateWorkDto, type CreateSurveyDto } from '@/services/surveys.service';
+import { usersService } from '@/services/users.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { WorkHeader } from '@/components/surveys/WorkHeader';
 import { BudgetSection, createInitialBudgetItems, type BudgetItemData } from '@/components/surveys/BudgetSection';
@@ -20,13 +21,6 @@ function getTodayLocal(): string {
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
-
-const STATIC_REVIEWERS = [
-  { userId: 101, nombre: 'Alexander Becerra' },
-  { userId: 102, nombre: 'Andrés Izquierdo' },
-  { userId: 103, nombre: 'Juan Gomez' },
-  { userId: 104, nombre: 'Carlos Chamorro' },
-];
 
 interface FormData {
   companyId: number | null;
@@ -96,7 +90,20 @@ export default function CrearObraPage() {
   const [formData, setFormData] = useState<FormData>(() => ({ ...INITIAL_FORM_DATA, requestDate: getTodayLocal() }));
   const [companies, setCompanies] = useState<Company[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [reviewers] = useState(STATIC_REVIEWERS);
+  const [reviewers, setReviewers] = useState<{ userId: number; nombre: string }[]>([]);
+
+  // Cargar revisores reales (Directores de Proyecto, uno por departamento) desde el backend.
+  useEffect(() => {
+    usersService
+      .getByRoleNames([
+        'Director de Proyecto Antioquia',
+        'Director de Proyecto Quindío',
+        'Director de Proyecto Valle',
+        'Director de Proyecto Putumayo',
+      ])
+      .then((users) => setReviewers(users.map((u) => ({ userId: u.userId, nombre: u.nombre }))))
+      .catch(() => setReviewers([]));
+  }, []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +252,12 @@ export default function CrearObraPage() {
 
             // Cargar investment data (flags y descripción)
             const surveyData = fullSurvey as any;
+
+            // Cargar el revisor designado existente (antes se forzaba a null)
+            setFormData((prev) => ({
+              ...prev,
+              assignedReviewerId: surveyData.assignedReviewerId ?? surveyData.assignedReviewer?.userId ?? null,
+            }));
             setInvestmentData((prev) => ({
               ...prev,
               description: surveyData.description || '',
@@ -448,6 +461,8 @@ export default function CrearObraPage() {
         workId: workResult.workId,
         surveyDate: getTodayLocal(),
         requestDate: formData.requestDate || undefined,
+        // Revisor designado elegido en el formulario (si no, el backend usa el Director Técnico)
+        assignedReviewerId: formData.assignedReviewerId ?? undefined,
         // Document links
         sketchUrl: documentLinks.sketchUrl || undefined,
         mapUrl: documentLinks.mapUrl || undefined,

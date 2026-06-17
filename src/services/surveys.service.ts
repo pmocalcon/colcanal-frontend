@@ -185,6 +185,7 @@ export interface CreateSurveyDto {
   surveyDate: string;
   requestDate?: string;
   receivedBy?: string; // Nombre de quien recibe (string, no ID)
+  assignedReviewerId?: number | null; // Revisor designado (ID de usuario)
   projectCode?: string;
   // Document links
   sketchUrl?: string;

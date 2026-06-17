@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { materialsService, type Material } from '@/services/materials.service';
-import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
@@ -60,6 +60,47 @@ const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 // Domingo (día no laboral): se marca en rojo y se deshabilita igual que un festivo.
 function isSunday(date: string): boolean {
   return parseLocalDate(date).getDay() === 0;
+}
+
+// Selector de semana reutilizable (‹ rango ›  Hoy) para los planes diarios.
+function WeekNav({ days, offset, onPrev, onNext, onToday }: {
+  days: string[]; offset: number; onPrev: () => void; onNext: () => void; onToday: () => void;
+}) {
+  const fmt = (s: string, withYear?: boolean) =>
+    new Date(s + 'T12:00:00').toLocaleDateString('es-CO', withYear
+      ? { day: 'numeric', month: 'short', year: 'numeric' }
+      : { day: 'numeric', month: 'short' });
+  return (
+    <div className="flex items-center gap-1.5">
+      <button onClick={onPrev} aria-label="Semana anterior" className="p-1 rounded-md hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))] transition-colors">
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] min-w-[150px] text-center tabular-nums px-2.5 py-1 rounded-md bg-[hsl(var(--canalco-neutral-50))] border border-[hsl(var(--canalco-neutral-200))]">
+        {fmt(days[0])} – {fmt(days[6], true)}
+      </span>
+      <button onClick={onNext} aria-label="Semana siguiente" className="p-1 rounded-md hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))] transition-colors">
+        <ChevronRight className="w-4 h-4" />
+      </button>
+      {offset !== 0 && (
+        <button onClick={onToday} className="text-xs font-semibold text-[hsl(var(--canalco-primary))] hover:underline ml-1">Hoy</button>
+      )}
+    </div>
+  );
+}
+
+// Ejecuta tareas async con un límite de concurrencia (evita saturar el backend
+// cuando un acta tiene muchas obras). Conserva el orden de entrada.
+async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const idx = next++;
+      out[idx] = await fn(items[idx]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 const normalizeLocationName = (name?: string | null) =>
@@ -337,34 +378,63 @@ export default function CronogramaPage() {
     setActaGanttObras([]);
     try {
       setLoadingActa(true);
-      const results = await Promise.all(
-        actaWorks.map(async (w) => {
-          try {
-            const s = await schedulesService.getByWork(w.workId);
-            // Ejecutado real = suma de la ejecución diaria registrada por UCAP
-            // (misma fuente que usa el Informe), no schedule_items.
-            const execByUcap = new Map<number, number>();
+      const results = await mapWithLimit(actaWorks, 5, async (w): Promise<{ work: Work; schedule: ScheduleDetail }> => {
+        try {
+          const s = await schedulesService.getByWork(w.workId);
+          // Ejecutado real = suma de la ejecución diaria registrada por UCAP
+          // (misma fuente que usa el Informe), no schedule_items.
+          const execByUcap = new Map<number, number>();
+          // Rango del plan diario por UCAP (primera/última fecha con planeado > 0)
+          const planByUcap = new Map<number, { start: string; end: string }>();
+          if (s.items.length > 0) {
             try {
               const dp = await schedulesService.getDailyPlans(s.scheduleId, '2020-01-01', '2035-12-31');
               for (const p of dp.plans) {
                 execByUcap.set(p.ucapId, (execByUcap.get(p.ucapId) ?? 0) + (p.executedQuantity ?? 0));
+                if ((p.plannedQuantity ?? 0) > 0) {
+                  const cur = planByUcap.get(p.ucapId);
+                  if (!cur) planByUcap.set(p.ucapId, { start: p.planDate, end: p.planDate });
+                  else {
+                    if (p.planDate < cur.start) cur.start = p.planDate;
+                    if (p.planDate > cur.end) cur.end = p.planDate;
+                  }
+                }
               }
-            } catch { /* sin ejecución diaria */ }
-            const enriched: ScheduleDetail = {
-              ...s,
-              items: s.items.map((it) => ({
+            } catch { /* sin plan/ejecución diaria */ }
+          }
+          const enriched: ScheduleDetail = {
+            ...s,
+            items: s.items.map((it) => {
+              const plan = planByUcap.get(it.ucapId);
+              return {
                 ...it,
                 executedQuantity: execByUcap.get(it.ucapId) ?? it.executedQuantity,
-              })),
-            };
-            return { work: w, schedule: enriched };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      const valid = results.filter((r): r is { work: Work; schedule: ScheduleDetail } => r !== null);
-      setActaGanttObras(buildActaGanttObras(valid));
+                // Barra de la UCAP posicionada por el plan diario (si existe).
+                ucapStartDate: plan?.start ?? it.ucapStartDate,
+                ucapEndDate: plan?.end ?? it.ucapEndDate,
+              };
+            }),
+          };
+          return { work: w, schedule: enriched };
+        } catch {
+          // Si falla la carga, igual incluimos la obra (en 0%) para no descuadrar
+          // el conteo del acta.
+          return {
+            work: w,
+            schedule: {
+              scheduleId: 0,
+              workId: w.workId,
+              startDate: null,
+              endDate: null,
+              contractualStart: null,
+              contractualEnd: null,
+              ippFactor: 0,
+              items: [],
+            },
+          };
+        }
+      });
+      setActaGanttObras(buildActaGanttObras(results));
     } catch {
       toast.error('Error al cargar el cronograma del acta');
     } finally {
@@ -582,6 +652,24 @@ export default function CronogramaPage() {
       if (storedMap) setActivityDailyMap(JSON.parse(storedMap));
     } catch {}
   }, [schedule?.scheduleId]);
+
+  // ── Las actividades del Plan Diario también aparecen en Ejecución (para registrar su
+  //    avance), aunque todavía no tengan ejecución en el backend. Se siembran por NOMBRE
+  //    (que es como el Informe empareja Plan↔Ejecución). Es idempotente: si no hay nada
+  //    nuevo que agregar devuelve la misma referencia y no re-renderiza (sin bucles), y
+  //    se reaplica si la carga async del backend reemplaza las filas de ejecución.
+  useEffect(() => {
+    if (!schedule) return;
+    const planNames = [...new Set(activityRows.map((r) => r.name.trim()).filter(Boolean))];
+    if (planNames.length === 0) return;
+    setExecActivityRows((prev) => {
+      const existing = new Set(prev.map((r) => r.name.trim()).filter(Boolean));
+      const toAdd = planNames
+        .filter((name) => !existing.has(name))
+        .map((name) => ({ id: `exec-act-plan-${schedule.scheduleId}-${name}`, name }));
+      return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+    });
+  }, [activityRows, execActivityRows, schedule?.scheduleId]);
 
   // ── save material logs
   const handleSaveMaterials = async () => {
@@ -1353,13 +1441,13 @@ export default function CronogramaPage() {
 
                           <TabsContent value="plan" className="space-y-4 mt-0">
                         {/* ── Fechas Contractual / Operativo ── */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="max-w-md">
                           {/* Contractual */}
                           <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
                             <div className="px-5 pt-5 pb-4">
                               <div className="flex items-start justify-between gap-2 mb-3">
-                                <h3 className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mt-2">
-                                  Contractual
+                                <h3 className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mt-2 flex items-center gap-1.5">
+                                  <CalendarRange className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />Contractual
                                 </h3>
                                 <span className="text-xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
                                   {temporalProgress.contractual !== null
@@ -1410,24 +1498,11 @@ export default function CronogramaPage() {
                           const weekHolidaySet = new Set(weekYears.flatMap((y) => [...getColombianHolidays(y)]));
                           return (
                             <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                              <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                                  Plan Diario UCAPs
+                              <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                  <Layers className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan Diario UCAPs
                                 </h3>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => setWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
-                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
-                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
-                                    {' – '}
-                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                  <button onClick={() => setWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
-                                  {weekOffset !== 0 && (
-                                    <button onClick={() => setWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
-                                      Hoy
-                                    </button>
-                                  )}
-                                </div>
+                                <WeekNav days={days} offset={weekOffset} onPrev={() => setWeekOffset((w) => w - 1)} onNext={() => setWeekOffset((w) => w + 1)} onToday={() => setWeekOffset(0)} />
                               </div>
 
                               <div className="overflow-x-auto">
@@ -1544,24 +1619,11 @@ export default function CronogramaPage() {
                           const matWeekHolidaySet = new Set(matWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
                           return (
                             <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                              <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                                  Plan Diario Materiales
+                              <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                  <Package className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan Diario Materiales
                                 </h3>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => setMaterialWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
-                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
-                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
-                                    {' – '}
-                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                  <button onClick={() => setMaterialWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
-                                  {materialWeekOffset !== 0 && (
-                                    <button onClick={() => setMaterialWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
-                                      Hoy
-                                    </button>
-                                  )}
-                                </div>
+                                <WeekNav days={days} offset={materialWeekOffset} onPrev={() => setMaterialWeekOffset((w) => w - 1)} onNext={() => setMaterialWeekOffset((w) => w + 1)} onToday={() => setMaterialWeekOffset(0)} />
                               </div>
 
                               {surveyMaterials.length === 0 ? (
@@ -1684,24 +1746,11 @@ export default function CronogramaPage() {
                           const actWeekHolidaySet = new Set(actWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
                           return (
                             <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                              <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
-                                  Plan Diario Actividades
+                              <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                  <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan Diario Actividades
                                 </h3>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => setActivityWeekOffset((w) => w - 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">‹</button>
-                                  <span className="text-xs text-[hsl(var(--canalco-neutral-600))] min-w-[140px] text-center">
-                                    {new Date(days[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
-                                    {' – '}
-                                    {new Date(days[6] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                  <button onClick={() => setActivityWeekOffset((w) => w + 1)} className="px-2 py-0.5 rounded text-lg leading-none hover:bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">›</button>
-                                  {activityWeekOffset !== 0 && (
-                                    <button onClick={() => setActivityWeekOffset(0)} className="text-xs text-[hsl(var(--canalco-primary))] underline ml-1">
-                                      Hoy
-                                    </button>
-                                  )}
-                                </div>
+                                <WeekNav days={days} offset={activityWeekOffset} onPrev={() => setActivityWeekOffset((w) => w - 1)} onNext={() => setActivityWeekOffset((w) => w + 1)} onToday={() => setActivityWeekOffset(0)} />
                               </div>
 
                               {activityRows.length === 0 ? (
@@ -2683,8 +2732,6 @@ export default function CronogramaPage() {
                               const allMatRows = [...matRows, ...extraMatRows];
                               const totMatQP = allMatRows.reduce((s, r) => s + r.totalQuantity, 0);
                               const totMatQE = allMatRows.reduce((s, r) => s + r.execQty, 0);
-                              const totMatVP = allMatRows.reduce((s, r) => s + r.plannedVal, 0);
-                              const totMatVE = allMatRows.reduce((s, r) => s + r.execVal, 0);
                               // % de avance de materiales ponderado por VALOR (no por cantidad),
                               // sobre los presupuestados (Ppto. > 0).
                               const budgetedMatRows = allMatRows.filter((r) => r.totalQuantity > 0);
@@ -2718,7 +2765,7 @@ export default function CronogramaPage() {
                               return (
                                 <>
                                   {/* KPI summary */}
-                                  <div className="grid gap-4 grid-cols-4">
+                                  <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
                                     <KPICard label="UCAPs" p={ucapPct} sub={`${fmtQ(totUcapQE)} / ${fmtQ(totUcapQP)} uds`} color="bg-[hsl(var(--canalco-primary))]" />
                                     <KPICard label="Materiales" p={matPct} sub={`${fmtCOP(budMatVE)} / ${fmtCOP(budMatVP)}`} color="bg-sky-400" />
                                     <KPICard label="Actividades" p={actPct} sub={totActP > 0 ? `${fmtQ(totActE)} / ${fmtQ(totActP)}` : 'Sin plan'} color="bg-violet-400" />
@@ -2733,6 +2780,44 @@ export default function CronogramaPage() {
                                       </div>
                                     )}
                                   </div>
+
+                                  {/* Curva S — Avance en el tiempo */}
+                                  <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
+                                    <div className="px-5 py-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between flex-wrap gap-2">
+                                      <div>
+                                        <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                          <TrendingUp className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Curva S — Avance en el Tiempo
+                                        </h3>
+                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--canalco-neutral-400))] mt-0.5">% Acumulado · Programado vs Real</p>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" />Programado</span>
+                                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" />Real</span>
+                                      </div>
+                                    </div>
+                                    <div className="p-4">
+                                      {reportData && reportData.curva.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={300}>
+                                          <ComposedChart data={reportData.curva} margin={{ top: 5, right: 14, left: -16, bottom: 0 }}>
+                                            <defs>
+                                              <linearGradient id="progFillOp" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.22} />
+                                                <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                                              </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                                            <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" />
+                                            <YAxis tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                                            <RTooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} labelStyle={{ color: '#334155', fontWeight: 600 }} formatter={(v: number) => `${Math.round(v)}%`} />
+                                            <Area type="monotone" dataKey="programado" stroke="#f59e0b" strokeWidth={2} fill="url(#progFillOp)" name="Programado" />
+                                            <RLine type="monotone" dataKey="real" stroke="#0ea5e9" strokeWidth={2.5} dot={{ r: 3, fill: '#0ea5e9' }} connectNulls name="Real" />
+                                          </ComposedChart>
+                                        </ResponsiveContainer>
+                                      ) : (
+                                        <div className="h-[300px] flex items-center justify-center text-xs text-[hsl(var(--canalco-neutral-400))] text-center px-4">Registra el plan diario y las fechas del proyecto para ver la curva S.</div>
+                                      )}
+                                    </div>
+                                  </section>
 
                                   {/* UCAPs table */}
                                   {ucapRows.length > 0 && (
@@ -2820,8 +2905,6 @@ export default function CronogramaPage() {
                                               <th className="px-4 py-2 font-medium text-right">Ppto.</th>
                                               <th className="px-4 py-2 font-medium text-right">Instalado</th>
                                               <th className="px-4 py-2 font-medium text-right">Pendiente</th>
-                                              <th className="px-4 py-2 font-medium text-right">Ppto. $</th>
-                                              <th className="px-4 py-2 font-medium text-right">Instalado $</th>
                                               <th className="px-4 py-2 font-medium text-center">Uso</th>
                                               <th className="px-4 py-2 font-medium text-center">Estado</th>
                                             </tr>
@@ -2852,14 +2935,6 @@ export default function CronogramaPage() {
                                                 </td>
                                                 <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[hsl(var(--canalco-neutral-800))]">{fmtQ(r.execQty)}</td>
                                                 <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-500))]">{fmtQ(Math.max(0, r.totalQuantity - r.execQty))}</td>
-                                                <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-700))]">
-                                                  {r.isExtra && r.extraId && canEditOperativo ? (
-                                                    <div className="flex justify-end">
-                                                      <Input type="number" min="0" step="1" value={r.plannedVal || ''} placeholder="0" onChange={(e) => updateExtraMaterial(r.extraId!, { budgetValue: parseFloat(e.target.value) || 0 })} className="h-7 w-24 text-xs text-right px-1" />
-                                                    </div>
-                                                  ) : (r.plannedVal > 0 ? fmtCOP(r.plannedVal) : '—')}
-                                                </td>
-                                                <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.execVal > 0 ? fmtCOP(r.execVal) : '—'}</td>
                                                 <td className="px-4 py-2.5">
                                                   <div className="flex items-center gap-2 min-w-[90px]">
                                                     <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--canalco-neutral-200))]">
@@ -2878,8 +2953,6 @@ export default function CronogramaPage() {
                                               <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(totMatQP)}</td>
                                               <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(totMatQE)}</td>
                                               <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(Math.max(0, totMatQP - totMatQE))}</td>
-                                              <td className="px-4 py-2.5 text-right tabular-nums">{totMatVP > 0 ? fmtCOP(totMatVP) : '—'}</td>
-                                              <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{totMatVE > 0 ? fmtCOP(totMatVE) : '—'}</td>
                                               <td className="px-4 py-2.5" colSpan={2} />
                                             </tr>
                                           </tfoot>
