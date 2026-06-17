@@ -208,7 +208,7 @@ export default function CrearRequisicionPage() {
               existing.quantity += Math.max(1, Math.round(Number(mi.quantity)));
             } else {
               itemMap.set(mi.materialId, {
-                tempId: `acta-group-${recordNumber}-${mi.materialId}`,
+                tempId: `acta-group-${group.key}-${mi.materialId}`,
                 materialId: mi.materialId,
                 quantity: Math.max(1, Math.round(Number(mi.quantity))),
                 observation: mi.observations || '',
