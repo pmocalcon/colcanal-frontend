@@ -331,6 +331,9 @@ export default function PresupuestoPage() {
   const [fuenteFinanciacion, setFuenteFinanciacion] = useState('');
   const [valorMinimoExcedentes, setValorMinimoExcedentes] = useState('');
   const [valorActualExcedentes, setValorActualExcedentes] = useState('');
+  // Saldo disponible para obras = Valor actual − Valor mínimo de excedentes (automático, solo lectura)
+  const saldoDisponibleNum = parseNum(valorActualExcedentes) - parseNum(valorMinimoExcedentes);
+  const saldoDisponible = saldoDisponibleNum !== 0 ? String(saldoDisponibleNum) : '';
   const [observaciones, setObservaciones] = useState('');
   const [manoDeObra, setManoDeObra] = useState('');
   const [manoDeObraEj, setManoDeObraEj] = useState('');
@@ -471,6 +474,7 @@ export default function PresupuestoPage() {
         fuenteFinanciacion: fuenteFinanciacion || undefined,
         valorMinimoExcedentes: valorMinimoExcedentes ? parseFloat(valorMinimoExcedentes) : null,
         valorActualExcedentes: valorActualExcedentes ? parseFloat(valorActualExcedentes) : null,
+        saldoDisponible: saldoDisponibleNum || null,
         observaciones: observaciones || undefined,
         manoDeObra: manoDeObra ? parseFloat(manoDeObra) : null,
         manoDeObraEj: manoDeObraEj ? parseFloat(manoDeObraEj) : null,
@@ -1731,7 +1735,19 @@ export default function PresupuestoPage() {
               </div>
               <div>
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
-                  Valor Mínimo de los Excedentes
+                  Valor Actual de Excedentes
+                </p>
+                <FormattedInput
+                  value={valorActualExcedentes}
+                  onChange={setValorActualExcedentes}
+                  disabled={isReadOnly}
+                  placeholder="0"
+                  className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"
+                />
+              </div>
+              <div>
+                <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
+                  Valor Mínimo de los Excedentes (Dos meses de concepción)
                 </p>
                 <FormattedInput
                   value={valorMinimoExcedentes}
@@ -1743,12 +1759,12 @@ export default function PresupuestoPage() {
               </div>
               <div>
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
-                  Valor Actual de Excedentes
+                  Saldo disponible para obras
                 </p>
                 <FormattedInput
-                  value={valorActualExcedentes}
-                  onChange={setValorActualExcedentes}
-                  disabled={isReadOnly}
+                  value={saldoDisponible}
+                  onChange={() => {}}
+                  disabled
                   placeholder="0"
                   className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"
                 />

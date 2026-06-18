@@ -24,6 +24,7 @@ export interface CreateDirectorBudgetDto {
   fuenteFinanciacion?: string;
   valorMinimoExcedentes?: number | null;
   valorActualExcedentes?: number | null;
+  saldoDisponible?: number | null;
   manoDeObra?: number | null;
   manoDeObraEj?: number | null;
   materialesInventario?: number | null;
@@ -69,6 +70,7 @@ export interface DirectorBudget {
   fuenteFinanciacion: string | null;
   valorMinimoExcedentes: number | null;
   valorActualExcedentes: number | null;
+  saldoDisponible: number | null;
   manoDeObra: number | null;
   manoDeObraEj: number | null;
   materialesInventario: number | null;
