@@ -173,6 +173,27 @@ type Block =
   | { kind: 'clausula'; id: string; title: string; content: string }
   | { kind: 'table'; id: string; tableId: string };
 
+/**
+ * map con concurrencia limitada: evita disparar decenas de peticiones a la vez
+ * (el pool de conexiones del backend es pequeño y las últimas hacían timeout).
+ */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length || 1) }, worker));
+  return results;
+}
+
 export default function ResumenActaPage() {
   const navigate = useNavigate();
   const { recordNumber: encodedActa } = useParams<{ recordNumber: string }>();
@@ -228,8 +249,14 @@ export default function ResumenActaPage() {
     setLoading(true);
     setWorks(worksInput);
     try {
-      const companyId = worksInput[0]?.companyId;
-      const projectId = worksInput[0]?.projectId;
+      // La empresa del acta viene en la URL (?company=); es la fuente confiable.
+      // El IPP inicial vive por PROYECTO, así que tomamos el projectId de las obras.
+      const companyId =
+        actaCompanyId ?? worksInput[0]?.companyId ?? (worksInput[0] as any)?.company?.companyId;
+      const projectId =
+        worksInput.find((w) => w.projectId)?.projectId ??
+        (worksInput.find((w) => (w as any).project?.projectId) as any)?.project?.projectId ??
+        worksInput[0]?.projectId;
       const cfg = getActaConfig(companyId, projectId);
       setDocFields({ ...cfg.docFields, actaNumero: recordNumber, actaReferenciaAnterior: recordNumber });
       setConsideraciones(cfg.consideraciones);
@@ -250,22 +277,22 @@ export default function ResumenActaPage() {
       setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
       setEncabezadoTabla(cfg.encabezadoTabla);
       const [budgetResults, surveyListResults, ucapRes] = await Promise.all([
-        Promise.all(worksInput.map((w) => directorBudgetsService.getAll({ workId: w.workId, limit: 10 }))),
-        Promise.all(worksInput.map((w) => surveysService.getSurveys({ workId: w.workId, limit: 100 }).catch(() => ({ data: [] })))),
-        companyId ? surveysService.getUcaps(companyId).catch(() => null) : Promise.resolve(null),
+        mapLimit(worksInput, 5, (w) =>
+          directorBudgetsService.getAll({ workId: w.workId, limit: 10 }).catch(() => ({ data: [] } as any)),
+        ),
+        mapLimit(worksInput, 5, (w) =>
+          surveysService.getSurveys({ workId: w.workId, limit: 100 }).catch(() => ({ data: [] })),
+        ),
+        companyId ? surveysService.getUcaps(companyId, projectId).catch(() => null) : Promise.resolve(null),
       ]);
 
-      // Fetch full survey details (with budgetItems) for each survey in the list
-      const surveyResults = await Promise.all(
-        surveyListResults.map(async (listRes) => {
-          const fullSurveys = await Promise.all(
-            (listRes.data ?? []).map((s: any) =>
-              surveysService.getSurveyById(s.surveyId).catch(() => s)
-            )
-          );
-          return { data: fullSurveys };
-        })
-      );
+      // Fetch full survey details (with budgetItems) con concurrencia limitada
+      const surveyResults = await mapLimit(surveyListResults, 4, async (listRes) => {
+        const fullSurveys = await mapLimit(listRes.data ?? [], 2, (s: any) =>
+          surveysService.getSurveyById(s.surveyId).catch(() => s),
+        );
+        return { data: fullSurveys };
+      });
       if (ucapRes?.ippConfig) setIppConfig(ucapRes.ippConfig);
 
       // Collect best budget per work (used only for manoDeObra and vrUnitario lookup)
@@ -395,7 +422,12 @@ export default function ResumenActaPage() {
   useEffect(() => {
     if (initialized.current || !departments.length) return;
     initialized.current = true;
-    const allCompanyIds = departments.flatMap((d) => d.companyIds);
+    const allCompanyIds = Array.from(
+      new Set([
+        ...(actaCompanyId ? [actaCompanyId] : []),
+        ...departments.flatMap((d) => d.companyIds),
+      ]),
+    );
     setLoading(true);
     surveysService
       .getWorks({ companyId: allCompanyIds, limit: 1000 } as any)
