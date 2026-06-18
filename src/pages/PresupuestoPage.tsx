@@ -934,13 +934,15 @@ export default function PresupuestoPage() {
     const matInv = parseNum(materialesInventario);
     const valFact = parseNum(valorFacturado);
     const otros = parseNum(otrosCostos);
-    const legVal = parseNum(leg);
+    // COSTOS L.N.A: porcentaje (float) sobre la Utilidad de la Obra.
+    const legPct = parseNum(leg);
     const totalObra = subTotal + mdo;
     const ret4 = valFact * (parseNum(retPct) / 100);
     const totalAPagar = valFact - ret4;
     const saldo = valFact - totalObra;
     const utilidad = saldo - otros;
-    const utilidadFinal = utilidad - legVal;
+    const legAmount = utilidad * (legPct / 100);
+    const utilidadFinal = utilidad - legAmount;
     const pctUtilidad = valFact !== 0 ? (utilidad / valFact) * 100 : 0;
     const ejecutadoTotal = rows.reduce((s, r) => s + parseNum(r.ejecutado), 0)
       + travelRows.reduce((s, r) => s + parseNum(r.ejecutado), 0);
@@ -948,18 +950,19 @@ export default function PresupuestoPage() {
     const matInvEj = parseNum(materialesInventarioEj);
     const valFactEj = parseNum(valorFacturadoEj);
     const otrosEj = parseNum(otrosCostosEj);
-    const legValEj = parseNum(legEj);
+    const legPctEj = parseNum(legEj);
     const totalObraEj = ejecutadoTotal + mdoEj;
     const ret68 = valFactEj * (parseNum(retPctEj) / 100);
     const totalAPagarEj = valFactEj - ret68;
     const saldoEj = valFactEj - totalObraEj;
     const utilidadEj = saldoEj - otrosEj;
-    const utilidadFinalEj = utilidadEj - legValEj;
+    const legAmountEj = utilidadEj * (legPctEj / 100);
+    const utilidadFinalEj = utilidadEj - legAmountEj;
     const pctUtilidadEj = valFactEj !== 0 ? (utilidadEj / valFactEj) * 100 : 0;
     return {
-      subTotal, mdo, matInv, valFact, otros, legVal,
+      subTotal, mdo, matInv, valFact, otros, legAmount,
       totalObra, ret4, totalAPagar, saldo, utilidad, pctUtilidad, utilidadFinal,
-      ejecutadoTotal, mdoEj, matInvEj, valFactEj, otrosEj, legValEj,
+      ejecutadoTotal, mdoEj, matInvEj, valFactEj, otrosEj, legAmountEj,
       totalObraEj, ret68, totalAPagarEj, saldoEj, utilidadEj, pctUtilidadEj, utilidadFinalEj,
     };
   }, [
@@ -1833,10 +1836,10 @@ export default function PresupuestoPage() {
                   <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">OTROS COSTOS</td>
                     <td className="py-1 pr-3">
-                      <Input type="number" min="0" value={otrosCostos} onChange={(e) => setOtrosCostos(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={otrosCostos} onChange={setOtrosCostos} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
                     </td>
                     <td className="py-1">
-                      <Input type="number" min="0" value={otrosCostosEj} onChange={(e) => setOtrosCostosEj(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={otrosCostosEj} onChange={setOtrosCostosEj} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
                     </td>
                   </tr>
                   <tr>
@@ -1858,12 +1861,24 @@ export default function PresupuestoPage() {
                     </td>
                   </tr>
                   <tr>
-                    <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">FACTOR</td>
+                    <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">COSTOS L.N.A</td>
                     <td className="py-1 pr-3">
-                      <Input type="number" value={leg} onChange={(e) => setLeg(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <div className="flex items-center gap-1">
+                          <Input type="number" min="0" max="100" step="0.01" value={leg} onChange={(e) => setLeg(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
+                        </div>
+                        {totals.legAmount !== 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.legAmount)}</span>}
+                      </div>
                     </td>
                     <td className="py-1">
-                      <Input type="number" value={legEj} onChange={(e) => setLegEj(e.target.value)} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <div className="flex items-center gap-1">
+                          <Input type="number" min="0" max="100" step="0.01" value={legEj} onChange={(e) => setLegEj(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
+                        </div>
+                        {totals.legAmountEj !== 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.legAmountEj)}</span>}
+                      </div>
                     </td>
                   </tr>
                   <tr className="bg-[hsl(var(--canalco-primary))]/5">
