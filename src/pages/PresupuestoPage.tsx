@@ -639,12 +639,12 @@ export default function PresupuestoPage() {
 
   // VALOR FACTURADO = UCAPs (cantidad × valor unitario del catálogo) ajustadas por IPP del mes.
   //   valor = base × (IPP del mes / IPP inicial). IPP inicial: ippConfig de la empresa; IPP del mes: del levantamiento.
-  const computeValorFacturado = useCallback(async (fullSurveys: any[], companyId?: number): Promise<number> => {
+  const computeValorFacturado = useCallback(async (fullSurveys: any[], companyId?: number, projectId?: number): Promise<number> => {
     let valMap = new Map<number, number>();
     let ippInicial = 0;
     if (companyId) {
       try {
-        const u = await surveysService.getUcaps(companyId);
+        const u = await surveysService.getUcaps(companyId, projectId);
         valMap = new Map(u.ucaps.map((x) => [x.ucapId, Number(x.value) || 0]));
         ippInicial = Number(u.ippConfig?.initialValue) || 0;
       } catch { /* ignore — sin catálogo se usa el valor del levantamiento */ }
@@ -686,9 +686,9 @@ export default function PresupuestoPage() {
 
         if (skipRows) return;
 
-        // VALOR FACTURADO automático desde las UCAPs (con IPP)
+        // VALOR FACTURADO automático desde las UCAPs (con IPP). IPP inicial por PROYECTO.
         const selWork = works.find((w) => w.workId === selectedWorkId);
-        const vf = await computeValorFacturado(fullSurveys, selWork?.companyId);
+        const vf = await computeValorFacturado(fullSurveys, selWork?.companyId, selWork?.projectId);
         setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
         const materialMap = new Map<number, { materialId: number; codigo: string; cantidad: number }>();
@@ -766,8 +766,9 @@ export default function PresupuestoPage() {
 
         if (skipRows) return;
 
-        // VALOR FACTURADO automático desde las UCAPs (con IPP) — todas las obras del acta
-        const vf = await computeValorFacturado(fullSurveys, actaWorks[0]?.companyId);
+        // VALOR FACTURADO automático desde las UCAPs (con IPP) — todas las obras del acta.
+        // El IPP inicial vive por PROYECTO (municipio), así que se pasa projectId al catálogo.
+        const vf = await computeValorFacturado(fullSurveys, actaWorks[0]?.companyId, actaWorks[0]?.projectId);
         setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
         // Merge: same materialId → sum quantities (Number() handles decimal-as-string from TypeORM)

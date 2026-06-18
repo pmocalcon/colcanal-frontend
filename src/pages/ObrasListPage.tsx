@@ -24,6 +24,17 @@ type ViewMode = 'individual' | 'agrupado';
 
 const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
   `${companyId ?? 0}:${recordNumber}`;
+
+// Normaliza un nombre de municipio para comparar empresa-municipio con proyecto:
+// quita el prefijo "Unión Temporal...", acentos y todo lo no alfanumérico
+// (así "Pueblorrico" == "Pueblo Rico").
+const muniKey = (name: string) =>
+  name
+    .replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 const getActaRecordNumber = (key: string) => key.slice(key.indexOf(':') + 1);
 const getActaCompanyId = (key: string) => Number(key.slice(0, key.indexOf(':')));
 
@@ -48,6 +59,7 @@ export default function ObrasListPage() {
   const [removingWorkId, setRemovingWorkId] = useState<number | null>(null);
   const [actaStatuses, setActaStatuses] = useState<Map<string, WorkActa>>(new Map());
   const [submittingActa, setSubmittingActa] = useState<string | null>(null);
+  const [sendingBudget, setSendingBudget] = useState<string | null>(null);
   const [reviewDialog, setReviewDialog] = useState<{ acta: string; companyId: number } | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -65,14 +77,24 @@ export default function ObrasListPage() {
     [departments, activeTab],
   );
 
-  const activeCompanyIds = useMemo(() => {
-    if (!activeDept) return [];
-    if (selectedCompanyId !== null) return [selectedCompanyId];
+  const worksFilter = useMemo<{ companyId?: number[]; projectId?: number }>(() => {
+    if (!activeDept) return {};
+    if (selectedCompanyId !== null) {
+      // Municipio seleccionado: si corresponde a un proyecto (ej. Tarso de Canales &
+      // Contactos), cargar por ese proyecto; si no, por la empresa-municipio.
+      const selCompany = activeDept.companies.find((c) => c.companyId === selectedCompanyId);
+      const selKey = selCompany ? muniKey(selCompany.name) : null;
+      const matchProject = selKey
+        ? activeDept.projects.find((p) => muniKey(p.name) === selKey)
+        : undefined;
+      if (matchProject) return { projectId: matchProject.projectId };
+      return { companyId: [selectedCompanyId] };
+    }
     // "Todos": empresas del departamento + el companyId padre de sus proyectos
     // (ej. Canales & Contactos, dueño de Ciudad Bolívar / Pueblorrico)
     const ids = new Set<number>(activeDept.companyIds);
     activeDept.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
-    return [...ids];
+    return { companyId: [...ids] };
   }, [activeDept, selectedCompanyId]);
 
   useEffect(() => {
@@ -82,19 +104,21 @@ export default function ObrasListPage() {
   }, [departments, activeTab]);
 
   useEffect(() => {
-    if (user?.userId && activeCompanyIds.length > 0) {
+    const hasScope = (worksFilter.companyId?.length ?? 0) > 0 || worksFilter.projectId != null;
+    if (user?.userId && hasScope) {
       loadWorks();
     }
-  }, [user?.userId, activeCompanyIds]);
+  }, [user?.userId, worksFilter]);
 
   const loadWorks = async () => {
     try {
       setLoading(true);
       setError(null);
       // El Director de Proyecto ve TODAS las obras de su departamento (no solo
-      // las que él creó). El alcance ya queda acotado por activeCompanyIds.
+      // las que él creó). El alcance ya queda acotado por worksFilter.
       const response = await surveysService.getWorks({
-        companyId: activeCompanyIds,
+        companyId: worksFilter.companyId,
+        projectId: worksFilter.projectId,
       });
       const worksData = Array.isArray(response) ? response : (response.data || []);
       setWorks(worksData);
@@ -247,6 +271,21 @@ export default function ObrasListPage() {
       toast.error(err.response?.data?.message || 'Error al enviar el acta');
     } finally {
       setSubmittingActa(null);
+    }
+  };
+
+  const handleSendToBudget = async (actaKey: string) => {
+    const companyId = getActaCompanyId(actaKey);
+    const recordNumber = getActaRecordNumber(actaKey);
+    try {
+      setSendingBudget(actaKey);
+      const updated = await surveysService.sendActaToBudget(companyId, recordNumber);
+      setActaStatuses((prev) => new Map(prev).set(actaKey, updated));
+      toast.success('Acta enviada a presupuesto. Se notificó a la Directora Financiera.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al enviar el acta a presupuesto');
+    } finally {
+      setSendingBudget(null);
     }
   };
 
@@ -690,6 +729,9 @@ export default function ObrasListPage() {
                             const canSubmit = (rol?.startsWith('Director de Proyecto') || rol === 'Analista PMO') && status === 'borrador';
                             const canReview = (rol === 'Director Técnico' || rol === 'Analista PMO') && status === 'en_revision';
                             const canApprove = (rol === 'Gerencia de Proyectos' || rol === 'Analista PMO') && status === 'en_aprobacion';
+                            const presupuestoStatus = actaInfo?.presupuestoStatus ?? 'pendiente';
+                            const canSendToBudget = (rol === 'Director Técnico' || rol === 'Analista PMO')
+                              && (presupuestoStatus === 'pendiente' || presupuestoStatus === 'rechazado');
                             return (
                               <div className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-primary))]/20 px-4 py-3 flex flex-wrap items-center gap-3">
                                 <Layers className="w-4 h-4 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
@@ -748,6 +790,23 @@ export default function ObrasListPage() {
                                 {/* Status badge */}
                                 {getActaStatusBadge(actaInfo)}
 
+                                {/* Budget (presupuesto) status badge */}
+                                {presupuestoStatus !== 'pendiente' && (
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                                    presupuestoStatus === 'aprobado'
+                                      ? 'bg-green-50 text-green-700 border-green-200'
+                                      : presupuestoStatus === 'rechazado'
+                                        ? 'bg-red-50 text-red-700 border-red-200'
+                                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                                  }`}>
+                                    {presupuestoStatus === 'aprobado'
+                                      ? 'Ppto. aprobado'
+                                      : presupuestoStatus === 'rechazado'
+                                        ? 'Ppto. rechazado'
+                                        : 'En presupuesto'}
+                                  </span>
+                                )}
+
                                 {/* Rejection comment */}
                                 {status === 'borrador' && actaInfo?.rejectionComment && (
                                   <span className="flex items-center gap-1 text-xs text-red-600">
@@ -796,6 +855,19 @@ export default function ObrasListPage() {
                                     >
                                       <BadgeCheck className="w-3 h-3 mr-1.5" />
                                       Aprobar acta
+                                    </Button>
+                                  )}
+                                  {canSendToBudget && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                                      onClick={() => handleSendToBudget(actaKey)}
+                                      disabled={sendingBudget === actaKey}
+                                    >
+                                      {sendingBudget === actaKey
+                                        ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
+                                        : <Send className="w-3 h-3 mr-1.5" />}
+                                      Enviar a presupuesto
                                     </Button>
                                   )}
 
