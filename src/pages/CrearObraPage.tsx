@@ -504,9 +504,18 @@ export default function CrearObraPage() {
             quantity: parseFloat(item.quantity) || 0,
             observations: item.observations || undefined,
           })),
-        // Travel expenses (filter only items with quantity)
+        // Travel expenses: conservar filas con datos (cantidad, valor, u observación),
+        // y SIEMPRE las líneas personalizadas que tengan descripción —aunque no tengan
+        // cantidad— para que "Agregar línea" no se pierda al guardar.
         travelExpenses: travelExpenses
-          .filter((item) => parseFloat(item.quantity) > 0)
+          .filter((item) => {
+            const q = parseFloat(item.quantity);
+            const u = parseFloat(item.unitPrice);
+            const hasValue = (!isNaN(q) && q > 0) || (!isNaN(u) && u > 0);
+            const isFilledCustom = !!item.isCustom && !!(item.expenseType?.trim() || item.description?.trim());
+            const hasObservation = !!item.observations?.trim();
+            return hasValue || isFilledCustom || hasObservation;
+          })
           .map((item) => ({
             expenseType: item.expenseType,
             quantity: parseFloat(item.quantity) || 0,
