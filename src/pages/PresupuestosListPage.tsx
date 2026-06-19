@@ -1,10 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft, Plus, FileText, Pencil, Clock } from 'lucide-react';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Home, ArrowLeft, Plus, FileText, Pencil, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
@@ -12,6 +27,7 @@ import {
   directorBudgetsService,
   type DirectorBudget,
 } from '@/services/director-budgets.service';
+import { surveysService, type PendingBudgetActa } from '@/services/surveys.service';
 
 const fmt = (value: number | null): string => {
   if (value == null || value === 0) return '-';
@@ -42,6 +58,8 @@ export default function PresupuestosListPage() {
   const isAnalistaPMO = user?.nombreRol === 'Analista PMO';
   const canEditBudget = hasPermission('levantamientos:crear') || isAnalistaPMO;
   const isGerencia = hasPermission('levantamientos:aprobar') || isAnalistaPMO;
+  // Solo la Directora Financiera (o Analista PMO) revisa el presupuesto del ACTA.
+  const canReviewActaBudget = user?.nombreRol === 'Director Financiero y Administrativo' || isAnalistaPMO;
   const { access, loading: accessLoading } = useSurveyAccess();
   const departments = useMemo(() => {
     if (!access?.companies) return [];
@@ -57,6 +75,64 @@ export default function PresupuestosListPage() {
   const [pendingLoading, setPendingLoading] = useState(false);
   const [allBudgets, setAllBudgets] = useState<DirectorBudget[]>([]);
   const [allBudgetsLoading, setAllBudgetsLoading] = useState(false);
+
+  // Bandeja de actas con presupuesto en revisión (Directora Financiera)
+  const [pendingActas, setPendingActas] = useState<PendingBudgetActa[]>([]);
+  const [pendingActasLoading, setPendingActasLoading] = useState(false);
+  const [reviewingActa, setReviewingActa] = useState<string | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ companyId: number; actaNumber: string } | null>(null);
+  const [rejectMotivo, setRejectMotivo] = useState('');
+
+  const actaKey = (companyId: number, actaNumber: string) => `${companyId}:${actaNumber}`;
+
+  const loadPendingActas = async () => {
+    try {
+      setPendingActasLoading(true);
+      setPendingActas(await surveysService.getActasPendingBudget());
+    } catch {
+      setPendingActas([]);
+    } finally {
+      setPendingActasLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (accessLoading || !canReviewActaBudget) return;
+    loadPendingActas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessLoading, canReviewActaBudget]);
+
+  const handleApproveActaBudget = async (companyId: number, actaNumber: string) => {
+    const key = actaKey(companyId, actaNumber);
+    try {
+      setReviewingActa(key);
+      await surveysService.reviewActaBudget(companyId, actaNumber, 'aprobado');
+      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.actaNumber) !== key));
+      toast.success('Presupuesto del acta aprobado. Se notificó al Director Técnico.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al aprobar el presupuesto del acta');
+    } finally {
+      setReviewingActa(null);
+    }
+  };
+
+  const handleRejectActaBudget = async () => {
+    if (!rejectDialog) return;
+    const { companyId, actaNumber } = rejectDialog;
+    const key = actaKey(companyId, actaNumber);
+    try {
+      setReviewingActa(key);
+      await surveysService.reviewActaBudget(companyId, actaNumber, 'rechazado', rejectMotivo.trim());
+      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.actaNumber) !== key));
+      toast.success('Presupuesto del acta rechazado. Se notificó al Director Técnico.');
+      setRejectDialog(null);
+      setRejectMotivo('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al rechazar el presupuesto del acta');
+    } finally {
+      setReviewingActa(null);
+    }
+  };
 
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
@@ -195,6 +271,93 @@ export default function PresupuestosListPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* Actas pendientes de presupuesto — Directora Financiera */}
+        {canReviewActaBudget && !accessLoading && (
+          <div className="mb-6 bg-purple-50 border border-purple-200 rounded-lg shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-purple-100 border-b border-purple-200 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-purple-600" />
+              <span className="font-semibold text-purple-800 text-sm">Actas pendientes de presupuesto</span>
+              {!pendingActasLoading && pendingActas.length > 0 && (
+                <Badge className="ml-1 bg-purple-500 text-white hover:bg-purple-500 text-xs">
+                  {pendingActas.length}
+                </Badge>
+              )}
+            </div>
+            {pendingActasLoading ? (
+              <div className="flex justify-center py-4">
+                <div className="w-6 h-6 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin" />
+              </div>
+            ) : pendingActas.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-purple-600 italic">Sin actas pendientes de presupuesto.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-purple-200">
+                    <th className="px-4 py-2 text-left font-medium text-purple-700">N° Acta</th>
+                    <th className="px-4 py-2 text-left font-medium text-purple-700">Municipio / Empresa</th>
+                    <th className="px-4 py-2 text-center font-medium text-purple-700">Obras</th>
+                    <th className="px-4 py-2 text-center font-medium text-purple-700">Última edición</th>
+                    <th className="px-4 py-2 text-right font-medium text-purple-700">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingActas.map((a) => {
+                    const key = actaKey(a.companyId, a.actaNumber);
+                    const busy = reviewingActa === key;
+                    return (
+                      <tr key={key} className="border-b border-purple-100 hover:bg-purple-100/50 transition-colors">
+                        <td className="px-4 py-2 font-mono font-semibold text-purple-900">{a.actaNumber}</td>
+                        <td className="px-4 py-2 text-purple-700">{getMunicipality(a.companyName)}</td>
+                        <td className="px-4 py-2 text-center text-purple-700">{a.worksCount}</td>
+                        <td className="px-4 py-2 text-center text-xs text-purple-600">{fmtDate(a.updatedAt)}</td>
+                        <td className="px-4 py-2">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
+                              onClick={() =>
+                                navigate(
+                                  `/dashboard/levantamiento-obras/acta/${encodeURIComponent(a.actaNumber)}?company=${a.companyId}`,
+                                )
+                              }
+                              title="Ver detalle del acta"
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver detalle
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleApproveActaBudget(a.companyId, a.actaNumber)}
+                              disabled={busy}
+                            >
+                              {busy
+                                ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
+                                : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-50"
+                              onClick={() => { setRejectDialog({ companyId: a.companyId, actaNumber: a.actaNumber }); setRejectMotivo(''); }}
+                              disabled={busy}
+                            >
+                              <XCircle className="w-3.5 h-3.5 mr-1" />
+                              Rechazar
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         {accessLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-[hsl(var(--canalco-primary))]/30 border-t-[hsl(var(--canalco-primary))] rounded-full animate-spin" />
@@ -255,41 +418,43 @@ export default function PresupuestosListPage() {
           )
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              {departments.map((d) => (
-                <TabsTrigger key={d.name} value={d.name}>
-                  {d.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            {activeDept && activeDept.companies.length > 1 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button
-                  onClick={() => setSelectedCompanyId(null)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                    selectedCompanyId === null
-                      ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
-                      : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                  }`}
-                >
-                  Todos los municipios
-                </button>
-                {activeDept.companies.map((c) => (
-                  <button
-                    key={c.companyId}
-                    onClick={() => setSelectedCompanyId(c.companyId === selectedCompanyId ? null : c.companyId)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      selectedCompanyId === c.companyId
-                        ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
-                        : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                    }`}
-                  >
-                    {getMunicipioName(c.name)}
-                  </button>
-                ))}
+            <div className="flex flex-wrap items-end gap-4 mb-4">
+              <div className="w-56">
+                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+                <Select value={activeTab} onValueChange={setActiveTab}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Seleccionar departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.name} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+
+              {activeDept && activeDept.companies.length > 1 && (
+                <div className="w-56">
+                  <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                  <Select
+                    value={selectedCompanyId === null ? 'all' : String(selectedCompanyId)}
+                    onValueChange={(val) => setSelectedCompanyId(val === 'all' ? null : Number(val))}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Municipio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los municipios</SelectItem>
+                      {activeDept.companies.map((c) => (
+                        <SelectItem key={c.companyId} value={String(c.companyId)}>
+                          {getMunicipioName(c.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
 
             {/* Pendiente por Autorización — Gerencia y Analista PMO */}
             {(isGerencia || isAnalistaPMO) && (
@@ -465,6 +630,39 @@ export default function PresupuestosListPage() {
           </Tabs>
         )}
       </main>
+
+      {/* Diálogo de rechazo del presupuesto del acta — motivo obligatorio */}
+      <Dialog open={!!rejectDialog} onOpenChange={(open) => { if (!open) { setRejectDialog(null); setRejectMotivo(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar presupuesto — Acta {rejectDialog?.actaNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] block">
+              Motivo del rechazo (obligatorio)
+            </label>
+            <textarea
+              value={rejectMotivo}
+              onChange={(e) => setRejectMotivo(e.target.value)}
+              placeholder="Explique por qué se rechaza el presupuesto del acta..."
+              className="w-full text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md p-2 resize-none h-24 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setRejectDialog(null); setRejectMotivo(''); }}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleRejectActaBudget}
+              disabled={!rejectMotivo.trim() || (rejectDialog ? reviewingActa === `${rejectDialog.companyId}:${rejectDialog.actaNumber}` : false)}
+            >
+              <XCircle className="w-4 h-4 mr-1.5" />
+              Rechazar presupuesto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

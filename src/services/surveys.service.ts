@@ -623,6 +623,24 @@ export const surveysService = {
     const response = await api.patch(`/surveys/actas/${encodeURIComponent(actaNumber)}/send-to-budget`, { companyId });
     return response.data;
   },
+
+  async getActasPendingBudget(): Promise<PendingBudgetActa[]> {
+    const response = await api.get('/surveys/actas/pending-budget');
+    return response.data;
+  },
+
+  async reviewActaBudget(
+    companyId: number,
+    actaNumber: string,
+    decision: 'aprobado' | 'rechazado',
+    motivo?: string,
+  ): Promise<WorkActa> {
+    const response = await api.patch(
+      `/surveys/actas/${encodeURIComponent(actaNumber)}/review-budget`,
+      { companyId, decision, motivo },
+    );
+    return response.data;
+  },
 };
 
 // Reviewer Access Types
@@ -670,6 +688,7 @@ export interface WorkActa {
   actaNumber: string;
   status: ActaStatus;
   presupuestoStatus?: ActaBudgetStatus;
+  presupuestoRechazoMotivo?: string | null;
   projectCode: string | null;
   createdBy: number;
   reviewedBy: number | null;
@@ -678,6 +697,14 @@ export interface WorkActa {
   approvedAt: string | null;
   rejectionComment: string | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface PendingBudgetActa {
+  companyId: number;
+  actaNumber: string;
+  companyName: string | null;
+  worksCount: number;
   updatedAt: string;
 }
 

@@ -304,6 +304,8 @@ export default function PresupuestoPage() {
   const canApprove = hasPermission('levantamientos:aprobar') || isAnalistaPMO;
   const isGerenciaReview = budgetStatus === 'en_revision';
   const isReadOnly = !canEditBudget || (!isAnalistaPMO && budgetStatus !== 'draft');
+  // Gerencia, al autorizar (en_revision), puede editar SOLO la fila Otros Costos.
+  const canEditOtrosCostos = canApprove && budgetStatus === 'en_revision';
 
   const departments = useMemo(() => {
     if (!access?.companies) return [];
@@ -347,6 +349,8 @@ export default function PresupuestoPage() {
   const [legEj, setLegEj] = useState('');
   const [retPct, setRetPct] = useState('');
   const [retPctEj, setRetPctEj] = useState('');
+  const [estampillaPct, setEstampillaPct] = useState('');
+  const [estampillaPctEj, setEstampillaPctEj] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loadingMaterials, setLoadingMaterials] = useState(false);
   const [loadingWorkMaterials, setLoadingWorkMaterials] = useState(false);
@@ -418,6 +422,8 @@ export default function PresupuestoPage() {
         setLegEj(b.legEj != null ? String(b.legEj) : '');
         setRetPct(b.retPct != null ? String(b.retPct) : '');
         setRetPctEj(b.retPctEj != null ? String(b.retPctEj) : '');
+        setEstampillaPct(b.estampillaPct != null ? String(b.estampillaPct) : '');
+        setEstampillaPctEj(b.estampillaPctEj != null ? String(b.estampillaPctEj) : '');
         if (b.items?.length) {
           const regularItems = b.items.filter(
             (item) => !FIXED_ROW_NAMES.includes(item.descripcion as any)
@@ -488,6 +494,8 @@ export default function PresupuestoPage() {
         legEj: legEj ? parseFloat(legEj) : null,
         retPct: retPct ? parseFloat(retPct) : null,
         retPctEj: retPctEj ? parseFloat(retPctEj) : null,
+        estampillaPct: estampillaPct ? parseFloat(estampillaPct) : null,
+        estampillaPctEj: estampillaPctEj ? parseFloat(estampillaPctEj) : null,
         status: 'draft' as const,
         items: rows.map((r, i) => ({
           itemOrder: i + 1,
@@ -521,7 +529,7 @@ export default function PresupuestoPage() {
     fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes,
     observaciones, manoDeObra, manoDeObraEj, materialesInventario, materialesInventarioEj,
     valorFacturado, valorFacturadoEj, otrosCostos, otrosCostosEj,
-    leg, legEj, retPct, retPctEj, rows, navigate,
+    leg, legEj, retPct, retPctEj, estampillaPct, estampillaPctEj, rows, navigate,
   ]);
 
   const handleSubmitForReview = useCallback(async () => {
@@ -546,6 +554,14 @@ export default function PresupuestoPage() {
     if (!budgetId) return;
     try {
       setTransitioning(true);
+      // Gerencia pudo ajustar Otros Costos durante la autorización: se guarda al aprobar.
+      if (canEditOtrosCostos) {
+        await directorBudgetsService.updateOtrosCostos(
+          budgetId,
+          otrosCostos ? parseFloat(otrosCostos) : null,
+          otrosCostosEj ? parseFloat(otrosCostosEj) : null,
+        );
+      }
       await directorBudgetsService.approve(budgetId);
       setBudgetStatus('final');
       toast.success('Presupuesto aprobado como Final');
@@ -554,7 +570,7 @@ export default function PresupuestoPage() {
     } finally {
       setTransitioning(false);
     }
-  }, [budgetId]);
+  }, [budgetId, canEditOtrosCostos, otrosCostos, otrosCostosEj]);
 
   const handleReject = useCallback(async () => {
     if (!budgetId) return;
@@ -942,7 +958,8 @@ export default function PresupuestoPage() {
     const legPct = parseNum(leg);
     const totalObra = subTotal + mdo;
     const ret4 = valFact * (parseNum(retPct) / 100);
-    const totalAPagar = valFact - ret4;
+    const estampilla = valFact * (parseNum(estampillaPct) / 100);
+    const totalAPagar = valFact - ret4 - estampilla;
     const saldo = valFact - totalObra;
     const utilidad = saldo - otros;
     const legAmount = utilidad * (legPct / 100);
@@ -957,22 +974,23 @@ export default function PresupuestoPage() {
     const legPctEj = parseNum(legEj);
     const totalObraEj = ejecutadoTotal + mdoEj;
     const ret68 = valFactEj * (parseNum(retPctEj) / 100);
-    const totalAPagarEj = valFactEj - ret68;
+    const estampillaEj = valFactEj * (parseNum(estampillaPctEj) / 100);
+    const totalAPagarEj = valFactEj - ret68 - estampillaEj;
     const saldoEj = valFactEj - totalObraEj;
     const utilidadEj = saldoEj - otrosEj;
     const legAmountEj = utilidadEj * (legPctEj / 100);
     const utilidadFinalEj = utilidadEj - legAmountEj;
     const pctUtilidadEj = valFactEj !== 0 ? (utilidadEj / valFactEj) * 100 : 0;
     return {
-      subTotal, mdo, matInv, valFact, otros, legAmount,
+      subTotal, mdo, matInv, valFact, otros, legAmount, estampilla,
       totalObra, ret4, totalAPagar, saldo, utilidad, pctUtilidad, utilidadFinal,
-      ejecutadoTotal, mdoEj, matInvEj, valFactEj, otrosEj, legAmountEj,
+      ejecutadoTotal, mdoEj, matInvEj, valFactEj, otrosEj, legAmountEj, estampillaEj,
       totalObraEj, ret68, totalAPagarEj, saldoEj, utilidadEj, pctUtilidadEj, utilidadFinalEj,
     };
   }, [
     calculated, rows, travelCalculated, travelRows,
-    manoDeObra, materialesInventario, valorFacturado, otrosCostos, leg, retPct,
-    manoDeObraEj, materialesInventarioEj, valorFacturadoEj, otrosCostosEj, legEj, retPctEj,
+    manoDeObra, materialesInventario, valorFacturado, otrosCostos, leg, retPct, estampillaPct,
+    manoDeObraEj, materialesInventarioEj, valorFacturadoEj, otrosCostosEj, legEj, retPctEj, estampillaPctEj,
   ]);
 
   // Title bar label
@@ -1747,7 +1765,7 @@ export default function PresupuestoPage() {
               </div>
               <div>
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
-                  Valor Mínimo de los Excedentes (Dos meses de concepción)
+                  Valor Mínimo de los Excedentes (Dos meses de concesión)
                 </p>
                 <FormattedInput
                   value={valorMinimoExcedentes}
@@ -1840,6 +1858,27 @@ export default function PresupuestoPage() {
                     </td>
                   </tr>
                   <tr>
+                    <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">(-) ESTAMPILLA</td>
+                    <td className="py-1 pr-3">
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <div className="flex items-center gap-1">
+                          <Input type="number" min="0" max="100" step="0.01" value={estampillaPct} onChange={(e) => setEstampillaPct(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
+                        </div>
+                        {totals.estampilla > 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.estampilla)}</span>}
+                      </div>
+                    </td>
+                    <td className="py-1">
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <div className="flex items-center gap-1">
+                          <Input type="number" min="0" max="100" step="0.01" value={estampillaPctEj} onChange={(e) => setEstampillaPctEj(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
+                        </div>
+                        {totals.estampillaEj > 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.estampillaEj)}</span>}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">TOTAL A PAGAR ORDEN $</td>
                     <td className="py-1.5 text-right pr-3 font-medium">{totals.totalAPagar !== 0 ? fmt(totals.totalAPagar) : '-'}</td>
                     <td className="py-1.5 text-right font-medium">{totals.totalAPagarEj !== 0 ? fmt(totals.totalAPagarEj) : '-'}</td>
@@ -1852,10 +1891,10 @@ export default function PresupuestoPage() {
                   <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">OTROS COSTOS</td>
                     <td className="py-1 pr-3">
-                      <FormattedInput value={otrosCostos} onChange={setOtrosCostos} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={otrosCostos} onChange={setOtrosCostos} placeholder="0" disabled={isReadOnly && !canEditOtrosCostos} className="h-7 text-[16px] text-right" />
                     </td>
                     <td className="py-1">
-                      <FormattedInput value={otrosCostosEj} onChange={setOtrosCostosEj} placeholder="0" disabled={isReadOnly} className="h-7 text-[16px] text-right" />
+                      <FormattedInput value={otrosCostosEj} onChange={setOtrosCostosEj} placeholder="0" disabled={isReadOnly && !canEditOtrosCostos} className="h-7 text-[16px] text-right" />
                     </td>
                   </tr>
                   <tr>

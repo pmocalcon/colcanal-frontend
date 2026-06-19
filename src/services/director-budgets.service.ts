@@ -37,6 +37,8 @@ export interface CreateDirectorBudgetDto {
   legEj?: number | null;
   retPct?: number | null;
   retPctEj?: number | null;
+  estampillaPct?: number | null;
+  estampillaPctEj?: number | null;
   status?: BudgetStatus;
   items: DirectorBudgetItemDto[];
 }
@@ -83,6 +85,8 @@ export interface DirectorBudget {
   legEj: number | null;
   retPct: number | null;
   retPctEj: number | null;
+  estampillaPct: number | null;
+  estampillaPctEj: number | null;
   status: BudgetStatus;
   createdBy: number;
   createdAt: string;
@@ -141,6 +145,18 @@ export const directorBudgetsService = {
 
   async approve(budgetId: number): Promise<DirectorBudget> {
     const { data } = await api.patch(`/director-budgets/${budgetId}/status`, { status: 'final' });
+    return data;
+  },
+
+  async updateOtrosCostos(
+    budgetId: number,
+    otrosCostos: number | null,
+    otrosCostosEj: number | null,
+  ): Promise<DirectorBudget> {
+    const { data } = await api.patch(`/director-budgets/${budgetId}/otros-costos`, {
+      otrosCostos,
+      otrosCostosEj,
+    });
     return data;
   },
 
