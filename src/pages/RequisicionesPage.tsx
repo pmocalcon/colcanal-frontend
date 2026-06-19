@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { requisitionsService } from '@/services/requisitions.service';
 import { modulesService } from '@/services/modules.service';
-import type { Requisition, FilterRequisitionsParams } from '@/services/requisitions.service';
+import { masterDataService, type Company, type Project } from '@/services/master-data.service';
+import type { Requisition, FilterRequisitionsParams, PendingVoidRequest } from '@/services/requisitions.service';
 import type { ModulePermissions } from '@/services/modules.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle, Ban } from 'lucide-react';
+import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle, Ban, XCircle, Clock } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -16,6 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { formatDateShort } from '@/utils/dateUtils';
 import { RequisitionFilters, type FilterValues } from '@/components/ui/requisition-filters';
 
@@ -38,6 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
   pendiente_recepcion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
   en_recepcion: 'bg-violet-500/10 text-violet-700 border-violet-500/20',
   recepcion_completa: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
+  pendiente_anulacion: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
   anulada: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
 };
 
@@ -68,6 +78,15 @@ export default function RequisicionesPage() {
   // Selección para anulación (solo PMO)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [voidLoading, setVoidLoading] = useState(false);
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [voidMotivo, setVoidMotivo] = useState('');
+
+  // Bandeja de solicitudes de anulación (Directora Financiera)
+  const [pendingVoids, setPendingVoids] = useState<PendingVoidRequest[]>([]);
+  const [pendingVoidsLoading, setPendingVoidsLoading] = useState(false);
+  const [reviewingVoid, setReviewingVoid] = useState<number | null>(null);
+  const [voidRejectDialog, setVoidRejectDialog] = useState<{ requisitionId: number; requisitionNumber: string } | null>(null);
+  const [voidRejectMotivo, setVoidRejectMotivo] = useState('');
 
   // Filters state
   const [filters, setFilters] = useState<FilterValues>({
@@ -100,6 +119,31 @@ export default function RequisicionesPage() {
     { code: 'recepcion_completa', name: 'Recepción completa' },
   ];
 
+  // Empresas y proyectos para los filtros
+  const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    const loadMasterData = async () => {
+      try {
+        const [companies, projects] = await Promise.all([
+          masterDataService.getCompanies(),
+          masterDataService.getProjects(),
+        ]);
+        setAvailableCompanies(companies);
+        setAvailableProjects(projects);
+      } catch (err) {
+        console.error('Error loading companies/projects:', err);
+      }
+    };
+    loadMasterData();
+  }, []);
+
+  // Proyectos visibles según la empresa seleccionada
+  const visibleProjects = filters.company && filters.company !== 'all'
+    ? availableProjects.filter((p) => p.companyId === Number(filters.company))
+    : availableProjects;
+
   // Permisos dinámicos desde el backend
   const canCreateRequisitions = permissions?.crear ?? false;
 
@@ -128,6 +172,10 @@ export default function RequisicionesPage() {
   const isPmoRole = user?.nombreRol
     ? ['analista pmo', 'director pmo', 'compras'].includes(user.nombreRol.toLowerCase())
     : false;
+  // El rol Compras solicita la anulación (no anula directo); la Directora Financiera la aprueba.
+  const isComprasRole = user?.nombreRol?.toLowerCase() === 'compras';
+  const canReviewVoid =
+    user?.nombreRol === 'Director Financiero y Administrativo' || user?.nombreRol === 'Analista PMO';
 
   const loadRequisitions = async () => {
     try {
@@ -140,6 +188,9 @@ export default function RequisicionesPage() {
         status: filters.status && filters.status !== 'all' ? filters.status : undefined,
         fromDate: filters.startDate || undefined,
         toDate: filters.endDate || undefined,
+        companyId: filters.company && filters.company !== 'all' ? Number(filters.company) : undefined,
+        projectId: filters.project && filters.project !== 'all' ? Number(filters.project) : undefined,
+        search: filters.requisitionNumber?.trim() || undefined,
       };
 
       const response = isPmoRole
@@ -184,25 +235,82 @@ export default function RequisicionesPage() {
     });
   };
 
-  const handleVoid = async () => {
+  const handleVoid = () => {
     if (selectedIds.size === 0) return;
-    const confirmed = window.confirm(
-      `¿Estás seguro de anular ${selectedIds.size} requisición(es)? Esta acción no se puede deshacer.`
-    );
-    if (!confirmed) return;
+    setVoidMotivo('');
+    setVoidDialogOpen(true);
+  };
 
+  const confirmVoid = async () => {
+    if (selectedIds.size === 0 || !voidMotivo.trim()) return;
     setVoidLoading(true);
     try {
-      const result = await requisitionsService.voidRequisitions(Array.from(selectedIds));
+      const result = await requisitionsService.voidRequisitions(Array.from(selectedIds), voidMotivo.trim());
       setSelectedIds(new Set());
+      setVoidDialogOpen(false);
+      setVoidMotivo('');
       await loadRequisitions();
+      const requestedCount = result.requested?.length ?? 0;
+      if (requestedCount > 0) {
+        toast.success(`Solicitud de anulación enviada (${requestedCount}). La Directora Financiera debe aprobarla.`);
+      } else if (result.voided.length > 0) {
+        toast.success(`Anuladas: ${result.voided.length}.`);
+      }
       if (result.errors.length > 0) {
-        alert(`Anuladas: ${result.voided.length}. Errores: ${result.errors.map(e => `ID ${e.id}: ${e.reason}`).join(', ')}`);
+        toast.error(`Errores: ${result.errors.map(e => `ID ${e.id}: ${e.reason}`).join(', ')}`);
       }
     } catch {
-      alert('Error al anular las requisiciones');
+      toast.error('Error al anular las requisiciones');
     } finally {
       setVoidLoading(false);
+    }
+  };
+
+  const loadPendingVoids = async () => {
+    try {
+      setPendingVoidsLoading(true);
+      setPendingVoids(await requisitionsService.getPendingVoidRequests());
+    } catch {
+      setPendingVoids([]);
+    } finally {
+      setPendingVoidsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (canReviewVoid) loadPendingVoids();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReviewVoid]);
+
+  const handleApproveVoid = async (requisitionId: number) => {
+    try {
+      setReviewingVoid(requisitionId);
+      await requisitionsService.reviewVoidRequest(requisitionId, 'aprobado');
+      setPendingVoids((prev) => prev.filter((v) => v.requisitionId !== requisitionId));
+      toast.success('Anulación aprobada. Se notificó al solicitante.');
+      await loadRequisitions();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Error al aprobar la anulación');
+    } finally {
+      setReviewingVoid(null);
+    }
+  };
+
+  const handleRejectVoid = async () => {
+    if (!voidRejectDialog || !voidRejectMotivo.trim()) return;
+    const { requisitionId } = voidRejectDialog;
+    try {
+      setReviewingVoid(requisitionId);
+      await requisitionsService.reviewVoidRequest(requisitionId, 'rechazado', voidRejectMotivo.trim());
+      setPendingVoids((prev) => prev.filter((v) => v.requisitionId !== requisitionId));
+      toast.success('Solicitud de anulación rechazada. Se notificó al solicitante.');
+      setVoidRejectDialog(null);
+      setVoidRejectMotivo('');
+      await loadRequisitions();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Error al rechazar la anulación');
+    } finally {
+      setReviewingVoid(null);
     }
   };
 
@@ -234,6 +342,7 @@ export default function RequisicionesPage() {
       pendiente_recepcion: 'Pendiente de recepción',
       en_recepcion: 'En recepción',
       recepcion_completa: 'Recepción completa',
+      pendiente_anulacion: 'Pendiente de anulación',
       anulada: 'Anulada',
     };
     return labels[code] || code;
@@ -405,19 +514,97 @@ export default function RequisicionesPage() {
               size="lg"
             >
               <Ban className="w-5 h-5 mr-2" />
-              {voidLoading ? 'Anulando...' : `Anular seleccionadas (${selectedIds.size})`}
+              {voidLoading
+                ? (isComprasRole ? 'Enviando...' : 'Anulando...')
+                : isComprasRole
+                  ? `Solicitar anulación (${selectedIds.size})`
+                  : `Anular seleccionadas (${selectedIds.size})`}
             </Button>
           )}
         </div>
+
+        {/* Solicitudes de anulación pendientes — Directora Financiera */}
+        {canReviewVoid && (
+          <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-orange-100 border-b border-orange-200 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-orange-600" />
+              <span className="font-semibold text-orange-800 text-sm">Solicitudes de anulación pendientes</span>
+              {!pendingVoidsLoading && pendingVoids.length > 0 && (
+                <Badge className="ml-1 bg-orange-500 text-white hover:bg-orange-500 text-xs">{pendingVoids.length}</Badge>
+              )}
+            </div>
+            {pendingVoidsLoading ? (
+              <div className="flex justify-center py-4">
+                <div className="w-6 h-6 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin" />
+              </div>
+            ) : pendingVoids.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-orange-600 italic">Sin solicitudes de anulación pendientes.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-orange-200">
+                    <th className="px-4 py-2 text-left font-medium text-orange-700">N° Requisición</th>
+                    <th className="px-4 py-2 text-left font-medium text-orange-700">Empresa / Proyecto</th>
+                    <th className="px-4 py-2 text-left font-medium text-orange-700">Solicitó</th>
+                    <th className="px-4 py-2 text-left font-medium text-orange-700">Motivo</th>
+                    <th className="px-4 py-2 text-right font-medium text-orange-700">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingVoids.map((v) => {
+                    const busy = reviewingVoid === v.requisitionId;
+                    return (
+                      <tr key={v.requisitionId} className="border-b border-orange-100 hover:bg-orange-100/50 transition-colors">
+                        <td className="px-4 py-2 font-mono font-semibold text-orange-900">{v.requisitionNumber}</td>
+                        <td className="px-4 py-2 text-orange-700">
+                          {v.companyName ?? '-'}{v.projectName ? ` / ${v.projectName}` : ''}
+                        </td>
+                        <td className="px-4 py-2 text-orange-700">{v.requestedByName ?? '-'}</td>
+                        <td className="px-4 py-2 text-orange-700 max-w-[260px]">
+                          <span className="line-clamp-2">{v.motivo ?? '-'}</span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleApproveVoid(v.requisitionId)}
+                              disabled={busy}
+                            >
+                              {busy
+                                ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
+                                : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-50"
+                              onClick={() => { setVoidRejectDialog({ requisitionId: v.requisitionId, requisitionNumber: v.requisitionNumber }); setVoidRejectMotivo(''); }}
+                              disabled={busy}
+                            >
+                              <XCircle className="w-3.5 h-3.5 mr-1" />
+                              Rechazar
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-6 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-300))] overflow-hidden shadow-sm">
           <RequisitionFilters
             filters={filters}
-            onFiltersChange={setFilters}
+            onFiltersChange={handleFilterChange}
             availableStatuses={availableStatuses}
-            availableCompanies={[]}
-            availableProjects={[]}
+            availableCompanies={availableCompanies}
+            availableProjects={visibleProjects}
           />
         </div>
 
@@ -843,6 +1030,86 @@ export default function RequisicionesPage() {
           </div>
         )}
       </main>
+
+      {/* Diálogo de anulación — motivo obligatorio */}
+      <Dialog open={voidDialogOpen} onOpenChange={(open) => { if (!open) { setVoidDialogOpen(false); setVoidMotivo(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {isComprasRole ? 'Solicitar anulación' : 'Anular'} de {selectedIds.size} requisición(es)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-muted-foreground">
+              {isComprasRole
+                ? 'La anulación quedará pendiente de aprobación de la Directora Financiera. Indica el motivo.'
+                : 'Esta acción no se puede deshacer. Indica el motivo de la anulación.'}
+            </p>
+            <label className="text-xs font-medium text-foreground block">
+              Motivo de la anulación (obligatorio)
+            </label>
+            <textarea
+              autoFocus
+              value={voidMotivo}
+              onChange={(e) => setVoidMotivo(e.target.value)}
+              placeholder="Explica por qué se anula la(s) requisición(es)..."
+              className="w-full text-sm border border-input rounded-md p-2 resize-none h-24 focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setVoidDialogOpen(false); setVoidMotivo(''); }} disabled={voidLoading}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmVoid}
+              disabled={voidLoading || !voidMotivo.trim()}
+            >
+              <Ban className="w-4 h-4 mr-1.5" />
+              {isComprasRole
+                ? (voidLoading ? 'Enviando...' : 'Solicitar anulación')
+                : (voidLoading ? 'Anulando...' : 'Anular')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de rechazo de la solicitud de anulación — motivo obligatorio */}
+      <Dialog open={!!voidRejectDialog} onOpenChange={(open) => { if (!open) { setVoidRejectDialog(null); setVoidRejectMotivo(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar anulación — {voidRejectDialog?.requisitionNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-muted-foreground">
+              La requisición volverá a su estado anterior (no se anulará). Indica el motivo del rechazo.
+            </p>
+            <label className="text-xs font-medium text-foreground block">
+              Motivo del rechazo (obligatorio)
+            </label>
+            <textarea
+              autoFocus
+              value={voidRejectMotivo}
+              onChange={(e) => setVoidRejectMotivo(e.target.value)}
+              placeholder="Explica por qué se rechaza la anulación..."
+              className="w-full text-sm border border-input rounded-md p-2 resize-none h-24 focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setVoidRejectDialog(null); setVoidRejectMotivo(''); }} disabled={reviewingVoid !== null}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleRejectVoid}
+              disabled={!voidRejectMotivo.trim() || reviewingVoid !== null}
+            >
+              <XCircle className="w-4 h-4 mr-1.5" />
+              Rechazar anulación
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

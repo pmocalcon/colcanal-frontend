@@ -1,5 +1,15 @@
 import api from './api';
 
+export interface PendingVoidRequest {
+  requisitionId: number;
+  requisitionNumber: string;
+  companyName: string | null;
+  projectName: string | null;
+  requestedByName: string | null;
+  motivo: string | null;
+  requestedAt: string | null;
+}
+
 // Types
 // NOTA: Los tipos están siendo migrados a @/types/requisition.types.ts
 // Para nuevas funcionalidades, preferir importar desde @/types
@@ -106,6 +116,8 @@ export interface FilterRequisitionsParams {
   fromDate?: string;
   toDate?: string;
   projectId?: number;
+  companyId?: number;
+  search?: string;
 }
 
 export interface CreateRequisitionItemDto {
@@ -211,15 +223,39 @@ export const requisitionsService = {
   },
 
   /**
-   * Void requisitions (analista PMO / director PMO only)
+   * Anular requisiciones. PMO anula directo; el rol Compras genera una
+   * solicitud (requested) que la Directora Financiera aprueba/rechaza.
    */
   async voidRequisitions(
     ids: number[],
     comments?: string,
-  ): Promise<{ voided: number[]; errors: { id: number; reason: string }[] }> {
-    const response = await api.post<{ voided: number[]; errors: { id: number; reason: string }[] }>(
+  ): Promise<{ voided: number[]; requested?: number[]; errors: { id: number; reason: string }[] }> {
+    const response = await api.post<{ voided: number[]; requested?: number[]; errors: { id: number; reason: string }[] }>(
       '/purchases/requisitions/void-requisitions',
       { ids, comments },
+    );
+    return response.data;
+  },
+
+  /**
+   * Solicitudes de anulación pendientes (bandeja de la Directora Financiera).
+   */
+  async getPendingVoidRequests(): Promise<PendingVoidRequest[]> {
+    const response = await api.get<PendingVoidRequest[]>('/purchases/requisitions/pending-void');
+    return response.data;
+  },
+
+  /**
+   * Aprobar/rechazar una solicitud de anulación (Directora Financiera).
+   */
+  async reviewVoidRequest(
+    requisitionId: number,
+    decision: 'aprobado' | 'rechazado',
+    motivo?: string,
+  ): Promise<{ requisitionId: number; newStatus: string }> {
+    const response = await api.patch<{ requisitionId: number; newStatus: string }>(
+      `/purchases/requisitions/${requisitionId}/review-void`,
+      { decision, motivo },
     );
     return response.data;
   },
