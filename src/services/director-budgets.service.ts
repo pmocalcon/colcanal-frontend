@@ -24,6 +24,7 @@ export interface CreateDirectorBudgetDto {
   fuenteFinanciacion?: string;
   valorMinimoExcedentes?: number | null;
   valorActualExcedentes?: number | null;
+  valorActualExcedentesTexto?: string;
   saldoDisponible?: number | null;
   manoDeObra?: number | null;
   manoDeObraEj?: number | null;
@@ -72,6 +73,7 @@ export interface DirectorBudget {
   fuenteFinanciacion: string | null;
   valorMinimoExcedentes: number | null;
   valorActualExcedentes: number | null;
+  valorActualExcedentesTexto: string | null;
   saldoDisponible: number | null;
   manoDeObra: number | null;
   manoDeObraEj: number | null;
@@ -152,10 +154,14 @@ export const directorBudgetsService = {
     budgetId: number,
     otrosCostos: number | null,
     otrosCostosEj: number | null,
+    leg: number | null = null,
+    legEj: number | null = null,
   ): Promise<DirectorBudget> {
     const { data } = await api.patch(`/director-budgets/${budgetId}/otros-costos`, {
       otrosCostos,
       otrosCostosEj,
+      leg,
+      legEj,
     });
     return data;
   },

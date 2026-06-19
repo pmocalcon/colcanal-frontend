@@ -304,8 +304,8 @@ export default function PresupuestoPage() {
   const canApprove = hasPermission('levantamientos:aprobar') || isAnalistaPMO;
   const isGerenciaReview = budgetStatus === 'en_revision';
   const isReadOnly = !canEditBudget || (!isAnalistaPMO && budgetStatus !== 'draft');
-  // Gerencia, al autorizar (en_revision), puede editar SOLO la fila Otros Costos.
-  const canEditOtrosCostos = canApprove && budgetStatus === 'en_revision';
+  // Gerencia, al autorizar (en_revision), puede editar SOLO Otros Costos y Costos L.N.A.
+  const canEditAuthFields = canApprove && budgetStatus === 'en_revision';
 
   const departments = useMemo(() => {
     if (!access?.companies) return [];
@@ -333,6 +333,7 @@ export default function PresupuestoPage() {
   const [fuenteFinanciacion, setFuenteFinanciacion] = useState('');
   const [valorMinimoExcedentes, setValorMinimoExcedentes] = useState('');
   const [valorActualExcedentes, setValorActualExcedentes] = useState('');
+  const [valorActualExcedentesTexto, setValorActualExcedentesTexto] = useState('');
   // Saldo disponible para obras = Valor actual − Valor mínimo de excedentes (automático, solo lectura)
   const saldoDisponibleNum = parseNum(valorActualExcedentes) - parseNum(valorMinimoExcedentes);
   const saldoDisponible = saldoDisponibleNum !== 0 ? String(saldoDisponibleNum) : '';
@@ -343,6 +344,11 @@ export default function PresupuestoPage() {
   const [materialesInventarioEj, setMaterialesInventarioEj] = useState('');
   const [valorFacturado, setValorFacturado] = useState('');
   const [valorFacturadoEj, setValorFacturadoEj] = useState('');
+  // Valor acta = Valor facturado; Saldo disponible (final) = Saldo disponible para obras − Valor facturado
+  const valorActaNum = parseNum(valorFacturado);
+  const valorActa = valorActaNum !== 0 ? String(valorActaNum) : '';
+  const saldoDisponibleFinalNum = saldoDisponibleNum - valorActaNum;
+  const saldoDisponibleFinal = saldoDisponibleFinalNum !== 0 ? String(saldoDisponibleFinalNum) : '';
   const [otrosCostos, setOtrosCostos] = useState('');
   const [otrosCostosEj, setOtrosCostosEj] = useState('');
   const [leg, setLeg] = useState('');
@@ -409,6 +415,7 @@ export default function PresupuestoPage() {
         setFuenteFinanciacion(b.fuenteFinanciacion ?? '');
         setValorMinimoExcedentes(b.valorMinimoExcedentes != null ? String(b.valorMinimoExcedentes) : '');
         setValorActualExcedentes(b.valorActualExcedentes != null ? String(b.valorActualExcedentes) : '');
+        setValorActualExcedentesTexto(b.valorActualExcedentesTexto ?? '');
         setObservaciones(b.observaciones ?? '');
         setManoDeObra(b.manoDeObra != null ? String(b.manoDeObra) : '');
         setManoDeObraEj(b.manoDeObraEj != null ? String(b.manoDeObraEj) : '');
@@ -462,11 +469,39 @@ export default function PresupuestoPage() {
     load();
   }, [budgetId, departments, accessLoading]);
 
+  // Resuelve el municipio de un conjunto de obras. En Antioquia el municipio es el PROYECTO
+  // (las obras pertenecen a "Canales & Contactos" y el municipio sale del proyecto); en otros
+  // departamentos el municipio es la empresa. Devuelve '' si abarca varios municipios.
+  const resolveMunicipioName = useCallback((list: Work[]): string => {
+    const projectIds = Array.from(
+      new Set(list.filter((w) => w.projectId != null).map((w) => w.projectId)),
+    );
+    if (projectIds.length === 1) {
+      const p = access?.projects?.find((pr) => pr.projectId === projectIds[0]);
+      if (p?.name) return getMunicipioName(p.name);
+    }
+    const companyIds = Array.from(new Set(list.map((w) => w.companyId)));
+    if (companyIds.length === 1 && selectedDept) {
+      const c = selectedDept.companies.find((cc) => cc.companyId === companyIds[0]);
+      if (c) return getMunicipioName(c.name);
+    }
+    return '';
+  }, [access, selectedDept]);
+
   const handleSave = useCallback(async () => {
     try {
       setSaving(true);
       const selectedWork = works.find((w) => w.workId === selectedWorkId);
+      // Guardamos el municipio resuelto (proyecto en Antioquia, empresa en el resto) como
+      // companyName, así la lista lo muestra. '' si el acta abarca varios municipios.
+      const municipio =
+        workSelectionMode === 'agrupado' && selectedActa
+          ? resolveMunicipioName(works.filter((w) => w.recordNumber === selectedActa))
+          : selectedWork
+            ? resolveMunicipioName([selectedWork])
+            : '';
       const companyName =
+        (municipio || undefined) ??
         selectedWork?.company?.name ??
         (selectedDept?.companies?.length === 1 ? selectedDept.companies[0].name : undefined);
       const dto = {
@@ -480,6 +515,7 @@ export default function PresupuestoPage() {
         fuenteFinanciacion: fuenteFinanciacion || undefined,
         valorMinimoExcedentes: valorMinimoExcedentes ? parseFloat(valorMinimoExcedentes) : null,
         valorActualExcedentes: valorActualExcedentes ? parseFloat(valorActualExcedentes) : null,
+        valorActualExcedentesTexto: valorActualExcedentesTexto.trim() || undefined,
         saldoDisponible: saldoDisponibleNum || null,
         observaciones: observaciones || undefined,
         manoDeObra: manoDeObra ? parseFloat(manoDeObra) : null,
@@ -526,10 +562,10 @@ export default function PresupuestoPage() {
     }
   }, [
     budgetId, workSelectionMode, selectedWorkId, selectedActa, selectedDept, selectedWorkName,
-    fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes,
+    fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes, valorActualExcedentesTexto,
     observaciones, manoDeObra, manoDeObraEj, materialesInventario, materialesInventarioEj,
     valorFacturado, valorFacturadoEj, otrosCostos, otrosCostosEj,
-    leg, legEj, retPct, retPctEj, estampillaPct, estampillaPctEj, rows, navigate,
+    leg, legEj, retPct, retPctEj, estampillaPct, estampillaPctEj, rows, works, resolveMunicipioName, navigate,
   ]);
 
   const handleSubmitForReview = useCallback(async () => {
@@ -554,12 +590,14 @@ export default function PresupuestoPage() {
     if (!budgetId) return;
     try {
       setTransitioning(true);
-      // Gerencia pudo ajustar Otros Costos durante la autorización: se guarda al aprobar.
-      if (canEditOtrosCostos) {
+      // Gerencia pudo ajustar Otros Costos y Costos L.N.A durante la autorización: se guardan al aprobar.
+      if (canEditAuthFields) {
         await directorBudgetsService.updateOtrosCostos(
           budgetId,
           otrosCostos ? parseFloat(otrosCostos) : null,
           otrosCostosEj ? parseFloat(otrosCostosEj) : null,
+          leg ? parseFloat(leg) : null,
+          legEj ? parseFloat(legEj) : null,
         );
       }
       await directorBudgetsService.approve(budgetId);
@@ -570,7 +608,7 @@ export default function PresupuestoPage() {
     } finally {
       setTransitioning(false);
     }
-  }, [budgetId, canEditOtrosCostos, otrosCostos, otrosCostosEj]);
+  }, [budgetId, canEditAuthFields, otrosCostos, otrosCostosEj, leg, legEj]);
 
   const handleReject = useCallback(async () => {
     if (!budgetId) return;
@@ -999,6 +1037,30 @@ export default function PresupuestoPage() {
       ? `Acta ${selectedActa}`
       : selectedWorkName;
 
+  // Municipio para mostrarlo en la cabecera, después del departamento.
+  const selectedMunicipioName = useMemo(() => {
+    if (!selectedDept) return '';
+    // 1) Municipio elegido explícitamente en el filtro
+    if (selectedMunicipalityId != null) {
+      const c = selectedDept.companies.find((x) => x.companyId === selectedMunicipalityId);
+      if (c) return getMunicipioName(c.name);
+    }
+    // 2) Departamento con un solo municipio
+    if (selectedDept.companies.length === 1) {
+      return getMunicipioName(selectedDept.companies[0].name);
+    }
+    // 3) Individual: municipio de la obra seleccionada (proyecto o empresa)
+    if (workSelectionMode === 'individual' && selectedWorkId != null) {
+      const w = works.find((x) => x.workId === selectedWorkId);
+      return w ? resolveMunicipioName([w]) : '';
+    }
+    // 4) Agrupado: si todas las obras del acta son del mismo municipio, mostrarlo
+    if (workSelectionMode === 'agrupado' && selectedActa) {
+      return resolveMunicipioName(works.filter((w) => w.recordNumber === selectedActa));
+    }
+    return '';
+  }, [selectedDept, selectedMunicipalityId, workSelectionMode, selectedWorkId, selectedActa, works, resolveMunicipioName]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       {/* Header */}
@@ -1136,8 +1198,9 @@ export default function PresupuestoPage() {
       </header>
 
       <main className="px-4 py-6">
-        {/* Selectors row */}
-        {!isGerenciaReview && <div className="mb-4 flex flex-wrap items-center gap-4">
+        {/* Selectors row: solo al crear un presupuesto nuevo. Al editar uno guardado
+            (o en revisión de Gerencia) se ocultan para no reasignar depto/municipio/acta. */}
+        {!isGerenciaReview && budgetId === null && <div className="mb-4 flex flex-wrap items-center gap-4">
 
           {/* Departamento */}
           <div className="flex items-center gap-2">
@@ -1435,7 +1498,7 @@ export default function PresupuestoPage() {
           <div className="bg-[hsl(var(--canalco-primary))] px-6 py-3 text-center">
             <h2 className="text-base font-bold text-white tracking-wider">
               {selectedDept
-                ? `${selectedDept.name.toUpperCase()}${selectionLabel ? ` / ${selectionLabel.toUpperCase()}` : ''} — `
+                ? `${selectedDept.name.toUpperCase()}${selectedMunicipioName ? ` / ${selectedMunicipioName.toUpperCase()}` : ''}${selectionLabel ? ` / ${selectionLabel.toUpperCase()}` : ''} — `
                 : ''}PRESUPUESTO {STATUS_TITLE_LABELS[budgetStatus]}
             </h2>
           </div>
@@ -1752,9 +1815,22 @@ export default function PresupuestoPage() {
                 />
               </div>
               <div>
-                <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
-                  Valor Actual de Excedentes
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide">
+                    Valor Actual de Excedentes
+                  </p>
+                  <Input
+                    value={valorActualExcedentesTexto}
+                    onChange={(e) => setValorActualExcedentesTexto(e.target.value)}
+                    disabled={isReadOnly}
+                    placeholder="texto"
+                    aria-label="Texto adicional de valor actual de excedentes"
+                    className="h-7 px-1 text-[16px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-700))] border-0 border-b border-[hsl(var(--canalco-neutral-300))] rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:border-[hsl(var(--canalco-primary))] disabled:opacity-80 disabled:cursor-default"
+                    style={{
+                      width: `${Math.min(Math.max(valorActualExcedentesTexto.length + 2, 10), 42)}ch`,
+                    }}
+                  />
+                </div>
                 <FormattedInput
                   value={valorActualExcedentes}
                   onChange={setValorActualExcedentes}
@@ -1765,7 +1841,7 @@ export default function PresupuestoPage() {
               </div>
               <div>
                 <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
-                  Valor Mínimo de los Excedentes (Dos meses de concesión)
+                  CONCESIÓN, INTERVENTORIA Y ENERGÍA (2 Meses)
                 </p>
                 <FormattedInput
                   value={valorMinimoExcedentes}
@@ -1781,6 +1857,30 @@ export default function PresupuestoPage() {
                 </p>
                 <FormattedInput
                   value={saldoDisponible}
+                  onChange={() => {}}
+                  disabled
+                  placeholder="0"
+                  className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"
+                />
+              </div>
+              <div>
+                <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
+                  Valor de la Obra
+                </p>
+                <FormattedInput
+                  value={valorActa}
+                  onChange={() => {}}
+                  disabled
+                  placeholder="0"
+                  className="text-[16px] text-right max-w-[180px] disabled:opacity-80 disabled:cursor-default"
+                />
+              </div>
+              <div>
+                <p className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1 uppercase tracking-wide">
+                  Saldo Disponible
+                </p>
+                <FormattedInput
+                  value={saldoDisponibleFinal}
                   onChange={() => {}}
                   disabled
                   placeholder="0"
@@ -1884,18 +1984,18 @@ export default function PresupuestoPage() {
                     <td className="py-1.5 text-right font-medium">{totals.totalAPagarEj !== 0 ? fmt(totals.totalAPagarEj) : '-'}</td>
                   </tr>
                   <tr>
+                    <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">OTROS COSTOS</td>
+                    <td className="py-1 pr-3">
+                      <FormattedInput value={otrosCostos} onChange={setOtrosCostos} placeholder="0" disabled={isReadOnly && !canEditAuthFields} className="h-7 text-[16px] text-right" />
+                    </td>
+                    <td className="py-1">
+                      <FormattedInput value={otrosCostosEj} onChange={setOtrosCostosEj} placeholder="0" disabled={isReadOnly && !canEditAuthFields} className="h-7 text-[16px] text-right" />
+                    </td>
+                  </tr>
+                  <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">SALDO</td>
                     <td className="py-1.5 text-right pr-3 font-medium">{totals.saldo !== 0 ? fmt(totals.saldo) : '-'}</td>
                     <td className="py-1.5 text-right font-medium">{totals.saldoEj !== 0 ? fmt(totals.saldoEj) : '-'}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">OTROS COSTOS</td>
-                    <td className="py-1 pr-3">
-                      <FormattedInput value={otrosCostos} onChange={setOtrosCostos} placeholder="0" disabled={isReadOnly && !canEditOtrosCostos} className="h-7 text-[16px] text-right" />
-                    </td>
-                    <td className="py-1">
-                      <FormattedInput value={otrosCostosEj} onChange={setOtrosCostosEj} placeholder="0" disabled={isReadOnly && !canEditOtrosCostos} className="h-7 text-[16px] text-right" />
-                    </td>
                   </tr>
                   <tr>
                     <td className="py-1.5 font-semibold text-[hsl(var(--canalco-neutral-700))]">UTILIDAD DE LA OBRA</td>
@@ -1920,7 +2020,7 @@ export default function PresupuestoPage() {
                     <td className="py-1 pr-3">
                       <div className="flex flex-col gap-0.5 items-end">
                         <div className="flex items-center gap-1">
-                          <Input type="number" min="0" max="100" step="0.01" value={leg} onChange={(e) => setLeg(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <Input type="number" min="0" max="100" step="0.01" value={leg} onChange={(e) => setLeg(e.target.value)} placeholder="%" disabled={isReadOnly && !canEditAuthFields} className="h-6 text-[16px] text-right w-14" />
                           <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
                         </div>
                         {totals.legAmount !== 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.legAmount)}</span>}
@@ -1929,7 +2029,7 @@ export default function PresupuestoPage() {
                     <td className="py-1">
                       <div className="flex flex-col gap-0.5 items-end">
                         <div className="flex items-center gap-1">
-                          <Input type="number" min="0" max="100" step="0.01" value={legEj} onChange={(e) => setLegEj(e.target.value)} placeholder="%" disabled={isReadOnly} className="h-6 text-[16px] text-right w-14" />
+                          <Input type="number" min="0" max="100" step="0.01" value={legEj} onChange={(e) => setLegEj(e.target.value)} placeholder="%" disabled={isReadOnly && !canEditAuthFields} className="h-6 text-[16px] text-right w-14" />
                           <span className="text-[16px] text-[hsl(var(--canalco-neutral-500))]">%</span>
                         </div>
                         {totals.legAmountEj !== 0 && <span className="text-[16px] text-red-600 font-medium">{fmt(totals.legAmountEj)}</span>}
