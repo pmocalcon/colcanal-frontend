@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Fragment, useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
@@ -37,6 +37,14 @@ function pct(executed: number, planned: number): number {
 }
 
 type WorkStatus = 'on-track' | 'at-risk' | 'delayed';
+type DailyPlanCell = { planned: string; executed: string };
+type DailyPlanMap = Record<string, Record<number, DailyPlanCell>>;
+type ActaScheduleRow = { work: Work; schedule: ScheduleDetail };
+type ActaDailyPlanMap = Record<number, DailyPlanMap>;
+type NumberDailyMap = Record<string, Record<string, number>>;
+type ActaMaterialRow = ActaScheduleRow & { materials: SurveyMaterialItem[] };
+type ActaActivityRowsMap = Record<number, Array<{ id: string; name: string }>>;
+type ActaNumberDailyMap = Record<number, NumberDailyMap>;
 
 function formatDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -169,6 +177,13 @@ export default function CronogramaPage() {
   // ── Vista de acta (Gantt de todas las obras del acta)
   const [selectedActa, setSelectedActa] = useState<string | null>(null);
   const [actaGanttObras, setActaGanttObras] = useState<ActaGanttObra[]>([]);
+  const [actaScheduleRows, setActaScheduleRows] = useState<ActaScheduleRow[]>([]);
+  const [actaDailyPlans, setActaDailyPlans] = useState<ActaDailyPlanMap>({});
+  const [actaContractualDates, setActaContractualDates] = useState<Record<number, { start: string; end: string }>>({});
+  const [actaMaterialRows, setActaMaterialRows] = useState<ActaMaterialRow[]>([]);
+  const [actaMaterialDailyMap, setActaMaterialDailyMap] = useState<ActaNumberDailyMap>({});
+  const [actaActivityRows, setActaActivityRows] = useState<ActaActivityRowsMap>({});
+  const [actaActivityDailyMap, setActaActivityDailyMap] = useState<ActaNumberDailyMap>({});
   const [loadingActa, setLoadingActa] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -186,6 +201,14 @@ export default function CronogramaPage() {
   const [dailyPlans, setDailyPlans] = useState<Record<string, Record<number, { planned: string; executed: string }>>>({});
   const [savingDailyPlans, setSavingDailyPlans] = useState(false);
   const [lastSavedDailyPlan, setLastSavedDailyPlan] = useState<string | null>(null);
+  const [savingActaDailyPlans, setSavingActaDailyPlans] = useState(false);
+  const [lastSavedActaDailyPlan, setLastSavedActaDailyPlan] = useState<string | null>(null);
+  const [savingActaContractual, setSavingActaContractual] = useState(false);
+  const [lastSavedActaContractual, setLastSavedActaContractual] = useState<string | null>(null);
+  const [savingActaMaterials, setSavingActaMaterials] = useState(false);
+  const [lastSavedActaMaterials, setLastSavedActaMaterials] = useState<string | null>(null);
+  const [savingActaActivities, setSavingActaActivities] = useState(false);
+  const [lastSavedActaActivities, setLastSavedActaActivities] = useState<string | null>(null);
   // sum of planned quantities per ucap from all daily plans up to today
   const [planToDateMap, setPlanToDateMap] = useState<Record<number, number>>({});
   const [surveyMaterials, setSurveyMaterials] = useState<SurveyMaterialItem[]>([]);
@@ -297,6 +320,19 @@ export default function CronogramaPage() {
   }, [activeCompanyIds]);
 
   useEffect(() => {
+    setSelectedActa(null);
+    setActaGanttObras([]);
+    setActaScheduleRows([]);
+    setActaDailyPlans({});
+    setLastSavedActaDailyPlan(null);
+    setActaContractualDates({});
+    setLastSavedActaContractual(null);
+    setActaMaterialRows([]);
+    setActaMaterialDailyMap({});
+    setLastSavedActaMaterials(null);
+    setActaActivityRows({});
+    setActaActivityDailyMap({});
+    setLastSavedActaActivities(null);
     setSelectedWork(null);
     setSchedule(null);
     setSearch('');
@@ -311,6 +347,18 @@ export default function CronogramaPage() {
       if (!ok) return;
     }
     setSelectedActa(null);
+    setActaGanttObras([]);
+    setActaScheduleRows([]);
+    setActaDailyPlans({});
+    setLastSavedActaDailyPlan(null);
+    setActaContractualDates({});
+    setLastSavedActaContractual(null);
+    setActaMaterialRows([]);
+    setActaMaterialDailyMap({});
+    setLastSavedActaMaterials(null);
+    setActaActivityRows({});
+    setActaActivityDailyMap({});
+    setLastSavedActaActivities(null);
     setSelectedWork(work);
     setSchedule(null);
     try {
@@ -376,11 +424,37 @@ export default function CronogramaPage() {
     setIsDirty(false);
     setSelectedActa(acta);
     setActaGanttObras([]);
+    setActaScheduleRows([]);
+    setActaDailyPlans({});
+    setLastSavedActaDailyPlan(null);
+    setActaContractualDates({});
+    setLastSavedActaContractual(null);
+    setActaMaterialRows([]);
+    setActaMaterialDailyMap({});
+    setLastSavedActaMaterials(null);
+    setActaActivityRows({});
+    setActaActivityDailyMap({});
+    setLastSavedActaActivities(null);
+    setWeekOffset(0);
+    setCronogramaTab('plan');
     try {
       setLoadingActa(true);
-      const results = await mapWithLimit(actaWorks, 5, async (w): Promise<{ work: Work; schedule: ScheduleDetail }> => {
+      const results = await mapWithLimit(actaWorks, 5, async (w): Promise<{
+        work: Work;
+        schedule: ScheduleDetail;
+        plans: DailyPlanEntry[];
+        materials: SurveyMaterialItem[];
+        materialLogs: MaterialLogEntry[];
+        activityRows: Array<{ id: string; name: string }>;
+        activityMap: NumberDailyMap;
+      }> => {
         try {
           const s = await schedulesService.getByWork(w.workId);
+          let plans: DailyPlanEntry[] = [];
+          let materials: SurveyMaterialItem[] = [];
+          let materialLogs: MaterialLogEntry[] = [];
+          let storedActivityRows: Array<{ id: string; name: string }> = [];
+          let storedActivityMap: NumberDailyMap = {};
           // Ejecutado real = suma de la ejecución diaria registrada por UCAP
           // (misma fuente que usa el Informe), no schedule_items.
           const execByUcap = new Map<number, number>();
@@ -389,7 +463,8 @@ export default function CronogramaPage() {
           if (s.items.length > 0) {
             try {
               const dp = await schedulesService.getDailyPlans(s.scheduleId, '2020-01-01', '2035-12-31');
-              for (const p of dp.plans) {
+              plans = dp.plans;
+              for (const p of plans) {
                 execByUcap.set(p.ucapId, (execByUcap.get(p.ucapId) ?? 0) + (p.executedQuantity ?? 0));
                 if ((p.plannedQuantity ?? 0) > 0) {
                   const cur = planByUcap.get(p.ucapId);
@@ -402,6 +477,21 @@ export default function CronogramaPage() {
               }
             } catch { /* sin plan/ejecución diaria */ }
           }
+          try {
+            const [workMaterials, logsData] = await Promise.all([
+              schedulesService.getWorkSurveyMaterials(w.workId),
+              schedulesService.getMaterialLogs(s.scheduleId),
+            ]);
+            materials = workMaterials;
+            materialLogs = logsData.logs;
+          } catch { /* sin materiales del acta */ }
+          try {
+            const storedRows = localStorage.getItem(`activity-rows-${s.scheduleId}`);
+            const storedMap = localStorage.getItem(`activity-map-${s.scheduleId}`);
+            if (storedRows) storedActivityRows = JSON.parse(storedRows);
+            if (storedMap) storedActivityMap = JSON.parse(storedMap);
+          } catch { /* sin actividades locales */ }
+
           const enriched: ScheduleDetail = {
             ...s,
             items: s.items.map((it) => {
@@ -415,7 +505,15 @@ export default function CronogramaPage() {
               };
             }),
           };
-          return { work: w, schedule: enriched };
+          return {
+            work: w,
+            schedule: enriched,
+            plans,
+            materials,
+            materialLogs,
+            activityRows: storedActivityRows,
+            activityMap: storedActivityMap,
+          };
         } catch {
           // Si falla la carga, igual incluimos la obra (en 0%) para no descuadrar
           // el conteo del acta.
@@ -431,10 +529,52 @@ export default function CronogramaPage() {
               ippFactor: 0,
               items: [],
             },
+            plans: [],
+            materials: [],
+            materialLogs: [],
+            activityRows: [],
+            activityMap: {},
           };
         }
       });
       setActaGanttObras(buildActaGanttObras(results));
+      setActaScheduleRows(results.map(({ work, schedule }) => ({ work, schedule })));
+      setActaMaterialRows(results.map(({ work, schedule, materials }) => ({ work, schedule, materials })));
+      const planMap: ActaDailyPlanMap = {};
+      const contractualMap: Record<number, { start: string; end: string }> = {};
+      const materialMap: ActaNumberDailyMap = {};
+      const activityRowsMap: ActaActivityRowsMap = {};
+      const activityDailyMap: ActaNumberDailyMap = {};
+      results.forEach(({ work, plans }) => {
+        const workPlans: DailyPlanMap = {};
+        plans.forEach((plan) => {
+          if (!workPlans[plan.planDate]) workPlans[plan.planDate] = {};
+          workPlans[plan.planDate][plan.ucapId] = {
+            planned: String(plan.plannedQuantity ?? 0),
+            executed: String(plan.executedQuantity ?? 0),
+          };
+        });
+        planMap[work.workId] = workPlans;
+      });
+      setActaDailyPlans(planMap);
+      results.forEach(({ work, schedule, materialLogs, activityRows, activityMap }) => {
+        contractualMap[work.workId] = {
+          start: toDateInput(schedule.contractualStart),
+          end: toDateInput(schedule.contractualEnd),
+        };
+        const workMaterialMap: NumberDailyMap = {};
+        materialLogs.forEach((log) => {
+          if (!workMaterialMap[log.usageDate]) workMaterialMap[log.usageDate] = {};
+          workMaterialMap[log.usageDate][log.materialCode] = (workMaterialMap[log.usageDate][log.materialCode] ?? 0) + log.quantity;
+        });
+        materialMap[work.workId] = workMaterialMap;
+        activityRowsMap[work.workId] = activityRows;
+        activityDailyMap[work.workId] = activityMap;
+      });
+      setActaContractualDates(contractualMap);
+      setActaMaterialDailyMap(materialMap);
+      setActaActivityRows(activityRowsMap);
+      setActaActivityDailyMap(activityDailyMap);
     } catch {
       toast.error('Error al cargar el cronograma del acta');
     } finally {
@@ -840,6 +980,120 @@ export default function CronogramaPage() {
     }
   };
 
+  const handleSaveActaDailyPlans = async () => {
+    const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+    if (rowsWithSchedule.length === 0) return;
+
+    try {
+      setSavingActaDailyPlans(true);
+      await Promise.all(rowsWithSchedule.map(({ work, schedule }) => {
+        const items: DailyPlanEntry[] = [];
+        Object.entries(actaDailyPlans[work.workId] ?? {}).forEach(([date, ucapEntries]) => {
+          Object.entries(ucapEntries).forEach(([ucapId, entry]) => {
+            const plannedQuantity = parseFloat(entry.planned) || 0;
+            const executedQuantity = parseFloat(entry.executed) || 0;
+            items.push({
+              ucapId: Number(ucapId),
+              planDate: date,
+              plannedQuantity,
+              executedQuantity,
+            });
+          });
+        });
+        return schedulesService.upsertDailyPlans(schedule.scheduleId, items);
+      }));
+      setLastSavedActaDailyPlan(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
+      toast.success('Plan diario del acta guardado');
+    } catch {
+      toast.error('Error al guardar el plan diario del acta');
+    } finally {
+      setSavingActaDailyPlans(false);
+    }
+  };
+
+  const handleSaveActaContractual = async () => {
+    const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+    if (rowsWithSchedule.length === 0) return;
+
+    try {
+      setSavingActaContractual(true);
+      const updatedSchedules = await Promise.all(rowsWithSchedule.map(({ work, schedule }) => {
+        const dates = actaContractualDates[work.workId] ?? { start: '', end: '' };
+        return schedulesService.update(schedule.scheduleId, {
+          contractualStart: dates.start || null,
+          contractualEnd: dates.end || null,
+        });
+      }));
+      const updatedById = new Map(updatedSchedules.map((updated) => [updated.scheduleId, updated]));
+      setActaScheduleRows((prev) => prev.map((row) => ({
+        ...row,
+        schedule: updatedById.get(row.schedule.scheduleId) ?? row.schedule,
+      })));
+      setActaMaterialRows((prev) => prev.map((row) => ({
+        ...row,
+        schedule: updatedById.get(row.schedule.scheduleId) ?? row.schedule,
+      })));
+      setLastSavedActaContractual(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
+      toast.success('Fechas contractuales del acta guardadas');
+    } catch {
+      toast.error('Error al guardar las fechas contractuales del acta');
+    } finally {
+      setSavingActaContractual(false);
+    }
+  };
+
+  const handleSaveActaMaterials = async () => {
+    const rowsWithSchedule = actaMaterialRows.filter(({ schedule }) => schedule.scheduleId > 0);
+    if (rowsWithSchedule.length === 0) return;
+
+    try {
+      setSavingActaMaterials(true);
+      await Promise.all(rowsWithSchedule.map(({ work, schedule, materials }) => {
+        const entries: MaterialLogEntry[] = [];
+        Object.entries(actaMaterialDailyMap[work.workId] ?? {}).forEach(([date, matMap]) => {
+          Object.entries(matMap).forEach(([code, qty]) => {
+            if (qty > 0) {
+              const mat = materials.find((m) => m.materialCode === code);
+              entries.push({
+                materialCode: code,
+                materialDescription: mat?.materialDescription ?? null,
+                unitOfMeasure: mat?.unitOfMeasure ?? null,
+                quantity: qty,
+                usageDate: date,
+              });
+            }
+          });
+        });
+        return schedulesService.saveMaterialLogs(schedule.scheduleId, entries);
+      }));
+      setLastSavedActaMaterials(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
+      toast.success('Materiales del acta guardados');
+    } catch {
+      toast.error('Error al guardar los materiales del acta');
+    } finally {
+      setSavingActaMaterials(false);
+    }
+  };
+
+  const handleSaveActaActivities = () => {
+    const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+    if (rowsWithSchedule.length === 0) return;
+
+    try {
+      setSavingActaActivities(true);
+      rowsWithSchedule.forEach(({ work, schedule }) => {
+        localStorage.setItem(`activity-rows-${schedule.scheduleId}`, JSON.stringify(actaActivityRows[work.workId] ?? []));
+        localStorage.setItem(`activity-map-${schedule.scheduleId}`, JSON.stringify(actaActivityDailyMap[work.workId] ?? {}));
+      });
+      setLastSavedActaActivities(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
+      toast.success('Actividades del acta guardadas');
+    } catch {
+      toast.error('Error al guardar las actividades del acta');
+    } finally {
+      setSavingActaActivities(false);
+    }
+  };
+
   const monthProgress = currentMonthWorkingDays();
 
   // ── temporal progress in working days (Mon-Fri=1, Sat=0.5, Sun/holiday=0)
@@ -1205,39 +1459,54 @@ export default function CronogramaPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }}>
-            <TabsList className="mb-4 flex-wrap h-auto">
-              {departments.map((d) => (
-                <TabsTrigger key={d.name} value={d.name}>{d.name}</TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex flex-wrap items-end gap-4 mb-4">
+              <div className="w-56">
+                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+                <Select
+                  value={activeTab}
+                  onValueChange={(v) => { setActiveTab(v); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Seleccionar departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.name} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {activeDept && activeDept.municipalities.length > 1 && (
+                <div className="w-56">
+                  <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                  <Select
+                    value={activeMunicipality ? `${activeMunicipality.type}-${activeMunicipality.id}` : ''}
+                    onValueChange={(val) => {
+                      const muni = activeDept.municipalities.find((m) => `${m.type}-${m.id}` === val);
+                      if (muni) { setActiveMunicipality(muni); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }
+                    }}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Seleccionar municipio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeDept.municipalities.map((muni) => (
+                        <SelectItem key={`${muni.type}-${muni.id}`} value={`${muni.type}-${muni.id}`}>
+                          {getMunicipioName(muni.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
 
             {departments.map((dept) => (
               <TabsContent key={dept.name} value={dept.name}>
                 <div className="flex gap-6" style={{ minHeight: '70vh' }}>
                   {/* ── Left: work list ── */}
                   <div className="w-64 flex-shrink-0 flex flex-col gap-3">
-                    {/* Municipality selector within the department */}
-                    {dept.municipalities.length > 1 && (
-                      <div>
-                        <span className="text-[10px] font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide">Municipio</span>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {dept.municipalities.map((muni) => (
-                            <button
-                              key={`${muni.type}-${muni.id}`}
-                              onClick={() => { setActiveMunicipality(muni); setSelectedWork(null); setSchedule(null); setSelectedActa(null); }}
-                              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                                activeMunicipality?.id === muni.id && activeMunicipality?.type === muni.type
-                                  ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
-                                  : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
-                              }`}
-                            >
-                              {getMunicipioName(muni.name)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
                       <Input
@@ -1391,12 +1660,800 @@ export default function CronogramaPage() {
                               Avance de las obras del acta. Haz clic en una obra para desplegar sus UCAPs.
                             </p>
                           </div>
-                          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                            <ActaGantt obras={actaGanttObras} />
-                          </section>
-                          <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">
-                            Selecciona una obra en la lista de la izquierda para editar su cronograma en detalle.
-                          </p>
+                          <Tabs value={cronogramaTab} onValueChange={setCronogramaTab} className="w-full">
+                            <TabsList className="mb-4">
+                              <TabsTrigger value="plan">Plan</TabsTrigger>
+                              <TabsTrigger value="ejecucion">Ejecución</TabsTrigger>
+                              {canSeeInforme && <TabsTrigger value="informe">Informe</TabsTrigger>}
+                              {canSeeOperativo && <TabsTrigger value="operativo">Operativo</TabsTrigger>}
+                            </TabsList>
+
+                            <TabsContent value="plan" className="space-y-4 mt-0">
+                              {actaScheduleRows.length > 0 && (() => {
+                                const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+                                const startValues = rowsWithSchedule.map(({ work }) => actaContractualDates[work.workId]?.start ?? '');
+                                const endValues = rowsWithSchedule.map(({ work }) => actaContractualDates[work.workId]?.end ?? '');
+                                const commonStart = startValues.length > 0 && startValues.every((v) => v === startValues[0]) ? startValues[0] : '';
+                                const commonEnd = endValues.length > 0 && endValues.every((v) => v === endValues[0]) ? endValues[0] : '';
+                                const actaProgress = commonStart && commonEnd ? workingDayProgress(commonStart, commonEnd) : null;
+                                const applyDateToActa = (field: 'start' | 'end', value: string) => {
+                                  setActaContractualDates((prev) => {
+                                    const next = { ...prev };
+                                    rowsWithSchedule.forEach(({ work }) => {
+                                      next[work.workId] = {
+                                        ...(next[work.workId] ?? { start: '', end: '' }),
+                                        [field]: value,
+                                      };
+                                    });
+                                    return next;
+                                  });
+                                };
+                                return (
+                                  <div className="max-w-md">
+                                    <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
+                                      <div className="px-5 pt-5 pb-4">
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                          <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide mt-1 flex items-center gap-1.5">
+                                            <CalendarRange className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />Contractual
+                                          </h3>
+                                          <span className="text-xl font-bold text-[hsl(var(--canalco-primary))] leading-none">—</span>
+                                        </div>
+                                        <ProgressBar value={actaProgress?.pct ?? 0} color="primary" />
+                                      </div>
+                                      <div className="px-5 py-4 border-t border-[hsl(var(--canalco-neutral-100))] flex gap-3">
+                                        <div className="flex-1">
+                                          <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Inicio</Label>
+                                          <Input
+                                            type="date"
+                                            value={commonStart}
+                                            onChange={(e) => applyDateToActa('start', e.target.value)}
+                                            disabled={!canEditPlan}
+                                            className="mt-0.5 h-8 text-sm w-full"
+                                          />
+                                        </div>
+                                        <div className="flex-1">
+                                          <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin</Label>
+                                          <Input
+                                            type="date"
+                                            value={commonEnd}
+                                            onChange={(e) => applyDateToActa('end', e.target.value)}
+                                            disabled={!canEditPlan}
+                                            className="mt-0.5 h-8 text-sm w-full"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))] flex items-center justify-between text-xs">
+                                        <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
+                                        <span className="font-semibold text-[hsl(var(--canalco-neutral-600))]">
+                                          {monthProgress.elapsed} / {monthProgress.total} dias habiles
+                                        </span>
+                                      </div>
+                                    </section>
+                                    {canEditPlan && (
+                                      <div className="flex items-center justify-end gap-3 mt-3">
+                                        {lastSavedActaContractual && (
+                                          <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaContractual}</span>
+                                        )}
+                                        <Button onClick={handleSaveActaContractual} disabled={savingActaContractual} variant="outline" className="gap-2 text-sm">
+                                          <Save className="w-4 h-4" />
+                                          {savingActaContractual ? 'Guardando...' : 'Guardar contractual'}
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                              {false && actaScheduleRows.length > 0 && (() => {
+                                const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+                                const starts = rowsWithSchedule.map(({ work }) => actaContractualDates[work.workId]?.start).filter(Boolean) as string[];
+                                const ends = rowsWithSchedule.map(({ work }) => actaContractualDates[work.workId]?.end).filter(Boolean) as string[];
+                                const actaStart = starts.length > 0 ? [...starts].sort()[0] : '';
+                                const actaEnd = ends.length > 0 ? [...ends].sort().slice(-1)[0] : '';
+                                const actaProgress = actaStart && actaEnd ? workingDayProgress(actaStart, actaEnd) : null;
+                                return (
+                                  <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
+                                    <div className="px-5 pt-5 pb-4">
+                                      <div className="flex items-start justify-between gap-2 mb-3">
+                                        <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide mt-1 flex items-center gap-1.5">
+                                          <CalendarRange className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />Contractual del acta
+                                        </h3>
+                                        <span className="text-xl font-bold text-[hsl(var(--canalco-primary))] leading-none">
+                                          —
+                                        </span>
+                                      </div>
+                                      <ProgressBar value={actaProgress?.pct ?? 0} color="primary" />
+                                    </div>
+
+                                    <div className="px-5 py-4 border-t border-[hsl(var(--canalco-neutral-100))] overflow-x-auto">
+                                      <table className="w-full text-sm border-collapse" style={{ minWidth: 760 }}>
+                                        <thead>
+                                          <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                            <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Proyecto</th>
+                                            <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-40">Inicio</th>
+                                            <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-40">Fin</th>
+                                            <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-32">Duración</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {rowsWithSchedule.map(({ work }) => {
+                                            const dates = actaContractualDates[work.workId] ?? { start: '', end: '' };
+                                            const rowProgress = dates.start && dates.end ? workingDayProgress(dates.start, dates.end) : null;
+                                            return (
+                                              <tr key={work.workId} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                                <td className="py-2 pr-2">
+                                                  <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
+                                                  <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin código'}</p>
+                                                </td>
+                                                <td className="py-2 pr-2">
+                                                  <Input
+                                                    type="date"
+                                                    value={dates.start}
+                                                    disabled={!canEditPlan}
+                                                    onChange={(e) => setActaContractualDates((prev) => ({
+                                                      ...prev,
+                                                      [work.workId]: { ...(prev[work.workId] ?? { start: '', end: '' }), start: e.target.value },
+                                                    }))}
+                                                    className="h-8 text-sm max-w-[150px]"
+                                                  />
+                                                </td>
+                                                <td className="py-2 pr-2">
+                                                  <Input
+                                                    type="date"
+                                                    value={dates.end}
+                                                    disabled={!canEditPlan}
+                                                    onChange={(e) => setActaContractualDates((prev) => ({
+                                                      ...prev,
+                                                      [work.workId]: { ...(prev[work.workId] ?? { start: '', end: '' }), end: e.target.value },
+                                                    }))}
+                                                    className="h-8 text-sm max-w-[150px]"
+                                                  />
+                                                </td>
+                                                <td className="py-2 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                                  {rowProgress ? `${rowProgress.elapsed} / ${rowProgress.total}` : '—'}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+
+                                    <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))] flex items-center justify-between gap-3">
+                                      <div className="text-xs">
+                                        <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
+                                        <span className="ml-2 font-semibold text-[hsl(var(--canalco-neutral-600))]">
+                                          {monthProgress.elapsed} / {monthProgress.total} días hábiles
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        {lastSavedActaContractual && (
+                                          <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaContractual}</span>
+                                        )}
+                                        {canEditPlan && (
+                                          <Button onClick={handleSaveActaContractual} disabled={savingActaContractual} variant="outline" className="gap-2 text-sm">
+                                            <Save className="w-4 h-4" />
+                                            {savingActaContractual ? 'Guardando...' : 'Guardar contractual'}
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </section>
+                                );
+                              })()}
+                              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                <ActaGantt obras={actaGanttObras} />
+                              </section>
+                              {actaScheduleRows.length > 0 && (() => {
+                            const days = getWeekDays(weekOffset);
+                            const today = formatDate(new Date());
+                            const weekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                            const weekHolidaySet = new Set(weekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                            const rowsWithItems = actaScheduleRows.filter(({ schedule }) => schedule.items.length > 0);
+                            const getPlanned = (workId: number, date: string, ucapId: number) =>
+                              parseFloat(actaDailyPlans[workId]?.[date]?.[ucapId]?.planned ?? '') || 0;
+                            const getWorkDateTotal = (workId: number, scheduleItems: ScheduleDetail['items'], date: string) =>
+                              scheduleItems.reduce((sum, item) => sum + getPlanned(workId, date, item.ucapId), 0);
+                            return (
+                              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                  <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                    <Layers className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan diario por proyectos
+                                  </h3>
+                                  <WeekNav days={days} offset={weekOffset} onPrev={() => setWeekOffset((w) => w - 1)} onNext={() => setWeekOffset((w) => w + 1)} onToday={() => setWeekOffset(0)} />
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm border-collapse" style={{ minWidth: 760 }}>
+                                    <thead>
+                                      <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                        <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2 w-56">Proyecto / UCAP</th>
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
+                                        {days.map((date, i) => {
+                                          const d = new Date(date + 'T12:00:00');
+                                          const isToday = date === today;
+                                          const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                          const headerCls = isToday
+                                            ? 'text-[hsl(var(--canalco-primary))] font-bold'
+                                            : isHoliday
+                                            ? 'text-red-500 font-semibold'
+                                            : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                          return (
+                                            <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
+                                              <div>{DAY_LABELS[i]}</div>
+                                              <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                            </th>
+                                          );
+                                        })}
+                                        <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-12">Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rowsWithItems.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={days.length + 3} className="py-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
+                                            No hay UCAPs registradas en las obras de esta acta.
+                                          </td>
+                                        </tr>
+                                      ) : rowsWithItems.map(({ work, schedule }) => {
+                                        const workTotal = days.reduce((sum, date) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
+                                        return (
+                                          <Fragment key={work.workId}>
+                                            <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
+                                              <td colSpan={2} className="py-2 pr-2 align-middle">
+                                                <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
+                                                <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+                                                  {work.workCode || 'Sin codigo'}{work.recordNumber ? ` · Acta ${work.recordNumber}` : ''}
+                                                </p>
+                                              </td>
+                                              {days.map((date) => {
+                                                const dateTotal = getWorkDateTotal(work.workId, schedule.items, date);
+                                                return (
+                                                  <td key={date} className={`py-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                    {dateTotal > 0 ? dateTotal : '—'}
+                                                  </td>
+                                                );
+                                              })}
+                                              <td className="py-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-800))]">
+                                                {workTotal > 0 ? workTotal : '—'}
+                                              </td>
+                                            </tr>
+                                            {schedule.items.map((item) => {
+                                              const rowPlan = days.reduce((sum, date) => sum + getPlanned(work.workId, date, item.ucapId), 0);
+                                              return (
+                                                <tr key={`${work.workId}-${item.ucapId}`} className="border-b border-[hsl(var(--canalco-neutral-100))]">
+                                                  <td className="py-2 pr-1 pl-4 align-middle">
+                                                    <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.ucapCode}</p>
+                                                    <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
+                                                  </td>
+                                                  <td className="py-2 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                                    {item.plannedQuantity}
+                                                  </td>
+                                                  {days.map((date) => {
+                                                    const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                                    return (
+                                                      <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                        <Input
+                                                          type="number"
+                                                          min="0"
+                                                          step="0.01"
+                                                          value={actaDailyPlans[work.workId]?.[date]?.[item.ucapId]?.planned ?? ''}
+                                                          placeholder="0"
+                                                          disabled={isHoliday || !canEditPlan}
+                                                          onChange={(e) => setActaDailyPlans((prev) => {
+                                                            const workPlans = prev[work.workId] ?? {};
+                                                            const datePlans = workPlans[date] ?? {};
+                                                            const cell = datePlans[item.ucapId] ?? { planned: '', executed: '' };
+                                                            return {
+                                                              ...prev,
+                                                              [work.workId]: {
+                                                                ...workPlans,
+                                                                [date]: {
+                                                                  ...datePlans,
+                                                                  [item.ucapId]: { ...cell, planned: e.target.value },
+                                                                },
+                                                              },
+                                                            };
+                                                          })}
+                                                          className="h-7 w-14 text-xs text-center px-1"
+                                                        />
+                                                      </td>
+                                                    );
+                                                  })}
+                                                  <td className="py-2 text-center">
+                                                    <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                                      {rowPlan > 0 ? rowPlan : '—'}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </Fragment>
+                                        );
+                                      })}
+                                    </tbody>
+                                    {rowsWithItems.length > 0 && (
+                                      <tfoot>
+                                        <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                          <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total plan</td>
+                                          <td className="pt-2 pb-2" />
+                                          {days.map((date) => {
+                                            const total = rowsWithItems.reduce((sum, { work, schedule }) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
+                                            return (
+                                              <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                {total > 0 ? total : '—'}
+                                              </td>
+                                            );
+                                          })}
+                                          <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                            {(() => {
+                                              const total = days.reduce((sum, date) => (
+                                                sum + rowsWithItems.reduce((workSum, { work, schedule }) => workSum + getWorkDateTotal(work.workId, schedule.items, date), 0)
+                                              ), 0);
+                                              return total > 0 ? total : '—';
+                                            })()}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    )}
+                                  </table>
+                                </div>
+
+                                <div className="flex justify-end items-center gap-3 mt-4">
+                                  {lastSavedActaDailyPlan && (
+                                    <span className="text-xs text-green-600 font-medium">
+                                      ✓ Guardado a las {lastSavedActaDailyPlan}
+                                    </span>
+                                  )}
+                                  {canEditPlan && (
+                                    <Button onClick={handleSaveActaDailyPlans} disabled={savingActaDailyPlans} variant="outline" className="gap-2 text-sm">
+                                      <Save className="w-4 h-4" />
+                                      {savingActaDailyPlans ? 'Guardando...' : 'Guardar plan del acta'}
+                                    </Button>
+                                  )}
+                                </div>
+                              </section>
+                            );
+                              })()}
+                              {actaMaterialRows.length > 0 && (() => {
+                                const days = getWeekDays(materialWeekOffset);
+                                const today = formatDate(new Date());
+                                const matWeekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                                const matWeekHolidaySet = new Set(matWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                                const rowsWithMaterials = actaMaterialRows.filter(({ materials }) => materials.length > 0);
+                                const getMaterialQty = (workId: number, date: string, code: string) =>
+                                  actaMaterialDailyMap[workId]?.[date]?.[code] ?? 0;
+                                const getWorkMaterialDateTotal = (workId: number, materials: SurveyMaterialItem[], date: string) =>
+                                  materials.reduce((sum, mat) => sum + getMaterialQty(workId, date, mat.materialCode), 0);
+                                return (
+                                  <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                      <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                        <Package className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan Diario Materiales
+                                      </h3>
+                                      <WeekNav days={days} offset={materialWeekOffset} onPrev={() => setMaterialWeekOffset((w) => w - 1)} onNext={() => setMaterialWeekOffset((w) => w + 1)} onToday={() => setMaterialWeekOffset(0)} />
+                                    </div>
+
+                                    {rowsWithMaterials.length === 0 ? (
+                                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
+                                        Las obras de esta acta no tienen materiales registrados en sus levantamientos.
+                                      </p>
+                                    ) : (
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-sm border-collapse" style={{ minWidth: 820 }}>
+                                          <thead>
+                                            <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                              <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Proyecto / Material</th>
+                                              <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-16">Unidad</th>
+                                              <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
+                                              {days.map((date, i) => {
+                                                const d = new Date(date + 'T12:00:00');
+                                                const isToday = date === today;
+                                                const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                                const headerCls = isToday
+                                                  ? 'text-[hsl(var(--canalco-primary))] font-bold'
+                                                  : isHoliday
+                                                  ? 'text-red-500 font-semibold'
+                                                  : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                                return (
+                                                  <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
+                                                    <div>{DAY_LABELS[i]}</div>
+                                                    <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                                  </th>
+                                                );
+                                              })}
+                                              <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {rowsWithMaterials.map(({ work, materials }) => {
+                                              const workTotal = days.reduce((sum, date) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
+                                              return (
+                                                <Fragment key={work.workId}>
+                                                  <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
+                                                    <td colSpan={3} className="py-2 pr-2 align-middle">
+                                                      <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
+                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                                                    </td>
+                                                    {days.map((date) => {
+                                                      const dateTotal = getWorkMaterialDateTotal(work.workId, materials, date);
+                                                      return (
+                                                        <td key={date} className={`py-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                          {dateTotal > 0 ? dateTotal : '—'}
+                                                        </td>
+                                                      );
+                                                    })}
+                                                    <td className="py-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-800))]">
+                                                      {workTotal > 0 ? workTotal : '—'}
+                                                    </td>
+                                                  </tr>
+                                                  {materials.map((mat) => {
+                                                    const weekTotal = days.reduce((sum, date) => sum + getMaterialQty(work.workId, date, mat.materialCode), 0);
+                                                    return (
+                                                      <tr key={`${work.workId}-${mat.materialCode}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                                        <td className="py-1.5 pr-2 pl-4">
+                                                          <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{mat.materialCode}</p>
+                                                          <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[240px]">{mat.materialDescription}</p>
+                                                        </td>
+                                                        <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                                          {mat.unitOfMeasure ?? '—'}
+                                                        </td>
+                                                        <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                                          {mat.totalQuantity}
+                                                        </td>
+                                                        {days.map((date) => {
+                                                          const isToday = date === today;
+                                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                                          const qty = getMaterialQty(work.workId, date, mat.materialCode);
+                                                          return (
+                                                            <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                              <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={qty || ''}
+                                                                placeholder="0"
+                                                                disabled={isHoliday || !canEditPlan}
+                                                                onChange={(e) => {
+                                                                  const val = parseFloat(e.target.value) || 0;
+                                                                  setActaMaterialDailyMap((prev) => {
+                                                                    const workMap = prev[work.workId] ?? {};
+                                                                    const dateMap = workMap[date] ?? {};
+                                                                    return {
+                                                                      ...prev,
+                                                                      [work.workId]: {
+                                                                        ...workMap,
+                                                                        [date]: { ...dateMap, [mat.materialCode]: val },
+                                                                      },
+                                                                    };
+                                                                  });
+                                                                }}
+                                                                className="h-7 w-14 text-xs text-center px-1"
+                                                              />
+                                                            </td>
+                                                          );
+                                                        })}
+                                                        <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                                          {weekTotal > 0 ? weekTotal : '—'}
+                                                        </td>
+                                                      </tr>
+                                                    );
+                                                  })}
+                                                </Fragment>
+                                              );
+                                            })}
+                                          </tbody>
+                                          <tfoot>
+                                            <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                              <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                                              <td className="pt-2" />
+                                              {days.map((date) => {
+                                                const dayTotal = rowsWithMaterials.reduce((sum, { work, materials }) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
+                                                return (
+                                                  <td key={date} className={`pt-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                    {dayTotal > 0 ? dayTotal : '—'}
+                                                  </td>
+                                                );
+                                              })}
+                                              <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                                {(() => {
+                                                  const total = days.reduce((sum, date) => (
+                                                    sum + rowsWithMaterials.reduce((workSum, { work, materials }) => workSum + getWorkMaterialDateTotal(work.workId, materials, date), 0)
+                                                  ), 0);
+                                                  return total > 0 ? total : '—';
+                                                })()}
+                                              </td>
+                                            </tr>
+                                          </tfoot>
+                                        </table>
+                                      </div>
+                                    )}
+
+                                    {canEditPlan && (
+                                      <div className="flex justify-end items-center gap-3 mt-4">
+                                        {lastSavedActaMaterials && (
+                                          <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaMaterials}</span>
+                                        )}
+                                        <Button onClick={handleSaveActaMaterials} disabled={savingActaMaterials} variant="outline" className="gap-2 text-sm">
+                                          <Save className="w-4 h-4" />
+                                          {savingActaMaterials ? 'Guardando...' : 'Guardar materiales del acta'}
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </section>
+                                );
+                              })()}
+                              {actaScheduleRows.length > 0 && (() => {
+                                const days = getWeekDays(activityWeekOffset);
+                                const today = formatDate(new Date());
+                                const actWeekYears = [...new Set(days.map((d) => parseInt(d.slice(0, 4))))];
+                                const actWeekHolidaySet = new Set(actWeekYears.flatMap((y) => [...getColombianHolidays(y)]));
+                                const activityWorks = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+                                const getActivityQty = (workId: number, date: string, rowId: string) =>
+                                  actaActivityDailyMap[workId]?.[date]?.[rowId] ?? 0;
+                                const getWorkActivityDateTotal = (workId: number, rows: Array<{ id: string; name: string }>, date: string) =>
+                                  rows.reduce((sum, row) => sum + getActivityQty(workId, date, row.id), 0);
+                                const addActaActivityRow = (workId: number, scheduleId: number) => {
+                                  setActaActivityRows((prev) => ({
+                                    ...prev,
+                                    [workId]: [...(prev[workId] ?? []), { id: `act-${scheduleId}-${Date.now()}`, name: '' }],
+                                  }));
+                                };
+                                const removeActaActivityRow = (workId: number, rowId: string) => {
+                                  setActaActivityRows((prev) => ({
+                                    ...prev,
+                                    [workId]: (prev[workId] ?? []).filter((row) => row.id !== rowId),
+                                  }));
+                                  setActaActivityDailyMap((prev) => {
+                                    const workMap = prev[workId] ?? {};
+                                    const nextWorkMap: NumberDailyMap = {};
+                                    Object.entries(workMap).forEach(([date, rowMap]) => {
+                                      const { [rowId]: _, ...rest } = rowMap;
+                                      nextWorkMap[date] = rest;
+                                    });
+                                    return { ...prev, [workId]: nextWorkMap };
+                                  });
+                                };
+                                return (
+                                  <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
+                                      <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                                        <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Plan Diario Actividades
+                                      </h3>
+                                      <WeekNav days={days} offset={activityWeekOffset} onPrev={() => setActivityWeekOffset((w) => w - 1)} onNext={() => setActivityWeekOffset((w) => w + 1)} onToday={() => setActivityWeekOffset(0)} />
+                                    </div>
+
+                                    {activityWorks.length === 0 ? (
+                                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mb-4">
+                                        No hay obras con cronograma para registrar actividades en esta acta.
+                                      </p>
+                                    ) : (
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-sm border-collapse" style={{ minWidth: 760 }}>
+                                          <thead>
+                                            <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
+                                              <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Proyecto / Actividad</th>
+                                              {days.map((date, i) => {
+                                                const d = new Date(date + 'T12:00:00');
+                                                const isToday = date === today;
+                                                const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                                const headerCls = isToday
+                                                  ? 'text-[hsl(var(--canalco-primary))] font-bold'
+                                                  : isHoliday
+                                                  ? 'text-red-500 font-semibold'
+                                                  : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
+                                                return (
+                                                  <th key={date} className={`text-center text-xs pb-2 w-16 ${headerCls}`}>
+                                                    <div>{DAY_LABELS[i]}</div>
+                                                    <div className="font-normal opacity-70">{d.getDate()}/{d.getMonth() + 1}</div>
+                                                  </th>
+                                                );
+                                              })}
+                                              <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-14">Total</th>
+                                              <th className="w-8 pb-2" />
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {activityWorks.map(({ work, schedule }) => {
+                                              const rows = actaActivityRows[work.workId] ?? [];
+                                              const workTotal = days.reduce((sum, date) => sum + getWorkActivityDateTotal(work.workId, rows, date), 0);
+                                              return (
+                                                <Fragment key={work.workId}>
+                                                  <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
+                                                    <td className="py-2 pr-2 align-middle">
+                                                      <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
+                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                                                    </td>
+                                                    {days.map((date) => {
+                                                      const dateTotal = getWorkActivityDateTotal(work.workId, rows, date);
+                                                      return (
+                                                        <td key={date} className={`py-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                          {dateTotal > 0 ? dateTotal : '—'}
+                                                        </td>
+                                                      );
+                                                    })}
+                                                    <td className="py-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-800))]">
+                                                      {workTotal > 0 ? workTotal : '—'}
+                                                    </td>
+                                                    <td className="py-2 text-center">
+                                                      {canEditPlan && (
+                                                        <button
+                                                          onClick={() => addActaActivityRow(work.workId, schedule.scheduleId)}
+                                                          className="p-1 rounded hover:bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))]"
+                                                          title="Agregar actividad"
+                                                        >
+                                                          <Plus className="w-3.5 h-3.5" />
+                                                        </button>
+                                                      )}
+                                                    </td>
+                                                  </tr>
+                                                  {rows.map((row) => {
+                                                    const weekTotal = days.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
+                                                    return (
+                                                      <tr key={`${work.workId}-${row.id}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                                                        <td className="py-1.5 pr-2 pl-4">
+                                                          <Select
+                                                            value={row.name}
+                                                            disabled={!canEditPlan}
+                                                            onValueChange={(val) => setActaActivityRows((prev) => ({
+                                                              ...prev,
+                                                              [work.workId]: (prev[work.workId] ?? []).map((r) => r.id === row.id ? { ...r, name: val } : r),
+                                                            }))}
+                                                          >
+                                                            <SelectTrigger className="h-7 text-xs min-w-[220px]">
+                                                              <SelectValue placeholder="Seleccionar actividad" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                              {[...DEFAULT_ACTIVITY_OPTIONS, ...customActivityOptions].map((opt) => (
+                                                                <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                                                              ))}
+                                                            </SelectContent>
+                                                          </Select>
+                                                        </td>
+                                                        {days.map((date) => {
+                                                          const isToday = date === today;
+                                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                                          const qty = getActivityQty(work.workId, date, row.id);
+                                                          return (
+                                                            <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                                                              <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={qty || ''}
+                                                                placeholder="0"
+                                                                disabled={isHoliday || !canEditPlan}
+                                                                onChange={(e) => {
+                                                                  const val = parseFloat(e.target.value) || 0;
+                                                                  setActaActivityDailyMap((prev) => {
+                                                                    const workMap = prev[work.workId] ?? {};
+                                                                    const dateMap = workMap[date] ?? {};
+                                                                    return {
+                                                                      ...prev,
+                                                                      [work.workId]: {
+                                                                        ...workMap,
+                                                                        [date]: { ...dateMap, [row.id]: val },
+                                                                      },
+                                                                    };
+                                                                  });
+                                                                }}
+                                                                className="h-7 w-14 text-xs text-center px-1"
+                                                              />
+                                                            </td>
+                                                          );
+                                                        })}
+                                                        <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                                                          {weekTotal > 0 ? weekTotal : '—'}
+                                                        </td>
+                                                        <td className="py-1.5 pl-1">
+                                                          {canEditPlan && (
+                                                            <button
+                                                              onClick={() => removeActaActivityRow(work.workId, row.id)}
+                                                              className="p-0.5 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
+                                                            >
+                                                              <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                          )}
+                                                        </td>
+                                                      </tr>
+                                                    );
+                                                  })}
+                                                </Fragment>
+                                              );
+                                            })}
+                                          </tbody>
+                                          <tfoot>
+                                            <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                                              <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                                              {days.map((date) => {
+                                                const dayTotal = activityWorks.reduce((sum, { work }) => sum + getWorkActivityDateTotal(work.workId, actaActivityRows[work.workId] ?? [], date), 0);
+                                                return (
+                                                  <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
+                                                    {dayTotal > 0 ? dayTotal : '—'}
+                                                  </td>
+                                                );
+                                              })}
+                                              <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
+                                                {(() => {
+                                                  const total = days.reduce((sum, date) => (
+                                                    sum + activityWorks.reduce((workSum, { work }) => workSum + getWorkActivityDateTotal(work.workId, actaActivityRows[work.workId] ?? [], date), 0)
+                                                  ), 0);
+                                                  return total > 0 ? total : '—';
+                                                })()}
+                                              </td>
+                                              <td />
+                                            </tr>
+                                          </tfoot>
+                                        </table>
+                                      </div>
+                                    )}
+
+                                    {canEditPlan && (
+                                      <div className="flex justify-between items-center mt-4">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            const first = activityWorks[0];
+                                            if (first) addActaActivityRow(first.work.workId, first.schedule.scheduleId);
+                                          }}
+                                          className="gap-1.5 text-xs"
+                                        >
+                                          <Plus className="w-3.5 h-3.5" />
+                                          Agregar fila
+                                        </Button>
+                                        <div className="flex items-center gap-3">
+                                          {lastSavedActaActivities && (
+                                            <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaActivities}</span>
+                                          )}
+                                          <Button onClick={handleSaveActaActivities} disabled={savingActaActivities} variant="outline" className="gap-2 text-sm">
+                                            <Save className="w-4 h-4" />
+                                            {savingActaActivities ? 'Guardando...' : 'Guardar actividades del acta'}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </section>
+                                );
+                              })()}
+                              <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">
+                                Selecciona una obra en la lista de la izquierda para editar su cronograma en detalle.
+                              </p>
+                            </TabsContent>
+
+                            <TabsContent value="ejecucion" className="mt-0">
+                              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-6">
+                                <div className="flex flex-col items-center justify-center text-center py-8 text-[hsl(var(--canalco-neutral-500))]">
+                                  <Activity className="w-10 h-10 mb-3 text-[hsl(var(--canalco-primary))]" />
+                                  <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Ejecución del acta</p>
+                                  <p className="text-xs mt-1">Selecciona una obra del acta para registrar o consultar su ejecución.</p>
+                                </div>
+                              </section>
+                            </TabsContent>
+
+                            {canSeeInforme && (
+                              <TabsContent value="informe" className="mt-0">
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-6">
+                                  <div className="flex flex-col items-center justify-center text-center py-8 text-[hsl(var(--canalco-neutral-500))]">
+                                    <BarChart3 className="w-10 h-10 mb-3 text-[hsl(var(--canalco-primary))]" />
+                                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Informe del acta</p>
+                                    <p className="text-xs mt-1">Selecciona una obra del acta para ver su informe detallado.</p>
+                                  </div>
+                                </section>
+                              </TabsContent>
+                            )}
+
+                            {canSeeOperativo && (
+                              <TabsContent value="operativo" className="mt-0">
+                                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-6">
+                                  <div className="flex flex-col items-center justify-center text-center py-8 text-[hsl(var(--canalco-neutral-500))]">
+                                    <ClipboardList className="w-10 h-10 mb-3 text-[hsl(var(--canalco-primary))]" />
+                                    <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Operativo del acta</p>
+                                    <p className="text-xs mt-1">Selecciona una obra del acta para consultar su operativo.</p>
+                                  </div>
+                                </section>
+                              </TabsContent>
+                            )}
+                          </Tabs>
                         </div>
                       )
                     ) : !selectedWork ? (

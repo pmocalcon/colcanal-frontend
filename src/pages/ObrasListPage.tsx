@@ -7,7 +7,14 @@ import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapToDepartments } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Home, ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle, ClipboardList } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -500,42 +507,46 @@ export default function ObrasListPage() {
 
         {/* Tabs por Departamento */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground mx-auto">
-            {departments.map((dept) => (
-              <TabsTrigger key={dept.name} value={dept.name}>
-                {dept.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {/* Municipality filter pills */}
-          {activeDept && activeDept.companies.length > 1 && (
-            <div className="flex items-center gap-2 mb-5 flex-wrap">
-              <button
-                onClick={() => setSelectedCompanyId(null)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  selectedCompanyId === null
-                    ? 'bg-[hsl(var(--canalco-primary))] text-white'
-                    : 'bg-white border border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                }`}
-              >
-                Todos
-              </button>
-              {activeDept.companies.map((c) => (
-                <button
-                  key={c.companyId}
-                  onClick={() => setSelectedCompanyId(c.companyId)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    selectedCompanyId === c.companyId
-                      ? 'bg-[hsl(var(--canalco-primary))] text-white'
-                      : 'bg-white border border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                  }`}
-                >
-                  {getMunicipality(c.name)}
-                </button>
-              ))}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="w-56">
+              <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+              <Select value={activeTab} onValueChange={handleTabChange}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Seleccionar departamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.name} value={dept.name}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
+
+            {/* Municipality filter dropdown */}
+            {activeDept && activeDept.companies.length > 1 && (
+              <div className="w-56">
+                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                <Select
+                  value={selectedCompanyId === null ? 'all' : String(selectedCompanyId)}
+                  onValueChange={(val) => setSelectedCompanyId(val === 'all' ? null : Number(val))}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Municipio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {activeDept.companies.map((c) => (
+                      <SelectItem key={c.companyId} value={String(c.companyId)}>
+                        {getMunicipality(c.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
 
           {departments.map((dept) => (
             <TabsContent key={dept.name} value={dept.name}>

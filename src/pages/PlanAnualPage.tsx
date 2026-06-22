@@ -9,7 +9,14 @@ import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentM
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -56,10 +63,12 @@ export default function PlanAnualPage() {
     return map;
   }, [departments]);
 
-  const activeCompanyIds = useMemo(() => {
-    const dept = departments.find((d) => d.name === activeTab);
-    return dept?.companyIds || [];
-  }, [activeTab, departments]);
+  const activeDept = useMemo(
+    () => departments.find((d) => d.name === activeTab),
+    [activeTab, departments],
+  );
+
+  const activeCompanyIds = useMemo(() => activeDept?.companyIds || [], [activeDept]);
 
   const allCompanyIds = useMemo(
     () => departments.flatMap((d) => d.companyIds),
@@ -517,16 +526,46 @@ export default function PlanAnualPage() {
 
         {/* Works table by department */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="mb-4 flex-wrap h-auto gap-1">
-            <TabsTrigger value="__resumen__" className="text-sm">
-              Resumen Plan
-            </TabsTrigger>
-            {departments.map((dept) => (
-              <TabsTrigger key={dept.name} value={dept.name} className="text-sm">
-                {dept.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="flex flex-wrap items-end gap-4 mb-4">
+            <div className="w-56">
+              <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+              <Select value={activeTab} onValueChange={handleTabChange}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Seleccionar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__resumen__">Resumen Plan</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.name} value={dept.name}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {activeDept && activeDept.companies.length > 1 && (
+              <div className="w-56">
+                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                <Select
+                  value={selectedMunicipioId === null ? 'all' : String(selectedMunicipioId)}
+                  onValueChange={(val) => setSelectedMunicipioId(val === 'all' ? null : Number(val))}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Municipio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los municipios</SelectItem>
+                    {activeDept.companies.map((c) => (
+                      <SelectItem key={c.companyId} value={String(c.companyId)}>
+                        {getMunicipioName(c.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
 
           {/* Resumen tab */}
           <TabsContent value="__resumen__">
@@ -623,35 +662,6 @@ export default function PlanAnualPage() {
 
           {departments.map((dept) => (
             <TabsContent key={dept.name} value={dept.name}>
-              {/* Municipality chips */}
-              {dept.companies.length > 1 && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button
-                    onClick={() => setSelectedMunicipioId(null)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      selectedMunicipioId === null
-                        ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
-                        : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                    }`}
-                  >
-                    Todos los municipios
-                  </button>
-                  {dept.companies.map((c) => (
-                    <button
-                      key={c.companyId}
-                      onClick={() => setSelectedMunicipioId(c.companyId === selectedMunicipioId ? null : c.companyId)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                        selectedMunicipioId === c.companyId
-                          ? 'bg-[hsl(var(--canalco-primary))] text-white border-[hsl(var(--canalco-primary))]'
-                          : 'bg-white text-[hsl(var(--canalco-neutral-700))] border-[hsl(var(--canalco-neutral-300))] hover:bg-[hsl(var(--canalco-neutral-100))]'
-                      }`}
-                    >
-                      {getMunicipioName(c.name)}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* Search */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1 max-w-sm">

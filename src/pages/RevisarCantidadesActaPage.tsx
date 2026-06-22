@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { surveysService, type Work } from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { Home, ArrowLeft, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+
+export type TipoFiltro = 'todos' | 'ucaps' | 'materiales';
 import { toast } from 'sonner';
 
 const TRAVEL_EXPENSE_LABELS: Record<string, string> = {
@@ -133,7 +135,7 @@ function TravelTable({ rows }: { rows: TravelRow[] }) {
   );
 }
 
-function ProjectCard({ data }: { data: ProjectData }) {
+function ProjectCard({ data, tipoFiltro }: { data: ProjectData; tipoFiltro: TipoFiltro }) {
   const [expanded, setExpanded] = useState(true);
   const { work, ucapRows, materialRows, travelRows } = data;
   const hasData = ucapRows.length > 0 || materialRows.length > 0 || travelRows.length > 0;
@@ -177,18 +179,24 @@ function ProjectCard({ data }: { data: ProjectData }) {
 
       {expanded && (
         <div className="px-5 pb-5 space-y-5 border-t border-[hsl(var(--canalco-neutral-100))] pt-4">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">UCAPs</h3>
-            <UcapTable rows={ucapRows} />
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Materiales</h3>
-            <MaterialTable rows={materialRows} />
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Gastos de Viaje</h3>
-            <TravelTable rows={travelRows} />
-          </div>
+          {tipoFiltro !== 'materiales' && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">UCAPs</h3>
+              <UcapTable rows={ucapRows} />
+            </div>
+          )}
+          {tipoFiltro !== 'ucaps' && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Materiales</h3>
+              <MaterialTable rows={materialRows} />
+            </div>
+          )}
+          {tipoFiltro === 'todos' && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Gastos de Viaje</h3>
+              <TravelTable rows={travelRows} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -204,6 +212,7 @@ export default function RevisarCantidadesActaPage() {
   const [loading, setLoading] = useState(false);
   const [projectData, setProjectData] = useState<ProjectData[]>([]);
   const [activeTab, setActiveTab] = useState<'consolidado' | 'por-proyecto'>('consolidado');
+  const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>('todos');
 
   const decodedRecord = recordNumber ? decodeURIComponent(recordNumber) : '';
 
@@ -412,32 +421,67 @@ export default function RevisarCantidadesActaPage() {
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 border-4 border-[hsl(var(--canalco-primary))]/30 border-t-[hsl(var(--canalco-primary))] rounded-full animate-spin" />
           </div>
-        ) : activeTab === 'consolidado' ? (
-          <div className="space-y-8">
-            <section>
-              <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">UCAPs</h2>
-              <UcapTable rows={consolidatedUcaps} />
-            </section>
-            <section>
-              <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">Materiales</h2>
-              <MaterialTable rows={consolidatedMaterials} />
-            </section>
-            <section>
-              <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">Gastos de Viaje</h2>
-              <TravelTable rows={consolidatedTravel} />
-            </section>
-          </div>
         ) : (
-          <div className="space-y-4">
-            {projectData.map((data) => (
-              <ProjectCard key={data.work.workId} data={data} />
-            ))}
-            {projectData.length === 0 && (
-              <p className="text-center py-20 text-[hsl(var(--canalco-neutral-500))]">
-                No hay obras para mostrar.
-              </p>
+          <>
+            {/* Filtro por tipo: UCAPs / Materiales */}
+            <div className="flex items-center gap-2 mb-5">
+              <Filter className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+              <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Mostrar:</span>
+              <div className="inline-flex rounded-lg border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+                {([
+                  { id: 'todos', label: 'Todos' },
+                  { id: 'ucaps', label: 'UCAPs' },
+                  { id: 'materiales', label: 'Materiales' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setTipoFiltro(opt.id)}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors border-l first:border-l-0 border-[hsl(var(--canalco-neutral-300))] ${
+                      tipoFiltro === opt.id
+                        ? 'bg-[hsl(var(--canalco-primary))] text-white'
+                        : 'bg-white text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {activeTab === 'consolidado' ? (
+              <div className="space-y-8">
+                {tipoFiltro !== 'materiales' && (
+                  <section>
+                    <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">UCAPs</h2>
+                    <UcapTable rows={consolidatedUcaps} />
+                  </section>
+                )}
+                {tipoFiltro !== 'ucaps' && (
+                  <section>
+                    <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">Materiales</h2>
+                    <MaterialTable rows={consolidatedMaterials} />
+                  </section>
+                )}
+                {tipoFiltro === 'todos' && (
+                  <section>
+                    <h2 className="text-base font-semibold mb-3 text-[hsl(var(--canalco-neutral-800))]">Gastos de Viaje</h2>
+                    <TravelTable rows={consolidatedTravel} />
+                  </section>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {projectData.map((data) => (
+                  <ProjectCard key={data.work.workId} data={data} tipoFiltro={tipoFiltro} />
+                ))}
+                {projectData.length === 0 && (
+                  <p className="text-center py-20 text-[hsl(var(--canalco-neutral-500))]">
+                    No hay obras para mostrar.
+                  </p>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

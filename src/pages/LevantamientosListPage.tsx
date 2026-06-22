@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
@@ -535,35 +535,50 @@ export default function LevantamientosListPage() {
         ) : (
           /* List View */
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground mx-auto">
-              {departments.map((dept) => (
-                <TabsTrigger key={dept.name} value={dept.name}>
-                  {dept.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="w-56">
+                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+                <Select value={activeTab} onValueChange={setActiveTab}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Seleccionar departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.name} value={dept.name}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {activeDept && activeDept.municipalities.length > 0 && (
+                <div className="w-56">
+                  <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                  <Select
+                    value={activeMunicipality ? `${activeMunicipality.type}-${activeMunicipality.id}` : ''}
+                    onValueChange={(val) => {
+                      const muni = activeDept.municipalities.find((m) => `${m.type}-${m.id}` === val);
+                      if (muni) setActiveMunicipality(muni);
+                    }}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Seleccionar municipio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeDept.municipalities.map((muni) => (
+                        <SelectItem key={`${muni.type}-${muni.id}`} value={`${muni.type}-${muni.id}`}>
+                          {getMunicipioName(muni.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
 
             {departments.map((dept) => (
               <TabsContent key={dept.name} value={dept.name}>
-                {/* Municipality filter pills */}
-                {dept.municipalities.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {dept.municipalities.map((muni) => (
-                      <button
-                        key={`${muni.type}-${muni.id}`}
-                        onClick={() => setActiveMunicipality(muni)}
-                        className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                          activeMunicipality?.id === muni.id && activeMunicipality?.type === muni.type
-                            ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
-                            : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
-                        }`}
-                      >
-                        {getMunicipioName(muni.name)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
                 {/* Rejections Alert */}
                 {surveysWithRejections.length > 0 && (
                   <Card className="p-4 mb-6 border-2 border-red-300 bg-red-50">
