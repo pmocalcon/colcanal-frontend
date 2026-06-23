@@ -202,6 +202,8 @@ export default function CronogramaPage() {
   const [actaExecActivityDailyMap, setActaExecActivityDailyMap] = useState<ActaNumberDailyMap>({});
   const [actaPurchaseComparisonMap, setActaPurchaseComparisonMap] = useState<ActaPurchaseComparisonMap>({});
   const [loadingActa, setLoadingActa] = useState(false);
+  const [loadingActaDetails, setLoadingActaDetails] = useState(false);
+  const [actaDetailsLoaded, setActaDetailsLoaded] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -408,6 +410,8 @@ export default function CronogramaPage() {
     setActaExecActivityRows({});
     setActaExecActivityDailyMap({});
     setActaPurchaseComparisonMap({});
+    setActaDetailsLoaded(false);
+    setLoadingActaDetails(false);
     setLastSavedActaExecUcaps(null);
     setLastSavedActaExecMaterials(null);
     setLastSavedActaExecActivities(null);
@@ -441,6 +445,8 @@ export default function CronogramaPage() {
     setActaExecActivityRows({});
     setActaExecActivityDailyMap({});
     setActaPurchaseComparisonMap({});
+    setActaDetailsLoaded(false);
+    setLoadingActaDetails(false);
     setLastSavedActaExecUcaps(null);
     setLastSavedActaExecMaterials(null);
     setLastSavedActaExecActivities(null);
@@ -578,44 +584,11 @@ export default function CronogramaPage() {
             } catch { /* sin plan/ejecución diaria */ }
           }
           try {
-            const [workMaterials, logsData, comparison] = await Promise.all([
-              schedulesService.getWorkSurveyMaterials(w.workId),
-              schedulesService.getMaterialLogs(s.scheduleId),
-              schedulesService.getWorkPurchaseComparison(w.workId),
-            ]);
-            materials = workMaterials;
-            materialLogs = logsData.logs;
-            purchaseComparison = comparison;
-          } catch { /* sin materiales del acta */ }
-          try {
             const storedRows = localStorage.getItem(`activity-rows-${s.scheduleId}`);
             const storedMap = localStorage.getItem(`activity-map-${s.scheduleId}`);
             if (storedRows) storedActivityRows = JSON.parse(storedRows);
             if (storedMap) storedActivityMap = JSON.parse(storedMap);
           } catch { /* sin actividades locales */ }
-          try {
-            const execMaterials = await schedulesService.getExecutions(s.scheduleId, 'material');
-            execMaterialMap = {};
-            execMaterials.items.forEach((it) => {
-              if (!it.executionDate || it.quantity <= 0) return;
-              if (!execMaterialMap[it.executionDate]) execMaterialMap[it.executionDate] = {};
-              execMaterialMap[it.executionDate][it.itemKey] = (execMaterialMap[it.executionDate][it.itemKey] ?? 0) + it.quantity;
-            });
-          } catch { /* sin ejecucion de materiales */ }
-          try {
-            const execActivities = await schedulesService.getExecutions(s.scheduleId, 'activity');
-            const names = new Map<string, string>();
-            const dmap: NumberDailyMap = {};
-            execActivities.items.forEach((it) => {
-              if (!names.has(it.itemKey)) names.set(it.itemKey, it.label ?? '');
-              if (it.executionDate) {
-                if (!dmap[it.executionDate]) dmap[it.executionDate] = {};
-                dmap[it.executionDate][it.itemKey] = it.quantity;
-              }
-            });
-            execActivityRows = [...names.entries()].map(([id, name]) => ({ id, name }));
-            execActivityMap = dmap;
-          } catch { /* sin ejecucion de actividades */ }
           const execActivityNames = new Set(execActivityRows.map((row) => row.name.trim()).filter(Boolean));
           storedActivityRows.forEach((row) => {
             const name = row.name.trim();
@@ -735,6 +708,123 @@ export default function CronogramaPage() {
   }, [isDirty]);
 
   // ── save
+  const loadActaDetails = useCallback(async () => {
+    if (!selectedActa || actaDetailsLoaded || loadingActaDetails || actaScheduleRows.length === 0) return;
+
+    const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
+    if (rowsWithSchedule.length === 0) {
+      setActaDetailsLoaded(true);
+      return;
+    }
+
+    try {
+      setLoadingActaDetails(true);
+      const results = await mapWithLimit(rowsWithSchedule, 1, async ({ work, schedule }) => {
+        let materials: SurveyMaterialItem[] = [];
+        let materialLogs: MaterialLogEntry[] = [];
+        let purchaseComparison: PurchaseComparisonItem[] = [];
+        let execMaterialMap: NumberDailyMap = {};
+        let execActivityRows: Array<{ id: string; name: string }> = [];
+        let execActivityMap: NumberDailyMap = {};
+
+        try {
+          const [workMaterials, logsData, comparison] = await Promise.all([
+            schedulesService.getWorkSurveyMaterials(work.workId),
+            schedulesService.getMaterialLogs(schedule.scheduleId),
+            schedulesService.getWorkPurchaseComparison(work.workId),
+          ]);
+          materials = workMaterials;
+          materialLogs = logsData.logs;
+          purchaseComparison = comparison;
+        } catch { /* sin materiales/compras del acta */ }
+
+        try {
+          const execMaterials = await schedulesService.getExecutions(schedule.scheduleId, 'material');
+          execMaterialMap = {};
+          execMaterials.items.forEach((it) => {
+            if (!it.executionDate || it.quantity <= 0) return;
+            if (!execMaterialMap[it.executionDate]) execMaterialMap[it.executionDate] = {};
+            execMaterialMap[it.executionDate][it.itemKey] = (execMaterialMap[it.executionDate][it.itemKey] ?? 0) + it.quantity;
+          });
+        } catch { /* sin ejecucion de materiales */ }
+
+        try {
+          const execActivities = await schedulesService.getExecutions(schedule.scheduleId, 'activity');
+          const names = new Map<string, string>();
+          const dmap: NumberDailyMap = {};
+          execActivities.items.forEach((it) => {
+            if (!names.has(it.itemKey)) names.set(it.itemKey, it.label ?? '');
+            if (it.executionDate) {
+              if (!dmap[it.executionDate]) dmap[it.executionDate] = {};
+              dmap[it.executionDate][it.itemKey] = it.quantity;
+            }
+          });
+          execActivityRows = [...names.entries()].map(([id, name]) => ({ id, name }));
+          execActivityMap = dmap;
+        } catch { /* sin ejecucion de actividades */ }
+
+        const execActivityNames = new Set(execActivityRows.map((row) => row.name.trim()).filter(Boolean));
+        (actaActivityRows[work.workId] ?? []).forEach((row) => {
+          const name = row.name.trim();
+          if (!name || execActivityNames.has(name)) return;
+          execActivityNames.add(name);
+          execActivityRows.push({ id: `exec-act-plan-${schedule.scheduleId}-${name}`, name });
+        });
+
+        return {
+          work,
+          schedule,
+          materials,
+          materialLogs,
+          purchaseComparison,
+          execMaterialMap,
+          execActivityRows,
+          execActivityMap,
+        };
+      });
+
+      const materialRowsByWork = new Map(results.map((row) => [row.work.workId, row]));
+      setActaMaterialRows(actaScheduleRows.map((row) => ({
+        work: row.work,
+        schedule: row.schedule,
+        materials: materialRowsByWork.get(row.work.workId)?.materials ?? [],
+      })));
+
+      const materialMap: ActaNumberDailyMap = {};
+      const execMaterialDailyMap: ActaNumberDailyMap = {};
+      const execActivityRowsMap: ActaActivityRowsMap = {};
+      const execActivityDailyMap: ActaNumberDailyMap = {};
+      const purchaseComparisonMap: ActaPurchaseComparisonMap = {};
+
+      results.forEach(({ work, materialLogs, purchaseComparison, execMaterialMap, execActivityRows, execActivityMap }) => {
+        const workMaterialMap: NumberDailyMap = {};
+        materialLogs.forEach((log) => {
+          if (!workMaterialMap[log.usageDate]) workMaterialMap[log.usageDate] = {};
+          workMaterialMap[log.usageDate][log.materialCode] = (workMaterialMap[log.usageDate][log.materialCode] ?? 0) + log.quantity;
+        });
+        materialMap[work.workId] = workMaterialMap;
+        execMaterialDailyMap[work.workId] = execMaterialMap;
+        execActivityRowsMap[work.workId] = execActivityRows;
+        execActivityDailyMap[work.workId] = execActivityMap;
+        purchaseComparisonMap[work.workId] = purchaseComparison;
+      });
+
+      setActaMaterialDailyMap(materialMap);
+      setActaExecMaterialDailyMap(execMaterialDailyMap);
+      setActaExecActivityRows(execActivityRowsMap);
+      setActaExecActivityDailyMap(execActivityDailyMap);
+      setActaPurchaseComparisonMap(purchaseComparisonMap);
+      setActaDetailsLoaded(true);
+    } finally {
+      setLoadingActaDetails(false);
+    }
+  }, [selectedActa, actaDetailsLoaded, loadingActaDetails, actaScheduleRows, actaActivityRows]);
+
+  useEffect(() => {
+    if (!selectedActa || cronogramaTab === 'plan') return;
+    void loadActaDetails();
+  }, [selectedActa, cronogramaTab, loadActaDetails]);
+
   const handleSave = async () => {
     if (!schedule) return;
     try {
