@@ -8,7 +8,9 @@ console.log('🔧 Environment variable VITE_API_URL:', import.meta.env.VITE_API_
 
 const api = axios.create({
   baseURL,
-  timeout: 10000,
+  // 30s para tolerar el arranque en frío de Render (la instancia se suspende
+  // por inactividad y la primera petición tarda en despertar).
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },

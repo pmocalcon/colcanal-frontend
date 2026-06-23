@@ -2,7 +2,7 @@
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, Printer, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
+import { Home, ArrowLeft, Printer, FileText, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
 import { surveysService, type Work, type IppConfig } from '@/services/surveys.service';
 import {
   directorBudgetsService,
@@ -221,9 +221,11 @@ export default function ResumenActaPage() {
   const [ippConfig, setIppConfig] = useState<IppConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const initialized = useRef(false);
+  const documentRef = useRef<HTMLDivElement>(null);
 
   const [ippCurrent, setIppCurrent] = useState('');
   const lastContratoRef = useRef('');
+  const [wordStatus, setWordStatus] = useState('');
 
   // ── Editable document state ──
   const [showDocument, setShowDocument] = useState(true);
@@ -231,6 +233,8 @@ export default function ResumenActaPage() {
   const setDF = (field: keyof typeof docFields) => (value: string) =>
     setDocFields((prev) => ({ ...prev, [field]: value }));
   const [consideraciones, setConsideraciones] = useState(() => getActaConfig().consideraciones);
+  const [partesIntro, setPartesIntro] = useState<string | undefined>(() => getActaConfig().partesIntro);
+  const [partesIntroTemplate, setPartesIntroTemplate] = useState<string | undefined>(() => getActaConfig().partesIntroTemplate);
   const [blocks, setBlocks] = useState<Block[]>(() =>
     getActaConfig().clausulas.map((c, i) => ({
       kind: 'clausula' as const,
@@ -244,6 +248,339 @@ export default function ResumenActaPage() {
   const [logoUrl, setLogoUrl] = useState<string | undefined>(() => getActaConfig().logoUrl);
   const [hideMunicipioBanner, setHideMunicipioBanner] = useState<boolean>(() => getActaConfig().hideMunicipioBanner ?? false);
   const [encabezadoTabla, setEncabezadoTabla] = useState<EncabezadoTablaRow[] | undefined>(() => getActaConfig().encabezadoTabla);
+  const [consideracionNumeracion, setConsideracionNumeracion] = useState<'roman' | 'decimalDash'>(
+    () => getActaConfig().consideracionNumeracion ?? 'roman'
+  );
+  const updateEncabezadoRow = (index: number, field: keyof EncabezadoTablaRow, value: string) => {
+    setEncabezadoTabla((prev) =>
+      prev?.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  };
+  const getTextareaRows = (value: string, charsPerLine: number) =>
+    Math.max(
+      1,
+      value.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)), 0)
+    );
+  const getConsideracionPrefix = (index: number) =>
+    consideracionNumeracion === 'decimalDash' ? `${index + 1}.-` : `${ROMAN_NUM[index]}.`;
+  const boldIntroFields = new Set(['munNombre', 'municipio', 'conNombre', 'conEmpresa']);
+  const renderPartesIntroTemplate = (template: string) =>
+    template.split(/(\{\{[a-zA-Z0-9_]+\}\})/g).map((part, index) => {
+      const match = part.match(/^\{\{([a-zA-Z0-9_]+)\}\}$/);
+      if (!match) return <EditableText key={`text-${index}`}>{part}</EditableText>;
+
+      const field = match[1] as keyof typeof docFields;
+      if (!(field in docFields)) return <EditableText key={`unknown-${index}`}>{part}</EditableText>;
+
+      return (
+        <InlineInput
+          key={`${String(field)}-${index}`}
+          value={String(docFields[field] ?? '')}
+          onChange={setDF(field)}
+          bold={boldIntroFields.has(String(field))}
+        />
+      );
+    });
+
+  const inlineWordStyles = (source: Element, target: Element) => {
+    const computed = window.getComputedStyle(source);
+    const properties = [
+      'font-family',
+      'font-size',
+      'font-weight',
+      'font-style',
+      'line-height',
+      'text-align',
+      'text-transform',
+      'color',
+      'background-color',
+      'border',
+      'border-top',
+      'border-right',
+      'border-bottom',
+      'border-left',
+      'border-collapse',
+      'padding',
+      'padding-top',
+      'padding-right',
+      'padding-bottom',
+      'padding-left',
+      'margin',
+      'margin-top',
+      'margin-right',
+      'margin-bottom',
+      'margin-left',
+      'width',
+      'max-width',
+      'vertical-align',
+      'white-space',
+      'display',
+    ];
+    target.setAttribute(
+      'style',
+      properties
+        .map((property) => `${property}: ${computed.getPropertyValue(property)}`)
+        .join('; ')
+    );
+
+    Array.from(source.children).forEach((child, index) => {
+      const targetChild = target.children[index];
+      if (targetChild) inlineWordStyles(child, targetChild);
+    });
+  };
+
+  const imageToDataUrl = async (src: string) => {
+    const response = await fetch(new URL(src, window.location.href).toString());
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+  const formatWordConsiderations = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('[data-word-consideration]').forEach((element) => {
+      const prefix = element.querySelector<HTMLElement>('[data-word-consideration-number]')?.innerText.trim() ?? '';
+      const text = element.querySelector<HTMLElement>('[data-word-consideration-text]')?.innerText.trim() ?? '';
+      const paragraph = document.createElement('p');
+      paragraph.innerHTML = `<strong>${escapeHtml(prefix)}</strong> ${escapeHtml(text).replace(/\n/g, '<br>')}`;
+      paragraph.style.margin = '0 0 10px 0';
+      paragraph.style.textAlign = 'justify';
+      paragraph.style.lineHeight = '1.45';
+      element.replaceWith(paragraph);
+    });
+  };
+
+  const getClauseSeparator = (title: string) => {
+    if (!title) return '';
+    if (/[.;:]$/.test(title.trim())) return ' ';
+    return title.includes(':') ? '. ' : ': ';
+  };
+
+  const formatWordClauses = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('[data-word-clause]').forEach((element) => {
+      const title = element.querySelector<HTMLElement>('[data-word-clause-title]')?.innerText.trim() ?? '';
+      const content = element.querySelector<HTMLElement>('[data-word-clause-content]')?.innerText.trim() ?? '';
+      const paragraph = document.createElement('p');
+      paragraph.style.margin = '0 0 12px 0';
+      paragraph.style.textAlign = 'justify';
+      paragraph.style.lineHeight = '1.45';
+
+      if (title) {
+        paragraph.innerHTML = `<strong>${escapeHtml(title)}</strong>${getClauseSeparator(title)}${escapeHtml(content).replace(/\n/g, '<br>')}`;
+      } else {
+        paragraph.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
+      }
+
+      element.replaceWith(paragraph);
+    });
+  };
+
+  const formatWordSignatures = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('[data-word-signatures]').forEach((element) => {
+      const signatureBlocks = Array.from(element.children).filter(
+        (child): child is HTMLElement => child instanceof HTMLElement
+      );
+      const table = document.createElement('table');
+      table.setAttribute('data-word-borderless-table', 'true');
+      table.style.width = '100%';
+      table.style.borderCollapse = 'collapse';
+      table.style.marginTop = '24px';
+      table.style.fontSize = '10.5pt';
+
+      for (let index = 0; index < signatureBlocks.length; index += 2) {
+        const row = document.createElement('tr');
+        [signatureBlocks[index], signatureBlocks[index + 1]].forEach((block) => {
+          const cell = document.createElement('td');
+          cell.style.width = '50%';
+          cell.style.verticalAlign = 'top';
+          cell.style.border = '0';
+          cell.style.padding = index === 0 ? '0 44px 38px 0' : '0 44px 0 0';
+          if (block) cell.innerHTML = block.innerHTML;
+          row.appendChild(cell);
+        });
+        table.appendChild(row);
+      }
+
+      element.replaceWith(table);
+    });
+  };
+
+  const appendMetaRowsToWordTables = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('table + div.border-t-2').forEach((metaBlock) => {
+      const table = metaBlock.previousElementSibling as HTMLTableElement | null;
+      if (!table || table.tagName.toLowerCase() !== 'table') return;
+
+      const colCount = table.querySelector('tr')?.children.length || 5;
+      const tfoot = table.tFoot ?? table.createTFoot();
+      Array.from(metaBlock.children).forEach((row) => {
+        const spans = Array.from(row.querySelectorAll('span'));
+        const label = spans[0]?.textContent?.trim() || row.firstElementChild?.textContent?.trim() || '';
+        const value = spans.length > 1
+          ? spans[spans.length - 1]?.textContent?.trim()
+          : row.lastElementChild?.textContent?.trim();
+
+        if (!label && !value) return;
+        const tr = document.createElement('tr');
+        const labelCell = document.createElement('td');
+        const valueCell = document.createElement('td');
+        labelCell.colSpan = Math.max(1, colCount - 1);
+        labelCell.textContent = label;
+        valueCell.textContent = value || '';
+        labelCell.style.textAlign = 'right';
+        labelCell.style.fontWeight = '700';
+        valueCell.style.textAlign = 'right';
+        valueCell.style.fontWeight = '700';
+        tr.append(labelCell, valueCell);
+        tfoot.appendChild(tr);
+      });
+
+      metaBlock.remove();
+    });
+  };
+
+  const cleanWordTextBoxes = (root: HTMLElement) => {
+    root.querySelectorAll<HTMLElement>('*').forEach((element) => {
+      const tagName = element.tagName.toLowerCase();
+      const isTableElement = ['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th'].includes(tagName);
+      const isBorderlessTable = !!element.closest('[data-word-borderless-table]');
+
+      if (!isTableElement) {
+        element.style.border = '0';
+        element.style.borderTop = '0';
+        element.style.borderRight = '0';
+        element.style.borderBottom = '0';
+        element.style.borderLeft = '0';
+        element.style.backgroundColor = 'transparent';
+        element.style.outline = '0';
+        element.style.boxShadow = 'none';
+        if (['flex', 'inline-flex', 'grid'].includes(element.style.display)) {
+          element.style.display = 'block';
+        }
+      }
+
+      if (tagName === 'table') {
+        element.style.width = '100%';
+        element.style.borderCollapse = 'collapse';
+        element.style.margin = '8px 0 14px 0';
+        element.style.fontSize = '9.5pt';
+        if (isBorderlessTable) {
+          element.style.border = '0';
+          element.style.fontSize = '10.5pt';
+          element.style.margin = '24px 0 0 0';
+        }
+      }
+
+      if (tagName === 'td' || tagName === 'th') {
+        element.style.border = isBorderlessTable ? '0' : '1px solid #444';
+        element.style.backgroundColor = 'transparent';
+        element.style.padding = isBorderlessTable ? element.style.padding || '0 44px 30px 0' : '4px 6px';
+        element.style.verticalAlign = 'middle';
+        if (isBorderlessTable) element.style.verticalAlign = 'top';
+      }
+    });
+  };
+
+  const generateWordDocument = async () => {
+    if (!documentRef.current) return;
+
+    const clone = documentRef.current.cloneNode(true) as HTMLElement;
+    inlineWordStyles(documentRef.current, clone);
+    clone.querySelectorAll('[aria-hidden="true"], button, [draggable="true"], svg').forEach((node) => node.remove());
+    clone.querySelectorAll<HTMLInputElement>('input').forEach((input) => {
+      const span = document.createElement('span');
+      span.textContent = input.value || input.placeholder || '';
+      span.style.fontFamily = 'inherit';
+      span.style.fontSize = 'inherit';
+      if (input.className.includes('font-bold')) span.style.fontWeight = '700';
+      input.replaceWith(span);
+    });
+    clone.querySelectorAll<HTMLTextAreaElement>('textarea').forEach((textarea) => {
+      const div = document.createElement('div');
+      div.textContent = textarea.value;
+      div.style.fontFamily = 'inherit';
+      div.style.fontSize = 'inherit';
+      div.style.whiteSpace = 'pre-wrap';
+      div.style.display = 'block';
+      if (textarea.className.includes('font-bold')) div.style.fontWeight = '700';
+      if (textarea.className.includes('text-justify')) div.style.textAlign = 'justify';
+      if (textarea.className.includes('mt-5')) div.style.marginTop = '18px';
+      if (textarea.className.includes('mb-5')) div.style.marginBottom = '18px';
+      textarea.replaceWith(div);
+    });
+    clone.querySelectorAll('.hidden, .print\\:hidden').forEach((node) => node.remove());
+    formatWordConsiderations(clone);
+    formatWordClauses(clone);
+    formatWordSignatures(clone);
+    appendMetaRowsToWordTables(clone);
+    cleanWordTextBoxes(clone);
+
+    await Promise.all(
+      Array.from(clone.querySelectorAll<HTMLImageElement>('img')).map(async (img) => {
+        const src = img.getAttribute('src');
+        if (!src || src.startsWith('data:')) return;
+        try {
+          img.src = await imageToDataUrl(src);
+        } catch {
+          img.src = new URL(src, window.location.href).toString();
+        }
+      })
+    );
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!--[if gte mso 9]>
+    <xml>
+      <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>100</w:Zoom>
+        <w:DoNotOptimizeForBrowser/>
+      </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+      @page WordSection1 { size: 8.5in 11in; margin: 0.7in; }
+      div.WordSection1 { page: WordSection1; }
+      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.45; color: #000; }
+      table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; }
+      td, th { border: 1px solid #444; padding: 4px 6px; vertical-align: top; }
+      p { margin: 0 0 8px; }
+      img { max-width: 100%; }
+    </style>
+  </head>
+  <body><div class="WordSection1">${clone.innerHTML}</div></body>
+</html>`;
+
+    try {
+      const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const fileName = `acta-${recordNumber || docFields.actaNumero || 'obra'}.doc`.replace(/[\\/:*?"<>|]/g, '-');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setWordStatus('Generado');
+    } catch {
+      setWordStatus('No se pudo generar');
+    } finally {
+      window.setTimeout(() => setWordStatus(''), 2500);
+    }
+  };
 
   const loadBudgetsForWorks = async (worksInput: Work[]) => {
     setLoading(true);
@@ -260,6 +597,8 @@ export default function ResumenActaPage() {
       const cfg = getActaConfig(companyId, projectId);
       setDocFields({ ...cfg.docFields, actaNumero: recordNumber, actaReferenciaAnterior: recordNumber });
       setConsideraciones(cfg.consideraciones);
+      setPartesIntro(cfg.partesIntro);
+      setPartesIntroTemplate(cfg.partesIntroTemplate);
       const ts = Date.now();
       const clausulaBlocks: Block[] = cfg.clausulas.map((c, i) => ({
         kind: 'clausula',
@@ -272,10 +611,22 @@ export default function ResumenActaPage() {
         ...worksInput.map((w) => ({ kind: 'table' as const, id: `tbl-work-${w.workId}`, tableId: `work-${w.workId}` })),
         { kind: 'table', id: 'tbl-detail', tableId: 'detail' },
       ];
-      setBlocks([...clausulaBlocks, ...tableBlocks]);
+      const cuartoIndex = clausulaBlocks.findIndex(
+        (block) => block.title.toUpperCase().includes('CUARTO')
+      );
+      const orderedBlocks =
+        cuartoIndex >= 0
+          ? [
+              ...clausulaBlocks.slice(0, cuartoIndex + 1),
+              ...tableBlocks,
+              ...clausulaBlocks.slice(cuartoIndex + 1),
+            ]
+          : [...clausulaBlocks, ...tableBlocks];
+      setBlocks(orderedBlocks);
       setLogoUrl(cfg.logoUrl);
       setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
       setEncabezadoTabla(cfg.encabezadoTabla);
+      setConsideracionNumeracion(cfg.consideracionNumeracion ?? 'roman');
       const [budgetResults, surveyListResults, ucapRes] = await Promise.all([
         mapLimit(worksInput, 5, (w) =>
           directorBudgetsService.getAll({ workId: w.workId, limit: 10 }).catch(() => ({ data: [] } as any)),
@@ -477,6 +828,13 @@ export default function ResumenActaPage() {
         return updated !== c ? updated : c;
       })
     );
+    setEncabezadoTabla((prev) =>
+      prev?.map((row) => {
+        const label = substituteText(row.label);
+        const value = substituteText(row.value);
+        return label !== row.label || value !== row.value ? { label, value } : row;
+      })
+    );
 
     lastContratoRef.current = docFields.contrato;
   }, [valorTotal, docFields.contrato, recordNumber]);
@@ -532,6 +890,10 @@ export default function ResumenActaPage() {
               <Printer className="w-4 h-4 mr-2" />
               Imprimir
             </Button>
+            <Button size="sm" variant="outline" onClick={generateWordDocument}>
+              <FileText className="w-4 h-4 mr-2" />
+              {wordStatus || 'Generar Word'}
+            </Button>
           </div>
         </div>
       </header>
@@ -555,6 +917,7 @@ export default function ResumenActaPage() {
             {showDocument && (
               <EditContext.Provider value={canEdit}>
               <div
+                ref={documentRef}
                 className="px-10 py-8 print:block"
                 style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '12pt', lineHeight: '1.7' }}
               >
@@ -627,11 +990,23 @@ export default function ResumenActaPage() {
                     <tbody>
                       {encabezadoTabla.map((row, i) => (
                         <tr key={i}>
-                          <td className="border border-gray-700 px-3 py-1 font-semibold align-top w-[35%] whitespace-pre-line">
-                            {row.label}
+                          <td className="border border-gray-700 px-3 py-1 align-top w-[35%]">
+                            <textarea
+                              value={row.label}
+                              onChange={(event) => updateEncabezadoRow(i, 'label', event.target.value)}
+                              readOnly={!canEdit}
+                              rows={getTextareaRows(row.label, 28)}
+                              className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-semibold leading-snug outline-none"
+                            />
                           </td>
-                          <td className="border border-gray-700 px-3 py-1 align-top whitespace-pre-line">
-                            {row.value}
+                          <td className="border border-gray-700 px-3 py-1 align-top">
+                            <textarea
+                              value={row.value}
+                              onChange={(event) => updateEncabezadoRow(i, 'value', event.target.value)}
+                              readOnly={!canEdit}
+                              rows={getTextareaRows(row.value, 62)}
+                              className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 leading-snug outline-none"
+                            />
                           </td>
                         </tr>
                       ))}
@@ -640,69 +1015,86 @@ export default function ResumenActaPage() {
                 )}
 
                 {/* Párrafo de partes */}
-                <p className="text-justify mb-5">
-                  <EditableText>Entre los suscritos </EditableText>
-                  <InlineInput value={docFields.munNombre} onChange={setDF('munNombre')} bold />
-                  <EditableText>, mayor de edad, identificada con cédula de ciudadanía No. </EditableText>
-                  <InlineInput value={docFields.munCc} onChange={setDF('munCc')} />
-                  <EditableText> de </EditableText>
-                  <InlineInput value={docFields.munCcCiudad} onChange={setDF('munCcCiudad')} />
-                  <EditableText>, quien obra en nombre y representación del </EditableText>
-                  <strong>MUNICIPIO DE <InlineInput value={docFields.municipio} onChange={setDF('municipio')} bold /></strong>
-                  <EditableText>, en su calidad de </EditableText>
-                  <InlineInput value={docFields.munCargo} onChange={setDF('munCargo')} />
-                  <EditableText>, identificada con el Acta de Posesión del </EditableText>
-                  <InlineInput value={docFields.munPosesionFecha} onChange={setDF('munPosesionFecha')} />
-                  <EditableText>, quien en adelante para los efectos del presente documento se denominará </EditableText>
-                  <strong>EL MUNICIPIO</strong>
-                  <EditableText>, por una parte, </EditableText>
-                  <InlineInput value={docFields.conNombre} onChange={setDF('conNombre')} bold />
-                  <EditableText>, mayor de edad, identificada con cédula de ciudadanía No. </EditableText>
-                  <InlineInput value={docFields.conCc} onChange={setDF('conCc')} />
-                  <EditableText> de </EditableText>
-                  <InlineInput value={docFields.conCcCiudad} onChange={setDF('conCcCiudad')} />
-                  <EditableText>, quien actúa en calidad de Representante Legal de la </EditableText>
-                  <InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} bold />
-                  <EditableText>, identificada con No. De Nit </EditableText>
-                  <InlineInput value={docFields.conNit} onChange={setDF('conNit')} />
-                  <EditableText>, quien en adelante para los efectos del presente documento se denominará </EditableText>
-                  <strong>EL CONCESIONARIO</strong>
-                  <EditableText>, y por otra parte </EditableText>
-                  <InlineInput value={docFields.intNombre} onChange={setDF('intNombre')} bold />
-                  <EditableText>, mayor de edad, identificado con cédula de ciudadanía No. </EditableText>
-                  <InlineInput value={docFields.intCc} onChange={setDF('intCc')} />
-                  <EditableText> expedida en </EditableText>
-                  <InlineInput value={docFields.intCcCiudad} onChange={setDF('intCcCiudad')} />
-                  <EditableText>, quien actúa en calidad de representante legal de </EditableText>
-                  <InlineInput value={docFields.intEmpresa} onChange={setDF('intEmpresa')} bold />
-                  <EditableText> y Director de Interventoría del Contrato de Concesión, han convenido suscribir la presente acta de obra No. </EditableText>
-                  <strong>{recordNumber}</strong>
-                  <EditableText> para la realización de las obras de </EditableText>
-                  <InlineInput value={docFields.tipoActa} onChange={setDF('tipoActa')} />
-                  <EditableText> en diferentes sectores de la zona urbana y rural del Municipio de </EditableText>
-                  <InlineInput value={docFields.municipio} onChange={setDF('municipio')} />
-                  <EditableText> en el año </EditableText>
-                  <InlineInput value={docFields.actaYear} onChange={setDF('actaYear')} />
-                  <EditableText>, en el marco del contrato de Concesión No. </EditableText>
-                  <InlineInput value={docFields.contrato} onChange={setDF('contrato')} />
-                  <EditableText>, la cual se regirá por las siguientes cláusulas, previas las siguientes,</EditableText>
-                </p>
+                {partesIntroTemplate ? (
+                  <p className="text-justify mt-5 mb-5 leading-[1.35]">
+                    {renderPartesIntroTemplate(partesIntroTemplate)}
+                  </p>
+                ) : partesIntro !== undefined ? (
+                  <AutoResizeTextarea
+                    value={partesIntro}
+                    onChange={(e) => setPartesIntro(e.target.value)}
+                    className="w-full bg-transparent border-0 resize-none focus:outline-none focus:bg-blue-50/60 text-justify leading-[1.25] mt-5 mb-5"
+                    style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                  />
+                ) : (
+                  <p className="text-justify mb-5">
+                    <EditableText>Entre los suscritos </EditableText>
+                    <InlineInput value={docFields.munNombre} onChange={setDF('munNombre')} bold />
+                    <EditableText>, mayor de edad, identificada con cédula de ciudadanía No. </EditableText>
+                    <InlineInput value={docFields.munCc} onChange={setDF('munCc')} />
+                    <EditableText> de </EditableText>
+                    <InlineInput value={docFields.munCcCiudad} onChange={setDF('munCcCiudad')} />
+                    <EditableText>, quien obra en nombre y representación del </EditableText>
+                    <strong>MUNICIPIO DE <InlineInput value={docFields.municipio} onChange={setDF('municipio')} bold /></strong>
+                    <EditableText>, en su calidad de </EditableText>
+                    <InlineInput value={docFields.munCargo} onChange={setDF('munCargo')} />
+                    <EditableText>, identificada con el Acta de Posesión del </EditableText>
+                    <InlineInput value={docFields.munPosesionFecha} onChange={setDF('munPosesionFecha')} />
+                    <EditableText>, quien en adelante para los efectos del presente documento se denominará </EditableText>
+                    <strong>EL MUNICIPIO</strong>
+                    <EditableText>, por una parte, </EditableText>
+                    <InlineInput value={docFields.conNombre} onChange={setDF('conNombre')} bold />
+                    <EditableText>, mayor de edad, identificada con cédula de ciudadanía No. </EditableText>
+                    <InlineInput value={docFields.conCc} onChange={setDF('conCc')} />
+                    <EditableText> de </EditableText>
+                    <InlineInput value={docFields.conCcCiudad} onChange={setDF('conCcCiudad')} />
+                    <EditableText>, quien actúa en calidad de Representante Legal de la </EditableText>
+                    <InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} bold />
+                    <EditableText>, identificada con No. De Nit </EditableText>
+                    <InlineInput value={docFields.conNit} onChange={setDF('conNit')} />
+                    <EditableText>, quien en adelante para los efectos del presente documento se denominará </EditableText>
+                    <strong>EL CONCESIONARIO</strong>
+                    <EditableText>, y por otra parte </EditableText>
+                    <InlineInput value={docFields.intNombre} onChange={setDF('intNombre')} bold />
+                    <EditableText>, mayor de edad, identificado con cédula de ciudadanía No. </EditableText>
+                    <InlineInput value={docFields.intCc} onChange={setDF('intCc')} />
+                    <EditableText> expedida en </EditableText>
+                    <InlineInput value={docFields.intCcCiudad} onChange={setDF('intCcCiudad')} />
+                    <EditableText>, quien actúa en calidad de representante legal de </EditableText>
+                    <InlineInput value={docFields.intEmpresa} onChange={setDF('intEmpresa')} bold />
+                    <EditableText> y Director de Interventoría del Contrato de Concesión, han convenido suscribir la presente acta de obra No. </EditableText>
+                    <strong>{recordNumber}</strong>
+                    <EditableText> para la realización de las obras de </EditableText>
+                    <InlineInput value={docFields.tipoActa} onChange={setDF('tipoActa')} />
+                    <EditableText> en diferentes sectores de la zona urbana y rural del Municipio de </EditableText>
+                    <InlineInput value={docFields.municipio} onChange={setDF('municipio')} />
+                    <EditableText> en el año </EditableText>
+                    <InlineInput value={docFields.actaYear} onChange={setDF('actaYear')} />
+                    <EditableText>, en el marco del contrato de Concesión No. </EditableText>
+                    <InlineInput value={docFields.contrato} onChange={setDF('contrato')} />
+                    <EditableText>, la cual se regirá por las siguientes cláusulas, previas las siguientes,</EditableText>
+                  </p>
+                )}
 
                 {/* CONSIDERACIONES */}
                 <p className="font-bold text-center mb-4 uppercase tracking-wide">Consideraciones</p>
                 {consideraciones.map((c, i) => (
-                  <div key={i} className="flex gap-3 mb-3 items-start">
-                    <span className="font-bold shrink-0 w-8">{ROMAN_NUM[i]}.</span>
-                    <AutoResizeTextarea
-                      value={c}
-                      onChange={(e) => {
-                        const updated = [...consideraciones];
-                        updated[i] = e.target.value;
-                        setConsideraciones(updated);
-                      }}
-                      className="flex-1 bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0"
-                      style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                    />
+                  <div key={i} data-word-consideration="true" className="flex gap-3 mb-3 items-start">
+                    <span data-word-consideration-number className="font-bold shrink-0 w-8">
+                      {getConsideracionPrefix(i)}
+                    </span>
+                    <div data-word-consideration-text className="flex-1">
+                      <AutoResizeTextarea
+                        value={c}
+                        onChange={(e) => {
+                          const updated = [...consideraciones];
+                          updated[i] = e.target.value;
+                          setConsideraciones(updated);
+                        }}
+                        className="w-full bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0"
+                        style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                      />
+                    </div>
                     {canEdit && (
                       <button
                         className="shrink-0 text-red-400 hover:text-red-600 mt-1 print:hidden"
@@ -783,7 +1175,7 @@ export default function ResumenActaPage() {
                                   </thead>
                                   <tbody>
                                     {items.length === 0 ? (
-                                      <tr><td colSpan={5} className="px-4 py-12 text-center text-[hsl(var(--canalco-neutral-400))]">No hay UCAPsen los levantamientos de esta acta.</td></tr>
+                                      <tr><td colSpan={5} className="px-4 py-12 text-center text-[hsl(var(--canalco-neutral-400))]">No hay UCAPs en los levantamientos de esta acta.</td></tr>
                                     ) : items.map((item, i) => (
                                       <tr key={item.key} className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}>
                                         <td className="px-3 py-2.5 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">1.{i + 1}</td>
@@ -844,7 +1236,7 @@ export default function ResumenActaPage() {
                                   </thead>
                                   <tbody>
                                     {wItems.length === 0 ? (
-                                      <tr><td colSpan={5} className="px-4 py-6 text-center text-[hsl(var(--canalco-neutral-400))]">Sin UCAPsen este proyecto.</td></tr>
+                                      <tr><td colSpan={5} className="px-4 py-6 text-center text-[hsl(var(--canalco-neutral-400))]">Sin UCAPs en este proyecto.</td></tr>
                                     ) : wItems.map((item, i) => (
                                       <tr key={item.key} className={`border-b border-[hsl(var(--canalco-neutral-100))] ${i % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]'}`}>
                                         <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-400))] text-xs font-mono text-center">{i + 1}</td>
@@ -953,19 +1345,23 @@ export default function ResumenActaPage() {
                           </div>
                         )}
                         <div className="flex-1">
-                          <div className="text-justify">
-                            <AutoResizeTextarea
-                              value={block.title}
-                              onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, title: e.target.value } : b))}
-                              className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
-                              style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                            />
-                            <AutoResizeTextarea
-                              value={block.content}
-                              onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, content: e.target.value } : b))}
-                              className="w-full bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0 mt-1"
-                              style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                            />
+                          <div data-word-clause="true" className="text-justify">
+                            <div data-word-clause-title>
+                              <AutoResizeTextarea
+                                value={block.title}
+                                onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, title: e.target.value } : b))}
+                                className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
+                                style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                              />
+                            </div>
+                            <div data-word-clause-content>
+                              <AutoResizeTextarea
+                                value={block.content}
+                                onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, content: e.target.value } : b))}
+                                className="w-full bg-transparent border-0 border-l-2 border-blue-200 pl-2 resize-none focus:outline-none focus:border-blue-400 text-justify leading-[1.7] print:border-l-0 print:pl-0 mt-1"
+                                style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                              />
+                            </div>
                           </div>
                         </div>
                         {canEdit && (
@@ -1084,42 +1480,75 @@ export default function ResumenActaPage() {
 
                 {/* Firmas */}
                 <div className="mt-16 text-[10.5pt]">
-                  {/* Fila 1: Municipio + Concesionario */}
-                  <div className="grid grid-cols-2 gap-16 mb-14">
-                    {/* EL MUNICIPIO */}
-                    <div>
-                      <p className="font-bold mb-10">EL MUNICIPIO</p>
-                      <div className="border-t border-black pt-1">
+                  {docFields.supNombre ? (
+                    <div data-word-signatures="true" className="grid grid-cols-2 gap-x-16 gap-y-14">
+                      <div>
                         <p className="font-bold uppercase">{docFields.munNombre}</p>
                         <p>C.C. {docFields.munCc}</p>
                         <p>{docFields.munCargo}</p>
-                        <p>Municipio de {docFields.municipio}</p>
+                        <p>{docFields.munEntidad || `Municipio de ${docFields.municipio}`}</p>
                       </div>
-                    </div>
-                    {/* EL CONCESIONARIO */}
-                    <div>
-                      <p className="font-bold mb-10">EL CONCESIONARIO</p>
-                      <div className="border-t border-black pt-1">
+                      <div>
+                        <p className="font-bold uppercase">{docFields.supNombre}</p>
+                        {docFields.supCc && <p>C.C. {docFields.supCc}</p>}
+                        {docFields.supCargo && <p>{docFields.supCargo}</p>}
+                        {docFields.supRol && <p>{docFields.supRol}</p>}
+                        <p>{docFields.supEntidad || `Municipio de ${docFields.municipio}`}</p>
+                      </div>
+                      <div>
                         <p className="font-bold uppercase">{docFields.conNombre}</p>
                         <p>C.C. {docFields.conCc}</p>
-                        <p>Representante Legal</p>
+                        <p>Representante Legal Suplente</p>
                         <p>{docFields.conEmpresa}</p>
                       </div>
-                    </div>
-                  </div>
-                  {/* Fila 2: Interventor (solo izquierda) */}
-                  <div className="grid grid-cols-2 gap-16">
-                    <div>
-                      <p className="font-bold mb-10">EL INTERVENTOR</p>
-                      <div className="border-t border-black pt-1">
+                      <div>
                         <p className="font-bold uppercase">{docFields.intNombre}</p>
                         <p>C.C. {docFields.intCc}</p>
                         <p>{docFields.intCargo || 'Representante Legal'}</p>
                         <p>{docFields.intEmpresa}</p>
-                        <p>Interventor del Contrato de Concesión</p>
+                        <p>Contrato de Concesión No {docFields.contrato.replace(' - ', ' de ')}</p>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Fila 1: Municipio + Concesionario */}
+                      <div className="grid grid-cols-2 gap-16 mb-14">
+                        {/* EL MUNICIPIO */}
+                        <div>
+                          <p className="font-bold mb-10">EL MUNICIPIO</p>
+                          <div className="border-t border-black pt-1">
+                            <p className="font-bold uppercase">{docFields.munNombre}</p>
+                            <p>C.C. {docFields.munCc}</p>
+                            <p>{docFields.munCargo}</p>
+                            <p>Municipio de {docFields.municipio}</p>
+                          </div>
+                        </div>
+                        {/* EL CONCESIONARIO */}
+                        <div>
+                          <p className="font-bold mb-10">EL CONCESIONARIO</p>
+                          <div className="border-t border-black pt-1">
+                            <p className="font-bold uppercase">{docFields.conNombre}</p>
+                            <p>C.C. {docFields.conCc}</p>
+                            <p>Representante Legal</p>
+                            <p>{docFields.conEmpresa}</p>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Fila 2: Interventor (solo izquierda) */}
+                      <div className="grid grid-cols-2 gap-16">
+                        <div>
+                          <p className="font-bold mb-10">EL INTERVENTOR</p>
+                          <div className="border-t border-black pt-1">
+                            <p className="font-bold uppercase">{docFields.intNombre}</p>
+                            <p>C.C. {docFields.intCc}</p>
+                            <p>{docFields.intCargo || 'Representante Legal'}</p>
+                            <p>{docFields.intEmpresa}</p>
+                            <p>Interventor del Contrato de Concesión</p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
               </EditContext.Provider>

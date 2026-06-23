@@ -14,6 +14,7 @@ export interface ActaDocFields {
   munCcCiudad: string;
   munCargo: string;
   munPosesionFecha: string;
+  munEntidad?: string;
   conNombre: string;
   conCc: string;
   conCcCiudad: string;
@@ -28,6 +29,11 @@ export interface ActaDocFields {
   intNit?: string;
   intDireccion?: string;
   intCargo?: string;
+  supNombre?: string;
+  supCc?: string;
+  supCargo?: string;
+  supRol?: string;
+  supEntidad?: string;
 }
 
 export interface Clausula {
@@ -63,6 +69,9 @@ export interface ActaConfig {
   consideraciones: string[];
   clausulas: Clausula[];
   encabezadoTabla?: EncabezadoTablaRow[];
+  partesIntro?: string;
+  partesIntroTemplate?: string;
+  consideracionNumeracion?: 'roman' | 'decimalDash';
   logoUrl?: string;
   hideMunicipioBanner?: boolean;
   printConfig?: ActaPrintConfig;
