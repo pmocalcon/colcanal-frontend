@@ -3,8 +3,6 @@ import { toast } from 'sonner';
 
 // Create axios instance with base configuration
 const baseURL = import.meta.env.VITE_API_URL || 'https://colcanal-backend.onrender.com/api';
-console.log('🔧 API Base URL:', baseURL);
-console.log('🔧 Environment variable VITE_API_URL:', import.meta.env.VITE_API_URL);
 
 const api = axios.create({
   baseURL,
@@ -16,6 +14,8 @@ const api = axios.create({
   },
   paramsSerializer: { indexes: null },
 });
+
+let refreshRequest: Promise<{ accessToken: string; refreshToken?: string }> | null = null;
 
 // Request interceptor - Add JWT token to requests
 api.interceptors.request.use(
@@ -47,12 +47,17 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem('refreshToken');
 
         if (refreshToken) {
-          // Try to refresh the token
-          const response = await axios.post(`${api.defaults.baseURL}/auth/refresh`, {
-            refreshToken,
-          });
+          // Try to refresh the token once, even if many requests fail at the same time.
+          if (!refreshRequest) {
+            refreshRequest = axios
+              .post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken })
+              .then((response) => response.data)
+              .finally(() => {
+                refreshRequest = null;
+              });
+          }
 
-          const { accessToken, refreshToken: newRefreshToken } = response.data;
+          const { accessToken, refreshToken: newRefreshToken } = await refreshRequest;
 
           // Save new tokens
           localStorage.setItem('accessToken', accessToken);

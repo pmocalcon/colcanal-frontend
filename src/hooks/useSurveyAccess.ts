@@ -23,13 +23,8 @@ export function useSurveyAccess(): UseSurveyAccessResult {
         setLoading(true);
         setError(null);
         const data = await surveysService.getMyAccess();
-        console.log('🔍 [useSurveyAccess] Respuesta del backend:', data);
-        console.log('🔍 [useSurveyAccess] Empresas:', data?.companies);
-        console.log('🔍 [useSurveyAccess] Proyectos:', data?.projects);
         setAccess(data);
       } catch (err: any) {
-        console.error('❌ [useSurveyAccess] Error fetching survey access:', err);
-        console.error('❌ [useSurveyAccess] Error response:', err.response?.data);
         setError('Error al cargar los accesos');
       } finally {
         setLoading(false);

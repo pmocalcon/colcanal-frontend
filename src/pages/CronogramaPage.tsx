@@ -31,6 +31,18 @@ function toDateInput(iso: string | null | undefined): string {
   return iso.slice(0, 10);
 }
 
+function toApiDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+function getApiErrorMessage(error: any, fallback: string): string {
+  const message = error?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(', ');
+  return message || fallback;
+}
+
 function pct(executed: number, planned: number): number {
   if (!planned) return 0;
   return clamp01(executed / planned) * 100;
@@ -260,6 +272,54 @@ export default function CronogramaPage() {
   // ── Informe Operativo: ucapId → unit value (COP)
   const [ucapValueMap, setUcapValueMap] = useState<Map<number, number>>(new Map());
 
+  const currentActaGanttObras = useMemo(() => {
+    if (actaScheduleRows.length === 0) return actaGanttObras;
+
+    return buildActaGanttObras(actaScheduleRows.map(({ work, schedule }) => {
+      const workPlans = actaDailyPlans[work.workId] ?? {};
+      const plans: DailyPlanEntry[] = [];
+      const execByUcap = new Map<number, number>();
+      const planByUcap = new Map<number, { start: string; end: string }>();
+
+      Object.entries(workPlans).forEach(([date, ucapEntries]) => {
+        Object.entries(ucapEntries).forEach(([ucapIdKey, cell]) => {
+          const ucapId = Number(ucapIdKey);
+          const plannedQuantity = parseFloat(cell.planned) || 0;
+          const executedQuantity = parseFloat(cell.executed) || 0;
+          plans.push({ ucapId, planDate: date, plannedQuantity, executedQuantity });
+          execByUcap.set(ucapId, (execByUcap.get(ucapId) ?? 0) + executedQuantity);
+
+          if (plannedQuantity > 0) {
+            const current = planByUcap.get(ucapId);
+            if (!current) planByUcap.set(ucapId, { start: date, end: date });
+            else {
+              if (date < current.start) current.start = date;
+              if (date > current.end) current.end = date;
+            }
+          }
+        });
+      });
+
+      const dates = actaContractualDates[work.workId];
+      const scheduleForGantt: ScheduleDetail = {
+        ...schedule,
+        contractualStart: dates?.start || schedule.contractualStart,
+        contractualEnd: dates?.end || schedule.contractualEnd,
+        items: schedule.items.map((item) => {
+          const plan = planByUcap.get(item.ucapId);
+          return {
+            ...item,
+            executedQuantity: execByUcap.get(item.ucapId) ?? item.executedQuantity,
+            ucapStartDate: plan?.start ?? item.ucapStartDate,
+            ucapEndDate: plan?.end ?? item.ucapEndDate,
+          };
+        }),
+      };
+
+      return { work, schedule: scheduleForGantt, plans };
+    }));
+  }, [actaScheduleRows, actaDailyPlans, actaContractualDates, actaGanttObras]);
+
   // ── Permisos por rol en el Cronograma
   //   PQRS y "Director de Proyecto" son familias de roles (por municipio/región) → match por prefijo.
   const { user } = useAuth();
@@ -471,7 +531,7 @@ export default function CronogramaPage() {
     setCronogramaTab('plan');
     try {
       setLoadingActa(true);
-      const results = await mapWithLimit(actaWorks, 5, async (w): Promise<{
+      const results = await mapWithLimit(actaWorks, 2, async (w): Promise<{
         work: Work;
         schedule: ScheduleDetail;
         plans: DailyPlanEntry[];
@@ -679,17 +739,21 @@ export default function CronogramaPage() {
     if (!schedule) return;
     try {
       setSaving(true);
-      const items = schedule.items.map((item) => ({
-        ucapId: item.ucapId,
-        executedQuantity: parseFloat(executed[item.ucapId] ?? '0') || 0,
-        ucapStartDate: ucapDates[item.ucapId]?.start || null,
-        ucapEndDate: ucapDates[item.ucapId]?.end || null,
-      }));
+      const items = schedule.items.flatMap((item) => {
+        const ucapId = Number(item.ucapId);
+        if (!Number.isFinite(ucapId)) return [];
+        return [{
+          ucapId,
+          executedQuantity: parseFloat(executed[item.ucapId] ?? '0') || 0,
+          ucapStartDate: toApiDate(ucapDates[item.ucapId]?.start),
+          ucapEndDate: toApiDate(ucapDates[item.ucapId]?.end),
+        }];
+      });
       const updated = await schedulesService.update(schedule.scheduleId, {
-        startDate: startDate || null,
-        endDate: endDate || null,
-        contractualStart: contractualStart || null,
-        contractualEnd: contractualEnd || null,
+        startDate: toApiDate(startDate),
+        endDate: toApiDate(endDate),
+        contractualStart: toApiDate(contractualStart),
+        contractualEnd: toApiDate(contractualEnd),
         items,
       });
       setSchedule(updated);
@@ -706,8 +770,8 @@ export default function CronogramaPage() {
       setUcapDates(datesMap);
       setIsDirty(false);
       toast.success('Cronograma guardado');
-    } catch {
-      toast.error('Error al guardar el cronograma');
+    } catch (error: any) {
+      toast.error(getApiErrorMessage(error, 'Error al guardar el cronograma'));
     } finally {
       setSaving(false);
     }
@@ -1217,8 +1281,8 @@ export default function CronogramaPage() {
       const updatedSchedules = await Promise.all(rowsWithSchedule.map(({ work, schedule }) => {
         const dates = actaContractualDates[work.workId] ?? { start: '', end: '' };
         return schedulesService.update(schedule.scheduleId, {
-          contractualStart: dates.start || null,
-          contractualEnd: dates.end || null,
+          contractualStart: toApiDate(dates.start),
+          contractualEnd: toApiDate(dates.end),
         });
       }));
       const updatedById = new Map(updatedSchedules.map((updated) => [updated.scheduleId, updated]));
@@ -1232,8 +1296,8 @@ export default function CronogramaPage() {
       })));
       setLastSavedActaContractual(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
       toast.success('Fechas contractuales del acta guardadas');
-    } catch {
-      toast.error('Error al guardar las fechas contractuales del acta');
+    } catch (error: any) {
+      toast.error(getApiErrorMessage(error, 'Error al guardar las fechas contractuales del acta'));
     } finally {
       setSavingActaContractual(false);
     }
@@ -1640,27 +1704,126 @@ export default function CronogramaPage() {
       const activityWorks = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
       const getActivityQty = (workId: number, date: string, rowId: string) =>
         actaExecActivityDailyMap[workId]?.[date]?.[rowId] ?? 0;
-      const getWorkActivityDateTotal = (workId: number, rows: Array<{ id: string; name: string }>, date: string) =>
-        rows.reduce((sum, row) => sum + getActivityQty(workId, date, row.id), 0);
-      const addActaExecActivityRow = (workId: number, scheduleId: number) => {
+      const activityGroupMap = new Map<string, {
+        key: string;
+        name: string;
+        entries: Array<{ work: Work; schedule: ScheduleDetail; row: { id: string; name: string }; source: 'plan' | 'exec' }>;
+        dayTotals: Record<string, number>;
+        total: number;
+      }>();
+      activityWorks.forEach(({ work, schedule }) => {
+        const execRows = actaExecActivityRows[work.workId] ?? [];
+        const plannedRows = actaActivityRows[work.workId] ?? [];
+        const execNames = new Set(execRows.map((row) => row.name.trim().toLocaleLowerCase('es-CO')).filter(Boolean));
+        const rows = [
+          ...execRows.map((row) => ({ row, source: 'exec' as const })),
+          ...plannedRows
+            .map((row) => ({ row, name: row.name.trim() }))
+            .filter(({ name }) => name && !execNames.has(name.toLocaleLowerCase('es-CO')))
+            .map(({ row, name }) => ({
+              row: { id: `exec-act-plan-${schedule.scheduleId}-${name.toLocaleLowerCase('es-CO')}`, name },
+              source: 'plan' as const,
+            })),
+        ];
+        rows.forEach((row) => {
+          const name = row.row.name.trim();
+          const key = name ? name.toLocaleLowerCase('es-CO') : `__blank-${work.workId}-${row.row.id}`;
+          const group = activityGroupMap.get(key) ?? {
+            key,
+            name,
+            entries: [],
+            dayTotals: {},
+            total: 0,
+          };
+          group.entries.push({ work, schedule, row: row.row, source: row.source });
+          days.forEach((date) => {
+            const qty = row.source === 'exec' ? getActivityQty(work.workId, date, row.row.id) : 0;
+            group.dayTotals[date] = (group.dayTotals[date] ?? 0) + qty;
+            group.total += qty;
+          });
+          activityGroupMap.set(key, group);
+        });
+      });
+      const activityGroups = [...activityGroupMap.values()].sort((a, b) => {
+        if (!a.name && b.name) return 1;
+        if (a.name && !b.name) return -1;
+        return a.name.localeCompare(b.name, 'es');
+      });
+      const addActaExecActivityRow = () => {
+        const first = activityWorks[0];
+        if (!first) return;
         setActaExecActivityRows((prev) => ({
           ...prev,
-          [workId]: [...(prev[workId] ?? []), { id: `exec-act-${scheduleId}-${Date.now()}`, name: '' }],
+          [first.work.workId]: [...(prev[first.work.workId] ?? []), { id: `exec-act-${first.schedule.scheduleId}-${Date.now()}`, name: '' }],
         }));
       };
-      const removeActaExecActivityRow = (workId: number, rowId: string) => {
+      const ensureExecActivityRow = (workId: number, row: { id: string; name: string }) => {
+        setActaExecActivityRows((prev) => {
+          const rows = prev[workId] ?? [];
+          if (rows.some((current) => current.id === row.id)) return prev;
+          return { ...prev, [workId]: [...rows, row] };
+        });
+      };
+      const updateActivityGroupName = (group: typeof activityGroups[number], name: string) => {
+        const execEntries = group.entries.filter((entry) => entry.source === 'exec');
+        if (execEntries.length === 0 && group.entries[0]) {
+          ensureExecActivityRow(group.entries[0].work.workId, { ...group.entries[0].row, name });
+        }
         setActaExecActivityRows((prev) => ({
           ...prev,
-          [workId]: (prev[workId] ?? []).filter((row) => row.id !== rowId),
+          ...Object.fromEntries((execEntries.length > 0 ? execEntries : group.entries.slice(0, 1)).map(({ work, row }) => [
+            work.workId,
+            (prev[work.workId] ?? []).map((current) => current.id === row.id ? { ...current, name } : current),
+          ])),
+        }));
+      };
+      const setActivityGroupQty = (group: typeof activityGroups[number], date: string, value: number) => {
+        const target = group.entries.find((entry) => entry.source === 'exec') ?? group.entries[0];
+        if (!target) return;
+        ensureExecActivityRow(target.work.workId, target.row);
+        setActaExecActivityDailyMap((prev) => {
+          const next = { ...prev };
+          group.entries.forEach(({ work, row }) => {
+            const workMap = next[work.workId] ?? {};
+            const dateMap = workMap[date] ?? {};
+            const nextDateMap = { ...dateMap };
+            if (work.workId === target.work.workId && row.id === target.row.id) nextDateMap[row.id] = value;
+            else delete nextDateMap[row.id];
+            next[work.workId] = {
+              ...workMap,
+              [date]: nextDateMap,
+            };
+          });
+          return next;
+        });
+      };
+      const removeActivityGroup = (group: typeof activityGroups[number]) => {
+        const idsByWork = new Map<number, Set<string>>();
+        group.entries.forEach(({ work, row }) => {
+          const ids = idsByWork.get(work.workId) ?? new Set<string>();
+          ids.add(row.id);
+          idsByWork.set(work.workId, ids);
+        });
+        setActaExecActivityRows((prev) => ({
+          ...prev,
+          ...Object.fromEntries([...idsByWork.entries()].map(([workId, ids]) => [
+            workId,
+            (prev[workId] ?? []).filter((row) => !ids.has(row.id)),
+          ])),
         }));
         setActaExecActivityDailyMap((prev) => {
-          const workMap = prev[workId] ?? {};
-          const nextWorkMap: NumberDailyMap = {};
-          Object.entries(workMap).forEach(([date, rowMap]) => {
-            const { [rowId]: _, ...rest } = rowMap;
-            nextWorkMap[date] = rest;
+          const next = { ...prev };
+          idsByWork.forEach((ids, workId) => {
+            const workMap = next[workId] ?? {};
+            const nextWorkMap: NumberDailyMap = {};
+            Object.entries(workMap).forEach(([date, rowMap]) => {
+              const nextRowMap = { ...rowMap };
+              ids.forEach((rowId) => delete nextRowMap[rowId]);
+              nextWorkMap[date] = nextRowMap;
+            });
+            next[workId] = nextWorkMap;
           });
-          return { ...prev, [workId]: nextWorkMap };
+          return next;
         });
       };
 
@@ -1682,7 +1845,7 @@ export default function CronogramaPage() {
               <table className="w-full text-sm border-collapse" style={{ minWidth: 760 }}>
                 <thead>
                   <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
-                    <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Proyecto / Actividad</th>
+                    <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Actividad</th>
                     {days.map((date, i) => {
                       const d = new Date(date + 'T12:00:00');
                       const isToday = date === today;
@@ -1704,119 +1867,73 @@ export default function CronogramaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activityWorks.map(({ work, schedule }) => {
-                    const rows = actaExecActivityRows[work.workId] ?? [];
-                    const workTotal = days.reduce((sum, date) => sum + getWorkActivityDateTotal(work.workId, rows, date), 0);
-                    return (
-                      <Fragment key={work.workId}>
-                        <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
-                          <td className="py-2 pr-2 align-middle">
-                            <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
-                            <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                  {activityGroups.length === 0 ? (
+                    <tr>
+                      <td colSpan={days.length + 3} className="py-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
+                        No hay actividades. Agrega una fila para iniciar la ejecucion del acta.
+                      </td>
+                    </tr>
+                  ) : activityGroups.map((group) => (
+                    <tr key={group.key} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                      <td className="py-1.5 pr-2">
+                        <Select
+                          value={group.name}
+                          disabled={!canEditEjecucion}
+                          onValueChange={(val) => updateActivityGroupName(group, val)}
+                        >
+                          <SelectTrigger className="h-7 text-xs min-w-[220px]">
+                            <SelectValue placeholder="Seleccionar actividad" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[...DEFAULT_ACTIVITY_OPTIONS, ...customActivityOptions].map((opt) => (
+                              <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="mt-1 text-[10px] text-[hsl(var(--canalco-neutral-500))]">
+                          {group.entries.length} proyecto{group.entries.length !== 1 ? 's' : ''} consolidado{group.entries.length !== 1 ? 's' : ''}
+                        </p>
+                      </td>
+                      {days.map((date) => {
+                        const isToday = date === today;
+                        const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                        const qty = group.dayTotals[date] ?? 0;
+                        return (
+                          <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={qty || ''}
+                              placeholder="0"
+                              disabled={isHoliday || !canEditEjecucion}
+                              onChange={(e) => setActivityGroupQty(group, date, parseFloat(e.target.value) || 0)}
+                              className="h-7 w-14 text-xs text-center px-1"
+                            />
                           </td>
-                          {days.map((date) => {
-                            const dateTotal = getWorkActivityDateTotal(work.workId, rows, date);
-                            return (
-                              <td key={date} className={`py-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
-                                {dateTotal > 0 ? dateTotal : '-'}
-                              </td>
-                            );
-                          })}
-                          <td className="py-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-800))]">
-                            {workTotal > 0 ? workTotal : '-'}
-                          </td>
-                          <td className="py-2 text-center">
-                            {canEditEjecucion && (
-                              <button
-                                onClick={() => addActaExecActivityRow(work.workId, schedule.scheduleId)}
-                                className="p-1 rounded hover:bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))]"
-                                title="Agregar actividad"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                        {rows.map((row) => {
-                          const weekTotal = days.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
-                          return (
-                            <tr key={`${work.workId}-${row.id}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
-                              <td className="py-1.5 pr-2 pl-4">
-                                <Select
-                                  value={row.name}
-                                  disabled={!canEditEjecucion}
-                                  onValueChange={(val) => setActaExecActivityRows((prev) => ({
-                                    ...prev,
-                                    [work.workId]: (prev[work.workId] ?? []).map((r) => r.id === row.id ? { ...r, name: val } : r),
-                                  }))}
-                                >
-                                  <SelectTrigger className="h-7 text-xs min-w-[220px]">
-                                    <SelectValue placeholder="Seleccionar actividad" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {[...DEFAULT_ACTIVITY_OPTIONS, ...customActivityOptions].map((opt) => (
-                                      <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              {days.map((date) => {
-                                const isToday = date === today;
-                                const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
-                                const qty = getActivityQty(work.workId, date, row.id);
-                                return (
-                                  <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={qty || ''}
-                                      placeholder="0"
-                                      disabled={isHoliday || !canEditEjecucion}
-                                      onChange={(e) => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        setActaExecActivityDailyMap((prev) => {
-                                          const workMap = prev[work.workId] ?? {};
-                                          const dateMap = workMap[date] ?? {};
-                                          return {
-                                            ...prev,
-                                            [work.workId]: {
-                                              ...workMap,
-                                              [date]: { ...dateMap, [row.id]: val },
-                                            },
-                                          };
-                                        });
-                                      }}
-                                      className="h-7 w-14 text-xs text-center px-1"
-                                    />
-                                  </td>
-                                );
-                              })}
-                              <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                                {weekTotal > 0 ? weekTotal : '-'}
-                              </td>
-                              <td className="py-1.5 pl-1">
-                                {canEditEjecucion && (
-                                  <button
-                                    onClick={() => removeActaExecActivityRow(work.workId, row.id)}
-                                    className="p-0.5 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    );
-                  })}
+                        );
+                      })}
+                      <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                        {group.total > 0 ? group.total : '-'}
+                      </td>
+                      <td className="py-1.5 pl-1">
+                        {canEditEjecucion && (
+                          <button
+                            onClick={() => removeActivityGroup(group)}
+                            className="p-0.5 rounded hover:bg-red-50 text-[hsl(var(--canalco-neutral-400))] hover:text-red-500"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
                     <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
                     {days.map((date) => {
-                      const dayTotal = activityWorks.reduce((sum, { work }) => sum + getWorkActivityDateTotal(work.workId, actaExecActivityRows[work.workId] ?? [], date), 0);
+                      const dayTotal = activityGroups.reduce((sum, group) => sum + (group.dayTotals[date] ?? 0), 0);
                       return (
                         <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
                           {dayTotal > 0 ? dayTotal : '-'}
@@ -1825,9 +1942,7 @@ export default function CronogramaPage() {
                     })}
                     <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                       {(() => {
-                        const total = days.reduce((sum, date) => (
-                          sum + activityWorks.reduce((workSum, { work }) => workSum + getWorkActivityDateTotal(work.workId, actaExecActivityRows[work.workId] ?? [], date), 0)
-                        ), 0);
+                        const total = activityGroups.reduce((sum, group) => sum + group.total, 0);
                         return total > 0 ? total : '-';
                       })()}
                     </td>
@@ -1843,10 +1958,7 @@ export default function CronogramaPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  const first = activityWorks[0];
-                  if (first) addActaExecActivityRow(first.work.workId, first.schedule.scheduleId);
-                }}
+                onClick={addActaExecActivityRow}
                 className="gap-1.5 text-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -2035,6 +2147,65 @@ export default function CronogramaPage() {
     const totalExpected = ucapItems.reduce((sum, item) => sum + item.expectedQty, 0);
     const physical = ratio(totalExecuted, totalPlanned);
     const expectedPct = ratio(totalExpected, totalPlanned);
+    const donutData = [
+      { name: 'Ejecutado', value: totalExecuted },
+      { name: 'Pendiente', value: Math.max(0, totalPlanned - totalExecuted) },
+    ];
+    const dms = (date: string) => parseLocalDate(date.slice(0, 10)).getTime();
+    const sortedPlanPoints = rowsWithSchedule
+      .flatMap(({ work }) => (
+        Object.entries(actaDailyPlans[work.workId] ?? {}).flatMap(([date, day]) => (
+          Object.values(day).map((cell) => ({
+            planDate: date,
+            plannedQuantity: parseFloat(cell.planned ?? '') || 0,
+            executedQuantity: parseFloat(cell.executed ?? '') || 0,
+          }))
+        ))
+      ))
+      .filter((point) => point.planDate && (point.plannedQuantity !== 0 || point.executedQuantity !== 0))
+      .sort((a, b) => (a.planDate < b.planDate ? -1 : 1));
+    const planDates = sortedPlanPoints.map((point) => point.planDate.slice(0, 10));
+    const curveStart = (actaStart || planDates[0] || '').slice(0, 10);
+    const curveEnd = (actaEnd || planDates[planDates.length - 1] || '').slice(0, 10);
+    const curveDenom = totalPlanned || sortedPlanPoints.reduce((sum, point) => sum + point.plannedQuantity, 0) || 1;
+    const curveTodayMs = parseLocalDate(today).getTime();
+    let actaCurva: Array<{ month: string; programado: number; real: number | null }> = [];
+    if (curveStart && curveEnd) {
+      const DAY = 86_400_000;
+      const startMs = dms(curveStart);
+      const endMs = Math.max(dms(curveEnd), startMs + DAY);
+      const spanDays = Math.round((endMs - startMs) / DAY);
+      const stepDays = spanDays <= 21 ? 1 : spanDays <= 90 ? 3 : spanDays <= 180 ? 7 : spanDays <= 540 ? 14 : 30;
+      const useDay = stepDays < 28;
+      const fmtLabel = (ms: number) => {
+        const label = new Date(ms).toLocaleDateString('es-CO', useDay ? { day: 'numeric', month: 'short' } : { month: 'short' });
+        return label.charAt(0).toUpperCase() + label.slice(1);
+      };
+      const stops: number[] = [];
+      for (let ms = startMs; ms <= endMs; ms += stepDays * DAY) stops.push(ms);
+      if (stops[stops.length - 1] !== endMs) stops.push(endMs);
+      actaCurva = stops.map((ms) => {
+        let progCum = 0;
+        let realCum = 0;
+        for (const point of sortedPlanPoints) {
+          if (dms(point.planDate) <= ms) {
+            progCum += point.plannedQuantity;
+            realCum += point.executedQuantity;
+          } else {
+            break;
+          }
+        }
+        const real: number | null = ms > curveTodayMs ? null : clamp01(realCum / curveDenom) * 100;
+        return { month: fmtLabel(ms), programado: clamp01(progCum / curveDenom) * 100, real };
+      });
+      actaCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > curveTodayMs ? null : 0 });
+      for (let i = actaCurva.length - 1; i >= 0; i--) {
+        if (actaCurva[i].real !== null) {
+          if (actaCurva[i].real! < physical) actaCurva[i].real = physical;
+          break;
+        }
+      }
+    }
     const dev = physical - expectedPct;
     const spi = expectedPct > 0 ? physical / expectedPct : null;
     const status = statusFor(temporal, physical);
@@ -2106,7 +2277,7 @@ export default function CronogramaPage() {
                 <div className="mt-2 text-[11px] text-slate-500">Esperado a la fecha: {Math.round(expectedPct)}%</div>
               </div>
               <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Activity className="w-3 h-3" />Avance Fisico</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Activity className="w-3 h-3" />Avance Fisico (Alcance)</div>
                 <div className="mt-2 flex items-baseline gap-1"><span className="text-3xl font-bold text-white">{Math.round(physical)}</span><span className="text-sm text-slate-400">%</span></div>
                 <div className="mt-2 text-[11px] text-slate-500">{spi !== null ? `SPI ${spi.toFixed(2)}` : 'Ejecutado / Alcance'}</div>
               </div>
@@ -2119,6 +2290,66 @@ export default function CronogramaPage() {
                 <div className="text-[10px] uppercase tracking-wider text-slate-400">Estado del Acta</div>
                 <div className="mt-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: status.color }} /><span className={`text-2xl font-bold ${status.cls}`}>{status.label}</span></div>
                 <div className="mt-2 text-[11px] text-slate-500">Este mes: {monthProgress.elapsed} / {monthProgress.total} dias habiles</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-amber-400" />Avance en el Tiempo - Curva S</h4>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">% acumulado - Programado vs Real</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1 text-slate-300"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" />Programado</span>
+                    <span className="flex items-center gap-1 text-slate-300"><span className="w-2.5 h-2.5 rounded-full bg-sky-400" />Real</span>
+                  </div>
+                </div>
+                {actaCurva.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart data={actaCurva} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="actaProgFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} stroke="#334155" />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} stroke="#334155" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+                      <RTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#e2e8f0' }} formatter={(value: number) => `${Math.round(value)}%`} />
+                      <Area type="monotone" dataKey="programado" stroke="#f59e0b" strokeWidth={2} fill="url(#actaProgFill)" name="Programado" />
+                      <RLine type="monotone" dataKey="real" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 3, fill: '#38bdf8' }} connectNulls name="Real" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[260px] flex items-center justify-center text-xs text-slate-500 text-center px-4">Registra el plan diario y las fechas del acta para ver la curva S.</div>
+                )}
+              </div>
+
+              <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+                <h4 className="text-sm font-semibold text-white flex items-center gap-1.5"><Activity className="w-4 h-4 text-emerald-400" />Avance Fisico</h4>
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Ejecutado vs Pendiente (uds)</p>
+                <div className="relative">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={donutData} dataKey="value" innerRadius={55} outerRadius={75} paddingAngle={2} stroke="none" startAngle={90} endAngle={-270}>
+                        <Cell fill="#22c55e" />
+                        <Cell fill="#1e293b" />
+                      </Pie>
+                      <RTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }} formatter={(value: number) => `${value.toLocaleString('es-CO')} uds`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-bold text-white">{Math.round(physical)}%</span>
+                    <span className="text-[10px] uppercase tracking-wider text-slate-500">Ejecutado</span>
+                  </div>
+                </div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-slate-300"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />Ejecutado</span><span className="font-semibold text-white tabular-nums">{totalExecuted.toLocaleString('es-CO')} uds</span></div>
+                  <div className="flex items-center justify-between"><span className="flex items-center gap-1.5 text-slate-300"><span className="w-2.5 h-2.5 rounded-sm bg-slate-600" />Pendiente</span><span className="font-semibold text-slate-300 tabular-nums">{Math.max(0, totalPlanned - totalExecuted).toLocaleString('es-CO')} uds</span></div>
+                  <div className="flex items-center justify-between border-t border-slate-800 pt-1.5"><span className="text-slate-400">Alcance total</span><span className="font-semibold text-white tabular-nums">{totalPlanned.toLocaleString('es-CO')} uds</span></div>
+                </div>
               </div>
             </div>
 
@@ -2589,6 +2820,78 @@ export default function CronogramaPage() {
     const totUcapVP = ucapRows.reduce((sum, row) => sum + row.plannedVal, 0);
     const totUcapVE = ucapRows.reduce((sum, row) => sum + row.execVal, 0);
     const ucapPct = ratio(totUcapQE, totUcapQP);
+    const today = formatDate(new Date());
+    const actaStartDates = rowsWithSchedule.map(({ work, schedule }) => {
+      const dates = actaContractualDates[work.workId] ?? {
+        start: toDateInput(schedule.contractualStart),
+        end: toDateInput(schedule.contractualEnd),
+      };
+      return dates.start || toDateInput(schedule.startDate);
+    }).filter(Boolean) as string[];
+    const actaEndDates = rowsWithSchedule.map(({ work, schedule }) => {
+      const dates = actaContractualDates[work.workId] ?? {
+        start: toDateInput(schedule.contractualStart),
+        end: toDateInput(schedule.contractualEnd),
+      };
+      return dates.end || toDateInput(schedule.endDate);
+    }).filter(Boolean) as string[];
+    const actaStart = actaStartDates.length > 0 ? [...actaStartDates].sort()[0] : '';
+    const actaEnd = actaEndDates.length > 0 ? [...actaEndDates].sort().slice(-1)[0] : '';
+    const dms = (date: string) => parseLocalDate(date.slice(0, 10)).getTime();
+    const sortedPlanPoints = rowsWithSchedule
+      .flatMap(({ work }) => (
+        Object.entries(actaDailyPlans[work.workId] ?? {}).flatMap(([date, day]) => (
+          Object.values(day).map((cell) => ({
+            planDate: date,
+            plannedQuantity: parseFloat(cell.planned ?? '') || 0,
+            executedQuantity: parseFloat(cell.executed ?? '') || 0,
+          }))
+        ))
+      ))
+      .filter((point) => point.planDate && (point.plannedQuantity !== 0 || point.executedQuantity !== 0))
+      .sort((a, b) => (a.planDate < b.planDate ? -1 : 1));
+    const planDates = sortedPlanPoints.map((point) => point.planDate.slice(0, 10));
+    const curveStart = (actaStart || planDates[0] || '').slice(0, 10);
+    const curveEnd = (actaEnd || planDates[planDates.length - 1] || '').slice(0, 10);
+    const curveDenom = totUcapQP || sortedPlanPoints.reduce((sum, point) => sum + point.plannedQuantity, 0) || 1;
+    const curveTodayMs = parseLocalDate(today).getTime();
+    let operativoCurva: Array<{ month: string; programado: number; real: number | null }> = [];
+    if (curveStart && curveEnd) {
+      const DAY = 86_400_000;
+      const startMs = dms(curveStart);
+      const endMs = Math.max(dms(curveEnd), startMs + DAY);
+      const spanDays = Math.round((endMs - startMs) / DAY);
+      const stepDays = spanDays <= 21 ? 1 : spanDays <= 90 ? 3 : spanDays <= 180 ? 7 : spanDays <= 540 ? 14 : 30;
+      const useDay = stepDays < 28;
+      const fmtLabel = (ms: number) => {
+        const label = new Date(ms).toLocaleDateString('es-CO', useDay ? { day: 'numeric', month: 'short' } : { month: 'short' });
+        return label.charAt(0).toUpperCase() + label.slice(1);
+      };
+      const stops: number[] = [];
+      for (let ms = startMs; ms <= endMs; ms += stepDays * DAY) stops.push(ms);
+      if (stops[stops.length - 1] !== endMs) stops.push(endMs);
+      operativoCurva = stops.map((ms) => {
+        let progCum = 0;
+        let realCum = 0;
+        for (const point of sortedPlanPoints) {
+          if (dms(point.planDate) <= ms) {
+            progCum += point.plannedQuantity;
+            realCum += point.executedQuantity;
+          } else {
+            break;
+          }
+        }
+        const real: number | null = ms > curveTodayMs ? null : clamp01(realCum / curveDenom) * 100;
+        return { month: fmtLabel(ms), programado: clamp01(progCum / curveDenom) * 100, real };
+      });
+      operativoCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > curveTodayMs ? null : 0 });
+      for (let i = operativoCurva.length - 1; i >= 0; i--) {
+        if (operativoCurva[i].real !== null) {
+          if (operativoCurva[i].real! < ucapPct) operativoCurva[i].real = ucapPct;
+          break;
+        }
+      }
+    }
 
     const totMatQP = matRows.reduce((sum, row) => sum + row.totalQuantity, 0);
     const totMatQE = matRows.reduce((sum, row) => sum + row.execQty, 0);
@@ -2662,53 +2965,57 @@ export default function CronogramaPage() {
     ];
     const darkItemCount = darkGroups.reduce((sum, group) => sum + group.items.length, 0);
     const DarkBar = ({ value }: { value: number }) => (
-      <div className="relative h-2 rounded-full bg-slate-800">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-amber-400 transition-all" style={{ width: `${Math.min(100, value)}%` }} />
+      <div className="relative h-2 rounded-full bg-[hsl(var(--canalco-neutral-200))]">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-[hsl(var(--canalco-primary))] transition-all" style={{ width: `${Math.min(100, value)}%` }} />
       </div>
     );
     const darkSummaryPanels = (
       <>
-        <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4 text-slate-200">
+        <div className="rounded-lg bg-white border border-[hsl(var(--canalco-neutral-300))] p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
-            <h4 className="text-sm font-semibold text-white flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-amber-400" />Avance Operativo</h4>
-            <span className="text-2xl font-bold text-amber-400">{Math.round(totalOperativo)}%</span>
+            <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Avance Operativo
+            </h4>
+            <span className="text-2xl font-bold text-[hsl(var(--canalco-primary))]">{Math.round(totalOperativo)}%</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {darkGroups.map((group) => (
-              <div key={group.key} className="rounded-md border border-slate-700 p-3">
+              <div key={group.key} className="rounded-lg border border-[hsl(var(--canalco-neutral-300))] p-3">
                 <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="text-slate-300">{group.key}</span>
-                  <span className="font-semibold text-white">{group.hasPlan ? `${Math.round(group.pct)}%` : '-'}</span>
+                  <span className="text-[hsl(var(--canalco-neutral-500))]">{group.key}</span>
+                  <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{group.hasPlan ? `${Math.round(group.pct)}%` : '-'}</span>
                 </div>
                 <DarkBar value={group.hasPlan ? group.pct : 0} />
-                <p className="text-[10px] text-slate-500 mt-2">{group.executed.toLocaleString('es-CO')} / {group.planned.toLocaleString('es-CO')} - peso {Math.round(group.weight * 100)}%</p>
+                <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-2">{group.executed.toLocaleString('es-CO')} / {group.planned.toLocaleString('es-CO')} - peso {Math.round(group.weight * 100)}%</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4 text-slate-200">
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wide mb-4 flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-sky-400" />Desglose por item</h4>
+        <div className="rounded-lg bg-white border border-[hsl(var(--canalco-neutral-300))] p-4">
+          <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide mb-4 flex items-center gap-1.5">
+            <BarChart3 className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Desglose por item
+          </h4>
           {darkItemCount === 0 ? (
-            <p className="text-xs text-slate-500">Sin items para mostrar.</p>
+            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">Sin items para mostrar.</p>
           ) : (
             <div className="space-y-3">
               {darkGroups.map((group) => (
                 <div key={group.key}>
                   <div className="flex items-center gap-2 my-1.5">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide w-28">{group.key}</span>
-                    <div className="flex-1 border-t border-slate-800" />
+                    <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide w-28">{group.key}</span>
+                    <div className="flex-1 border-t border-[hsl(var(--canalco-neutral-200))]" />
                   </div>
                   {group.items.length === 0 ? (
-                    <p className="text-xs text-slate-500 ml-28">Sin items</p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] ml-28">Sin items</p>
                   ) : group.items.map((item, index) => (
                     <div key={`${group.key}-${item.label}-${index}`} className="grid grid-cols-[160px_1fr_48px] gap-3 items-center mb-2">
                       <div className="min-w-0">
-                        <p className="text-[11px] font-mono font-semibold text-amber-400 truncate">{item.label || '-'}</p>
-                        {item.sublabel && <p className="text-[10px] text-slate-500 truncate" title={item.sublabel}>{item.sublabel}</p>}
+                        <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-primary))] truncate">{item.label || '-'}</p>
+                        {item.sublabel && <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate" title={item.sublabel}>{item.sublabel}</p>}
                       </div>
                       <DarkBar value={item.pct} />
-                      <span className="text-[11px] font-semibold text-right text-amber-400">{item.planned > 0 ? `${Math.round(item.pct)}%` : '-'}</span>
+                      <span className="text-[11px] font-semibold text-right text-[hsl(var(--canalco-primary))]">{item.planned > 0 ? `${Math.round(item.pct)}%` : '-'}</span>
                     </div>
                   ))}
                 </div>
@@ -2743,6 +3050,45 @@ export default function CronogramaPage() {
                 <KPICard label="Materiales" p={matPct} sub={totMatVP > 0 ? `${fmtCOP(totMatVE)} / ${fmtCOP(totMatVP)}` : `${fmtQ(totMatQE)} / ${fmtQ(totMatQP)}`} color="bg-sky-400" />
                 <KPICard label="Actividades" p={actPct} sub={totActP > 0 ? `${fmtQ(totActE)} / ${fmtQ(totActP)}` : 'Sin plan'} color="bg-violet-400" />
               </div>
+
+              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
+                <div className="px-5 py-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                      <TrendingUp className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Curva S - Avance en el Tiempo
+                    </h3>
+                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--canalco-neutral-500))] mt-1">% acumulado - Programado vs Real</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1 text-[hsl(var(--canalco-neutral-600))]"><span className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--canalco-primary))]" />Programado</span>
+                    <span className="flex items-center gap-1 text-[hsl(var(--canalco-neutral-600))]"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" />Real</span>
+                  </div>
+                </div>
+                <div className="p-4">
+                  {operativoCurva.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <ComposedChart data={operativoCurva} margin={{ top: 5, right: 14, left: -16, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="actaOperativoProgFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.22} />
+                            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" />
+                        <YAxis tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+                        <RTooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }} formatter={(value: number) => `${Math.round(value)}%`} />
+                        <Area type="monotone" dataKey="programado" stroke="#f59e0b" strokeWidth={2} fill="url(#actaOperativoProgFill)" name="Programado" />
+                        <RLine type="monotone" dataKey="real" stroke="#0ea5e9" strokeWidth={2.5} dot={{ r: 3, fill: '#0ea5e9' }} connectNulls name="Real" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[260px] flex items-center justify-center text-xs text-[hsl(var(--canalco-neutral-400))] text-center px-4">
+                      Registra el plan diario y las fechas del acta para ver la curva S.
+                    </div>
+                  )}
+                </div>
+              </section>
 
               {false && (
               <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-4">
@@ -3742,7 +4088,7 @@ export default function CronogramaPage() {
                                 );
                               })()}
                               <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                                <ActaGantt obras={actaGanttObras} />
+                                <ActaGantt obras={currentActaGanttObras} />
                               </section>
                               {actaScheduleRows.length > 0 && (() => {
                             const days = getWeekDays(weekOffset);

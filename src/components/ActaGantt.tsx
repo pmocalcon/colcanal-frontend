@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { parseLocalDate } from '@/utils/colombianCalendar';
-import type { ScheduleDetail } from '@/services/schedules.service';
+import type { DailyPlanEntry, ScheduleDetail } from '@/services/schedules.service';
 
 // ─── tipos ────────────────────────────────────────────────────────────────
+
+export interface ActaGanttPlanPoint {
+  date: string;
+  quantity: number;
+}
 
 export interface ActaGanttUcap {
   ucapId: number;
@@ -11,6 +16,10 @@ export interface ActaGanttUcap {
   description: string;
   start: string | null;
   end: string | null;
+  plannedQuantity: number;
+  executedQuantity: number;
+  unitValue: number;
+  planPoints: ActaGanttPlanPoint[];
   progress: number; // 0–100
 }
 
@@ -24,6 +33,11 @@ export interface ActaGanttObra {
   contextEnd: string | null;
   progress: number; // 0–100 (promedio simple del % de cada UCAP)
   weight: number; // nº de UCAPs con plan (informativo; el avance general usa promedio simple)
+  metrics: {
+    timePct: number | null;
+    scopePct: number;
+    budgetPct: number | null;
+  };
   ucaps: ActaGanttUcap[];
 }
 
@@ -38,6 +52,17 @@ function ucapPct(executed: number, planned: number): number {
   return clamp01(executed / planned) * 100;
 }
 
+function timePctFor(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null;
+  const startMs = dateMs(start);
+  const endMs = dateMs(end);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayMs = today.getTime();
+  if (endMs <= startMs) return todayMs >= endMs ? 100 : 0;
+  return clamp01((todayMs - startMs) / (endMs - startMs)) * 100;
+}
+
 /**
  * Transforma los schedules de las obras de un acta en filas para el Gantt.
  * - Progreso de la obra: promedio simple del % de avance de cada UCAP (con plan > 0).
@@ -47,15 +72,36 @@ export function buildActaGanttObras(
   items: Array<{
     work: { workId: number; workCode?: string | null; name: string };
     schedule: ScheduleDetail;
+    plans?: DailyPlanEntry[];
   }>,
 ): ActaGanttObra[] {
-  return items.map(({ work, schedule }) => {
+  return items.map(({ work, schedule, plans = [] }) => {
+    const ippFactor = Number(schedule.ippFactor) || 1;
+    const planPointsByUcap = new Map<number, Map<string, number>>();
+    plans.forEach((plan) => {
+      const date = plan.planDate?.slice(0, 10);
+      const quantity = Number(plan.plannedQuantity) || 0;
+      if (!date || quantity <= 0) return;
+
+      const byDate = planPointsByUcap.get(plan.ucapId) ?? new Map<string, number>();
+      byDate.set(date, (byDate.get(date) ?? 0) + quantity);
+      planPointsByUcap.set(plan.ucapId, byDate);
+    });
+    const getPlanPoints = (ucapId: number): ActaGanttPlanPoint[] =>
+      Array.from(planPointsByUcap.get(ucapId)?.entries() ?? [])
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, quantity]) => ({ date, quantity }));
+
     const ucaps: ActaGanttUcap[] = schedule.items.map((it) => ({
       ucapId: it.ucapId,
       code: it.ucapCode,
       description: it.ucapDescription,
       start: it.ucapStartDate,
       end: it.ucapEndDate,
+      plannedQuantity: Number(it.plannedQuantity) || 0,
+      executedQuantity: Number(it.executedQuantity) || 0,
+      unitValue: (Number(it.unitValue) || 0) * ippFactor,
+      planPoints: getPlanPoints(it.ucapId),
       progress: ucapPct(it.executedQuantity, it.plannedQuantity),
     }));
 
@@ -78,6 +124,37 @@ export function buildActaGanttObras(
     const end = ends.length
       ? ends.reduce((a, b) => (a > b ? a : b))
       : schedule.contractualEnd || null;
+    const budgetTotal = schedule.items.reduce(
+      (sum, item) => sum + (Number(item.plannedQuantity) || 0) * (Number(item.unitValue) || 0) * ippFactor,
+      0,
+    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+    const plannedByUcapToDate = new Map<number, number>();
+    plans.forEach((plan) => {
+      if (!plan.planDate || dateMs(plan.planDate.slice(0, 10)) > todayMs) return;
+      plannedByUcapToDate.set(
+        plan.ucapId,
+        (plannedByUcapToDate.get(plan.ucapId) ?? 0) + (Number(plan.plannedQuantity) || 0),
+      );
+    });
+    const budgetProgrammedToDate = schedule.items.reduce(
+      (sum, item) => {
+        const plannedToDate = Math.min(plannedByUcapToDate.get(item.ucapId) ?? 0, Number(item.plannedQuantity) || 0);
+        return sum + plannedToDate * (Number(item.unitValue) || 0) * ippFactor;
+      },
+      0,
+    );
+    const budgetExecuted = schedule.items.reduce(
+      (sum, item) => {
+        const executed = Math.min(Number(item.executedQuantity) || 0, Number(item.plannedQuantity) || 0);
+        return sum + executed * (Number(item.unitValue) || 0) * ippFactor;
+      },
+      0,
+    );
+    const budgetReference = budgetProgrammedToDate > 0 ? budgetProgrammedToDate : budgetExecuted;
+    const budgetPct = budgetTotal > 0 ? clamp01(budgetReference / budgetTotal) * 100 : null;
 
     return {
       workId: work.workId,
@@ -90,6 +167,11 @@ export function buildActaGanttObras(
       contextEnd: schedule.contractualEnd || null,
       progress,
       weight: ucapPcts.length,
+      metrics: {
+        timePct: timePctFor(start || null, end || null),
+        scopePct: progress,
+        budgetPct,
+      },
       ucaps,
     };
   });
@@ -102,8 +184,8 @@ function dateMs(s: string): number {
 }
 
 const DAY_MS = 86_400_000;
-const LABEL = 'w-52 flex-shrink-0';
-const PCT = 'w-14 flex-shrink-0';
+const LABEL = 'w-72 flex-shrink-0';
+const METRICS = 'w-80 flex-shrink-0';
 
 /** Color de la barra según el desfase entre avance esperado (temporal) y real. */
 function fillColorFor(start: string | null, end: string | null, progress: number): string {
@@ -137,6 +219,37 @@ function badgeStyle(color: string): { color: string; background: string } {
   );
 }
 
+function averageMetric(values: Array<number | null | undefined>): number | null {
+  const valid = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (valid.length === 0) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function metricColor(value: number | null): string {
+  if (value === null) return '#94a3b8';
+  if (value >= 100) return '#22c55e';
+  if (value >= 70) return '#f59e0b';
+  return '#ef4444';
+}
+
+function metricBadgeStyle(value: number | null): { color: string; background: string } {
+  if (value === null) return { color: '#64748b', background: 'rgba(148, 163, 184, 0.14)' };
+  return badgeStyle(metricColor(value));
+}
+
+function formatMetric(value: number | null): string {
+  return value === null ? '-' : `${Math.round(value)}%`;
+}
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString('es-CO', { maximumFractionDigits: 2 });
+}
+
+function formatCurrency(value: number): string {
+  if (!value) return '-';
+  return value.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+}
+
 export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -158,6 +271,9 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
       for (const u of o.ucaps) {
         if (u.start) allMs.push(dateMs(u.start));
         if (u.end) allMs.push(dateMs(u.end));
+        for (const point of u.planPoints) {
+          allMs.push(dateMs(point.date));
+        }
       }
     }
     if (allMs.length < 2) return null;
@@ -208,13 +324,40 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
     ) : null;
 
   // Barra (track + fill) reutilizable
-  const Bar = ({ start, end, progress, height }: { start: string | null; end: string | null; progress: number; height: string }) => {
+  const Bar = ({
+    start,
+    end,
+    progress,
+    height,
+    planPoints = [],
+  }: {
+    start: string | null;
+    end: string | null;
+    progress: number;
+    height: string;
+    planPoints?: ActaGanttPlanPoint[];
+  }) => {
     const innerH = height === 'h-7' ? 'h-3.5' : 'h-2.5';
+    const PlanPointMarkers = () =>
+      timeline && planPoints.length > 0 ? (
+        <>
+          {planPoints.map((point) => (
+            <span
+              key={`${point.date}-${point.quantity}`}
+              className="absolute top-1/2 z-20 min-w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-300 bg-amber-50 px-1 text-center text-[10px] font-bold leading-4 text-amber-700 shadow-sm"
+              style={{ left: `${timeline.toPos(point.date)}%` }}
+              title={`${point.date} - Plan: ${formatQuantity(point.quantity)}`}
+            >
+              {formatQuantity(point.quantity)}
+            </span>
+          ))}
+        </>
+      ) : null;
     if (!timeline || !start || !end) {
       // Sin fechas de cronograma: barra de progreso simple basada en el % de avance.
       const color = fillColorFor(start, end, progress);
       return (
-        <div className={`flex-1 ${height} flex items-center`}>
+        <div className={`flex-1 ${height} flex items-center relative`}>
           {progress > 0 ? (
             <div className={`w-full ${innerH} rounded-full bg-[hsl(var(--canalco-neutral-100))] overflow-hidden`}>
               <div
@@ -226,6 +369,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
             // 0% sin avance: línea punteada sutil ("planeado, sin iniciar"), no un riel gris lleno.
             <div className="w-full border-t-2 border-dashed border-[hsl(var(--canalco-neutral-200))]" />
           )}
+          <PlanPointMarkers />
         </div>
       );
     }
@@ -254,6 +398,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
             style={{ left: `${left}%`, width: `${fillWidth}%`, background: color }}
           />
         )}
+        <PlanPointMarkers />
       </div>
     );
   };
@@ -266,24 +411,45 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
       : 0;
   const overallColor =
     overall >= 100 ? '#22c55e' : overall >= 70 ? '#f59e0b' : 'hsl(var(--canalco-primary))';
+  const overallScope = averageMetric(obras.map((obra) => obra.metrics.scopePct));
+  const overallBudget = averageMetric(obras.map((obra) => obra.metrics.budgetPct));
+  const MetricPill = ({ label, value }: { label: string; value: number | null }) => (
+    <span
+      className="inline-flex items-center justify-between gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums"
+      style={metricBadgeStyle(value)}
+    >
+      <span className="font-medium opacity-80">{label}</span>
+      <span>{formatMetric(value)}</span>
+    </span>
+  );
+  const RowMetrics = ({ obra }: { obra: ActaGanttObra }) => (
+    <div className={`${METRICS} grid grid-cols-2 gap-1.5`}>
+      <MetricPill label="Alcance" value={obra.metrics.scopePct} />
+      <MetricPill label="Ppto" value={obra.metrics.budgetPct} />
+    </div>
+  );
 
   return (
     <div>
       {/* ── Avance general (promedio simple del avance de cada obra) ── */}
       <div className="mb-5 rounded-xl border border-[hsl(var(--canalco-neutral-200))] bg-gradient-to-br from-white to-[hsl(var(--canalco-neutral-50))] px-5 py-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-800))]">
-            Avance general del acta
+            Avance general por proyecto
             <span className="ml-2 text-xs font-normal text-[hsl(var(--canalco-neutral-400))]">
               ({obras.length} obras · promedio del avance)
             </span>
           </span>
-          <span
-            className="text-base font-bold tabular-nums rounded-full px-3 py-1"
-            style={badgeStyle(overallColor)}
-          >
-            {Math.round(overall)}%
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <MetricPill label="Alcance" value={overallScope} />
+            <MetricPill label="Ppto" value={overallBudget} />
+            <span
+              className="text-base font-bold tabular-nums rounded-full px-3 py-1"
+              style={badgeStyle(overallColor)}
+            >
+              {Math.round(overall)}%
+            </span>
+          </div>
         </div>
         <div className="h-2.5 w-full rounded-full bg-[hsl(var(--canalco-neutral-200))] overflow-hidden">
           <div
@@ -294,7 +460,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ minWidth: 680 }}>
+        <div style={{ minWidth: 1120 }}>
           {/* ── Etiquetas de fecha ── */}
         {timeline && (
           <div className="flex gap-2 h-7 mb-1.5 pb-1 border-b border-[hsl(var(--canalco-neutral-200))]">
@@ -310,14 +476,16 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                 </span>
               ))}
             </div>
-            <div className={PCT} />
+            <div className={`${METRICS} grid grid-cols-2 gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))]`}>
+              <span>Alcance</span>
+              <span>Ppto</span>
+            </div>
           </div>
         )}
 
         {/* ── Filas de obras ── */}
         {obras.map((obra, idx) => {
           const isOpen = expanded.has(obra.workId);
-          const color = fillColorFor(obra.start, obra.end, obra.progress);
           return (
             <div
               key={obra.workId}
@@ -352,14 +520,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                   </div>
                 </div>
                 <Bar start={obra.start} end={obra.end} progress={obra.progress} height="h-7" />
-                <div className={`${PCT} flex justify-end`}>
-                  <span
-                    className="text-[11px] font-bold tabular-nums rounded-full px-2 py-0.5"
-                    style={badgeStyle(color)}
-                  >
-                    {Math.round(obra.progress)}%
-                  </span>
-                </div>
+                <RowMetrics obra={obra} />
               </button>
 
               {/* sub-filas de UCAPs */}
@@ -371,23 +532,41 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                       <div className="flex-1 text-[11px] text-[hsl(var(--canalco-neutral-400))] italic">
                         Sin UCAPs registradas
                       </div>
-                      <div className={PCT} />
+                      <div className={METRICS} />
                     </div>
                   ) : (
                     obra.ucaps.map((u) => {
                       const uColor = fillColorFor(u.start, u.end, u.progress);
+                      const executedValue = (Number(u.executedQuantity) || 0) * (Number(u.unitValue) || 0);
                       return (
                         <div key={u.ucapId} className="flex items-center gap-2 py-1">
                           <div className={`${LABEL} pl-7 pr-2 min-w-0`}>
-                            <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-neutral-600))] truncate leading-tight">
-                              {u.code}
-                            </p>
+                            <div className="flex items-center gap-1.5 min-w-0 leading-tight flex-wrap">
+                              <p className="text-[11px] font-mono font-semibold text-[hsl(var(--canalco-neutral-600))] truncate">
+                                {u.code}
+                              </p>
+                              <span className="flex-shrink-0 text-[10px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]">
+                                Cant. {formatQuantity(u.plannedQuantity)}
+                              </span>
+                              <span className="flex-shrink-0 text-[10px] font-bold tabular-nums rounded-full px-1.5 py-0.5 bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))]">
+                                Ejec. {formatQuantity(u.executedQuantity)}
+                              </span>
+                            </div>
                             <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">
                               {u.description}
                             </p>
                           </div>
-                          <Bar start={u.start} end={u.end} progress={u.progress} height="h-5" />
-                          <div className={`${PCT} flex justify-end`}>
+                          <Bar
+                            start={u.start}
+                            end={u.end}
+                            progress={u.progress}
+                            height="h-6"
+                            planPoints={u.planPoints}
+                          />
+                          <div className={`${METRICS} flex justify-end gap-1.5`}>
+                            <span className="text-[10px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">
+                              Vr. {formatCurrency(executedValue)}
+                            </span>
                             <span
                               className="text-[10px] font-semibold tabular-nums rounded-full px-1.5 py-0.5"
                               style={badgeStyle(uColor)}
@@ -417,7 +596,7 @@ export function ActaGantt({ obras }: { obras: ActaGanttObra[] }) {
                 hoy
               </span>
             </div>
-            <div className={PCT} />
+            <div className={METRICS} />
           </div>
         )}
         </div>
