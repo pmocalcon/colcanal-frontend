@@ -1030,7 +1030,7 @@ export default function ResumenActaPage() {
                   <p className="text-justify mb-5">
                     <EditableText>Entre los suscritos </EditableText>
                     <InlineInput value={docFields.munNombre} onChange={setDF('munNombre')} bold />
-                    <EditableText>, mayor de edad, identificada con cédula de ciudadanía No. </EditableText>
+                    <EditableText>, mayor de edad, identificado con cédula de ciudadanía No. </EditableText>
                     <InlineInput value={docFields.munCc} onChange={setDF('munCc')} />
                     <EditableText> de </EditableText>
                     <InlineInput value={docFields.munCcCiudad} onChange={setDF('munCcCiudad')} />
@@ -1050,7 +1050,7 @@ export default function ResumenActaPage() {
                     <InlineInput value={docFields.conCcCiudad} onChange={setDF('conCcCiudad')} />
                     <EditableText>, quien actúa en calidad de Representante Legal de la </EditableText>
                     <InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} bold />
-                    <EditableText>, identificada con No. De Nit </EditableText>
+                    <EditableText>, identificada con NIT No. </EditableText>
                     <InlineInput value={docFields.conNit} onChange={setDF('conNit')} />
                     <EditableText>, quien en adelante para los efectos del presente documento se denominará </EditableText>
                     <strong>EL CONCESIONARIO</strong>

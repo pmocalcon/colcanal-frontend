@@ -459,7 +459,7 @@ export default function RevisarLevantamientoDetallePage() {
 
         {/* Survey Info */}
         <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Informacion de la Obra</h2>
+          <h2 className="text-lg font-semibold mb-4">Información de la obra</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-[hsl(var(--canalco-neutral-500))]">Empresa:</span>
@@ -470,7 +470,7 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.work?.recordNumber || '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">Codigo Proyecto:</span>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Código Proyecto:</span>
               <p className="font-medium">{survey.projectCode || '-'}</p>
             </div>
             <div>
@@ -478,7 +478,7 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.surveyNumber || '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">Direccion:</span>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Dirección:</span>
               <p className="font-medium">{survey.work?.address || '-'}</p>
             </div>
             <div>
@@ -502,7 +502,7 @@ export default function RevisarLevantamientoDetallePage() {
               <p className="font-medium">{survey.work?.zone || '-'}</p>
             </div>
             <div>
-              <span className="text-[hsl(var(--canalco-neutral-500))]">Direccion Usuario:</span>
+              <span className="text-[hsl(var(--canalco-neutral-500))]">Dirección Usuario:</span>
               <p className="font-medium">{survey.work?.userAddress || '-'}</p>
             </div>
             <div>
@@ -541,7 +541,7 @@ export default function RevisarLevantamientoDetallePage() {
 
           {/* Description */}
           <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
-            <span className="text-[hsl(var(--canalco-neutral-500))] text-sm">Descripcion:</span>
+            <span className="text-[hsl(var(--canalco-neutral-500))] text-sm">Descripción:</span>
             <p className="font-medium text-sm mt-1">{survey.description || '-'}</p>
           </div>
 
@@ -957,7 +957,7 @@ function BudgetBlockContent({
             {budgetItems.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-4 text-center text-[hsl(var(--canalco-neutral-500))]">
-                  Sin items de presupuesto
+                  Sin ítems de presupuesto
                 </td>
               </tr>
             ) : (
@@ -1020,19 +1020,19 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
           <span className={survey.requiresPhotometricStudies ? 'text-green-600' : 'text-gray-400'}>
             {survey.requiresPhotometricStudies ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           </span>
-          Estudios Fotometricos
+          Estudios fotométricos
         </div>
         <div className="flex items-center gap-2">
           <span className={survey.requiresRetieCertification ? 'text-green-600' : 'text-gray-400'}>
             {survey.requiresRetieCertification ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           </span>
-          Certificacion RETIE
+          Certificación RETIE
         </div>
         <div className="flex items-center gap-2">
           <span className={survey.requiresRetilapCertification ? 'text-green-600' : 'text-gray-400'}>
             {survey.requiresRetilapCertification ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           </span>
-          Certificacion RETILAP
+          Certificación RETILAP
         </div>
         <div className="flex items-center gap-2">
           <span className={survey.requiresCivilWork ? 'text-green-600' : 'text-gray-400'}>
@@ -1049,7 +1049,7 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">No. Orden</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Punto</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripción</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Lum.</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Lum. Reub.</th>
               <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cant. Poste</th>
@@ -1061,7 +1061,7 @@ function InvestmentBlockContent({ survey }: { survey: Survey }) {
             {investmentItems.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-4 text-center text-[hsl(var(--canalco-neutral-500))]">
-                  Sin items de inversion
+                  Sin ítems de inversión
                 </td>
               </tr>
             ) : (
@@ -1098,8 +1098,8 @@ function MaterialsBlockContent({ survey }: { survey: Survey }) {
         <thead className="bg-amber-50">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Item</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Codigo</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Código</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripción</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Unidad</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cantidad</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Observaciones</th>
@@ -1162,7 +1162,7 @@ function TravelExpensesBlockContent({ survey }: { survey: Survey }) {
         <thead className="bg-amber-50">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Item</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripcion</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Descripción</th>
             <th className="px-3 py-2 text-right text-xs font-semibold text-amber-800">Cantidad</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-amber-800">Observaciones</th>
           </tr>

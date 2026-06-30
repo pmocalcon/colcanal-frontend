@@ -330,7 +330,7 @@ export default function AuditoriasComprasDetallePage() {
                       return (
                         <TableRow key={index}>
                           <TableCell className="font-medium">
-                            {item.material?.materialCode || 'N/A'}
+                            {item.material?.code || 'N/A'}
                           </TableCell>
                           <TableCell>{item.material?.description || 'N/A'}</TableCell>
                           <TableCell className="text-right font-semibold">

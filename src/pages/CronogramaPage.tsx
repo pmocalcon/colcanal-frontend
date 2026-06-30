@@ -4,8 +4,9 @@ import { toast } from 'sonner';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapToDepartments, getMunicipioName, type Municipality } from '@/utils/departmentMapper';
-import { surveysService, type Work } from '@/services/surveys.service';
+import { surveysService, type Work, type WorkActa } from '@/services/surveys.service';
 import { schedulesService, type ScheduleDetail, type DailyPlanEntry, type MaterialLogEntry, type SurveyMaterialItem, type DailyExecutionEntry, type ExecutionItem, type PurchaseComparisonItem } from '@/services/schedules.service';
+import { directorBudgetsService, type DirectorBudget } from '@/services/director-budgets.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,11 +15,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { materialsService, type Material } from '@/services/materials.service';
-import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
-import { ResponsiveContainer, ComposedChart, Area, Line as RLine, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, PieChart, Pie, Cell } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Area, Line as RLine, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, PieChart, Pie, Cell, BarChart, Bar, Legend, LabelList } from 'recharts';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -29,18 +30,6 @@ function clamp01(v: number): number {
 function toDateInput(iso: string | null | undefined): string {
   if (!iso) return '';
   return iso.slice(0, 10);
-}
-
-function toApiDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const date = value.slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-}
-
-function getApiErrorMessage(error: any, fallback: string): string {
-  const message = error?.response?.data?.message;
-  if (Array.isArray(message)) return message.join(', ');
-  return message || fallback;
 }
 
 function pct(executed: number, planned: number): number {
@@ -81,6 +70,32 @@ const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 // Domingo (día no laboral): se marca en rojo y se deshabilita igual que un festivo.
 function isSunday(date: string): boolean {
   return parseLocalDate(date).getDay() === 0;
+}
+
+// Sábado (día no laboral): se marca en rojo y se deshabilita igual que el domingo/festivo.
+function isSaturday(date: string): boolean {
+  return parseLocalDate(date).getDay() === 6;
+}
+
+// Suma N días hábiles (lunes a viernes, sin festivos) a una fecha de inicio.
+// Devuelve la fecha (YYYY-MM-DD) del N-ésimo día hábil contando desde el inicio inclusive.
+function addWorkingDays(startStr: string, n: number): string {
+  if (!startStr || n <= 0) return '';
+  const startYear = parseLocalDate(startStr).getFullYear();
+  const holidays = new Set<string>();
+  for (let y = startYear - 1; y <= startYear + 4; y++) {
+    for (const h of getColombianHolidays(y)) holidays.add(h);
+  }
+  let count = 0;
+  const cur = parseLocalDate(startStr);
+  for (let guard = 0; guard < 6000; guard++) {
+    const dow = cur.getDay();
+    const iso = formatDate(cur);
+    if (dow !== 0 && dow !== 6 && !holidays.has(iso)) count++;
+    if (count >= n) return iso;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return formatDate(cur);
 }
 
 // Selector de semana reutilizable (‹ rango ›  Hoy) para los planes diarios.
@@ -189,6 +204,12 @@ export default function CronogramaPage() {
 
   // ── Vista de acta (Gantt de todas las obras del acta)
   const [selectedActa, setSelectedActa] = useState<string | null>(null);
+  // Flujo de revisión del Plan del cronograma (Director de Proyecto → Director Técnico).
+  const [actaCronograma, setActaCronograma] = useState<WorkActa | null>(null);
+  const [actaCompanyId, setActaCompanyId] = useState<number | null>(null);
+  const [cronogramaActionLoading, setCronogramaActionLoading] = useState(false);
+  const [cronogramaRejectOpen, setCronogramaRejectOpen] = useState(false);
+  const [cronogramaRejectMotivo, setCronogramaRejectMotivo] = useState('');
   const [actaGanttObras, setActaGanttObras] = useState<ActaGanttObra[]>([]);
   const [actaScheduleRows, setActaScheduleRows] = useState<ActaScheduleRow[]>([]);
   const [actaDailyPlans, setActaDailyPlans] = useState<ActaDailyPlanMap>({});
@@ -201,9 +222,9 @@ export default function CronogramaPage() {
   const [actaExecActivityRows, setActaExecActivityRows] = useState<ActaActivityRowsMap>({});
   const [actaExecActivityDailyMap, setActaExecActivityDailyMap] = useState<ActaNumberDailyMap>({});
   const [actaPurchaseComparisonMap, setActaPurchaseComparisonMap] = useState<ActaPurchaseComparisonMap>({});
+  const [actaDirectorBudgets, setActaDirectorBudgets] = useState<DirectorBudget[]>([]);
+  const [purchaseChartView, setPurchaseChartView] = useState<'quantities' | 'values'>('quantities');
   const [loadingActa, setLoadingActa] = useState(false);
-  const [loadingActaDetails, setLoadingActaDetails] = useState(false);
-  const [actaDetailsLoaded, setActaDetailsLoaded] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -224,6 +245,7 @@ export default function CronogramaPage() {
   const [lastSavedActaDailyPlan, setLastSavedActaDailyPlan] = useState<string | null>(null);
   const [savingActaContractual, setSavingActaContractual] = useState(false);
   const [lastSavedActaContractual, setLastSavedActaContractual] = useState<string | null>(null);
+  const [actaContractualDays, setActaContractualDays] = useState('');
   const [savingActaMaterials, setSavingActaMaterials] = useState(false);
   const [lastSavedActaMaterials, setLastSavedActaMaterials] = useState<string | null>(null);
   const [savingActaActivities, setSavingActaActivities] = useState(false);
@@ -264,63 +286,17 @@ export default function CronogramaPage() {
   const [execMaterialMeta, setExecMaterialMeta] = useState<Record<string, { label: string | null; unitOfMeasure: string | null; budgetQty: number; budgetValue: number }>>({});
   const [materialCatalog, setMaterialCatalog] = useState<Material[]>([]);
   const [addMaterialOpen, setAddMaterialOpen] = useState(false);
+  // Materiales extra agregados manualmente en la ejecución consolidada del acta.
+  const [actaExtraExecMaterials, setActaExtraExecMaterials] = useState<Array<{ code: string; description: string; unitOfMeasure: string | null }>>([]);
   const [execActivityRows, setExecActivityRows] = useState<Array<{ id: string; name: string }>>([]);
   const [execActivityDailyMap, setExecActivityDailyMap] = useState<Record<string, Record<string, number>>>({});
   const [purchaseComparison, setPurchaseComparison] = useState<PurchaseComparisonItem[]>([]);
 
-  // ── Informe: full daily-plan history for the S-curve
+  // ── Informe: full daily-history for the S-curve
   const [reportPlans, setReportPlans] = useState<DailyPlanEntry[]>([]);
 
   // ── Informe Operativo: ucapId → unit value (COP)
   const [ucapValueMap, setUcapValueMap] = useState<Map<number, number>>(new Map());
-
-  const currentActaGanttObras = useMemo(() => {
-    if (actaScheduleRows.length === 0) return actaGanttObras;
-
-    return buildActaGanttObras(actaScheduleRows.map(({ work, schedule }) => {
-      const workPlans = actaDailyPlans[work.workId] ?? {};
-      const plans: DailyPlanEntry[] = [];
-      const execByUcap = new Map<number, number>();
-      const planByUcap = new Map<number, { start: string; end: string }>();
-
-      Object.entries(workPlans).forEach(([date, ucapEntries]) => {
-        Object.entries(ucapEntries).forEach(([ucapIdKey, cell]) => {
-          const ucapId = Number(ucapIdKey);
-          const plannedQuantity = parseFloat(cell.planned) || 0;
-          const executedQuantity = parseFloat(cell.executed) || 0;
-          plans.push({ ucapId, planDate: date, plannedQuantity, executedQuantity });
-          execByUcap.set(ucapId, (execByUcap.get(ucapId) ?? 0) + executedQuantity);
-
-          if (plannedQuantity > 0) {
-            const current = planByUcap.get(ucapId);
-            if (!current) planByUcap.set(ucapId, { start: date, end: date });
-            else {
-              if (date < current.start) current.start = date;
-              if (date > current.end) current.end = date;
-            }
-          }
-        });
-      });
-
-      const dates = actaContractualDates[work.workId];
-      const scheduleForGantt: ScheduleDetail = {
-        ...schedule,
-        contractualStart: dates?.start || schedule.contractualStart,
-        contractualEnd: dates?.end || schedule.contractualEnd,
-        items: schedule.items.map((item) => {
-          const plan = planByUcap.get(item.ucapId);
-          return {
-            ...item,
-            executedQuantity: execByUcap.get(item.ucapId) ?? item.executedQuantity,
-            ucapStartDate: plan?.start ?? item.ucapStartDate,
-            ucapEndDate: plan?.end ?? item.ucapEndDate,
-          };
-        }),
-      };
-
-      return { work, schedule: scheduleForGantt, plans };
-    }));
-  }, [actaScheduleRows, actaDailyPlans, actaContractualDates, actaGanttObras]);
 
   // ── Permisos por rol en el Cronograma
   //   PQRS y "Director de Proyecto" son familias de roles (por municipio/región) → match por prefijo.
@@ -333,8 +309,20 @@ export default function CronogramaPage() {
   const isDirectorTecnico = role === 'Director Técnico';
   // Usuarios maestros (PMO / Super Admin): acceso total al cronograma (ven y editan todo)
   const isMaster = role === 'Super Admin' || role === 'Analista PMO' || role === 'Director PMO';
-  // Plan: edita Director de Proyecto · los demás solo ven
-  const canEditPlan = isDirectorProyecto || isMaster;
+  // ── Estado del flujo de revisión del Plan del cronograma
+  const cronogramaStatus = actaCronograma?.cronogramaStatus ?? 'pendiente';
+  // El plan queda bloqueado mientras está en revisión o ya fue aprobado.
+  const planLocked = cronogramaStatus === 'en_revision' || cronogramaStatus === 'aprobado';
+  // Ejecución/Informe/Operativo se habilitan solo cuando el plan está aprobado.
+  const cronogramaApproved = cronogramaStatus === 'aprobado';
+  // Analista PMO, Director PMO y Super Admin navegan libremente sin esperar la aprobación del plan.
+  const canNavigateFreely = role === 'Analista PMO' || role === 'Director PMO' || role === 'Super Admin';
+  // Acceso a otras pestañas: plan aprobado, o rol con navegación libre.
+  const canAccessOtherTabs = cronogramaApproved || canNavigateFreely;
+  const canSubmitCronograma = (isDirectorProyecto || isMaster) && (cronogramaStatus === 'pendiente' || cronogramaStatus === 'rechazado');
+  const canReviewCronograma = (isDirectorTecnico || isMaster) && cronogramaStatus === 'en_revision';
+  // Plan: edita Director de Proyecto · los demás solo ven · bloqueado en revisión/aprobado
+  const canEditPlan = (isDirectorProyecto || isMaster) && !planLocked;
   // Ejecución: editan PQRS y Director de Proyecto · los demás solo ven
   const canEditEjecucion = isPQRS || isDirectorProyecto || isMaster;
   // Informe: solo Gerencia · Operativo: Director de Proyecto, Gerencia de Proyectos y Director Técnico
@@ -352,10 +340,17 @@ export default function CronogramaPage() {
 
   // ── si la pestaña activa deja de ser accesible para el rol, volver a Plan
   useEffect(() => {
-    if ((cronogramaTab === 'informe' && !canSeeInforme) || (cronogramaTab === 'operativo' && !canSeeOperativo)) {
+    if ((cronogramaTab === 'informe' && !canSeeInforme) || ((cronogramaTab === 'operativo' || cronogramaTab === 'graficos') && !canSeeOperativo)) {
       setCronogramaTab('plan');
     }
   }, [cronogramaTab, canSeeInforme, canSeeOperativo]);
+
+  // ── Ejecución/Informe/Operativo solo si el Plan del cronograma está aprobado.
+  useEffect(() => {
+    if (!canAccessOtherTabs && cronogramaTab !== 'plan') {
+      setCronogramaTab('plan');
+    }
+  }, [canAccessOtherTabs, cronogramaTab]);
 
   // ── active department + auto-select its first municipality when the tab changes
   const activeDept = useMemo(() => departments.find((d) => d.name === activeTab), [activeTab, departments]);
@@ -407,11 +402,10 @@ export default function CronogramaPage() {
     setActaActivityDailyMap({});
     setLastSavedActaActivities(null);
     setActaExecMaterialDailyMap({});
+    setActaExtraExecMaterials([]);
     setActaExecActivityRows({});
     setActaExecActivityDailyMap({});
     setActaPurchaseComparisonMap({});
-    setActaDetailsLoaded(false);
-    setLoadingActaDetails(false);
     setLastSavedActaExecUcaps(null);
     setLastSavedActaExecMaterials(null);
     setLastSavedActaExecActivities(null);
@@ -442,11 +436,10 @@ export default function CronogramaPage() {
     setActaActivityDailyMap({});
     setLastSavedActaActivities(null);
     setActaExecMaterialDailyMap({});
+    setActaExtraExecMaterials([]);
     setActaExecActivityRows({});
     setActaExecActivityDailyMap({});
     setActaPurchaseComparisonMap({});
-    setActaDetailsLoaded(false);
-    setLoadingActaDetails(false);
     setLastSavedActaExecUcaps(null);
     setLastSavedActaExecMaterials(null);
     setLastSavedActaExecActivities(null);
@@ -514,6 +507,16 @@ export default function CronogramaPage() {
     setSchedule(null);
     setIsDirty(false);
     setSelectedActa(acta);
+    // Estado del flujo de revisión del Plan para esta acta (empresa = la de sus obras).
+    const actaCompany = actaWorks[0]?.companyId ?? null;
+    setActaCompanyId(actaCompany);
+    setActaCronograma(null);
+    setActaDirectorBudgets([]);
+    if (actaCompany != null) {
+      surveysService.getWorkActa(actaCompany, acta)
+        .then((wa) => setActaCronograma(wa))
+        .catch(() => setActaCronograma(null));
+    }
     setActaGanttObras([]);
     setActaScheduleRows([]);
     setActaDailyPlans({});
@@ -527,6 +530,7 @@ export default function CronogramaPage() {
     setActaActivityDailyMap({});
     setLastSavedActaActivities(null);
     setActaExecMaterialDailyMap({});
+    setActaExtraExecMaterials([]);
     setActaExecActivityRows({});
     setActaExecActivityDailyMap({});
     setActaPurchaseComparisonMap({});
@@ -537,7 +541,8 @@ export default function CronogramaPage() {
     setCronogramaTab('plan');
     try {
       setLoadingActa(true);
-      const results = await mapWithLimit(actaWorks, 2, async (w): Promise<{
+      const extraMatMetaAccum = new Map<string, { description: string; unitOfMeasure: string | null }>();
+      const results = await mapWithLimit(actaWorks, 5, async (w): Promise<{
         work: Work;
         schedule: ScheduleDetail;
         plans: DailyPlanEntry[];
@@ -584,11 +589,47 @@ export default function CronogramaPage() {
             } catch { /* sin plan/ejecución diaria */ }
           }
           try {
+            const [workMaterials, logsData, comparison] = await Promise.all([
+              schedulesService.getWorkSurveyMaterials(w.workId),
+              schedulesService.getMaterialLogs(s.scheduleId),
+              schedulesService.getWorkPurchaseComparison(w.workId),
+            ]);
+            materials = workMaterials;
+            materialLogs = logsData.logs;
+            purchaseComparison = comparison;
+          } catch { /* sin materiales del acta */ }
+          try {
             const storedRows = localStorage.getItem(`activity-rows-${s.scheduleId}`);
             const storedMap = localStorage.getItem(`activity-map-${s.scheduleId}`);
             if (storedRows) storedActivityRows = JSON.parse(storedRows);
             if (storedMap) storedActivityMap = JSON.parse(storedMap);
           } catch { /* sin actividades locales */ }
+          try {
+            const execMaterials = await schedulesService.getExecutions(s.scheduleId, 'material');
+            execMaterialMap = {};
+            execMaterials.items.forEach((it) => {
+              if (it.itemKey && !extraMatMetaAccum.has(it.itemKey)) {
+                extraMatMetaAccum.set(it.itemKey, { description: it.label ?? '', unitOfMeasure: it.unitOfMeasure ?? null });
+              }
+              if (!it.executionDate || it.quantity <= 0) return;
+              if (!execMaterialMap[it.executionDate]) execMaterialMap[it.executionDate] = {};
+              execMaterialMap[it.executionDate][it.itemKey] = (execMaterialMap[it.executionDate][it.itemKey] ?? 0) + it.quantity;
+            });
+          } catch { /* sin ejecucion de materiales */ }
+          try {
+            const execActivities = await schedulesService.getExecutions(s.scheduleId, 'activity');
+            const names = new Map<string, string>();
+            const dmap: NumberDailyMap = {};
+            execActivities.items.forEach((it) => {
+              if (!names.has(it.itemKey)) names.set(it.itemKey, it.label ?? '');
+              if (it.executionDate) {
+                if (!dmap[it.executionDate]) dmap[it.executionDate] = {};
+                dmap[it.executionDate][it.itemKey] = it.quantity;
+              }
+            });
+            execActivityRows = [...names.entries()].map(([id, name]) => ({ id, name }));
+            execActivityMap = dmap;
+          } catch { /* sin ejecucion de actividades */ }
           const execActivityNames = new Set(execActivityRows.map((row) => row.name.trim()).filter(Boolean));
           storedActivityRows.forEach((row) => {
             const name = row.name.trim();
@@ -697,6 +738,18 @@ export default function CronogramaPage() {
       setActaActivityRows(activityRowsMap);
       setActaActivityDailyMap(activityDailyMap);
       setActaExecMaterialDailyMap(execMaterialDailyMap);
+      // Reconstruir materiales extra (ejecutados con un código que no está en los levantamientos).
+      const surveyCodes = new Set<string>();
+      results.forEach(({ materials }) => materials.forEach((m) => surveyCodes.add(m.materialCode)));
+      const execCodes = new Set<string>();
+      Object.values(execMaterialDailyMap).forEach((dm) =>
+        Object.values(dm).forEach((day) => Object.keys(day).forEach((c) => execCodes.add(c))),
+      );
+      setActaExtraExecMaterials(
+        [...extraMatMetaAccum.entries()]
+          .filter(([code]) => !surveyCodes.has(code) && execCodes.has(code))
+          .map(([code, meta]) => ({ code, description: meta.description, unitOfMeasure: meta.unitOfMeasure })),
+      );
       setActaExecActivityRows(execActivityRowsMap);
       setActaExecActivityDailyMap(execActivityDailyMap);
       setActaPurchaseComparisonMap(purchaseComparisonMap);
@@ -707,143 +760,53 @@ export default function CronogramaPage() {
     }
   }, [isDirty]);
 
-  // ── save
-  const loadActaDetails = useCallback(async () => {
-    if (!selectedActa || actaDetailsLoaded || loadingActaDetails || actaScheduleRows.length === 0) return;
-
-    const rowsWithSchedule = actaScheduleRows.filter(({ schedule }) => schedule.scheduleId > 0);
-    if (rowsWithSchedule.length === 0) {
-      setActaDetailsLoaded(true);
-      return;
-    }
-
+  // ── Flujo de revisión del Plan del cronograma
+  const handleSubmitCronograma = useCallback(async () => {
+    if (!selectedActa || actaCompanyId == null) return;
     try {
-      setLoadingActaDetails(true);
-      const results = await mapWithLimit(rowsWithSchedule, 1, async ({ work, schedule }) => {
-        let materials: SurveyMaterialItem[] = [];
-        let materialLogs: MaterialLogEntry[] = [];
-        let purchaseComparison: PurchaseComparisonItem[] = [];
-        let execMaterialMap: NumberDailyMap = {};
-        let execActivityRows: Array<{ id: string; name: string }> = [];
-        let execActivityMap: NumberDailyMap = {};
-
-        try {
-          const [workMaterials, logsData, comparison] = await Promise.all([
-            schedulesService.getWorkSurveyMaterials(work.workId),
-            schedulesService.getMaterialLogs(schedule.scheduleId),
-            schedulesService.getWorkPurchaseComparison(work.workId),
-          ]);
-          materials = workMaterials;
-          materialLogs = logsData.logs;
-          purchaseComparison = comparison;
-        } catch { /* sin materiales/compras del acta */ }
-
-        try {
-          const execMaterials = await schedulesService.getExecutions(schedule.scheduleId, 'material');
-          execMaterialMap = {};
-          execMaterials.items.forEach((it) => {
-            if (!it.executionDate || it.quantity <= 0) return;
-            if (!execMaterialMap[it.executionDate]) execMaterialMap[it.executionDate] = {};
-            execMaterialMap[it.executionDate][it.itemKey] = (execMaterialMap[it.executionDate][it.itemKey] ?? 0) + it.quantity;
-          });
-        } catch { /* sin ejecucion de materiales */ }
-
-        try {
-          const execActivities = await schedulesService.getExecutions(schedule.scheduleId, 'activity');
-          const names = new Map<string, string>();
-          const dmap: NumberDailyMap = {};
-          execActivities.items.forEach((it) => {
-            if (!names.has(it.itemKey)) names.set(it.itemKey, it.label ?? '');
-            if (it.executionDate) {
-              if (!dmap[it.executionDate]) dmap[it.executionDate] = {};
-              dmap[it.executionDate][it.itemKey] = it.quantity;
-            }
-          });
-          execActivityRows = [...names.entries()].map(([id, name]) => ({ id, name }));
-          execActivityMap = dmap;
-        } catch { /* sin ejecucion de actividades */ }
-
-        const execActivityNames = new Set(execActivityRows.map((row) => row.name.trim()).filter(Boolean));
-        (actaActivityRows[work.workId] ?? []).forEach((row) => {
-          const name = row.name.trim();
-          if (!name || execActivityNames.has(name)) return;
-          execActivityNames.add(name);
-          execActivityRows.push({ id: `exec-act-plan-${schedule.scheduleId}-${name}`, name });
-        });
-
-        return {
-          work,
-          schedule,
-          materials,
-          materialLogs,
-          purchaseComparison,
-          execMaterialMap,
-          execActivityRows,
-          execActivityMap,
-        };
-      });
-
-      const materialRowsByWork = new Map(results.map((row) => [row.work.workId, row]));
-      setActaMaterialRows(actaScheduleRows.map((row) => ({
-        work: row.work,
-        schedule: row.schedule,
-        materials: materialRowsByWork.get(row.work.workId)?.materials ?? [],
-      })));
-
-      const materialMap: ActaNumberDailyMap = {};
-      const execMaterialDailyMap: ActaNumberDailyMap = {};
-      const execActivityRowsMap: ActaActivityRowsMap = {};
-      const execActivityDailyMap: ActaNumberDailyMap = {};
-      const purchaseComparisonMap: ActaPurchaseComparisonMap = {};
-
-      results.forEach(({ work, materialLogs, purchaseComparison, execMaterialMap, execActivityRows, execActivityMap }) => {
-        const workMaterialMap: NumberDailyMap = {};
-        materialLogs.forEach((log) => {
-          if (!workMaterialMap[log.usageDate]) workMaterialMap[log.usageDate] = {};
-          workMaterialMap[log.usageDate][log.materialCode] = (workMaterialMap[log.usageDate][log.materialCode] ?? 0) + log.quantity;
-        });
-        materialMap[work.workId] = workMaterialMap;
-        execMaterialDailyMap[work.workId] = execMaterialMap;
-        execActivityRowsMap[work.workId] = execActivityRows;
-        execActivityDailyMap[work.workId] = execActivityMap;
-        purchaseComparisonMap[work.workId] = purchaseComparison;
-      });
-
-      setActaMaterialDailyMap(materialMap);
-      setActaExecMaterialDailyMap(execMaterialDailyMap);
-      setActaExecActivityRows(execActivityRowsMap);
-      setActaExecActivityDailyMap(execActivityDailyMap);
-      setActaPurchaseComparisonMap(purchaseComparisonMap);
-      setActaDetailsLoaded(true);
+      setCronogramaActionLoading(true);
+      const wa = await surveysService.submitActaCronograma(actaCompanyId, selectedActa);
+      setActaCronograma(wa);
+      toast.success('Plan enviado a revisión del Director Técnico');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo enviar a revisión');
     } finally {
-      setLoadingActaDetails(false);
+      setCronogramaActionLoading(false);
     }
-  }, [selectedActa, actaDetailsLoaded, loadingActaDetails, actaScheduleRows, actaActivityRows]);
+  }, [selectedActa, actaCompanyId]);
 
-  useEffect(() => {
-    if (!selectedActa || cronogramaTab === 'plan') return;
-    void loadActaDetails();
-  }, [selectedActa, cronogramaTab, loadActaDetails]);
+  const handleReviewCronograma = useCallback(async (decision: 'aprobado' | 'rechazado', motivo?: string) => {
+    if (!selectedActa || actaCompanyId == null) return;
+    try {
+      setCronogramaActionLoading(true);
+      const wa = await surveysService.reviewActaCronograma(actaCompanyId, selectedActa, decision, motivo);
+      setActaCronograma(wa);
+      setCronogramaRejectOpen(false);
+      setCronogramaRejectMotivo('');
+      toast.success(decision === 'aprobado' ? 'Plan aprobado. Ejecución habilitada.' : 'Plan devuelto al Director de Proyecto');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo completar la revisión');
+    } finally {
+      setCronogramaActionLoading(false);
+    }
+  }, [selectedActa, actaCompanyId]);
 
+  // ── save
   const handleSave = async () => {
     if (!schedule) return;
     try {
       setSaving(true);
-      const items = schedule.items.flatMap((item) => {
-        const ucapId = Number(item.ucapId);
-        if (!Number.isFinite(ucapId)) return [];
-        return [{
-          ucapId,
-          executedQuantity: parseFloat(executed[item.ucapId] ?? '0') || 0,
-          ucapStartDate: toApiDate(ucapDates[item.ucapId]?.start),
-          ucapEndDate: toApiDate(ucapDates[item.ucapId]?.end),
-        }];
-      });
+      const items = schedule.items.map((item) => ({
+        ucapId: item.ucapId,
+        executedQuantity: parseFloat(executed[item.ucapId] ?? '0') || 0,
+        ucapStartDate: ucapDates[item.ucapId]?.start || null,
+        ucapEndDate: ucapDates[item.ucapId]?.end || null,
+      }));
       const updated = await schedulesService.update(schedule.scheduleId, {
-        startDate: toApiDate(startDate),
-        endDate: toApiDate(endDate),
-        contractualStart: toApiDate(contractualStart),
-        contractualEnd: toApiDate(contractualEnd),
+        startDate: startDate || null,
+        endDate: endDate || null,
+        contractualStart: contractualStart || null,
+        contractualEnd: contractualEnd || null,
         items,
       });
       setSchedule(updated);
@@ -860,8 +823,8 @@ export default function CronogramaPage() {
       setUcapDates(datesMap);
       setIsDirty(false);
       toast.success('Cronograma guardado');
-    } catch (error: any) {
-      toast.error(getApiErrorMessage(error, 'Error al guardar el cronograma'));
+    } catch {
+      toast.error('Error al guardar el cronograma');
     } finally {
       setSaving(false);
     }
@@ -1007,9 +970,75 @@ export default function CronogramaPage() {
     setExtraExecMaterials(extras);
   }, [surveyMaterials, execMaterialMeta]);
 
+  useEffect(() => {
+    if (!selectedActa || !activeTab) {
+      setActaDirectorBudgets([]);
+      return;
+    }
+    let cancelled = false;
+    directorBudgetsService.getAll({ departmentName: activeTab, page: 1, limit: 500 })
+      .then((response) => {
+        if (cancelled) return;
+        const directBudgets = response.data
+          .filter((item) => item.workId == null && item.workName === selectedActa)
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        if (directBudgets.length > 0) {
+          setActaDirectorBudgets([directBudgets[0]]);
+          return;
+        }
+
+        const actaWorkIds = new Set(actaScheduleRows.map(({ work }) => work.workId));
+        const actaWorkNames = new Set(actaScheduleRows.map(({ work }) => work.name?.trim()).filter(Boolean));
+        const projectBudgets = response.data
+          .filter((item) => (
+            (item.workId != null && actaWorkIds.has(item.workId)) ||
+            (!!item.workName && actaWorkNames.has(item.workName.trim()))
+          ))
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        const latestByWork = new Map<string, DirectorBudget>();
+        projectBudgets.forEach((budget) => {
+          const key = budget.workId != null ? `id-${budget.workId}` : `name-${budget.workName ?? budget.budgetId}`;
+          if (!latestByWork.has(key)) latestByWork.set(key, budget);
+        });
+        setActaDirectorBudgets([...latestByWork.values()]);
+      })
+      .catch(() => {
+        if (!cancelled) setActaDirectorBudgets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedActa, activeTab, actaScheduleRows]);
+
   const addExtraMaterial = (mat: Material) => {
     setExtraExecMaterials((prev) => prev.some((r) => r.code === mat.code) ? prev : [...prev, { id: `extra-${mat.code}`, code: mat.code, description: mat.description, unitOfMeasure: null, budgetQty: 0, budgetValue: 0 }]);
     setAddMaterialOpen(false);
+  };
+
+  const addActaExtraMaterial = (mat: Material) => {
+    setActaExtraExecMaterials((prev) => prev.some((r) => r.code === mat.code) ? prev : [...prev, { code: mat.code, description: mat.description, unitOfMeasure: null }]);
+    setAddMaterialOpen(false);
+  };
+
+  const removeActaExtraMaterial = (code: string) => {
+    setActaExtraExecMaterials((prev) => prev.filter((r) => r.code !== code));
+    setActaExecMaterialDailyMap((prev) => {
+      const next: ActaNumberDailyMap = {};
+      Object.entries(prev).forEach(([wid, dm]) => {
+        const ndm: NumberDailyMap = {};
+        Object.entries(dm).forEach(([date, day]) => {
+          const nd = { ...day };
+          delete nd[code];
+          ndm[date] = nd;
+        });
+        next[Number(wid)] = ndm;
+      });
+      return next;
+    });
+  };
+
+  const updateActaExtraMaterial = (code: string, patch: Partial<{ unitOfMeasure: string | null }>) => {
+    setActaExtraExecMaterials((prev) => prev.map((r) => r.code === code ? { ...r, ...patch } : r));
   };
 
   const updateExtraMaterial = (id: string, patch: Partial<{ unitOfMeasure: string | null; budgetQty: number; budgetValue: number }>) => {
@@ -1277,9 +1306,9 @@ export default function CronogramaPage() {
         return schedulesService.saveDailyExecution(schedule.scheduleId, items);
       }));
       setLastSavedActaExecUcaps(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
-      toast.success('Ejecucion UCAPs del acta guardada');
+      toast.success('Ejecución UCAPs del acta guardada');
     } catch {
-      toast.error('Error al guardar la ejecucion de UCAPs del acta');
+      toast.error('Error al guardar la ejecución de UCAPs del acta');
     } finally {
       setSavingActaExecUcaps(false);
     }
@@ -1291,6 +1320,8 @@ export default function CronogramaPage() {
 
     try {
       setSavingActaExecMaterials(true);
+      const extraMetaByCode = new Map(actaExtraExecMaterials.map((r) => [r.code, r]));
+      const extraMarkerWorkId = rowsWithSchedule[0]?.work.workId;
       await Promise.all(rowsWithSchedule.map(({ work, schedule, materials }) => {
         const items: ExecutionItem[] = [];
         const metaByCode = new Map<string, SurveyMaterialItem>();
@@ -1305,14 +1336,27 @@ export default function CronogramaPage() {
             unitPrice: null,
           });
         });
+        if (work.workId === extraMarkerWorkId) {
+          actaExtraExecMaterials.forEach((extra) => {
+            items.push({
+              itemKey: extra.code,
+              label: extra.description || null,
+              unitOfMeasure: extra.unitOfMeasure ?? null,
+              executionDate: null,
+              quantity: 0,
+              unitPrice: null,
+            });
+          });
+        }
         Object.entries(actaExecMaterialDailyMap[work.workId] ?? {}).forEach(([date, matMap]) => {
           Object.entries(matMap).forEach(([code, qty]) => {
             if (qty > 0) {
               const mat = metaByCode.get(code);
+              const extra = extraMetaByCode.get(code);
               items.push({
                 itemKey: code,
-                label: mat?.materialDescription ?? null,
-                unitOfMeasure: mat?.unitOfMeasure ?? null,
+                label: mat?.materialDescription ?? extra?.description ?? null,
+                unitOfMeasure: mat?.unitOfMeasure ?? extra?.unitOfMeasure ?? null,
                 executionDate: date,
                 quantity: qty,
                 unitPrice: null,
@@ -1323,9 +1367,9 @@ export default function CronogramaPage() {
         return schedulesService.saveExecutions(schedule.scheduleId, 'material', items);
       }));
       setLastSavedActaExecMaterials(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
-      toast.success('Ejecucion de materiales del acta guardada');
+      toast.success('Ejecución de materiales del acta guardada');
     } catch {
-      toast.error('Error al guardar la ejecucion de materiales del acta');
+      toast.error('Error al guardar la ejecución de materiales del acta');
     } finally {
       setSavingActaExecMaterials(false);
     }
@@ -1354,9 +1398,9 @@ export default function CronogramaPage() {
         return schedulesService.saveExecutions(schedule.scheduleId, 'activity', items);
       }));
       setLastSavedActaExecActivities(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
-      toast.success('Ejecucion de actividades del acta guardada');
+      toast.success('Ejecución de actividades del acta guardada');
     } catch {
-      toast.error('Error al guardar la ejecucion de actividades del acta');
+      toast.error('Error al guardar la ejecución de actividades del acta');
     } finally {
       setSavingActaExecActivities(false);
     }
@@ -1371,8 +1415,8 @@ export default function CronogramaPage() {
       const updatedSchedules = await Promise.all(rowsWithSchedule.map(({ work, schedule }) => {
         const dates = actaContractualDates[work.workId] ?? { start: '', end: '' };
         return schedulesService.update(schedule.scheduleId, {
-          contractualStart: toApiDate(dates.start),
-          contractualEnd: toApiDate(dates.end),
+          contractualStart: dates.start || null,
+          contractualEnd: dates.end || null,
         });
       }));
       const updatedById = new Map(updatedSchedules.map((updated) => [updated.scheduleId, updated]));
@@ -1386,8 +1430,8 @@ export default function CronogramaPage() {
       })));
       setLastSavedActaContractual(new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }));
       toast.success('Fechas contractuales del acta guardadas');
-    } catch (error: any) {
-      toast.error(getApiErrorMessage(error, 'Error al guardar las fechas contractuales del acta'));
+    } catch {
+      toast.error('Error al guardar las fechas contractuales del acta');
     } finally {
       setSavingActaContractual(false);
     }
@@ -1462,7 +1506,7 @@ export default function CronogramaPage() {
         <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
           <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
             <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecucion UCAPs
+              <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecución UCAPs
             </h3>
             <WeekNav days={days} offset={execWeekOffset} onPrev={() => setExecWeekOffset((w) => w - 1)} onNext={() => setExecWeekOffset((w) => w + 1)} onToday={() => setExecWeekOffset(0)} />
           </div>
@@ -1481,7 +1525,7 @@ export default function CronogramaPage() {
                     {days.map((date, i) => {
                       const d = new Date(date + 'T12:00:00');
                       const isToday = date === today;
-                      const isHoliday = holidaySet.has(date) || isSunday(date);
+                      const isHoliday = holidaySet.has(date) || isSunday(date) || isSaturday(date);
                       const headerCls = isToday
                         ? 'text-[hsl(var(--canalco-primary))] font-bold'
                         : isHoliday
@@ -1532,7 +1576,7 @@ export default function CronogramaPage() {
                               </td>
                               {days.map((date) => {
                                 const isToday = date === today;
-                                const isHoliday = holidaySet.has(date) || isSunday(date);
+                                const isHoliday = holidaySet.has(date) || isSunday(date) || isSaturday(date);
                                 const val = getExecuted(work.workId, date, item.ucapId);
                                 return (
                                   <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -1606,7 +1650,7 @@ export default function CronogramaPage() {
               )}
               <Button onClick={handleSaveActaExecUcaps} disabled={savingActaExecUcaps} variant="outline" className="gap-2 text-sm">
                 <Save className="w-4 h-4" />
-                {savingActaExecUcaps ? 'Guardando...' : 'Guardar ejecucion'}
+                {savingActaExecUcaps ? 'Guardando...' : 'Guardar ejecución'}
               </Button>
             </div>
           )}
@@ -1626,11 +1670,78 @@ export default function CronogramaPage() {
       const getWorkMaterialDateTotal = (workId: number, materials: SurveyMaterialItem[], date: string) =>
         materials.reduce((sum, mat) => sum + getMaterialQty(workId, date, mat.materialCode), 0);
 
+      // ── Consolidación general por material: un renglón por código sumando todos
+      //    los proyectos del acta. La ejecución diaria es general (suma de todos los
+      //    proyectos que tienen ese material); al editar se atribuye al primer proyecto
+      //    (repWorkId) y se deja en 0 en los demás, para que la suma cuadre y se guarde
+      //    bien contra el schedule de cada obra.
+      type ConsolidatedMat = {
+        code: string;
+        description: string | null;
+        unit: string | null;
+        totalQuantity: number;
+        workIds: number[];
+        repWorkId: number;
+        isExtra?: boolean;
+      };
+      const consolidatedMap = new Map<string, ConsolidatedMat>();
+      rowsWithMaterials.forEach(({ work, materials }) => {
+        materials.forEach((mat) => {
+          const existing = consolidatedMap.get(mat.materialCode);
+          if (existing) {
+            existing.totalQuantity += mat.totalQuantity;
+            if (!existing.workIds.includes(work.workId)) existing.workIds.push(work.workId);
+          } else {
+            consolidatedMap.set(mat.materialCode, {
+              code: mat.materialCode,
+              description: mat.materialDescription ?? null,
+              unit: mat.unitOfMeasure ?? null,
+              totalQuantity: mat.totalQuantity,
+              workIds: [work.workId],
+              repWorkId: work.workId,
+            });
+          }
+        });
+      });
+      // Materiales extra del acta: se atribuyen al primer proyecto con cronograma.
+      const repWorkId = rowsWithMaterials[0]?.work.workId
+        ?? actaMaterialRows.find((r) => r.schedule.scheduleId > 0)?.work.workId;
+      if (repWorkId !== undefined) {
+        actaExtraExecMaterials.forEach((ex) => {
+          if (consolidatedMap.has(ex.code)) return;
+          consolidatedMap.set(ex.code, {
+            code: ex.code,
+            description: ex.description || null,
+            unit: ex.unitOfMeasure ?? null,
+            totalQuantity: 0,
+            workIds: [repWorkId],
+            repWorkId,
+            isExtra: true,
+          });
+        });
+      }
+      const consolidatedMaterials = [...consolidatedMap.values()];
+      const getConsolidatedQty = (cm: ConsolidatedMat, date: string) =>
+        cm.workIds.reduce((sum, wid) => sum + getMaterialQty(wid, date, cm.code), 0);
+      const setConsolidatedQty = (cm: ConsolidatedMat, date: string, val: number) => {
+        setActaExecMaterialDailyMap((prev) => {
+          const next = { ...prev };
+          cm.workIds.forEach((wid) => {
+            const workMap = { ...(next[wid] ?? {}) };
+            const dateMap = { ...(workMap[date] ?? {}) };
+            dateMap[cm.code] = wid === cm.repWorkId ? val : 0;
+            workMap[date] = dateMap;
+            next[wid] = workMap;
+          });
+          return next;
+        });
+      };
+
       return (
         <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
           <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
             <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-              <Package className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecucion Materiales
+              <Package className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecución Materiales
             </h3>
             <WeekNav days={days} offset={execMaterialWeekOffset} onPrev={() => setExecMaterialWeekOffset((w) => w - 1)} onNext={() => setExecMaterialWeekOffset((w) => w + 1)} onToday={() => setExecMaterialWeekOffset(0)} />
           </div>
@@ -1644,13 +1755,12 @@ export default function CronogramaPage() {
               <table className="w-full text-sm border-collapse" style={{ minWidth: 820 }}>
                 <thead>
                   <tr className="border-b border-[hsl(var(--canalco-neutral-200))]">
-                    <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Proyecto / Material</th>
+                    <th className="text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 pr-2">Material</th>
                     <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-16">Unidad</th>
-                    <th className="text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] pb-2 w-20">Cantidad</th>
                     {days.map((date, i) => {
                       const d = new Date(date + 'T12:00:00');
                       const isToday = date === today;
-                      const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                      const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                       const headerCls = isToday
                         ? 'text-[hsl(var(--canalco-primary))] font-bold'
                         : isHoliday
@@ -1667,87 +1777,70 @@ export default function CronogramaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rowsWithMaterials.map(({ work, materials }) => {
-                    const workTotal = days.reduce((sum, date) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
+                  {consolidatedMaterials.map((cm) => {
+                    const weekTotal = days.reduce((sum, date) => sum + getConsolidatedQty(cm, date), 0);
                     return (
-                      <Fragment key={work.workId}>
-                        <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
-                          <td colSpan={3} className="py-2 pr-2 align-middle">
-                            <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
-                            <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
-                          </td>
-                          {days.map((date) => {
-                            const dateTotal = getWorkMaterialDateTotal(work.workId, materials, date);
-                            return (
-                              <td key={date} className={`py-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>
-                                {dateTotal > 0 ? dateTotal : '-'}
-                              </td>
-                            );
-                          })}
-                          <td className="py-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-800))]">
-                            {workTotal > 0 ? workTotal : '-'}
-                          </td>
-                        </tr>
-                        {materials.map((mat) => {
-                          const weekTotal = days.reduce((sum, date) => sum + getMaterialQty(work.workId, date, mat.materialCode), 0);
+                      <tr key={cm.code} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
+                        <td className="py-1.5 pr-2">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{cm.code}</p>
+                            {cm.isExtra && (
+                              <span className="text-[9px] font-semibold uppercase tracking-wide rounded px-1 py-0.5 bg-amber-100 text-amber-700">Extra</span>
+                            )}
+                            {cm.isExtra && canEditEjecucion && (
+                              <button
+                                type="button"
+                                onClick={() => removeActaExtraMaterial(cm.code)}
+                                title="Eliminar material extra"
+                                className="text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[260px]">{cm.description}</p>
+                        </td>
+                        <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">
+                          {cm.isExtra && canEditEjecucion ? (
+                            <Input
+                              value={cm.unit ?? ''}
+                              placeholder="U/M"
+                              onChange={(e) => updateActaExtraMaterial(cm.code, { unitOfMeasure: e.target.value || null })}
+                              className="h-7 w-16 text-xs text-center px-1 mx-auto"
+                            />
+                          ) : (
+                            cm.unit ?? '-'
+                          )}
+                        </td>
+                        {days.map((date) => {
+                          const isToday = date === today;
+                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
+                          const qty = getConsolidatedQty(cm, date);
                           return (
-                            <tr key={`${work.workId}-${mat.materialCode}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
-                              <td className="py-1.5 pr-2 pl-4">
-                                <p className="text-xs font-mono font-semibold text-[hsl(var(--canalco-primary))]">{mat.materialCode}</p>
-                                <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] leading-tight truncate max-w-[260px]">{mat.materialDescription}</p>
-                              </td>
-                              <td className="py-1.5 px-1 text-center text-xs text-[hsl(var(--canalco-neutral-600))]">
-                                {mat.unitOfMeasure ?? '-'}
-                              </td>
-                              <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-800))]">
-                                {mat.totalQuantity}
-                              </td>
-                              {days.map((date) => {
-                                const isToday = date === today;
-                                const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
-                                const qty = getMaterialQty(work.workId, date, mat.materialCode);
-                                return (
-                                  <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={qty || ''}
-                                      placeholder="0"
-                                      disabled={isHoliday || !canEditEjecucion}
-                                      onChange={(e) => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        setActaExecMaterialDailyMap((prev) => {
-                                          const workMap = prev[work.workId] ?? {};
-                                          const dateMap = workMap[date] ?? {};
-                                          return {
-                                            ...prev,
-                                            [work.workId]: {
-                                              ...workMap,
-                                              [date]: { ...dateMap, [mat.materialCode]: val },
-                                            },
-                                          };
-                                        });
-                                      }}
-                                      className="h-7 w-14 text-xs text-center px-1"
-                                    />
-                                  </td>
-                                );
-                              })}
-                              <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                                {weekTotal > 0 ? weekTotal : '-'}
-                              </td>
-                            </tr>
+                            <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={qty || ''}
+                                placeholder="0"
+                                disabled={isHoliday || !canEditEjecucion}
+                                onChange={(e) => setConsolidatedQty(cm, date, parseFloat(e.target.value) || 0)}
+                                className="h-7 w-14 text-xs text-center px-1"
+                              />
+                            </td>
                           );
                         })}
-                      </Fragment>
+                        <td className="py-1.5 px-1 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
+                          {weekTotal > 0 ? weekTotal : '-'}
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
                     <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
-                    <td className="pt-2" />
                     {days.map((date) => {
                       const dayTotal = rowsWithMaterials.reduce((sum, { work, materials }) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
                       return (
@@ -1771,14 +1864,39 @@ export default function CronogramaPage() {
           )}
 
           {canEditEjecucion && (
-            <div className="flex justify-end items-center gap-3 mt-4">
-              {lastSavedActaExecMaterials && (
-                <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaExecMaterials}</span>
-              )}
-              <Button onClick={handleSaveActaExecMaterials} disabled={savingActaExecMaterials} variant="outline" className="gap-2 text-sm">
-                <Save className="w-4 h-4" />
-                {savingActaExecMaterials ? 'Guardando...' : 'Guardar ejecucion'}
-              </Button>
+            <div className="flex justify-between items-center gap-3 mt-4">
+              <Popover open={addMaterialOpen} onOpenChange={setAddMaterialOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Plus className="w-3.5 h-3.5" />Agregar material</Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-80 p-0">
+                  <Command>
+                    <CommandInput placeholder="Buscar material..." className="text-xs" />
+                    <CommandList>
+                      <CommandEmpty className="py-4 text-xs text-[hsl(var(--canalco-neutral-500))]">Sin resultados.</CommandEmpty>
+                      <CommandGroup>
+                        {materialCatalog
+                          .filter((m) => !actaMaterialRows.some(({ materials }) => materials.some((s) => s.materialCode === m.code)) && !actaExtraExecMaterials.some((r) => r.code === m.code))
+                          .map((m) => (
+                            <CommandItem key={m.materialId} value={`${m.code} ${m.description}`} onSelect={() => addActaExtraMaterial(m)} className="text-xs gap-2">
+                              <span className="font-mono font-semibold text-[hsl(var(--canalco-primary))]">{m.code}</span>
+                              <span className="truncate text-[hsl(var(--canalco-neutral-700))]">{m.description}</span>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-3">
+                {lastSavedActaExecMaterials && (
+                  <span className="text-xs text-green-600 font-medium">Guardado a las {lastSavedActaExecMaterials}</span>
+                )}
+                <Button onClick={handleSaveActaExecMaterials} disabled={savingActaExecMaterials} variant="outline" className="gap-2 text-sm">
+                  <Save className="w-4 h-4" />
+                  {savingActaExecMaterials ? 'Guardando...' : 'Guardar ejecución'}
+                </Button>
+              </div>
             </div>
           )}
         </section>
@@ -1921,7 +2039,7 @@ export default function CronogramaPage() {
         <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
           <div className="flex items-center justify-between gap-2 flex-wrap pb-3 mb-4 border-b border-[hsl(var(--canalco-neutral-100))]">
             <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecucion Actividades
+              <Activity className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Ejecución Actividades
             </h3>
             <WeekNav days={days} offset={execActivityWeekOffset} onPrev={() => setExecActivityWeekOffset((w) => w - 1)} onNext={() => setExecActivityWeekOffset((w) => w + 1)} onToday={() => setExecActivityWeekOffset(0)} />
           </div>
@@ -1939,7 +2057,7 @@ export default function CronogramaPage() {
                     {days.map((date, i) => {
                       const d = new Date(date + 'T12:00:00');
                       const isToday = date === today;
-                      const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                      const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                       const headerCls = isToday
                         ? 'text-[hsl(var(--canalco-primary))] font-bold'
                         : isHoliday
@@ -1960,7 +2078,7 @@ export default function CronogramaPage() {
                   {activityGroups.length === 0 ? (
                     <tr>
                       <td colSpan={days.length + 3} className="py-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
-                        No hay actividades. Agrega una fila para iniciar la ejecucion del acta.
+                        No hay actividades. Agrega una fila para iniciar la ejecución del acta.
                       </td>
                     </tr>
                   ) : activityGroups.map((group) => (
@@ -1986,7 +2104,7 @@ export default function CronogramaPage() {
                       </td>
                       {days.map((date) => {
                         const isToday = date === today;
-                        const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                        const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                         const qty = group.dayTotals[date] ?? 0;
                         return (
                           <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -2060,7 +2178,7 @@ export default function CronogramaPage() {
                 )}
                 <Button onClick={handleSaveActaExecActivities} disabled={savingActaExecActivities} variant="outline" className="gap-2 text-sm">
                   <Save className="w-4 h-4" />
-                  {savingActaExecActivities ? 'Guardando...' : 'Guardar ejecucion'}
+                  {savingActaExecActivities ? 'Guardando...' : 'Guardar ejecución'}
                 </Button>
               </div>
             </div>
@@ -2129,6 +2247,14 @@ export default function CronogramaPage() {
     const actaStart = actaStartDates.length > 0 ? [...actaStartDates].sort()[0] : '';
     const actaEnd = actaEndDates.length > 0 ? [...actaEndDates].sort().slice(-1)[0] : '';
     const temporal = actaStart && actaEnd ? workingDayProgress(actaStart, actaEnd).pct : null;
+    // Días calendario "full" del acta (incluye festivos y domingos): transcurridos / totales.
+    const DAY_MS = 86_400_000;
+    const actaTotalDays = actaStart && actaEnd
+      ? Math.max(1, Math.round((parseLocalDate(actaEnd).getTime() - parseLocalDate(actaStart).getTime()) / DAY_MS) + 1)
+      : 0;
+    const actaElapsedDays = actaStart
+      ? Math.min(actaTotalDays, Math.max(0, Math.round((todayMs - parseLocalDate(actaStart).getTime()) / DAY_MS) + 1))
+      : 0;
     const ucapMap = new Map<string, {
       label: string;
       sublabel: string;
@@ -2259,6 +2385,12 @@ export default function CronogramaPage() {
     const curveEnd = (actaEnd || planDates[planDates.length - 1] || '').slice(0, 10);
     const curveDenom = totalPlanned || sortedPlanPoints.reduce((sum, point) => sum + point.plannedQuantity, 0) || 1;
     const curveTodayMs = parseLocalDate(today).getTime();
+    // El "real" se dibuja hasta hoy o, si hay ejecución registrada en fechas posteriores,
+    // hasta la última fecha con ejecución (para no "atrasar" el avance un día).
+    const lastExecMs = sortedPlanPoints
+      .filter((point) => point.executedQuantity > 0)
+      .reduce((max, point) => Math.max(max, dms(point.planDate)), -Infinity);
+    const realCutoffMs = Math.max(curveTodayMs, lastExecMs);
     let actaCurva: Array<{ month: string; programado: number; real: number | null }> = [];
     if (curveStart && curveEnd) {
       const DAY = 86_400_000;
@@ -2285,10 +2417,10 @@ export default function CronogramaPage() {
             break;
           }
         }
-        const real: number | null = ms > curveTodayMs ? null : clamp01(realCum / curveDenom) * 100;
+        const real: number | null = ms > realCutoffMs ? null : clamp01(realCum / curveDenom) * 100;
         return { month: fmtLabel(ms), programado: clamp01(progCum / curveDenom) * 100, real };
       });
-      actaCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > curveTodayMs ? null : 0 });
+      actaCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > realCutoffMs ? null : 0 });
       for (let i = actaCurva.length - 1; i >= 0; i--) {
         if (actaCurva[i].real !== null) {
           if (actaCurva[i].real! < physical) actaCurva[i].real = physical;
@@ -2314,7 +2446,7 @@ export default function CronogramaPage() {
       ? activeGroups.reduce((sum, group) => sum + group.pct * (group.weight / weightSum), 0)
       : null;
     const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
-    const ubicacion = [activeMunicipality, activeTab].filter(Boolean).join(' - ') || '-';
+    const ubicacion = [activeMunicipality ? getMunicipioName(activeMunicipality.name) : '', activeTab].filter(Boolean).join(' - ') || '-';
 
     return (
       <TabsContent value="informe" className="mt-0 space-y-4">
@@ -2342,7 +2474,7 @@ export default function CronogramaPage() {
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" />Ubicacion</div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" />Ubicación</div>
                   <div className="font-semibold text-slate-200 mt-0.5 max-w-[220px] truncate" title={ubicacion}>{ubicacion}</div>
                 </div>
                 <div>
@@ -2374,12 +2506,12 @@ export default function CronogramaPage() {
               <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5">{dev >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}Desviacion</div>
                 <div className={`mt-2 flex items-baseline gap-1 ${dev >= 0 ? 'text-emerald-400' : 'text-red-400'}`}><span className="text-3xl font-bold">{dev >= 0 ? '+' : ''}{dev.toFixed(1)}</span><span className="text-sm opacity-70">pts</span></div>
-                <div className="mt-2 text-[11px] text-slate-500">Fisico vs esperado</div>
+                <div className="mt-2 text-[11px] text-slate-500">Planeado vs Ejecutado</div>
               </div>
               <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-400">Estado del Acta</div>
                 <div className="mt-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: status.color }} /><span className={`text-2xl font-bold ${status.cls}`}>{status.label}</span></div>
-                <div className="mt-2 text-[11px] text-slate-500">Este mes: {monthProgress.elapsed} / {monthProgress.total} dias habiles</div>
+                <div className="mt-2 text-[11px] text-slate-500">{actaElapsedDays} / {actaTotalDays} días</div>
               </div>
             </div>
 
@@ -2453,7 +2585,10 @@ export default function CronogramaPage() {
                       <div key={item.label}>
                         <div className="flex items-center justify-between mb-1 gap-2">
                           <span className="text-xs text-slate-300 truncate" title={item.sublabel}>{item.sublabel || item.label}</span>
-                          <span className="text-xs font-semibold text-white flex-shrink-0">{Math.round(item.pct)}%</span>
+                          <span className="text-xs font-semibold flex-shrink-0" title="Avance real / esperado a la fecha">
+                            <span className="text-white">{Math.round(item.pct)}%</span>
+                            {item.expected != null && <span className="text-amber-400"> / {Math.round(item.expected)}%</span>}
+                          </span>
                         </div>
                         <Bar value={item.pct} expected={item.expected} />
                       </div>
@@ -2488,7 +2623,7 @@ export default function CronogramaPage() {
             <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
               <h4 className="text-sm font-semibold text-white uppercase tracking-wide mb-4 flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-sky-400" />Desglose por item</h4>
               {itemCount === 0 ? (
-                <p className="text-xs text-slate-500">Sin items para mostrar.</p>
+                <p className="text-xs text-slate-500">Sin ítems para mostrar.</p>
               ) : (
                 <div className="space-y-3">
                   {groups.map((group) => (
@@ -2498,7 +2633,7 @@ export default function CronogramaPage() {
                         <div className="flex-1 border-t border-slate-800" />
                       </div>
                       {group.items.length === 0 ? (
-                        <p className="text-xs text-slate-500 ml-28">Sin items</p>
+                        <p className="text-xs text-slate-500 ml-28">Sin ítems</p>
                       ) : group.items.map((item, index) => (
                         <div key={`${group.key}-${item.label}-${index}`} className="grid grid-cols-[160px_1fr_48px] gap-3 items-center mb-2">
                           <div className="min-w-0">
@@ -2515,6 +2650,10 @@ export default function CronogramaPage() {
               )}
             </div>
             )}
+
+            <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
+              <ActaGantt obras={actaGanttObras} dark />
+            </div>
           </div>
         )}
         {false && rowsWithSchedule.map(({ work, schedule }) => {
@@ -2616,7 +2755,7 @@ export default function CronogramaPage() {
                 </div>
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" />Ubicacion</div>
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" />Ubicación</div>
                     <div className="font-semibold text-slate-200 mt-0.5 max-w-[220px] truncate" title={ubicacion}>{ubicacion}</div>
                   </div>
                   <div>
@@ -2653,7 +2792,7 @@ export default function CronogramaPage() {
                 <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
                   <div className="text-[10px] uppercase tracking-wider text-slate-400">Estado de la Obra</div>
                   <div className="mt-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: status.color }} /><span className={`text-2xl font-bold ${status.cls}`}>{status.label}</span></div>
-                  <div className="mt-2 text-[11px] text-slate-500">Este mes: {monthProgress.elapsed} / {monthProgress.total} dias habiles</div>
+                  <div className="mt-2 text-[11px] text-slate-500">Este mes: {monthProgress.elapsed} / {monthProgress.total} días hábiles</div>
                 </div>
               </div>
 
@@ -2699,7 +2838,7 @@ export default function CronogramaPage() {
               <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-4">
                 <h4 className="text-sm font-semibold text-white uppercase tracking-wide mb-4 flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-sky-400" />Desglose por item</h4>
                 {timelineItems.length === 0 ? (
-                  <p className="text-xs text-slate-500">Sin items para mostrar.</p>
+                  <p className="text-xs text-slate-500">Sin ítems para mostrar.</p>
                 ) : (
                   <div className="space-y-3">
                     {groups.map((group) => (
@@ -2709,7 +2848,7 @@ export default function CronogramaPage() {
                           <div className="flex-1 border-t border-slate-800" />
                         </div>
                         {group.items.length === 0 ? (
-                          <p className="text-xs text-slate-500 ml-28">Sin items</p>
+                          <p className="text-xs text-slate-500 ml-28">Sin ítems</p>
                         ) : group.items.map((item) => (
                           <div key={`${group.key}-${item.label}`} className="grid grid-cols-[160px_1fr_48px] gap-3 items-center mb-2">
                             <div className="min-w-0">
@@ -2740,6 +2879,13 @@ export default function CronogramaPage() {
       Object.values(map ?? {}).reduce((sum, day) => sum + (day[key] ?? 0), 0);
     const sumDailyPlans = (workId: number, ucapId: number, field: keyof DailyPlanCell) =>
       Object.values(actaDailyPlans[workId] ?? {}).reduce((sum, day) => sum + (parseFloat(day[ucapId]?.[field] ?? '') || 0), 0);
+    // Esperado a la fecha: cantidad planeada acumulada (plan diario) hasta hoy.
+    const todayStr = formatDate(new Date());
+    const sumPlannedToDate = (workId: number, ucapId: number) =>
+      Object.entries(actaDailyPlans[workId] ?? {}).reduce(
+        (sum, [date, day]) => sum + (date <= todayStr ? (parseFloat(day[ucapId]?.planned ?? '') || 0) : 0),
+        0,
+      );
     const ratio = (executed: number, planned: number) => (planned > 0 ? clamp01(executed / planned) * 100 : 0);
     const badge = (p: number, hasPlan: boolean) => {
       if (!hasPlan) return <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">-</span>;
@@ -2764,6 +2910,7 @@ export default function CronogramaPage() {
       ucapDescription: string;
       plannedQuantity: number;
       execQty: number;
+      expectedQty: number;
       plannedVal: number;
       execVal: number;
     }>();
@@ -2776,6 +2923,7 @@ export default function CronogramaPage() {
       execQty: number;
       plannedVal: number;
       execVal: number;
+      isExtra?: boolean;
     }>();
     const pcMap = new Map<string, {
       key: string;
@@ -2783,6 +2931,7 @@ export default function CronogramaPage() {
       materialDescription: string | null;
       unitOfMeasure: string | null;
       budgetQty: number;
+      execQty: number;
       budgetValue: number;
       requisitionedQty: number;
       orderedQty: number;
@@ -2805,6 +2954,7 @@ export default function CronogramaPage() {
 
       schedule.items.forEach((item) => {
         const execQty = sumDailyPlans(work.workId, item.ucapId, 'executed');
+        const expectedQty = Math.min(sumPlannedToDate(work.workId, item.ucapId), item.plannedQuantity);
         const uv = Number(item.unitValue) || 0;
         const plannedVal = item.plannedQuantity * uv * ippF;
         const execVal = execQty * uv * ippF;
@@ -2815,11 +2965,13 @@ export default function CronogramaPage() {
           ucapDescription: item.ucapDescription,
           plannedQuantity: 0,
           execQty: 0,
+          expectedQty: 0,
           plannedVal: 0,
           execVal: 0,
         };
         current.plannedQuantity += item.plannedQuantity;
         current.execQty += execQty;
+        current.expectedQty += expectedQty;
         current.plannedVal += plannedVal;
         current.execVal += execVal;
         ucapMap.set(key, current);
@@ -2828,14 +2980,12 @@ export default function CronogramaPage() {
       const materialRow = actaMaterialRows.find((row) => row.work.workId === work.workId);
       const materials = materialRow?.materials ?? [];
       const execMaterialMap = actaExecMaterialDailyMap[work.workId] ?? {};
-      const purchaseByCode = new Map((actaPurchaseComparisonMap[work.workId] ?? []).map((item) => [item.materialCode, item]));
       materials.forEach((mat) => {
         const execQty = sumMap(execMaterialMap, mat.materialCode);
         const totalQuantity = mat.totalQuantity ?? 0;
         const uv = mat.unitValue ?? 0;
         const plannedVal = totalQuantity * uv * ippF;
         const execVal = execQty * uv * ippF;
-        const purchase = purchaseByCode.get(mat.materialCode);
         const key = `${mat.materialCode}|${mat.materialDescription ?? ''}|${mat.unitOfMeasure ?? ''}`;
         const current = matMap.get(key) ?? {
           key,
@@ -2859,16 +3009,18 @@ export default function CronogramaPage() {
           materialDescription: mat.materialDescription ?? null,
           unitOfMeasure: mat.unitOfMeasure ?? null,
           budgetQty: 0,
+          execQty: 0,
           budgetValue: 0,
           requisitionedQty: 0,
           orderedQty: 0,
           orderedValue: 0,
         };
+        // Presupuesto e instalado sí se suman por obra (son totales del acta). Requisitado/OC
+        // NO: la comparación de compras es a nivel de proyecto/acta (misma para todas las
+        // obras), así que se asigna una sola vez por código más abajo (evita multiplicar).
         pcCurrent.budgetQty += totalQuantity;
+        pcCurrent.execQty += execQty;
         pcCurrent.budgetValue += plannedVal;
-        pcCurrent.requisitionedQty += purchase?.requisitionedQty ?? 0;
-        pcCurrent.orderedQty += purchase?.orderedQty ?? 0;
-        pcCurrent.orderedValue += purchase?.orderedValue ?? 0;
         pcMap.set(key, pcCurrent);
       });
 
@@ -2888,6 +3040,27 @@ export default function CronogramaPage() {
       });
     });
 
+    // Materiales extra del acta (agregados en Ejecución): aparecen acá como material extra.
+    actaExtraExecMaterials.forEach((ex) => {
+      if ([...matMap.values()].some((r) => r.materialCode === ex.code)) return;
+      const execQty = rowsWithSchedule.reduce(
+        (s, { work }) => s + sumMap(actaExecMaterialDailyMap[work.workId], ex.code),
+        0,
+      );
+      const key = `extra|${ex.code}`;
+      matMap.set(key, {
+        key,
+        materialCode: ex.code,
+        materialDescription: ex.description || null,
+        unitOfMeasure: ex.unitOfMeasure ?? null,
+        totalQuantity: 0,
+        execQty,
+        plannedVal: 0,
+        execVal: 0,
+        isExtra: true,
+      });
+    });
+
     const ucapRows = [...ucapMap.values()]
       .map((row) => ({
         ...row,
@@ -2895,11 +3068,55 @@ export default function CronogramaPage() {
         unitValue: row.plannedQuantity > 0 ? row.plannedVal / row.plannedQuantity : 0,
       }))
       .sort((a, b) => a.ucapCode.localeCompare(b.ucapCode, 'es'));
+    const obraBudgetRows = rowsWithSchedule
+      .map(({ work, schedule }) => {
+        const ippF = Number(schedule.ippFactor) || 1;
+        const totals = schedule.items.reduce((acc, item) => {
+          const uv = Number(item.unitValue) || 0;
+          const execQty = sumDailyPlans(work.workId, item.ucapId, 'executed');
+          const expectedQty = Math.min(sumPlannedToDate(work.workId, item.ucapId), item.plannedQuantity);
+          acc.plannedVal += item.plannedQuantity * uv * ippF;
+          acc.expectedVal += expectedQty * uv * ippF;
+          acc.execVal += execQty * uv * ippF;
+          return acc;
+        }, { plannedVal: 0, expectedVal: 0, execVal: 0 });
+        return {
+          key: String(work.workId),
+          workCode: work.workCode,
+          workName: work.name,
+          ...totals,
+        };
+      })
+      .sort((a, b) => a.workName.localeCompare(b.workName, 'es'));
     const matRows = [...matMap.values()]
       .map((row) => ({ ...row, p: ratio(row.execQty, row.totalQuantity) }))
-      .sort((a, b) => a.materialCode.localeCompare(b.materialCode, 'es'));
+      .sort((a, b) => {
+        // Los materiales extra siempre van al final.
+        if (!!a.isExtra !== !!b.isExtra) return a.isExtra ? 1 : -1;
+        return a.materialCode.localeCompare(b.materialCode, 'es');
+      });
+    // Comparación de compras (requisitado / OC): es a nivel de proyecto/acta y viene
+    // igual en cada obra, así que se toma UNA sola vez por código (no se suma por obra).
+    const projectComparison = new Map<string, { requisitionedQty: number; orderedQty: number; orderedValue: number }>();
+    rowsWithSchedule.forEach(({ work }) => {
+      (actaPurchaseComparisonMap[work.workId] ?? []).forEach((item) => {
+        if (!projectComparison.has(item.materialCode)) {
+          projectComparison.set(item.materialCode, {
+            requisitionedQty: item.requisitionedQty ?? 0,
+            orderedQty: item.orderedQty ?? 0,
+            orderedValue: item.orderedValue ?? 0,
+          });
+        }
+      });
+    });
     const pcRows = [...pcMap.values()]
-      .map((row) => ({ ...row, diffValue: row.budgetValue - row.orderedValue }))
+      .map((row) => {
+        const cmp = projectComparison.get(row.materialCode);
+        const requisitionedQty = cmp?.requisitionedQty ?? 0;
+        const orderedQty = cmp?.orderedQty ?? 0;
+        const orderedValue = cmp?.orderedValue ?? 0;
+        return { ...row, requisitionedQty, orderedQty, orderedValue, diffValue: row.budgetValue - orderedValue };
+      })
       .sort((a, b) => a.materialCode.localeCompare(b.materialCode, 'es'));
     const actRows = [...actMap.values()]
       .map((row) => ({ ...row, p: ratio(row.execd, row.planned) }))
@@ -2945,6 +3162,12 @@ export default function CronogramaPage() {
     const curveEnd = (actaEnd || planDates[planDates.length - 1] || '').slice(0, 10);
     const curveDenom = totUcapQP || sortedPlanPoints.reduce((sum, point) => sum + point.plannedQuantity, 0) || 1;
     const curveTodayMs = parseLocalDate(today).getTime();
+    // El "real" se dibuja hasta hoy o, si hay ejecución registrada en fechas posteriores,
+    // hasta la última fecha con ejecución (para no "atrasar" el avance un día).
+    const lastExecMs = sortedPlanPoints
+      .filter((point) => point.executedQuantity > 0)
+      .reduce((max, point) => Math.max(max, dms(point.planDate)), -Infinity);
+    const realCutoffMs = Math.max(curveTodayMs, lastExecMs);
     let operativoCurva: Array<{ month: string; programado: number; real: number | null }> = [];
     if (curveStart && curveEnd) {
       const DAY = 86_400_000;
@@ -2971,10 +3194,10 @@ export default function CronogramaPage() {
             break;
           }
         }
-        const real: number | null = ms > curveTodayMs ? null : clamp01(realCum / curveDenom) * 100;
+        const real: number | null = ms > realCutoffMs ? null : clamp01(realCum / curveDenom) * 100;
         return { month: fmtLabel(ms), programado: clamp01(progCum / curveDenom) * 100, real };
       });
-      operativoCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > curveTodayMs ? null : 0 });
+      operativoCurva.unshift({ month: fmtLabel(startMs - stepDays * DAY), programado: 0, real: startMs > realCutoffMs ? null : 0 });
       for (let i = operativoCurva.length - 1; i >= 0; i--) {
         if (operativoCurva[i].real !== null) {
           if (operativoCurva[i].real! < ucapPct) operativoCurva[i].real = ucapPct;
@@ -3086,18 +3309,18 @@ export default function CronogramaPage() {
           <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide mb-4 flex items-center gap-1.5">
             <BarChart3 className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Desglose por item
           </h4>
-          {darkItemCount === 0 ? (
-            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">Sin items para mostrar.</p>
+          {darkGroups.filter((group) => group.key === 'Actividades').every((group) => group.items.length === 0) ? (
+            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">Sin ítems para mostrar.</p>
           ) : (
             <div className="space-y-3">
-              {darkGroups.map((group) => (
+              {darkGroups.filter((group) => group.key === 'Actividades').map((group) => (
                 <div key={group.key}>
                   <div className="flex items-center gap-2 my-1.5">
                     <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide w-28">{group.key}</span>
                     <div className="flex-1 border-t border-[hsl(var(--canalco-neutral-200))]" />
                   </div>
                   {group.items.length === 0 ? (
-                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] ml-28">Sin items</p>
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] ml-28">Sin ítems</p>
                   ) : group.items.map((item, index) => (
                     <div key={`${group.key}-${item.label}-${index}`} className="grid grid-cols-[160px_1fr_48px] gap-3 items-center mb-2">
                       <div className="min-w-0">
@@ -3116,7 +3339,584 @@ export default function CronogramaPage() {
       </>
     );
 
+    const actaGraficos = (
+      <>
+              {obraBudgetRows.some((row) => row.plannedVal > 0 || row.execVal > 0) && (() => {
+                const chartData = obraBudgetRows.map((row) => {
+                  const esperado = Math.min(row.expectedVal, row.plannedVal);
+                  const ejecutadoBase = Math.min(row.execVal, row.plannedVal);
+                  const brechaEsperada = Math.max(Math.min(esperado, row.plannedVal) - ejecutadoBase, 0);
+                  const saldoPpto = Math.max(row.plannedVal - ejecutadoBase - brechaEsperada, 0);
+                  const exceso = Math.max(row.execVal - row.plannedVal, 0);
+                  return {
+                    name: row.workName,
+                    desc: row.workCode,
+                    Ppto: row.plannedVal,
+                    Esperado: esperado,
+                    Ejecutado: ejecutadoBase,
+                    PptoRestante: Math.max(row.plannedVal - ejecutadoBase, 0),
+                    Exceso: exceso,
+                    EjecutadoReal: row.execVal,
+                    avance: row.plannedVal > 0 ? Math.round((row.execVal / row.plannedVal) * 100) : 0,
+                  };
+                });
+                const totalPpto = chartData.reduce((s, d) => s + d.Ppto, 0);
+                const totalEsp = chartData.reduce((s, d) => s + d.Esperado, 0);
+                const totalEjec = chartData.reduce((s, d) => s + d.EjecutadoReal, 0);
+                const descByCode = new Map(chartData.map((d) => [d.name, d.desc]));
+                const shortWorkName = (name: string) => name.length > 34 ? `${name.slice(0, 34)}...` : name;
+                const atrasado = totalEsp > 0 && totalEjec < totalEsp;
+                const pill = (color: string, label: string, value: string) => (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--canalco-neutral-50))] border border-[hsl(var(--canalco-neutral-200))] px-2.5 py-1 text-[11px] tabular-nums">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="text-[hsl(var(--canalco-neutral-500))]">{label}</span>
+                    <strong className="text-[hsl(var(--canalco-neutral-800))]">{value}</strong>
+                  </span>
+                );
+                return (
+                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
+                      <BarChart3 className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Presupuesto apilado por obra
+                    </h3>
+                    <span className="text-2xl font-bold text-[hsl(var(--canalco-primary))] tabular-nums">{totalPpto > 0 ? Math.round((totalEjec / totalPpto) * 100) : 0}%</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    {pill('#64748b', 'Ppto', fmtCOP(totalPpto))}
+                    {pill('#f59e0b', 'Esperado', fmtCOP(totalEsp))}
+                    {pill('#10b981', 'Ejecutado', fmtCOP(totalEjec))}
+                    {totalEsp > 0 && (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${atrasado ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
+                        {atrasado ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                        {atrasado ? `Atrasado ${fmtCOP(totalEsp - totalEjec)}` : 'Al día / adelantado'}
+                      </span>
+                    )}
+                  </div>
+                  <ResponsiveContainer width="100%" height={Math.max(300, obraBudgetRows.length * 46)}>
+                    <BarChart
+                      layout="vertical"
+                      data={chartData}
+                      margin={{ top: 4, right: 44, left: 8, bottom: 4 }}
+                      barCategoryGap="36%"
+                    >
+                      <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--canalco-neutral-200))" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--canalco-neutral-400))' }}
+                        tickFormatter={(v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`)}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={190}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={shortWorkName}
+                        tick={{ fontSize: 11, fontWeight: 600, fill: 'hsl(var(--canalco-neutral-600))' }}
+                      />
+                      <RTooltip
+                        formatter={(v: number, key) => [fmtCOP(v), key]}
+                        labelFormatter={(label) => `${label} — ${descByCode.get(String(label)) ?? ''}`}
+                        cursor={{ fill: 'hsl(var(--canalco-neutral-100))' }}
+                        contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--canalco-neutral-200))', fontSize: 12 }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                      <Bar dataKey="Ejecutado" stackId="ppto" name="Ejecutado" fill="#10b981" radius={[4, 0, 0, 4]} maxBarSize={18} />
+                      <Bar dataKey="PptoRestante" stackId="ppto" name="Ppto" fill="#64748b" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                        <LabelList
+                          dataKey="avance"
+                          position="right"
+                          formatter={(v: number) => (v > 0 && v <= 100 ? `${v}%` : '')}
+                          style={{ fontSize: 10, fontWeight: 700, fill: '#475569' }}
+                        />
+                      </Bar>
+                      <Bar dataKey="Exceso" stackId="ppto" name="Exceso" fill="#ef4444" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                        <LabelList
+                          dataKey="avance"
+                          position="right"
+                          formatter={(v: number) => (v > 100 ? `${v}%` : '')}
+                          style={{ fontSize: 10, fontWeight: 700, fill: '#dc2626' }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </section>
+                );
+              })()}
+
+              {pcRows.some((row) => row.budgetQty > 0 || row.requisitionedQty > 0 || row.orderedQty > 0 || row.budgetValue > 0 || row.orderedValue > 0) && (() => {
+                const chartRows = pcRows
+                  .map((row) => ({
+                    name: row.materialCode,
+                    desc: row.materialDescription ?? '',
+                    Ppto: row.budgetQty,
+                    Req: row.requisitionedQty,
+                    OC: row.orderedQty,
+                    'Ppto $': row.budgetValue,
+                    'OC $': row.orderedValue,
+                    Diferencia: row.budgetValue - row.orderedValue,
+                    impact: Math.max(row.budgetValue, row.orderedValue, row.budgetQty, row.requisitionedQty, row.orderedQty),
+                  }))
+                  .filter((row) => row.Ppto > 0 || row.Req > 0 || row.OC > 0 || row['Ppto $'] > 0 || row['OC $'] > 0)
+                  .sort((a, b) => b.impact - a.impact);
+                // Se eligen los 12 de mayor impacto, pero se muestran de menor a mayor (ascendente).
+                const visibleRows = chartRows.slice(0, 12).reverse();
+                const hiddenRows = Math.max(0, chartRows.length - visibleRows.length);
+                const descByCode = new Map(chartRows.map((row) => [row.name, row.desc]));
+                const shortName = (code: string) => {
+                  const desc = descByCode.get(code) ?? '';
+                  const label = desc ? `${code} - ${desc}` : code;
+                  return label.length > 32 ? `${label.slice(0, 32)}...` : label;
+                };
+                const totalBudgetQty = chartRows.reduce((sum, row) => sum + row.Ppto, 0);
+                const totalReqQty = chartRows.reduce((sum, row) => sum + row.Req, 0);
+                const totalOcQty = chartRows.reduce((sum, row) => sum + row.OC, 0);
+                const totalPendingQty = Math.max(totalBudgetQty - totalOcQty, 0);
+                const totalBudgetValue = chartRows.reduce((sum, row) => sum + row['Ppto $'], 0);
+                const totalOcValue = chartRows.reduce((sum, row) => sum + row['OC $'], 0);
+                const totalDiffValue = totalBudgetValue - totalOcValue;
+                const ocPct = totalBudgetQty > 0 ? Math.round((totalOcQty / totalBudgetQty) * 100) : 0;
+                const fmtMoneyShort = (value: number) => (Math.abs(value) >= 1e6 ? `$${(value / 1e6).toFixed(1)}M` : Math.abs(value) >= 1e3 ? `$${(value / 1e3).toFixed(0)}K` : `$${value}`);
+                const stat = (label: string, value: string, sub: string, tone: 'slate' | 'blue' | 'green' | 'amber' | 'red') => {
+                  const tones = {
+                    slate: 'bg-slate-50 text-slate-700 border-slate-200',
+                    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+                    green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+                    red: 'bg-red-50 text-red-700 border-red-200',
+                  };
+                  return (
+                    <div className={`rounded-lg border px-3 py-2 ${tones[tone]}`}>
+                      <p className="text-[10px] uppercase tracking-wide font-semibold opacity-70">{label}</p>
+                      <p className="text-sm font-bold tabular-nums">{value}</p>
+                      <p className="text-[10px] opacity-70">{sub}</p>
+                    </div>
+                  );
+                };
+                const legendDot = (color: string, label: string) => (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-[hsl(var(--canalco-neutral-200))] px-2.5 py-1 shadow-sm">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    {label}
+                  </span>
+                );
+                return (
+                  <section className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-2xl p-5 shadow-sm space-y-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))]">
+                          <BarChart3 className="w-5 h-5" />
+                        </span>
+                        <div>
+                          <h3 className="text-sm font-bold text-[hsl(var(--canalco-neutral-800))] leading-tight">Compras por material</h3>
+                          <p className="text-[11px] text-[hsl(var(--canalco-neutral-400))]">Top {visibleRows.length} por impacto. Cantidades y valores separados para lectura rápida.</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <div className="inline-flex rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] p-0.5 text-[11px] font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => setPurchaseChartView('quantities')}
+                            className={`rounded-md px-3 py-1 transition-colors ${purchaseChartView === 'quantities' ? 'bg-white text-[hsl(var(--canalco-primary))] shadow-sm' : 'text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-800))]'}`}
+                          >
+                            Cantidades
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPurchaseChartView('values')}
+                            className={`rounded-md px-3 py-1 transition-colors ${purchaseChartView === 'values' ? 'bg-white text-[hsl(var(--canalco-primary))] shadow-sm' : 'text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-800))]'}`}
+                          >
+                            Valores
+                          </button>
+                        </div>
+                        {hiddenRows > 0 && (
+                          <span className="rounded-full bg-[hsl(var(--canalco-neutral-50))] border border-[hsl(var(--canalco-neutral-200))] px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--canalco-neutral-500))]">
+                            +{hiddenRows} materiales
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      {stat('Presupuesto', totalBudgetValue > 0 ? fmtCOP(totalBudgetValue) : fmtQ(totalBudgetQty), totalBudgetValue > 0 ? `${fmtQ(totalBudgetQty)} und presupuestadas` : 'Cantidad presupuestada', 'slate')}
+                      {stat('Requisitado', fmtQ(totalReqQty), 'Cantidad en requisiciones', 'blue')}
+                      {stat('OC emitidas', totalOcValue > 0 ? fmtCOP(totalOcValue) : fmtQ(totalOcQty), `${ocPct}% de cantidad OC`, 'green')}
+                      {stat(
+                        totalDiffValue < 0 ? 'Sobrecosto' : 'Diferencia',
+                        totalBudgetValue > 0 ? fmtCOP(Math.abs(totalDiffValue)) : fmtQ(totalPendingQty),
+                        totalBudgetValue > 0 ? (totalDiffValue < 0 ? 'OC supera el ppto' : 'Disponible vs OC') : 'Pendiente por OC',
+                        totalDiffValue < 0 ? 'red' : totalPendingQty > 0 ? 'amber' : 'green',
+                      )}
+                    </div>
+
+                    {purchaseChartView === 'quantities' && (
+                    <div className="rounded-xl border border-[hsl(var(--canalco-neutral-200))] p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Cantidades</h4>
+                          <p className="text-[11px] text-[hsl(var(--canalco-neutral-400))]">Presupuesto, requisitado y orden de compra por material.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                          {legendDot('#64748b', 'Ppto')}
+                          {legendDot('#3b82f6', 'Req')}
+                          {legendDot('#10b981', 'OC')}
+                        </div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={Math.max(280, visibleRows.length * 42)}>
+                        <BarChart layout="vertical" data={visibleRows} margin={{ top: 8, right: 24, left: 124, bottom: 8 }} barCategoryGap="18%" barGap={3}>
+                          <CartesianGrid strokeDasharray="3 6" stroke="hsl(var(--canalco-neutral-200))" horizontal={false} />
+                          <XAxis
+                            type="number"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fontSize: 11, fill: 'hsl(var(--canalco-neutral-400))' }}
+                            tickFormatter={(value) => (Number(value) >= 1000 ? `${(Number(value) / 1000).toFixed(1)}k` : `${value}`)}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={150}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={shortName}
+                            tick={{ fontSize: 10, fontWeight: 600, fill: 'hsl(var(--canalco-neutral-600))' }}
+                          />
+                          <RTooltip
+                            formatter={(value: number, key) => [fmtQ(value), key]}
+                            labelFormatter={(label) => `${label} - ${descByCode.get(String(label)) ?? ''}`}
+                            cursor={{ fill: 'hsl(var(--canalco-primary))', fillOpacity: 0.06 }}
+                            contentStyle={{ borderRadius: 10, border: '1px solid hsl(var(--canalco-neutral-200))', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: 12 }}
+                          />
+                          <Bar dataKey="Ppto" fill="#64748b" radius={[0, 5, 5, 0]} maxBarSize={12}>
+                            <LabelList
+                              dataKey="Ppto"
+                              position="right"
+                              formatter={(value: number) => (value > 0 ? fmtQ(value) : '')}
+                              style={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
+                            />
+                          </Bar>
+                          <Bar dataKey="Req" fill="#3b82f6" radius={[0, 5, 5, 0]} maxBarSize={12}>
+                            <LabelList
+                              dataKey="Req"
+                              position="right"
+                              formatter={(value: number) => (value > 0 ? fmtQ(value) : '')}
+                              style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }}
+                            />
+                          </Bar>
+                          <Bar dataKey="OC" fill="#10b981" radius={[0, 5, 5, 0]} maxBarSize={12}>
+                            <LabelList
+                              dataKey="OC"
+                              position="right"
+                              formatter={(value: number) => (value > 0 ? fmtQ(value) : '')}
+                              style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }}
+                            />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    )}
+
+                    {purchaseChartView === 'values' && (
+                    <div className="rounded-xl border border-[hsl(var(--canalco-neutral-200))] p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Valores</h4>
+                          <p className="text-[11px] text-[hsl(var(--canalco-neutral-400))]">Presupuesto cargado, OC emitidas y diferencia financiera.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                          {legendDot('#f59e0b', 'Ppto $')}
+                          {legendDot('#8b5cf6', 'OC $')}
+                          {legendDot(totalDiffValue < 0 ? '#ef4444' : '#10b981', 'Diferencia')}
+                        </div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={Math.max(280, visibleRows.length * 42)}>
+                        <BarChart layout="vertical" data={visibleRows} margin={{ top: 8, right: 24, left: 124, bottom: 8 }} barCategoryGap="18%" barGap={3}>
+                          <CartesianGrid strokeDasharray="3 6" stroke="hsl(var(--canalco-neutral-200))" horizontal={false} />
+                          <XAxis
+                            type="number"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fontSize: 11, fill: 'hsl(var(--canalco-neutral-400))' }}
+                            tickFormatter={fmtMoneyShort}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={150}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={shortName}
+                            tick={{ fontSize: 10, fontWeight: 600, fill: 'hsl(var(--canalco-neutral-600))' }}
+                          />
+                          <RTooltip
+                            formatter={(value: number, key) => [fmtCOP(value), key]}
+                            labelFormatter={(label) => `${label} - ${descByCode.get(String(label)) ?? ''}`}
+                            cursor={{ fill: 'hsl(var(--canalco-primary))', fillOpacity: 0.06 }}
+                            contentStyle={{ borderRadius: 10, border: '1px solid hsl(var(--canalco-neutral-200))', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: 12 }}
+                          />
+                          <Bar dataKey="Ppto $" fill="#f59e0b" radius={[0, 5, 5, 0]} maxBarSize={12} />
+                          <Bar dataKey="OC $" fill="#8b5cf6" radius={[0, 5, 5, 0]} maxBarSize={12} />
+                          <Bar dataKey="Diferencia" radius={[0, 5, 5, 0]} maxBarSize={12}>
+                            {visibleRows.map((row) => (
+                              <Cell key={`diff-${row.name}`} fill={row.Diferencia < 0 ? '#ef4444' : '#10b981'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-2">El Ppto $ depende del Presupuesto del Director. Diferencia positiva = saldo disponible; negativa = OC por encima del presupuesto.</p>
+                    </div>
+                    )}
+                  </section>
+                );
+              })()}
+
+              {actaDirectorBudgets.length > 0 && (() => {
+                const asNumber = (value: number | null | undefined) => Number(value) || 0;
+                const budgetSummaries = actaDirectorBudgets.map((budget) => {
+                  const budgetItems = budget.items ?? [];
+                  const subTotal = budgetItems.reduce((sum, item) => {
+                    const quantity = asNumber(item.cantidad);
+                    const unitValue = asNumber(item.vrUnitario);
+                    const unitIva = item.hasIva ? unitValue * 0.19 : 0;
+                    return sum + (quantity * (unitValue + unitIva));
+                  }, 0);
+                  const executedSubTotal = budgetItems.reduce((sum, item) => sum + asNumber(item.ejecutado), 0);
+                  const manoDeObra = asNumber(budget.manoDeObra);
+                  const manoDeObraEj = asNumber(budget.manoDeObraEj);
+                  const materialesInventario = asNumber(budget.materialesInventario);
+                  const materialesInventarioEj = asNumber(budget.materialesInventarioEj);
+                  const valorFacturado = asNumber(budget.valorFacturado);
+                  const valorFacturadoEj = asNumber(budget.valorFacturadoEj);
+                  const retenciones = valorFacturado * (asNumber(budget.retPct) / 100);
+                  const retencionesEj = valorFacturadoEj * (asNumber(budget.retPctEj) / 100);
+                  const estampilla = valorFacturado * (asNumber(budget.estampillaPct) / 100);
+                  const estampillaEj = valorFacturadoEj * (asNumber(budget.estampillaPctEj) / 100);
+                  const totalObra = subTotal + manoDeObra;
+                  const totalObraEj = executedSubTotal + manoDeObraEj;
+                  const totalAPagar = valorFacturado - retenciones - estampilla;
+                  const totalAPagarEj = valorFacturadoEj - retencionesEj - estampillaEj;
+                  const saldo = valorFacturado - totalObra;
+                  const saldoEj = valorFacturadoEj - totalObraEj;
+                  const otrosCostos = asNumber(budget.otrosCostos);
+                  const otrosCostosEj = asNumber(budget.otrosCostosEj);
+                  const utilidadObra = saldo - otrosCostos;
+                  const utilidadObraEj = saldoEj - otrosCostosEj;
+                  const costosLna = utilidadObra * (asNumber(budget.leg) / 100);
+                  const costosLnaEj = utilidadObraEj * (asNumber(budget.legEj) / 100);
+                  const utilidadFinal = utilidadObra - costosLna;
+                  const utilidadFinalEj = utilidadObraEj - costosLnaEj;
+                  return {
+                    subTotal,
+                    executedSubTotal,
+                    manoDeObra,
+                    manoDeObraEj,
+                    totalObra,
+                    totalObraEj,
+                    materialesInventario,
+                    materialesInventarioEj,
+                    valorFacturado,
+                    valorFacturadoEj,
+                    retenciones,
+                    retencionesEj,
+                    estampilla,
+                    estampillaEj,
+                    totalAPagar,
+                    totalAPagarEj,
+                    otrosCostos,
+                    otrosCostosEj,
+                    saldo,
+                    saldoEj,
+                    utilidadObra,
+                    utilidadObraEj,
+                    costosLna,
+                    costosLnaEj,
+                    utilidadFinal,
+                    utilidadFinalEj,
+                  };
+                });
+                const sumSummary = (key: keyof typeof budgetSummaries[number]) => budgetSummaries.reduce((sum, item) => sum + item[key], 0);
+                const subTotal = sumSummary('subTotal');
+                const executedSubTotal = sumSummary('executedSubTotal');
+                const manoDeObra = sumSummary('manoDeObra');
+                const manoDeObraEj = sumSummary('manoDeObraEj');
+                const totalObra = sumSummary('totalObra');
+                const totalObraEj = sumSummary('totalObraEj');
+                const materialesInventario = sumSummary('materialesInventario');
+                const materialesInventarioEj = sumSummary('materialesInventarioEj');
+                const valorFacturado = sumSummary('valorFacturado');
+                const valorFacturadoEj = sumSummary('valorFacturadoEj');
+                const retenciones = sumSummary('retenciones');
+                const retencionesEj = sumSummary('retencionesEj');
+                const estampilla = sumSummary('estampilla');
+                const estampillaEj = sumSummary('estampillaEj');
+                const totalAPagar = sumSummary('totalAPagar');
+                const totalAPagarEj = sumSummary('totalAPagarEj');
+                const otrosCostos = sumSummary('otrosCostos');
+                const otrosCostosEj = sumSummary('otrosCostosEj');
+                const saldo = sumSummary('saldo');
+                const saldoEj = sumSummary('saldoEj');
+                const utilidadObra = sumSummary('utilidadObra');
+                const utilidadObraEj = sumSummary('utilidadObraEj');
+                const pctUtilidad = valorFacturado !== 0 ? (utilidadObra / valorFacturado) * 100 : 0;
+                const pctUtilidadEj = valorFacturadoEj !== 0 ? (utilidadObraEj / valorFacturadoEj) * 100 : 0;
+                const costosLna = sumSummary('costosLna');
+                const costosLnaEj = sumSummary('costosLnaEj');
+                const utilidadFinal = sumSummary('utilidadFinal');
+                const utilidadFinalEj = sumSummary('utilidadFinalEj');
+                const pctUtilidadFinal = valorFacturado !== 0 ? (utilidadFinal / valorFacturado) * 100 : 0;
+                const pctUtilidadFinalEj = valorFacturadoEj !== 0 ? (utilidadFinalEj / valorFacturadoEj) * 100 : 0;
+
+                const financialRows = [
+                  { label: 'SUB-TOTAL', total: subTotal, executed: executedSubTotal },
+                  { label: 'MANO DE OBRA', total: manoDeObra, executed: manoDeObraEj },
+                  { label: 'TOTAL OBRA', total: totalObra, executed: totalObraEj, highlight: true },
+                  { label: 'MATERIALES INVENTARIO', total: materialesInventario, executed: materialesInventarioEj },
+                  { label: 'VALOR FACTURADO', total: valorFacturado, executed: valorFacturadoEj },
+                  { label: '(-) RETENCIONES', total: retenciones, executed: retencionesEj },
+                  { label: '(-) ESTAMPILLA', total: estampilla, executed: estampillaEj },
+                  { label: 'TOTAL A PAGAR ORDEN $', total: totalAPagar, executed: totalAPagarEj },
+                  { label: 'OTROS COSTOS', total: otrosCostos, executed: otrosCostosEj },
+                  { label: 'SALDO', total: saldo, executed: saldoEj },
+                  { label: 'UTILIDAD DE LA OBRA', total: utilidadObra, executed: utilidadObraEj },
+                  { label: '% UTILIDAD DE LA OBRA', total: pctUtilidad, executed: pctUtilidadEj, percent: true },
+                  { label: 'COSTOS L.N.A', total: costosLna, executed: costosLnaEj },
+                  { label: 'UTILIDAD FINAL', total: utilidadFinal, executed: utilidadFinalEj, highlight: true },
+                  { label: '% UTILIDAD FINAL', total: pctUtilidadFinal, executed: pctUtilidadFinalEj, percent: true, highlight: true },
+                ];
+                const moneyChartRows = financialRows
+                  .filter((row) => !row.percent && (Math.abs(row.total) > 0 || Math.abs(row.executed) > 0))
+                  .map((row) => ({
+                    name: row.label,
+                    total: row.total,
+                    executed: row.executed,
+                    diff: row.executed - row.total,
+                  }));
+                const fmtPercent = (value: number) => `${value.toLocaleString('es-CO', { maximumFractionDigits: 1 })}%`;
+                const fmtValue = (value: number, isPercent?: boolean) => {
+                  if (Math.abs(value) < 0.000001) return '-';
+                  return isPercent ? fmtPercent(value) : fmtCOP(value);
+                };
+                const fmtMoneyShort = (value: number) => {
+                  const sign = value < 0 ? '-' : '';
+                  const abs = Math.abs(value);
+                  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+                  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}K`;
+                  return `${sign}$${abs.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+                };
+                const summaryDiff = totalObraEj - totalObra;
+                return (
+                  <section className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-2xl p-5 shadow-sm space-y-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))]">
+                          <BarChart3 className="w-5 h-5" />
+                        </span>
+                        <div>
+                          <h3 className="text-sm font-bold text-[hsl(var(--canalco-neutral-800))] leading-tight">Resumen financiero del presupuesto</h3>
+                          <p className="text-[11px] text-[hsl(var(--canalco-neutral-400))]">
+                            Comparativo entre Vr total y Ejecutado {actaDirectorBudgets.length > 1 ? `consolidado de ${actaDirectorBudgets.length} presupuestos de proyecto.` : 'del presupuesto del acta.'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-[11px]">
+                        <span className="rounded-full bg-slate-50 border border-slate-200 px-2.5 py-1 text-slate-700">
+                          Vr total <strong>{fmtCOP(totalObra)}</strong>
+                        </span>
+                        <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-emerald-700">
+                          Ejecutado <strong>{fmtCOP(totalObraEj)}</strong>
+                        </span>
+                        <span className={`rounded-full border px-2.5 py-1 ${summaryDiff > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                          Diferencia <strong>{fmtCOP(summaryDiff)}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {moneyChartRows.length > 0 && (
+                      <div className="rounded-xl border border-[hsl(var(--canalco-neutral-200))] p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div>
+                            <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Comparativo financiero</h4>
+                            <p className="text-[11px] text-[hsl(var(--canalco-neutral-400))]">Barras horizontales por concepto monetario.</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-[hsl(var(--canalco-neutral-200))] px-2.5 py-1 shadow-sm">
+                              <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />Vr total
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-[hsl(var(--canalco-neutral-200))] px-2.5 py-1 shadow-sm">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />Ejecutado
+                            </span>
+                          </div>
+                        </div>
+                        <ResponsiveContainer width="100%" height={Math.max(320, moneyChartRows.length * 42)}>
+                          <BarChart layout="vertical" data={moneyChartRows} margin={{ top: 8, right: 28, left: 142, bottom: 8 }} barCategoryGap="20%" barGap={3}>
+                            <CartesianGrid strokeDasharray="3 6" stroke="hsl(var(--canalco-neutral-200))" horizontal={false} />
+                            <XAxis
+                              type="number"
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fontSize: 11, fill: 'hsl(var(--canalco-neutral-400))' }}
+                              tickFormatter={fmtMoneyShort}
+                            />
+                            <YAxis
+                              type="category"
+                              dataKey="name"
+                              width={160}
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fontSize: 10, fontWeight: 600, fill: 'hsl(var(--canalco-neutral-600))' }}
+                            />
+                            <RTooltip
+                              formatter={(value: number, key) => [fmtCOP(Number(value)), key === 'total' ? 'Vr total' : key === 'executed' ? 'Ejecutado' : key]}
+                              cursor={{ fill: 'hsl(var(--canalco-primary))', fillOpacity: 0.06 }}
+                              contentStyle={{ borderRadius: 10, border: '1px solid hsl(var(--canalco-neutral-200))', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontSize: 12 }}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+                            <Bar dataKey="total" name="Vr total" fill="#64748b" radius={[0, 5, 5, 0]} maxBarSize={12} />
+                            <Bar dataKey="executed" name="Ejecutado" fill="#10b981" radius={[0, 5, 5, 0]} maxBarSize={12} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    <div className="overflow-x-auto rounded-xl border border-[hsl(var(--canalco-neutral-200))]">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-[hsl(var(--canalco-neutral-50))] text-[hsl(var(--canalco-neutral-500))] text-left">
+                            <th className="px-4 py-2.5 font-semibold">Concepto</th>
+                            <th className="px-4 py-2.5 font-semibold text-right">Vr total</th>
+                            <th className="px-4 py-2.5 font-semibold text-right">Ejecutado</th>
+                            <th className="px-4 py-2.5 font-semibold text-right">Diferencia</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[hsl(var(--canalco-neutral-100))]">
+                          {financialRows.map((row) => {
+                            const diff = row.executed - row.total;
+                            const isNegative = diff < 0;
+                            const isZero = Math.abs(diff) < 0.000001;
+                            return (
+                              <tr key={row.label} className={`${row.highlight ? 'bg-[hsl(var(--canalco-primary))]/5 font-semibold' : 'bg-white'} hover:bg-[hsl(var(--canalco-neutral-50))]`}>
+                                <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-800))]">{row.label}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-700))]">{fmtValue(row.total, row.percent)}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600 font-semibold">{fmtValue(row.executed, row.percent)}</td>
+                                <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${isZero ? 'text-[hsl(var(--canalco-neutral-400))]' : isNegative ? 'text-red-500' : 'text-emerald-600'}`}>
+                                  {isZero ? '-' : fmtValue(diff, row.percent)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                );
+              })()}
+
+      </>
+    );
+
     return (
+      <>
       <TabsContent value="operativo" className="mt-0 space-y-4">
         {rowsWithSchedule.length === 0 ? (
           <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-6">
@@ -3140,45 +3940,6 @@ export default function CronogramaPage() {
                 <KPICard label="Materiales" p={matPct} sub={totMatVP > 0 ? `${fmtCOP(totMatVE)} / ${fmtCOP(totMatVP)}` : `${fmtQ(totMatQE)} / ${fmtQ(totMatQP)}`} color="bg-sky-400" />
                 <KPICard label="Actividades" p={actPct} sub={totActP > 0 ? `${fmtQ(totActE)} / ${fmtQ(totActP)}` : 'Sin plan'} color="bg-violet-400" />
               </div>
-
-              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
-                <div className="px-5 py-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-                      <TrendingUp className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Curva S - Avance en el Tiempo
-                    </h3>
-                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--canalco-neutral-500))] mt-1">% acumulado - Programado vs Real</p>
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <span className="flex items-center gap-1 text-[hsl(var(--canalco-neutral-600))]"><span className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--canalco-primary))]" />Programado</span>
-                    <span className="flex items-center gap-1 text-[hsl(var(--canalco-neutral-600))]"><span className="w-2.5 h-2.5 rounded-full bg-sky-500" />Real</span>
-                  </div>
-                </div>
-                <div className="p-4">
-                  {operativoCurva.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={260}>
-                      <ComposedChart data={operativoCurva} margin={{ top: 5, right: 14, left: -16, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="actaOperativoProgFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.22} />
-                            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" />
-                        <YAxis tick={{ fill: '#64748b', fontSize: 11 }} stroke="#cbd5e1" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                        <RTooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }} formatter={(value: number) => `${Math.round(value)}%`} />
-                        <Area type="monotone" dataKey="programado" stroke="#f59e0b" strokeWidth={2} fill="url(#actaOperativoProgFill)" name="Programado" />
-                        <RLine type="monotone" dataKey="real" stroke="#0ea5e9" strokeWidth={2.5} dot={{ r: 3, fill: '#0ea5e9' }} connectNulls name="Real" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-[260px] flex items-center justify-center text-xs text-[hsl(var(--canalco-neutral-400))] text-center px-4">
-                      Registra el plan diario y las fechas del acta para ver la curva S.
-                    </div>
-                  )}
-                </div>
-              </section>
 
               {false && (
               <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-4">
@@ -3221,16 +3982,16 @@ export default function CronogramaPage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-[hsl(var(--canalco-neutral-50))] text-[hsl(var(--canalco-neutral-500))] text-left">
-                          <th className="px-4 py-2 font-medium">Codigo</th>
-                          <th className="px-4 py-2 font-medium">Descripcion</th>
+                          <th className="px-4 py-2 font-medium">Código</th>
+                          <th className="px-4 py-2 font-medium">Descripción</th>
                           <th className="px-4 py-2 font-medium text-right">Plan</th>
                           <th className="px-4 py-2 font-medium text-right">Ejec.</th>
+                          <th className="px-4 py-2 font-medium text-right">Esperado</th>
                           <th className="px-4 py-2 font-medium text-right">Pendiente</th>
                           <th className="px-4 py-2 font-medium text-right">Vr. Unitario</th>
                           <th className="px-4 py-2 font-medium text-right">Ppto.</th>
                           <th className="px-4 py-2 font-medium text-right">Ejecutado $</th>
                           <th className="px-4 py-2 font-medium text-center">Avance</th>
-                          <th className="px-4 py-2 font-medium text-center">Estado</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[hsl(var(--canalco-neutral-100))]">
@@ -3240,6 +4001,7 @@ export default function CronogramaPage() {
                             <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-700))] max-w-[220px] truncate" title={row.ucapDescription}>{row.ucapDescription}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{fmtQ(row.plannedQuantity)}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[hsl(var(--canalco-neutral-800))]">{fmtQ(row.execQty)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-amber-600">{row.plannedQuantity > 0 ? fmtQ(row.expectedQty) : '-'}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-500))]">{fmtQ(Math.max(0, row.plannedQuantity - row.execQty))}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-500))]">{row.unitValue > 0 ? fmtCOP(row.unitValue) : '-'}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{row.plannedVal > 0 ? fmtCOP(row.plannedVal) : '-'}</td>
@@ -3252,73 +4014,15 @@ export default function CronogramaPage() {
                                 <span className="text-[11px] tabular-nums font-semibold text-[hsl(var(--canalco-neutral-700))] w-9 text-right">{row.plannedQuantity > 0 ? `${Math.round(row.p)}%` : '-'}</span>
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 text-center">{badge(row.p, row.plannedQuantity > 0)}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot>
                         <tr className="bg-[hsl(var(--canalco-neutral-100))] font-semibold text-[hsl(var(--canalco-neutral-700))] text-xs">
-                          <td className="px-4 py-2.5" colSpan={6}>Total</td>
+                          <td className="px-4 py-2.5" colSpan={7}>Total</td>
                           <td className="px-4 py-2.5 text-right tabular-nums">{totUcapVP > 0 ? fmtCOP(totUcapVP) : '-'}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{totUcapVE > 0 ? fmtCOP(totUcapVE) : '-'}</td>
-                          <td className="px-4 py-2.5" colSpan={2} />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </section>
-              )}
-
-              {matRows.length > 0 && (
-                <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
-                  <div className="px-5 py-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-                      <Package className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Materiales
-                    </h3>
-                    <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">{matRows.length} item{matRows.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-[hsl(var(--canalco-neutral-50))] text-[hsl(var(--canalco-neutral-500))] text-left">
-                          <th className="px-4 py-2 font-medium">Codigo</th>
-                          <th className="px-4 py-2 font-medium">Descripcion</th>
-                          <th className="px-4 py-2 font-medium text-center">U/M</th>
-                          <th className="px-4 py-2 font-medium text-right">Ppto.</th>
-                          <th className="px-4 py-2 font-medium text-right">Instalado</th>
-                          <th className="px-4 py-2 font-medium text-right">Pendiente</th>
-                          <th className="px-4 py-2 font-medium text-center">Uso</th>
-                          <th className="px-4 py-2 font-medium text-center">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[hsl(var(--canalco-neutral-100))]">
-                        {matRows.map((row) => (
-                          <tr key={row.key} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
-                            <td className="px-4 py-2.5 font-mono font-semibold text-[hsl(var(--canalco-primary))]">{row.materialCode}</td>
-                            <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-700))] max-w-[240px] truncate" title={row.materialDescription ?? ''}>{row.materialDescription ?? '-'}</td>
-                            <td className="px-4 py-2.5 text-center text-[hsl(var(--canalco-neutral-500))]">{row.unitOfMeasure ?? '-'}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{fmtQ(row.totalQuantity)}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[hsl(var(--canalco-neutral-800))]">{fmtQ(row.execQty)}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-500))]">{fmtQ(Math.max(0, row.totalQuantity - row.execQty))}</td>
-                            <td className="px-4 py-2.5">
-                              <div className="flex items-center gap-2 min-w-[90px]">
-                                <div className="flex-1 h-1.5 rounded-full bg-[hsl(var(--canalco-neutral-200))]">
-                                  <div className="h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] transition-all" style={{ width: `${Math.min(100, row.p)}%` }} />
-                                </div>
-                                <span className="text-[11px] tabular-nums font-semibold text-[hsl(var(--canalco-neutral-700))] w-9 text-right">{row.totalQuantity > 0 ? `${Math.round(row.p)}%` : '-'}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-2.5 text-center">{badge(row.p, row.totalQuantity > 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-[hsl(var(--canalco-neutral-100))] font-semibold text-[hsl(var(--canalco-neutral-700))] text-xs">
-                          <td className="px-4 py-2.5" colSpan={3}>Total</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(totMatQP)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(totMatQE)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{fmtQ(Math.max(0, totMatQP - totMatQE))}</td>
-                          <td className="px-4 py-2.5" colSpan={2} />
+                          <td className="px-4 py-2.5" colSpan={1} />
                         </tr>
                       </tfoot>
                     </table>
@@ -3330,7 +4034,7 @@ export default function CronogramaPage() {
                 <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
                   <div className="px-5 py-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] uppercase tracking-wide flex items-center gap-1.5">
-                      <ShoppingCart className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Presupuesto vs Ordenes de Compra
+                      <ShoppingCart className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />Presupuesto vs Órdenes de Compra
                     </h3>
                     <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">{pcRows.length} item{pcRows.length !== 1 ? 's' : ''}</span>
                   </div>
@@ -3338,10 +4042,12 @@ export default function CronogramaPage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-[hsl(var(--canalco-neutral-50))] text-[hsl(var(--canalco-neutral-500))] text-left">
-                          <th className="px-4 py-2 font-medium">Codigo</th>
-                          <th className="px-4 py-2 font-medium">Descripcion</th>
+                          <th className="px-4 py-2 font-medium">Código</th>
+                          <th className="px-4 py-2 font-medium">Descripción</th>
                           <th className="px-4 py-2 font-medium">U/M</th>
                           <th className="px-4 py-2 font-medium text-right">Ppto.</th>
+                          <th className="px-4 py-2 font-medium text-right">Instalado</th>
+                          <th className="px-4 py-2 font-medium text-right">Pendiente</th>
                           <th className="px-4 py-2 font-medium text-right">Req.</th>
                           <th className="px-4 py-2 font-medium text-right">OC</th>
                           <th className="px-4 py-2 font-medium text-right">Ppto. $</th>
@@ -3356,6 +4062,8 @@ export default function CronogramaPage() {
                             <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-700))] max-w-[220px] truncate" title={row.materialDescription ?? ''}>{row.materialDescription ?? '-'}</td>
                             <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-500))]">{row.unitOfMeasure ?? '-'}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{fmtQ(row.budgetQty)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-800))]">{fmtQ(row.execQty)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{fmtQ(Math.max(0, row.budgetQty - row.execQty))}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{row.requisitionedQty > 0 ? fmtQ(row.requisitionedQty) : '-'}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[hsl(var(--canalco-neutral-800))]">{row.orderedQty > 0 ? fmtQ(row.orderedQty) : '-'}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{row.budgetValue > 0 ? fmtCOP(row.budgetValue) : '-'}</td>
@@ -3368,7 +4076,7 @@ export default function CronogramaPage() {
                       </tbody>
                       <tfoot>
                         <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t-2 border-[hsl(var(--canalco-neutral-300))] font-semibold">
-                          <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-600))]" colSpan={6}>Total</td>
+                          <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-600))]" colSpan={8}>Total</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-600))]">{totPcBudget > 0 ? fmtCOP(totPcBudget) : '-'}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{totPcOrdered > 0 ? fmtCOP(totPcOrdered) : '-'}</td>
                           <td className={`px-4 py-2.5 text-right tabular-nums ${totPcOrdered === 0 ? 'text-[hsl(var(--canalco-neutral-400))]' : totPcDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -3428,6 +4136,17 @@ export default function CronogramaPage() {
             </div>
         )}
       </TabsContent>
+      <TabsContent value="graficos" className="mt-0 space-y-4">
+        {rowsWithSchedule.length === 0 ? (
+          <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-6">
+            <div className="flex flex-col items-center justify-center text-center py-8 text-[hsl(var(--canalco-neutral-500))]">
+              <BarChart3 className="w-10 h-10 mb-3 text-[hsl(var(--canalco-primary))]" />
+              <p className="text-sm">No hay datos para graficar.</p>
+            </div>
+          </section>
+        ) : actaGraficos}
+      </TabsContent>
+      </>
     );
   };
 
@@ -3837,149 +4556,35 @@ export default function CronogramaPage() {
                   </Select>
                 </div>
               )}
+
+              {groupedWorksMap.size > 0 && (
+                <div className="w-56">
+                  <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Acta</label>
+                  <Select
+                    value={selectedActa ?? ''}
+                    onValueChange={(val) => {
+                      const actaWorks = groupedWorksMap.get(val);
+                      if (actaWorks) handleSelectActa(val, actaWorks);
+                    }}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Seleccionar acta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(groupedWorksMap.entries()).map(([acta, actaWorks]) => (
+                        <SelectItem key={acta} value={acta}>
+                          Acta {acta} ({actaWorks.length} obras)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             {departments.map((dept) => (
               <TabsContent key={dept.name} value={dept.name}>
                 <div className="flex gap-6" style={{ minHeight: '70vh' }}>
-                  {/* ── Left: work list ── */}
-                  <div className="w-64 flex-shrink-0 flex flex-col gap-3">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
-                      <Input
-                        placeholder="Buscar obra o acta..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto border border-[hsl(var(--canalco-neutral-300))] rounded-lg bg-white divide-y divide-[hsl(var(--canalco-neutral-200))]">
-                      {loadingWorks ? (
-                        <div className="flex items-center justify-center py-10">
-                          <div className="w-6 h-6 border-4 border-[hsl(var(--canalco-primary))]/30 border-t-[hsl(var(--canalco-primary))] rounded-full animate-spin" />
-                        </div>
-                      ) : filteredGroupedMap.size === 0 && filteredIndividualWorks.length === 0 ? (
-                        <div className="py-10 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
-                          No hay obras disponibles
-                        </div>
-                      ) : (
-                        <>
-                          {/* ── Obras agrupadas por acta ── */}
-                          {filteredGroupedMap.size > 0 && (
-                            <>
-                              <div className="px-3 py-1.5 bg-[hsl(var(--canalco-neutral-100))] flex items-center gap-1.5 sticky top-0 z-10">
-                                <Layers className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />
-                                <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide">
-                                  Obras Agrupadas
-                                </span>
-                              </div>
-                              {Array.from(filteredGroupedMap.entries()).map(([acta, actaWorks]) => (
-                                <div key={acta}>
-                                  <button
-                                    onClick={() => handleSelectActa(acta, actaWorks)}
-                                    title="Ver cronograma (Gantt) del acta"
-                                    className={`w-full px-4 py-2 flex items-center gap-2 border-b border-[hsl(var(--canalco-neutral-200))] transition-colors hover:bg-[hsl(var(--canalco-primary))]/10 ${
-                                      selectedActa === acta
-                                        ? 'bg-[hsl(var(--canalco-primary))]/10 border-l-4 border-l-[hsl(var(--canalco-primary))]'
-                                        : 'bg-[hsl(var(--canalco-neutral-50))]'
-                                    }`}
-                                  >
-                                    <CalendarRange className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
-                                    <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">
-                                      Acta {acta}
-                                    </span>
-                                    <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">
-                                      ({actaWorks.length} obras)
-                                    </span>
-                                  </button>
-                                  {actaWorks.map((work) => (
-                                    <button
-                                      key={work.workId}
-                                      onClick={() => handleSelectWork(work)}
-                                      className={`w-full text-left px-4 py-3 pl-8 hover:bg-[hsl(var(--canalco-neutral-100))] transition-colors border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0 ${
-                                        selectedWork?.workId === work.workId
-                                          ? 'bg-[hsl(var(--canalco-primary))]/10 border-l-4 border-l-[hsl(var(--canalco-primary))]'
-                                          : ''
-                                      }`}
-                                    >
-                                      <div className="flex items-start gap-2 min-w-0">
-                                        {workStatuses[work.workId] && (
-                                          <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${
-                                            workStatuses[work.workId] === 'on-track' ? 'bg-green-500' :
-                                            workStatuses[work.workId] === 'at-risk' ? 'bg-amber-500' : 'bg-red-500'
-                                          }`} />
-                                        )}
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))] leading-tight line-clamp-2">
-                                            {work.name}
-                                          </p>
-                                          {work.workCode && (
-                                            <p className="text-xs text-[hsl(var(--canalco-primary))] font-mono mt-0.5">
-                                              {work.workCode}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              ))}
-                            </>
-                          )}
-
-                          {/* ── Obras individuales ── */}
-                          {filteredIndividualWorks.length > 0 && (
-                            <>
-                              {filteredGroupedMap.size > 0 && (
-                                <div className="px-3 py-1.5 bg-[hsl(var(--canalco-neutral-100))] flex items-center gap-1.5 sticky top-0 z-10">
-                                  <span className="text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] uppercase tracking-wide">
-                                    Obras Individuales
-                                  </span>
-                                </div>
-                              )}
-                              {filteredIndividualWorks.map((work) => (
-                                <button
-                                  key={work.workId}
-                                  onClick={() => handleSelectWork(work)}
-                                  className={`w-full text-left px-4 py-3 hover:bg-[hsl(var(--canalco-neutral-100))] transition-colors ${
-                                    selectedWork?.workId === work.workId
-                                      ? 'bg-[hsl(var(--canalco-primary))]/10 border-l-4 border-l-[hsl(var(--canalco-primary))]'
-                                      : ''
-                                  }`}
-                                >
-                                  <div className="flex items-start gap-2 min-w-0">
-                                    {workStatuses[work.workId] && (
-                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${
-                                        workStatuses[work.workId] === 'on-track' ? 'bg-green-500' :
-                                        workStatuses[work.workId] === 'at-risk' ? 'bg-amber-500' : 'bg-red-500'
-                                      }`} />
-                                    )}
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))] leading-tight line-clamp-2">
-                                        {work.name}
-                                      </p>
-                                      {work.recordNumber && (
-                                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-0.5">
-                                          Acta {work.recordNumber}
-                                        </p>
-                                      )}
-                                      {work.workCode && (
-                                        <p className="text-xs text-[hsl(var(--canalco-primary))] font-mono">
-                                          {work.workCode}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
                   {/* ── Right: schedule detail ── */}
                   <div className="flex-1 min-w-0">
                     {selectedActa && !selectedWork ? (
@@ -3989,20 +4594,99 @@ export default function CronogramaPage() {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          <div>
-                            <h2 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))]">
-                              Cronograma · Acta {selectedActa}
-                            </h2>
-                            <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
-                              Avance de las obras del acta. Haz clic en una obra para desplegar sus UCAPs.
-                            </p>
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div>
+                              <h2 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))]">
+                                Cronograma · Acta {selectedActa}
+                              </h2>
+                              <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">
+                                Avance de las obras del acta. Haz clic en una obra para desplegar sus UCAPs.
+                              </p>
+                            </div>
+                            {/* ── Flujo de revisión del Plan ── */}
+                            <div className="flex flex-col items-end gap-2">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                                cronogramaStatus === 'aprobado' ? 'bg-emerald-100 text-emerald-700'
+                                : cronogramaStatus === 'en_revision' ? 'bg-blue-100 text-blue-700'
+                                : cronogramaStatus === 'rechazado' ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {cronogramaStatus === 'aprobado' ? '✓ Plan aprobado'
+                                  : cronogramaStatus === 'en_revision' ? '⏳ En revisión del Director Técnico'
+                                  : cronogramaStatus === 'rechazado' ? '✗ Devuelto por el Director Técnico'
+                                  : 'Plan en elaboración'}
+                              </span>
+                              {canSubmitCronograma && (
+                                <button
+                                  onClick={handleSubmitCronograma}
+                                  disabled={cronogramaActionLoading}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-[hsl(var(--canalco-primary))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                                >
+                                  {cronogramaActionLoading ? 'Enviando...' : (cronogramaStatus === 'rechazado' ? 'Corregir y reenviar a revisión' : 'Enviar a revisión')}
+                                </button>
+                              )}
+                              {canReviewCronograma && (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleReviewCronograma('aprobado')}
+                                    disabled={cronogramaActionLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                                  >
+                                    Aprobar
+                                  </button>
+                                  <button
+                                    onClick={() => setCronogramaRejectOpen((v) => !v)}
+                                    disabled={cronogramaActionLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-400 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                  >
+                                    Rechazar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
+                          {/* Comentario de rechazo (visible para todos) */}
+                          {cronogramaStatus === 'rechazado' && actaCronograma?.cronogramaRechazoMotivo && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                              <span className="font-semibold">Motivo de la devolución: </span>
+                              {actaCronograma.cronogramaRechazoMotivo}
+                            </div>
+                          )}
+                          {/* Panel inline para rechazar con motivo (Director Técnico) */}
+                          {canReviewCronograma && cronogramaRejectOpen && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+                              <label className="text-sm font-medium text-red-800">Motivo del rechazo (obligatorio)</label>
+                              <textarea
+                                value={cronogramaRejectMotivo}
+                                onChange={(e) => setCronogramaRejectMotivo(e.target.value)}
+                                rows={3}
+                                placeholder="Indica qué debe corregir el Director de Proyecto..."
+                                className="w-full rounded-md border border-red-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+                              />
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => { setCronogramaRejectOpen(false); setCronogramaRejectMotivo(''); }}
+                                  className="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--canalco-neutral-600))] hover:bg-white"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleReviewCronograma('rechazado', cronogramaRejectMotivo)}
+                                  disabled={cronogramaActionLoading || !cronogramaRejectMotivo.trim()}
+                                  className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                                >
+                                  Confirmar rechazo
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           <Tabs value={cronogramaTab} onValueChange={setCronogramaTab} className="w-full">
                             <TabsList className="mb-4">
                               <TabsTrigger value="plan">Plan</TabsTrigger>
-                              <TabsTrigger value="ejecucion">Ejecución</TabsTrigger>
-                              {canSeeInforme && <TabsTrigger value="informe">Informe</TabsTrigger>}
-                              {canSeeOperativo && <TabsTrigger value="operativo">Operativo</TabsTrigger>}
+                              <TabsTrigger value="ejecucion" disabled={!canAccessOtherTabs} title={!canAccessOtherTabs ? 'Disponible cuando el Director Técnico apruebe el plan' : undefined}>Ejecución</TabsTrigger>
+                              {canSeeInforme && <TabsTrigger value="informe" disabled={!canAccessOtherTabs}>Informe</TabsTrigger>}
+                              {canSeeOperativo && <TabsTrigger value="operativo" disabled={!canAccessOtherTabs}>Operativo</TabsTrigger>}
+                              {canSeeOperativo && <TabsTrigger value="graficos" disabled={!canAccessOtherTabs}>Gráficos</TabsTrigger>}
                             </TabsList>
 
                             <TabsContent value="plan" className="space-y-4 mt-0">
@@ -4025,6 +4709,15 @@ export default function CronogramaPage() {
                                     return next;
                                   });
                                 };
+                                const applyStartWithCalculatedEnd = (value: string) => {
+                                  applyDateToActa('start', value);
+                                  const days = parseInt(actaContractualDays, 10);
+                                  if (value && days > 0) {
+                                    applyDateToActa('end', addWorkingDays(value, days));
+                                  } else if (!value) {
+                                    applyDateToActa('end', '');
+                                  }
+                                };
                                 return (
                                   <div className="max-w-md">
                                     <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg overflow-hidden">
@@ -4043,26 +4736,50 @@ export default function CronogramaPage() {
                                           <Input
                                             type="date"
                                             value={commonStart}
-                                            onChange={(e) => applyDateToActa('start', e.target.value)}
+                                            onChange={(e) => applyStartWithCalculatedEnd(e.target.value)}
                                             disabled={!canEditPlan}
                                             className="mt-0.5 h-8 text-sm w-full"
                                           />
                                         </div>
                                         <div className="flex-1">
-                                          <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin</Label>
+                                          <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Fin calculado</Label>
                                           <Input
                                             type="date"
                                             value={commonEnd}
-                                            onChange={(e) => applyDateToActa('end', e.target.value)}
-                                            disabled={!canEditPlan}
+                                            readOnly
+                                            disabled
                                             className="mt-0.5 h-8 text-sm w-full"
                                           />
                                         </div>
                                       </div>
+                                      <div className="px-5 py-4 border-t border-[hsl(var(--canalco-neutral-100))]">
+                                        <Label className="text-xs text-[hsl(var(--canalco-neutral-400))]">Días contractuales (hábiles · lun–vie)</Label>
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          value={actaContractualDays}
+                                          placeholder="Ej: 90"
+                                          disabled={!canEditPlan || !commonStart}
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            setActaContractualDays(value);
+                                            const days = parseInt(value, 10);
+                                            if (commonStart && days > 0) {
+                                              applyDateToActa('end', addWorkingDays(commonStart, days));
+                                            } else if (!value) {
+                                              applyDateToActa('end', '');
+                                            }
+                                          }}
+                                          className="mt-0.5 h-8 text-sm w-full"
+                                        />
+                                        <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-1">
+                                          La fecha de fin se calcula automáticamente con la fecha de inicio y los días contractuales hábiles.
+                                        </p>
+                                      </div>
                                       <div className="px-5 py-3 border-t border-[hsl(var(--canalco-neutral-100))] bg-[hsl(var(--canalco-neutral-50))] flex items-center justify-between text-xs">
                                         <span className="text-[hsl(var(--canalco-neutral-400))]">Este mes</span>
                                         <span className="font-semibold text-[hsl(var(--canalco-neutral-600))]">
-                                          {monthProgress.elapsed} / {monthProgress.total} dias habiles
+                                          {monthProgress.elapsed} / {monthProgress.total} días hábiles
                                         </span>
                                       </div>
                                     </section>
@@ -4177,9 +4894,6 @@ export default function CronogramaPage() {
                                   </section>
                                 );
                               })()}
-                              <section className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg p-5">
-                                <ActaGantt obras={currentActaGanttObras} />
-                              </section>
                               {actaScheduleRows.length > 0 && (() => {
                             const days = getWeekDays(weekOffset);
                             const today = formatDate(new Date());
@@ -4208,7 +4922,7 @@ export default function CronogramaPage() {
                                         {days.map((date, i) => {
                                           const d = new Date(date + 'T12:00:00');
                                           const isToday = date === today;
-                                          const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                          const isHoliday = weekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                           const headerCls = isToday
                                             ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                             : isHoliday
@@ -4266,7 +4980,7 @@ export default function CronogramaPage() {
                                                     {item.plannedQuantity}
                                                   </td>
                                                   {days.map((date) => {
-                                                    const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                                    const isHoliday = weekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                     return (
                                                       <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
                                                         <Input
@@ -4385,7 +5099,7 @@ export default function CronogramaPage() {
                                               {days.map((date, i) => {
                                                 const d = new Date(date + 'T12:00:00');
                                                 const isToday = date === today;
-                                                const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                                const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                 const headerCls = isToday
                                                   ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                                   : isHoliday
@@ -4439,7 +5153,7 @@ export default function CronogramaPage() {
                                                         </td>
                                                         {days.map((date) => {
                                                           const isToday = date === today;
-                                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                           const qty = getMaterialQty(work.workId, date, mat.materialCode);
                                                           return (
                                                             <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -4601,7 +5315,7 @@ export default function CronogramaPage() {
                                               {days.map((date, i) => {
                                                 const d = new Date(date + 'T12:00:00');
                                                 const isToday = date === today;
-                                                const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                                const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                 const headerCls = isToday
                                                   ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                                   : isHoliday
@@ -4668,7 +5382,7 @@ export default function CronogramaPage() {
                                                       </td>
                                                       {days.map((date) => {
                                                         const isToday = date === today;
-                                                        const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                                        const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                         const qty = getActivityQty(work.workId, date, row.id);
                                                         return (
                                                           <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -4777,7 +5491,7 @@ export default function CronogramaPage() {
                                                         </td>
                                                         {days.map((date) => {
                                                           const isToday = date === today;
-                                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                           const qty = getActivityQty(work.workId, date, row.id);
                                                           return (
                                                             <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5042,7 +5756,7 @@ export default function CronogramaPage() {
                                       {days.map((date, i) => {
                                         const d = new Date(date + 'T12:00:00');
                                         const isToday = date === today;
-                                        const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                        const isHoliday = weekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                         const headerCls = isToday
                                           ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                           : isHoliday
@@ -5071,7 +5785,7 @@ export default function CronogramaPage() {
                                             {item.plannedQuantity}
                                           </td>
                                           {days.map((date) => {
-                                            const isHoliday = weekHolidaySet.has(date) || isSunday(date);
+                                            const isHoliday = weekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                             return (
                                               <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
                                                 <Input
@@ -5169,7 +5883,7 @@ export default function CronogramaPage() {
                                         {days.map((date, i) => {
                                           const d = new Date(date + 'T12:00:00');
                                           const isToday = date === today;
-                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                           const headerCls = isToday
                                             ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                             : isHoliday
@@ -5202,7 +5916,7 @@ export default function CronogramaPage() {
                                             </td>
                                             {days.map((date) => {
                                               const isToday = date === today;
-                                              const isHoliday = matWeekHolidaySet.has(date) || isSunday(date);
+                                              const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                               const qty = materialDailyMap[date]?.[mat.materialCode] ?? 0;
                                               return (
                                                 <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5294,7 +6008,7 @@ export default function CronogramaPage() {
                                         {days.map((date, i) => {
                                           const d = new Date(date + 'T12:00:00');
                                           const isToday = date === today;
-                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                          const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                           const headerCls = isToday
                                             ? 'text-[hsl(var(--canalco-primary))] font-bold'
                                             : isHoliday
@@ -5334,7 +6048,7 @@ export default function CronogramaPage() {
                                             </td>
                                             {days.map((date) => {
                                               const isToday = date === today;
-                                              const isHoliday = actWeekHolidaySet.has(date) || isSunday(date);
+                                              const isHoliday = actWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                               const qty = activityDailyMap[date]?.[row.id] ?? 0;
                                               return (
                                                 <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5499,7 +6213,7 @@ export default function CronogramaPage() {
                                           {days.map((date, i) => {
                                             const d = new Date(date + 'T12:00:00');
                                             const isToday = date === today;
-                                            const isHoliday = holidaySet.has(date) || isSunday(date);
+                                            const isHoliday = holidaySet.has(date) || isSunday(date) || isSaturday(date);
                                             const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                             return (
                                               <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
@@ -5521,7 +6235,7 @@ export default function CronogramaPage() {
                                                 <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{item.ucapDescription}</p>
                                               </td>
                                               {days.map((date) => {
-                                                const isHoliday = holidaySet.has(date) || isSunday(date);
+                                                const isHoliday = holidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                 const val = execDailyMap[date]?.[item.ucapId] ?? 0;
                                                 return (
                                                   <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5593,7 +6307,7 @@ export default function CronogramaPage() {
                                             {days.map((date, i) => {
                                               const d = new Date(date + 'T12:00:00');
                                               const isToday = date === today;
-                                              const isHoliday = matHolidaySet.has(date) || isSunday(date);
+                                              const isHoliday = matHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                               const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                               return (
                                                 <th key={date} className={`text-center text-xs pb-2 w-14 ${cls}`}>
@@ -5617,7 +6331,7 @@ export default function CronogramaPage() {
                                                   <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{mat.materialDescription ?? ''}</p>
                                                 </td>
                                                 {days.map((date) => {
-                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date);
+                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                   const val = execMaterialDailyMap[date]?.[code] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5642,7 +6356,7 @@ export default function CronogramaPage() {
                                                   <p className="text-[10px] text-[hsl(var(--canalco-neutral-500))] truncate leading-tight">{row.description || ''}</p>
                                                 </td>
                                                 {days.map((date) => {
-                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date);
+                                                  const isHoliday = matHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                   const val = execMaterialDailyMap[date]?.[code] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-0.5 px-0.5 text-center ${date === today ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
@@ -5744,7 +6458,7 @@ export default function CronogramaPage() {
                                             {days.map((date, i) => {
                                               const d = new Date(date + 'T12:00:00');
                                               const isToday = date === today;
-                                              const isHoliday = actHolidaySet.has(date) || isSunday(date);
+                                              const isHoliday = actHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                               const cls = isToday ? 'text-[hsl(var(--canalco-primary))] font-bold' : isHoliday ? 'text-red-500 font-semibold' : 'text-[hsl(var(--canalco-neutral-600))] font-semibold';
                                               return (
                                                 <th key={date} className={`text-center text-xs pb-2 w-16 ${cls}`}>
@@ -5774,7 +6488,7 @@ export default function CronogramaPage() {
                                                 </td>
                                                 {days.map((date) => {
                                                   const isToday = date === today;
-                                                  const isHoliday = actHolidaySet.has(date) || isSunday(date);
+                                                  const isHoliday = actHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                                                   const qty = execActivityDailyMap[date]?.[row.id] ?? 0;
                                                   return (
                                                     <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>

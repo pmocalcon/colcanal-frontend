@@ -48,7 +48,7 @@ type MainView = 'list' | 'database';
 const normalizeLocationName = (name?: string | null) =>
   getMunicipioName(name || '')
     .replace(/^Unión Temporal Alumbrado Público\s+/i, '')
-    .replace(/^Uni[oÃ³]n Temporal Alumbrado P[uÃº]blico\s+/i, '')
+    .replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/^union temporal alumbrado publico\s+/i, '')
@@ -361,7 +361,7 @@ export default function LevantamientosListPage() {
   const getStatusBadge = (status?: string | BlockStatus) => {
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
       pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pendiente' },
-      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'En Revision' },
+      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'En revisión' },
       approved: { bg: 'bg-green-100', text: 'text-green-800', label: 'Aprobado' },
       rejected: { bg: 'bg-red-100', text: 'text-red-800', label: 'Rechazado' },
     };
@@ -902,7 +902,7 @@ function DatabaseView({
             </Select>
           </div>
           <div>
-            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Inversion</label>
+            <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Inversión</label>
             <Select
               value={filters.investmentStatus}
               onValueChange={(value) => setFilters((f) => ({ ...f, investmentStatus: value }))}
@@ -975,13 +975,13 @@ function DatabaseView({
             <table className="w-full text-sm">
               <thead className="bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Codigo</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Código</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Obra</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Empresa</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">N. Acta</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Total Ppto</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Presupuesto</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Inversion</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Inversión</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Materiales</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Viajes</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-[hsl(var(--canalco-neutral-900))]">Fecha</th>

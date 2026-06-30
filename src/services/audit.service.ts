@@ -114,6 +114,12 @@ export interface MatrixResponse {
   purchaseOrdersByMonth?: { year: number; month: number; count: number }[];
   totalVoidedRequisitions?: number;
   voidedRequisitionsByMonth?: { year: number; month: number; count: number }[];
+  purchaseOrderValueByMonth?: { year: number; month: number; value: number }[];
+  invoiceValueByMonth?: { year: number; month: number; value: number }[];
+  totalPurchaseOrderValue?: number;
+  totalInvoiceValue?: number;
+  topMaterials?: { code: string; description: string; reqCount: number; totalQuantity: number; totalAmount: number }[];
+  topMaterialsByMonth?: { year: number; month: number; code: string; description: string; reqCount: number; totalQuantity: number; totalAmount: number }[];
 }
 
 export const auditService = {
@@ -145,12 +151,16 @@ export const auditService = {
     toDate?: string;
     requisitionNumber?: string;
     companyName?: string;
+    materialCode?: string;
+    requesterName?: string;
   }): Promise<MatrixResponse> {
     const params = new URLSearchParams();
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
     if (filters?.toDate) params.append('toDate', filters.toDate);
     if (filters?.requisitionNumber) params.append('requisitionNumber', filters.requisitionNumber);
     if (filters?.companyName) params.append('companyName', filters.companyName);
+    if (filters?.materialCode) params.append('materialCode', filters.materialCode);
+    if (filters?.requesterName) params.append('requesterName', filters.requesterName);
     const response = await api.get<MatrixResponse>(`/audit/matrix?${params.toString()}`);
     return response.data;
   },

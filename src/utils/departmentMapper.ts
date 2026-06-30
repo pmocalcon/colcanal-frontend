@@ -5,7 +5,7 @@
 
 const normalizeMunicipalityName = (name: string): string =>
   name
-    .replace(/^UniÃ³n Temporal Alumbrado PÃºblico\s+/i, '')
+    .replace(/^Unión Temporal Alumbrado Público\s+/i, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/^union temporal alumbrado publico\s+/i, '')

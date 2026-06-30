@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auditService } from '@/services/audit.service';
 import type { AuditLog, MatrixResponse, AuditStats } from '@/services/audit.service';
+import { usersService } from '@/services/users.service';
+import type { User } from '@/services/users.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -16,13 +18,18 @@ import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
+  LabelList,
   ResponsiveContainer,
 } from 'recharts';
+
+const STATE_LINE_COLORS = ['#3b82f6', '#22c55e', '#ef4444', '#10b981', '#f97316', '#a855f7', '#6366f1', '#0ea5e9', '#14b8a6', '#eab308', '#ec4899', '#64748b', '#f59e0b'];
 import {
   Table,
   TableBody,
@@ -188,6 +195,14 @@ export default function AuditoriasComprasPage() {
   const [matrixToDate, setMatrixToDate] = useState('');
   const [matrixCompany, setMatrixCompany] = useState('');
   const [matrixStateFilter, setMatrixStateFilter] = useState('');
+  // Filtros del tab Gráficos (empresa + material + fechas)
+  const [graphCompany, setGraphCompany] = useState('');
+  const [graphMaterial, setGraphMaterial] = useState('');
+  const [graphRequester, setGraphRequester] = useState('');
+  const [systemUsers, setSystemUsers] = useState<User[]>([]);
+  const [requesterLoading, setRequesterLoading] = useState(false);
+  const [graphFrom, setGraphFrom] = useState('2026-01-10');
+  const [graphTo, setGraphTo] = useState('');
   const [matrixApplied, setMatrixApplied] = useState<{ search: string; from: string; to: string; company: string }>({ search: '', from: '2026-01-10', to: '', company: '' });
 
   // Filter state: form values (what user types) vs applied (what was last searched)
@@ -273,7 +288,7 @@ export default function AuditoriasComprasPage() {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const loadMatrix = useCallback(async (filters: { search: string; from: string; to: string; company: string }) => {
+  const loadMatrix = useCallback(async (filters: { search: string; from: string; to: string; company: string; material?: string; requester?: string }) => {
     try {
       setMatrixLoading(true);
       const data = await auditService.getMatrix({
@@ -281,6 +296,8 @@ export default function AuditoriasComprasPage() {
         fromDate: filters.from || undefined,
         toDate: filters.to || undefined,
         companyName: filters.company || undefined,
+        materialCode: filters.material || undefined,
+        requesterName: filters.requester || undefined,
       });
       setMatrixData(data);
       setMatrixLoaded(true);
@@ -291,6 +308,25 @@ export default function AuditoriasComprasPage() {
     }
   }, []);
 
+  // Filtro por persona del gráfico de materiales: recarga silenciosa (no oculta el tab).
+  const applyRequester = useCallback(async (requester: string) => {
+    try {
+      setRequesterLoading(true);
+      const data = await auditService.getMatrix({
+        fromDate: graphFrom || undefined,
+        toDate: graphTo || undefined,
+        companyName: graphCompany || undefined,
+        materialCode: graphMaterial || undefined,
+        requesterName: requester || undefined,
+      });
+      setMatrixData(data);
+    } catch {
+      /* sin interrumpir el resto del tab */
+    } finally {
+      setRequesterLoading(false);
+    }
+  }, [graphFrom, graphTo, graphCompany, graphMaterial]);
+
   useEffect(() => {
     if ((activeTab === 'matriz' || activeTab === 'graficos') && !matrixLoaded) {
       loadMatrix({ search: '', from: '2026-01-10', to: '', company: '' });
@@ -298,19 +334,25 @@ export default function AuditoriasComprasPage() {
     if ((activeTab === 'graficos' || activeTab === 'matriz') && !auditStats) {
       auditService.getStats().then(setAuditStats).catch(() => {});
     }
-  }, [activeTab, matrixLoaded, loadMatrix, auditStats]);
+    if (activeTab === 'graficos' && systemUsers.length === 0) {
+      usersService.getAllActive()
+        .then((u) => setSystemUsers([...u].sort((a, b) => a.nombre.localeCompare(b.nombre))))
+        .catch(() => {});
+    }
+  }, [activeTab, matrixLoaded, loadMatrix, auditStats, systemUsers.length]);
 
   const monthlyChartData = useMemo(() => {
     if (!matrixData) return [];
     const MONTH_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const counts: Record<string, { requisiciones: number; cotizaciones: number; reqConOC: number; ordenesCompra: number; anuladas: number }> = {};
+    const blank = () => ({ requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0, ocValor: 0, facturacionValor: 0 });
+    const counts: Record<string, ReturnType<typeof blank>> = {};
 
     matrixData.rows.forEach((row) => {
       const creacion = row.events['crear_requisicion'] || row.events['crear_requisicion_directo_gerencia'];
       if (!creacion) return;
       const d = new Date(creacion);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      if (!counts[key]) counts[key] = blank();
       counts[key].requisiciones += 1;
       if (row.events['gestionar_cotizacion']) counts[key].cotizaciones += 1;
       if (row.events['crear_ordenes_compra']) counts[key].reqConOC += 1;
@@ -319,14 +361,26 @@ export default function AuditoriasComprasPage() {
     // Merge real OC counts from backend
     (matrixData.purchaseOrdersByMonth ?? []).forEach(({ year, month, count }) => {
       const key = `${year}-${String(month).padStart(2, '0')}`;
-      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      if (!counts[key]) counts[key] = blank();
       counts[key].ordenesCompra = count;
     });
 
     (matrixData.voidedRequisitionsByMonth ?? []).forEach(({ year, month, count }) => {
       const key = `${year}-${String(month).padStart(2, '0')}`;
-      if (!counts[key]) counts[key] = { requisiciones: 0, cotizaciones: 0, reqConOC: 0, ordenesCompra: 0, anuladas: 0 };
+      if (!counts[key]) counts[key] = blank();
       counts[key].anuladas = count;
+    });
+
+    // Montos por mes
+    (matrixData.purchaseOrderValueByMonth ?? []).forEach(({ year, month, value }) => {
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      if (!counts[key]) counts[key] = blank();
+      counts[key].ocValor = value;
+    });
+    (matrixData.invoiceValueByMonth ?? []).forEach(({ year, month, value }) => {
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      if (!counts[key]) counts[key] = blank();
+      counts[key].facturacionValor = value;
     });
 
     return Object.entries(counts)
@@ -335,6 +389,122 @@ export default function AuditoriasComprasPage() {
         const [year, month] = key.split('-');
         return { mes: `${MONTH_ES[Number(month) - 1]} ${year}`, ...val };
       });
+  }, [matrixData]);
+
+  // Promedio de tiempo entre estados, agrupado por mes (mes del estado alcanzado).
+  const stateAvgData = useMemo(() => {
+    if (!matrixData) return [];
+    const MONTH_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const actions = matrixData.actions;
+    const DAY = 86400000;
+    const round1 = (ms: number, n: number) => (n > 0 ? Math.round(ms / n / DAY * 10) / 10 : 0);
+    const tsOf = (action: string, ev: Record<string, string>) => {
+      const v = ev[action];
+      if (!v) return NaN;
+      const t = new Date(v).getTime();
+      return Number.isNaN(t) ? NaN : t;
+    };
+    // Acumuladores: proceso total + fases del flujo.
+    type Acc = { total: number; nTotal: number; cg: number; nCg: number; go: number; nGo: number; rec: number; nRec: number; rc: number; nRc: number };
+    const sums: Record<string, Acc> = {};
+    const blank = (): Acc => ({ total: 0, nTotal: 0, cg: 0, nCg: 0, go: 0, nGo: 0, rec: 0, nRec: 0, rc: 0, nRc: 0 });
+    matrixData.rows.forEach((row) => {
+      const ev = row.events;
+      const times = actions
+        .map((action) => ev[action])
+        .filter((d): d is string => !!d)
+        .map((d) => new Date(d).getTime())
+        .filter((t) => !Number.isNaN(t));
+      if (times.length < 2) return; // necesita al menos inicio y fin
+      const start = Math.min(...times);
+      const d = new Date(start);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!sums[key]) sums[key] = blank();
+      const acc = sums[key];
+      // Proceso total: primera → última acción.
+      const totalDiff = Math.max(...times) - start;
+      if (totalDiff > 0) { acc.total += totalDiff; acc.nTotal += 1; }
+      // Fase Creación → Gerencia.
+      const creacion = tsOf('crear_requisicion', ev);
+      const gerencia = tsOf('aprobar_gerencia', ev);
+      const oc = tsOf('aprobar_todas_ordenes_compra', ev);
+      const recepcion = tsOf('registrar_recepcion', ev);
+      const facturaContab = tsOf('factura_contabilidad', ev);
+      if (!Number.isNaN(creacion) && !Number.isNaN(gerencia) && gerencia > creacion) { acc.cg += gerencia - creacion; acc.nCg += 1; }
+      if (!Number.isNaN(gerencia) && !Number.isNaN(oc) && oc > gerencia) { acc.go += oc - gerencia; acc.nGo += 1; }
+      if (!Number.isNaN(oc) && !Number.isNaN(recepcion) && recepcion > oc) { acc.rec += recepcion - oc; acc.nRec += 1; }
+      // Fase Aprobar OC → Factura enviada a contabilidad.
+      if (!Number.isNaN(oc) && !Number.isNaN(facturaContab) && facturaContab > oc) { acc.rc += facturaContab - oc; acc.nRc += 1; }
+    });
+    return Object.entries(sums)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => {
+        const [year, month] = key.split('-');
+        return {
+          mes: `${MONTH_ES[Number(month) - 1]} ${year}`,
+          dias: round1(v.total, v.nTotal),
+          cg: round1(v.cg, v.nCg),
+          go: round1(v.go, v.nGo),
+          rec: round1(v.rec, v.nRec),
+          rc: round1(v.rc, v.nRc),
+          n: v.nTotal,
+          nCg: v.nCg,
+          nGo: v.nGo,
+          nRec: v.nRec,
+          nRc: v.nRc,
+        };
+      });
+  }, [matrixData]);
+
+  // Materiales más pedidos (Top 20) por dinero (valor en órdenes de compra), mayor a menor.
+  const topMaterialsData = useMemo(() => {
+    if (!matrixData?.topMaterials) return [];
+    return matrixData.topMaterials
+      .slice(0, 20)
+      .map((m) => ({
+        label: m.description || m.code || '—',
+        code: m.code,
+        reqCount: m.reqCount,
+        totalQuantity: Math.round(m.totalQuantity * 10) / 10,
+        totalAmount: Math.round(m.totalAmount),
+      }));
+  }, [matrixData]);
+
+  // Materiales más pedidos por mes: pivota el Top 6 de materiales en series por mes.
+  const materialsByMonthData = useMemo(() => {
+    const rows = matrixData?.topMaterialsByMonth;
+    if (!rows || rows.length === 0) return { data: [] as any[], series: [] as { key: string; label: string; color: string }[] };
+    const MONTH_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const PALETTE = ['#8b5cf6', '#0ea5e9', '#f59e0b', '#14b8a6', '#ef4444', '#6366f1', '#ec4899', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#f97316', '#06b6d4', '#84cc16', '#e11d48'];
+    // Top 15 materiales por valor total en órdenes de compra.
+    const totals = new Map<string, { label: string; total: number }>();
+    rows.forEach((r) => {
+      const label = r.description || r.code || '—';
+      const cur = totals.get(label) || { label, total: 0 };
+      cur.total += r.totalAmount;
+      totals.set(label, cur);
+    });
+    const topLabels = Array.from(totals.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 15)
+      .map((t) => t.label);
+    const series = topLabels.map((label, i) => ({ key: label, label, color: PALETTE[i % PALETTE.length] }));
+    const topSet = new Set(topLabels);
+    // Acumula por mes solo los materiales del Top (valor en OC).
+    const byMonth = new Map<string, any>();
+    rows.forEach((r) => {
+      const label = r.description || r.code || '—';
+      if (!topSet.has(label)) return;
+      const key = `${r.year}-${String(r.month).padStart(2, '0')}`;
+      if (!byMonth.has(key)) {
+        const base: any = { key, mes: `${MONTH_ES[r.month - 1]} ${r.year}` };
+        topLabels.forEach((l) => { base[l] = 0; });
+        byMonth.set(key, base);
+      }
+      byMonth.get(key)[label] += Math.round(r.totalAmount);
+    });
+    const data = Array.from(byMonth.values()).sort((a, b) => a.key.localeCompare(b.key));
+    return { data, series };
   }, [matrixData]);
 
   const handleMatrixSearch = () => {
@@ -912,6 +1082,64 @@ export default function AuditoriasComprasPage() {
 
             {!matrixLoading && (
               <>
+                {/* Filtros: empresa + material */}
+                <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-300))] p-4 mb-6 flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Empresa</label>
+                    <input
+                      type="text"
+                      value={graphCompany}
+                      onChange={(e) => setGraphCompany(e.target.value)}
+                      placeholder="Todas"
+                      className="h-9 w-56 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Material</label>
+                    <input
+                      type="text"
+                      value={graphMaterial}
+                      onChange={(e) => setGraphMaterial(e.target.value)}
+                      placeholder="Código o descripción"
+                      className="h-9 w-56 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Desde</label>
+                    <input
+                      type="date"
+                      value={graphFrom}
+                      onChange={(e) => setGraphFrom(e.target.value)}
+                      className="h-9 w-40 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Hasta</label>
+                    <input
+                      type="date"
+                      value={graphTo}
+                      onChange={(e) => setGraphTo(e.target.value)}
+                      className="h-9 w-40 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => loadMatrix({ search: '', from: graphFrom, to: graphTo, company: graphCompany, material: graphMaterial, requester: graphRequester })}
+                    className="h-9 px-4 rounded-md bg-[hsl(var(--canalco-primary))] text-white text-sm font-semibold hover:opacity-90"
+                  >
+                    Aplicar
+                  </button>
+                  {(graphCompany || graphMaterial || graphRequester || graphFrom !== '2026-01-10' || graphTo) && (
+                    <button
+                      type="button"
+                      onClick={() => { setGraphCompany(''); setGraphMaterial(''); setGraphRequester(''); setGraphFrom('2026-01-10'); setGraphTo(''); loadMatrix({ search: '', from: '2026-01-10', to: '', company: '', material: '', requester: '' }); }}
+                      className="h-9 px-4 rounded-md border border-[hsl(var(--canalco-neutral-300))] text-sm font-medium text-[hsl(var(--canalco-neutral-600))] hover:bg-[hsl(var(--canalco-neutral-50))]"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+
                 {/* Stat cards */}
                 {(() => {
                   const cotizaciones = matrixData?.rows.filter((r) => r.events['gestionar_cotizacion']).length ?? 0;
@@ -994,6 +1222,251 @@ export default function AuditoriasComprasPage() {
                         <Bar dataKey="cotizaciones" name="Cotizaciones" fill="#a855f7" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="ordenesCompra" name="Órdenes de Compra" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="anuladas" name="Req. anuladas" fill="#64748b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Órdenes de compra y facturación (en pesos) */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
+                    Órdenes de compra y facturación por mes
+                  </h3>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
+                    Valor en pesos de las órdenes de compra emitidas y de la facturación recibida.
+                  </p>
+                  {monthlyChartData.every((m) => !m.ocValor && !m.facturacionValor) ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay datos de OC ni facturación para mostrar.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={340}>
+                      <BarChart data={monthlyChartData} margin={{ top: 16, right: 12, left: 12, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="mes"
+                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`)}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                          cursor={{ fill: '#f9fafb' }}
+                          formatter={(v: number, name) => [`$${Number(v).toLocaleString('es-CO')}`, name]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
+                        <Bar dataKey="ocValor" name="Órdenes de Compra $" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                        <Bar dataKey="facturacionValor" name="Facturación $" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Promedio por mes */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
+                    Tiempo promedio de proceso por mes
+                  </h3>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
+                    Días promedio por mes: proceso total (primera → última acción) y por fase del flujo.
+                  </p>
+                  {stateAvgData.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay datos suficientes para mostrar el gráfico.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={360}>
+                      <BarChart data={stateAvgData} margin={{ top: 16, right: 20, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="mes"
+                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v) => `${v}d`}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                          cursor={{ fill: '#f9fafb' }}
+                          formatter={(v: number, name: any, item: any) => {
+                            const nMap: Record<string, string> = { dias: 'n', cg: 'nCg', go: 'nGo', rec: 'nRec', rc: 'nRc' };
+                            const count = item?.payload?.[nMap[item?.dataKey]] ?? 0;
+                            return [`${v} días (${count})`, name];
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="dias" name="Proceso total" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          <LabelList dataKey="dias" position="top" formatter={(v: number) => (v ? `${v}d` : '')} style={{ fontSize: 9, fontWeight: 700, fill: '#4f46e5' }} />
+                        </Bar>
+                        <Bar dataKey="cg" name="Creación → Gerencia" fill="#0ea5e9" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          <LabelList dataKey="cg" position="top" formatter={(v: number) => (v ? `${v}d` : '')} style={{ fontSize: 9, fontWeight: 700, fill: '#0369a1' }} />
+                        </Bar>
+                        <Bar dataKey="go" name="Gerencia → Aprobar OC" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          <LabelList dataKey="go" position="top" formatter={(v: number) => (v ? `${v}d` : '')} style={{ fontSize: 9, fontWeight: 700, fill: '#b45309' }} />
+                        </Bar>
+                        <Bar dataKey="rec" name="Recepción (OC → recepción)" fill="#14b8a6" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          <LabelList dataKey="rec" position="top" formatter={(v: number) => (v ? `${v}d` : '')} style={{ fontSize: 9, fontWeight: 700, fill: '#0f766e' }} />
+                        </Bar>
+                        <Bar dataKey="rc" name="Aprobar OC → Factura a contabilidad" fill="#ec4899" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          <LabelList dataKey="rc" position="top" formatter={(v: number) => (v ? `${v}d` : '')} style={{ fontSize: 9, fontWeight: 700, fill: '#be185d' }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Materiales más pedidos */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
+                    Materiales más pedidos
+                  </h3>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-4">
+                    Top 20 materiales por valor en órdenes de compra.
+                  </p>
+                  {/* Filtro por persona — aplica solo a este gráfico (recarga silenciosa) */}
+                  <div className="flex flex-wrap items-end gap-2 mb-6">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Persona (solicitante)</label>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={graphRequester}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setGraphRequester(value);
+                            applyRequester(value);
+                          }}
+                          className="h-9 w-64 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                        >
+                          <option value="">Todas las personas</option>
+                          {systemUsers.map((u) => (
+                            <option key={u.userId} value={u.nombre}>{u.nombre}</option>
+                          ))}
+                        </select>
+                        {requesterLoading && (
+                          <div className="animate-spin w-4 h-4 border-2 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {topMaterialsData.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay datos suficientes para mostrar el gráfico.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={420}>
+                      <BarChart data={topMaterialsData} margin={{ top: 24, right: 20, left: 8, bottom: 96 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          interval={0}
+                          angle={-45}
+                          textAnchor="end"
+                          height={96}
+                          tick={{ fontSize: 10, fill: '#374151' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                          tickLine={false}
+                          tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 22)}…` : v)}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#6b7280' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v: number) => `$${(v / 1_000_000).toLocaleString('es-CO', { maximumFractionDigits: 1 })}M`}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                          cursor={{ fill: '#f9fafb' }}
+                          formatter={(v: number, _n, item: any) => [`$${Number(v).toLocaleString('es-CO')} (${item?.payload?.reqCount ?? 0} req.)`, item?.payload?.code || 'Material']}
+                          labelFormatter={(label: string) => label}
+                        />
+                        <Bar dataKey="totalAmount" name="Valor en OC" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Materiales más pedidos por mes */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
+                    Materiales más pedidos por mes
+                  </h3>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
+                    Valor en órdenes de compra por material (Top 15), por mes de creación.
+                  </p>
+                  {materialsByMonthData.data.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay datos suficientes para mostrar el gráfico.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={360}>
+                      <BarChart data={materialsByMonthData.data} margin={{ top: 16, right: 20, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="mes"
+                          tick={{ fontSize: 12, fill: '#6b7280' }}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#6b7280' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v: number) => `$${(v / 1_000_000).toLocaleString('es-CO', { maximumFractionDigits: 1 })}M`}
+                        />
+                        <Tooltip
+                          cursor={{ fill: '#f9fafb' }}
+                          content={({ active, payload, label }: any) => {
+                            if (!active || !payload || payload.length === 0) return null;
+                            const all = payload
+                              .filter((p: any) => Number(p.value) > 0)
+                              .sort((a: any, b: any) => Number(b.value) - Number(a.value));
+                            if (all.length === 0) return null;
+                            const total = all.reduce((s: number, p: any) => s + Number(p.value), 0);
+                            const MAX = 12;
+                            const items = all.slice(0, MAX);
+                            const restCount = all.length - items.length;
+                            const restValue = all.slice(MAX).reduce((s: number, p: any) => s + Number(p.value), 0);
+                            return (
+                              <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', fontSize: 12, width: 300, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                                <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
+                                {items.map((p: any) => (
+                                  <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '2px 0' }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                      <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                    </span>
+                                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>${Number(p.value).toLocaleString('es-CO')}</span>
+                                  </div>
+                                ))}
+                                {restCount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '2px 0', color: '#6b7280' }}>
+                                    <span>+{restCount} más</span>
+                                    <span style={{ whiteSpace: 'nowrap' }}>${restValue.toLocaleString('es-CO')}</span>
+                                  </div>
+                                )}
+                                <div style={{ borderTop: '1px solid #eee', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                                  <span>Total</span>
+                                  <span>${total.toLocaleString('es-CO')}</span>
+                                </div>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 11, maxHeight: 72, overflowY: 'auto' }} />
+                        {materialsByMonthData.series.map((s) => (
+                          <Bar key={s.key} dataKey={s.key} name={s.label} stackId="mat" fill={s.color} maxBarSize={48} />
+                        ))}
                       </BarChart>
                     </ResponsiveContainer>
                   )}

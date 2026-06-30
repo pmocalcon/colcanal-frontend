@@ -629,6 +629,32 @@ export const surveysService = {
     return response.data;
   },
 
+  async submitActaCronograma(companyId: number, actaNumber: string): Promise<WorkActa> {
+    const response = await api.patch(
+      `/surveys/actas/${encodeURIComponent(actaNumber)}/submit-cronograma`,
+      { companyId },
+    );
+    return response.data;
+  },
+
+  async reviewActaCronograma(
+    companyId: number,
+    actaNumber: string,
+    decision: 'aprobado' | 'rechazado',
+    motivo?: string,
+  ): Promise<WorkActa> {
+    const response = await api.patch(
+      `/surveys/actas/${encodeURIComponent(actaNumber)}/review-cronograma`,
+      { companyId, decision, motivo },
+    );
+    return response.data;
+  },
+
+  async getActasPendingCronograma(): Promise<PendingBudgetActa[]> {
+    const response = await api.get('/surveys/actas/pending-cronograma');
+    return response.data;
+  },
+
   async reviewActaBudget(
     companyId: number,
     actaNumber: string,
@@ -681,6 +707,7 @@ export interface UserAccessRecord {
 // ============================================
 export type ActaStatus = 'borrador' | 'en_revision' | 'en_aprobacion' | 'aprobada';
 export type ActaBudgetStatus = 'pendiente' | 'en_revision' | 'aprobado' | 'rechazado';
+export type ActaCronogramaStatus = 'pendiente' | 'en_revision' | 'aprobado' | 'rechazado';
 
 export interface WorkActa {
   actaId: number;
@@ -689,6 +716,8 @@ export interface WorkActa {
   status: ActaStatus;
   presupuestoStatus?: ActaBudgetStatus;
   presupuestoRechazoMotivo?: string | null;
+  cronogramaStatus?: ActaCronogramaStatus;
+  cronogramaRechazoMotivo?: string | null;
   projectCode: string | null;
   createdBy: number;
   reviewedBy: number | null;
