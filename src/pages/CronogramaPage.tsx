@@ -176,9 +176,9 @@ const DEFAULT_ACTIVITY_OPTIONS = [
   'Obra civil',
   'Izado de poste',
   'Segmentación de postes',
-  'Instalación de ductos escavación y apertura de zanjas',
+  'Instalación de ductos excavación y apertura de zanjas',
   'Recepción de material',
-  'Escavación y apertura para postes',
+  'Excavación y apertura para postes',
   'Construcción de cajas de inspección',
 ];
 
@@ -291,6 +291,30 @@ export default function CronogramaPage() {
   const [execActivityRows, setExecActivityRows] = useState<Array<{ id: string; name: string }>>([]);
   const [execActivityDailyMap, setExecActivityDailyMap] = useState<Record<string, Record<string, number>>>({});
   const [purchaseComparison, setPurchaseComparison] = useState<PurchaseComparisonItem[]>([]);
+
+  // Todas las fechas con datos (plan y ejecución), para que la columna "Total"
+  // muestre el acumulado de todo el cronograma y no solo la semana visible.
+  const allDataDates = useMemo(() => {
+    const set = new Set<string>();
+    const addWorkMap = (m: Record<number, Record<string, unknown>>) => {
+      for (const wid in m) for (const d in m[wid]) set.add(d);
+    };
+    const addDateMap = (m: Record<string, unknown>) => {
+      for (const d in m) set.add(d);
+    };
+    addWorkMap(actaDailyPlans as any);
+    addWorkMap(actaMaterialDailyMap as any);
+    addWorkMap(actaActivityDailyMap as any);
+    addWorkMap(actaExecMaterialDailyMap as any);
+    addWorkMap(actaExecActivityDailyMap as any);
+    addDateMap(dailyPlans);
+    addDateMap(materialDailyMap);
+    addDateMap(activityDailyMap);
+    addDateMap(execDailyMap);
+    addDateMap(execMaterialDailyMap);
+    addDateMap(execActivityDailyMap);
+    return Array.from(set);
+  }, [actaDailyPlans, actaMaterialDailyMap, actaActivityDailyMap, actaExecMaterialDailyMap, actaExecActivityDailyMap, dailyPlans, materialDailyMap, activityDailyMap, execDailyMap, execMaterialDailyMap, execActivityDailyMap]);
 
   // ── Informe: full daily-history for the S-curve
   const [reportPlans, setReportPlans] = useState<DailyPlanEntry[]>([]);
@@ -1543,7 +1567,7 @@ export default function CronogramaPage() {
                 </thead>
                 <tbody>
                   {rowsWithItems.map(({ work, schedule }) => {
-                    const workTotal = days.reduce((sum, date) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
+                    const workTotal = allDataDates.reduce((sum, date) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
                     return (
                       <Fragment key={work.workId}>
                         <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
@@ -1564,7 +1588,7 @@ export default function CronogramaPage() {
                           </td>
                         </tr>
                         {schedule.items.map((item) => {
-                          const weekTotal = days.reduce((sum, date) => sum + getExecuted(work.workId, date, item.ucapId), 0);
+                          const weekTotal = allDataDates.reduce((sum, date) => sum + getExecuted(work.workId, date, item.ucapId), 0);
                           return (
                             <tr key={`${work.workId}-${item.ucapId}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                               <td className="py-1.5 pr-2 pl-4">
@@ -1631,7 +1655,7 @@ export default function CronogramaPage() {
                     })}
                     <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                       {(() => {
-                        const total = days.reduce((sum, date) => (
+                        const total = allDataDates.reduce((sum, date) => (
                           sum + rowsWithItems.reduce((workSum, { work, schedule }) => workSum + getWorkDateTotal(work.workId, schedule.items, date), 0)
                         ), 0);
                         return total > 0 ? total : '-';
@@ -1760,6 +1784,7 @@ export default function CronogramaPage() {
                     {days.map((date, i) => {
                       const d = new Date(date + 'T12:00:00');
                       const isToday = date === today;
+                      // Sábados, domingos y festivos se marcan en rojo (indicador visual).
                       const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
                       const headerCls = isToday
                         ? 'text-[hsl(var(--canalco-primary))] font-bold'
@@ -1778,7 +1803,7 @@ export default function CronogramaPage() {
                 </thead>
                 <tbody>
                   {consolidatedMaterials.map((cm) => {
-                    const weekTotal = days.reduce((sum, date) => sum + getConsolidatedQty(cm, date), 0);
+                    const weekTotal = allDataDates.reduce((sum, date) => sum + getConsolidatedQty(cm, date), 0);
                     return (
                       <tr key={cm.code} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                         <td className="py-1.5 pr-2">
@@ -1814,17 +1839,18 @@ export default function CronogramaPage() {
                         </td>
                         {days.map((date) => {
                           const isToday = date === today;
-                          const isHoliday = matWeekHolidaySet.has(date) || isSunday(date) || isSaturday(date);
+                          // En materiales solo el domingo es no laboral; sábados y festivos se pueden registrar.
+                          const isBlocked = isSunday(date);
                           const qty = getConsolidatedQty(cm, date);
                           return (
-                            <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isHoliday ? 'bg-red-100' : ''}`}>
+                            <td key={date} className={`py-1.5 px-0.5 text-center ${isToday ? 'bg-[hsl(var(--canalco-primary))]/5' : isBlocked ? 'bg-red-100' : ''}`}>
                               <Input
                                 type="number"
                                 min="0"
                                 step="0.01"
                                 value={qty || ''}
                                 placeholder="0"
-                                disabled={isHoliday || !canEditEjecucion}
+                                disabled={isBlocked || !canEditEjecucion}
                                 onChange={(e) => setConsolidatedQty(cm, date, parseFloat(e.target.value) || 0)}
                                 className="h-7 w-14 text-xs text-center px-1"
                               />
@@ -1851,7 +1877,7 @@ export default function CronogramaPage() {
                     })}
                     <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                       {(() => {
-                        const total = days.reduce((sum, date) => (
+                        const total = allDataDates.reduce((sum, date) => (
                           sum + rowsWithMaterials.reduce((workSum, { work, materials }) => workSum + getWorkMaterialDateTotal(work.workId, materials, date), 0)
                         ), 0);
                         return total > 0 ? total : '-';
@@ -4946,7 +4972,7 @@ export default function CronogramaPage() {
                                           </td>
                                         </tr>
                                       ) : rowsWithItems.map(({ work, schedule }) => {
-                                        const workTotal = days.reduce((sum, date) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
+                                        const workTotal = allDataDates.reduce((sum, date) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
                                         return (
                                           <Fragment key={work.workId}>
                                             <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
@@ -4969,7 +4995,7 @@ export default function CronogramaPage() {
                                               </td>
                                             </tr>
                                             {schedule.items.map((item) => {
-                                              const rowPlan = days.reduce((sum, date) => sum + getPlanned(work.workId, date, item.ucapId), 0);
+                                              const rowPlan = allDataDates.reduce((sum, date) => sum + getPlanned(work.workId, date, item.ucapId), 0);
                                               return (
                                                 <tr key={`${work.workId}-${item.ucapId}`} className="border-b border-[hsl(var(--canalco-neutral-100))]">
                                                   <td className="py-2 pr-1 pl-4 align-middle">
@@ -5037,7 +5063,7 @@ export default function CronogramaPage() {
                                           })}
                                           <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                                             {(() => {
-                                              const total = days.reduce((sum, date) => (
+                                              const total = allDataDates.reduce((sum, date) => (
                                                 sum + rowsWithItems.reduce((workSum, { work, schedule }) => workSum + getWorkDateTotal(work.workId, schedule.items, date), 0)
                                               ), 0);
                                               return total > 0 ? total : '—';
@@ -5117,7 +5143,7 @@ export default function CronogramaPage() {
                                           </thead>
                                           <tbody>
                                             {rowsWithMaterials.map(({ work, materials }) => {
-                                              const workTotal = days.reduce((sum, date) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
+                                              const workTotal = allDataDates.reduce((sum, date) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
                                               return (
                                                 <Fragment key={work.workId}>
                                                   <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
@@ -5138,7 +5164,7 @@ export default function CronogramaPage() {
                                                     </td>
                                                   </tr>
                                                   {materials.map((mat) => {
-                                                    const weekTotal = days.reduce((sum, date) => sum + getMaterialQty(work.workId, date, mat.materialCode), 0);
+                                                    const weekTotal = allDataDates.reduce((sum, date) => sum + getMaterialQty(work.workId, date, mat.materialCode), 0);
                                                     return (
                                                       <tr key={`${work.workId}-${mat.materialCode}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                                         <td className="py-1.5 pr-2 pl-4">
@@ -5207,7 +5233,7 @@ export default function CronogramaPage() {
                                               })}
                                               <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
                                                 {(() => {
-                                                  const total = days.reduce((sum, date) => (
+                                                  const total = allDataDates.reduce((sum, date) => (
                                                     sum + rowsWithMaterials.reduce((workSum, { work, materials }) => workSum + getWorkMaterialDateTotal(work.workId, materials, date), 0)
                                                   ), 0);
                                                   return total > 0 ? total : '—';
@@ -5357,7 +5383,7 @@ export default function CronogramaPage() {
                                                   <td />
                                                 </tr>
                                                 {group.entries.map(({ work, row }) => {
-                                                  const weekTotal = days.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
+                                                  const weekTotal = allDataDates.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
                                                   return (
                                                     <tr key={`${work.workId}-${row.id}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                                       <td className="py-1.5 pr-2 pl-4">
@@ -5435,7 +5461,7 @@ export default function CronogramaPage() {
                                           <tbody>
                                             {activityWorks.map(({ work, schedule }) => {
                                               const rows = actaActivityRows[work.workId] ?? [];
-                                              const workTotal = days.reduce((sum, date) => sum + getWorkActivityDateTotal(work.workId, rows, date), 0);
+                                              const workTotal = allDataDates.reduce((sum, date) => sum + getWorkActivityDateTotal(work.workId, rows, date), 0);
                                               return (
                                                 <Fragment key={work.workId}>
                                                   <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
@@ -5467,7 +5493,7 @@ export default function CronogramaPage() {
                                                     </td>
                                                   </tr>
                                                   {rows.map((row) => {
-                                                    const weekTotal = days.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
+                                                    const weekTotal = allDataDates.reduce((sum, date) => sum + getActivityQty(work.workId, date, row.id), 0);
                                                     return (
                                                       <tr key={`${work.workId}-${row.id}`} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                                         <td className="py-1.5 pr-2 pl-4">
@@ -5774,7 +5800,7 @@ export default function CronogramaPage() {
                                   </thead>
                                   <tbody>
                                     {schedule.items.map((item) => {
-                                      const rowPlan = days.reduce((s, d) => s + (parseFloat(dailyPlans[d]?.[item.ucapId]?.planned ?? '') || 0), 0);
+                                      const rowPlan = allDataDates.reduce((s, d) => s + (parseFloat(dailyPlans[d]?.[item.ucapId]?.planned ?? '') || 0), 0);
                                       return (
                                         <tr key={item.ucapId} className="border-b border-[hsl(var(--canalco-neutral-100))]">
                                           <td className="py-2 pr-1 align-middle w-32">
@@ -5829,7 +5855,7 @@ export default function CronogramaPage() {
                                         );
                                       })}
                                       <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                        {(() => { const g = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (parseFloat(dailyPlans[d]?.[i.ucapId]?.planned ?? '') || 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                        {(() => { const g = allDataDates.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (parseFloat(dailyPlans[d]?.[i.ucapId]?.planned ?? '') || 0), 0), 0); return g > 0 ? g : '—'; })()}
                                       </td>
                                     </tr>
                                   </tfoot>
@@ -5901,7 +5927,7 @@ export default function CronogramaPage() {
                                     </thead>
                                     <tbody>
                                       {surveyMaterials.map((mat) => {
-                                        const weekTotal = days.reduce((s, d) => s + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0);
+                                        const weekTotal = allDataDates.reduce((s, d) => s + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0);
                                         return (
                                           <tr key={mat.materialCode} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                             <td className="py-1.5 pr-2">
@@ -5960,7 +5986,7 @@ export default function CronogramaPage() {
                                           );
                                         })}
                                         <td className="pt-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                          {(() => { const g = days.reduce((s, d) => s + surveyMaterials.reduce((ss, mat) => ss + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                          {(() => { const g = allDataDates.reduce((s, d) => s + surveyMaterials.reduce((ss, mat) => ss + (materialDailyMap[d]?.[mat.materialCode] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
                                         </td>
                                       </tr>
                                     </tfoot>
@@ -6027,7 +6053,7 @@ export default function CronogramaPage() {
                                     </thead>
                                     <tbody>
                                       {activityRows.map((row) => {
-                                        const weekTotal = days.reduce((s, d) => s + (activityDailyMap[d]?.[row.id] ?? 0), 0);
+                                        const weekTotal = allDataDates.reduce((s, d) => s + (activityDailyMap[d]?.[row.id] ?? 0), 0);
                                         return (
                                           <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                             <td className="py-1.5 pr-2">
@@ -6101,7 +6127,7 @@ export default function CronogramaPage() {
                                           );
                                         })}
                                         <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                          {(() => { const g = days.reduce((s, d) => s + activityRows.reduce((ss, row) => ss + (activityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                          {(() => { const g = allDataDates.reduce((s, d) => s + activityRows.reduce((ss, row) => ss + (activityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
                                         </td>
                                         <td />
                                       </tr>
@@ -6227,7 +6253,7 @@ export default function CronogramaPage() {
                                       </thead>
                                       <tbody>
                                         {schedule.items.map((item) => {
-                                          const rowTotal = days.reduce((s, d) => s + (execDailyMap[d]?.[item.ucapId] ?? 0), 0);
+                                          const rowTotal = allDataDates.reduce((s, d) => s + (execDailyMap[d]?.[item.ucapId] ?? 0), 0);
                                           return (
                                             <tr key={item.ucapId} className="border-b border-[hsl(var(--canalco-neutral-100))]">
                                               <td className="py-2 pr-1 align-middle w-32">
@@ -6258,7 +6284,7 @@ export default function CronogramaPage() {
                                             return <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
                                           })}
                                           <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                            {(() => { const g = days.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (execDailyMap[d]?.[i.ucapId] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                            {(() => { const g = allDataDates.reduce((s, d) => s + schedule.items.reduce((ss, i) => ss + (execDailyMap[d]?.[i.ucapId] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
                                           </td>
                                         </tr>
                                       </tfoot>
@@ -6323,7 +6349,7 @@ export default function CronogramaPage() {
                                         <tbody>
                                           {surveyMaterials.map((mat) => {
                                             const code = mat.materialCode;
-                                            const rowTotal = days.reduce((s, d) => s + (execMaterialDailyMap[d]?.[code] ?? 0), 0);
+                                            const rowTotal = allDataDates.reduce((s, d) => s + (execMaterialDailyMap[d]?.[code] ?? 0), 0);
                                             return (
                                               <tr key={code} className="border-b border-[hsl(var(--canalco-neutral-100))]">
                                                 <td className="py-2 pr-1 align-middle w-40">
@@ -6348,7 +6374,7 @@ export default function CronogramaPage() {
                                           })}
                                           {extraExecMaterials.map((row) => {
                                             const code = row.code;
-                                            const rowTotal = days.reduce((s, d) => s + (execMaterialDailyMap[d]?.[code] ?? 0), 0);
+                                            const rowTotal = allDataDates.reduce((s, d) => s + (execMaterialDailyMap[d]?.[code] ?? 0), 0);
                                             return (
                                               <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))]">
                                                 <td className="py-2 pr-1 align-middle w-40">
@@ -6386,7 +6412,7 @@ export default function CronogramaPage() {
                                               return <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${date === today ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
                                             })}
                                             <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                              {(() => { const g = days.reduce((s, d) => s + matExecCodes.reduce((ss, code) => ss + (execMaterialDailyMap[d]?.[code] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                              {(() => { const g = allDataDates.reduce((s, d) => s + matExecCodes.reduce((ss, code) => ss + (execMaterialDailyMap[d]?.[code] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
                                             </td>
                                             <td />
                                           </tr>
@@ -6473,7 +6499,7 @@ export default function CronogramaPage() {
                                         </thead>
                                         <tbody>
                                           {execActivityRows.map((row) => {
-                                            const weekTotal = days.reduce((s, d) => s + (execActivityDailyMap[d]?.[row.id] ?? 0), 0);
+                                            const weekTotal = allDataDates.reduce((s, d) => s + (execActivityDailyMap[d]?.[row.id] ?? 0), 0);
                                             return (
                                               <tr key={row.id} className="border-b border-[hsl(var(--canalco-neutral-100))] last:border-b-0">
                                                 <td className="py-1.5 pr-2">
@@ -6519,7 +6545,7 @@ export default function CronogramaPage() {
                                               return <td key={date} className={`pt-2 pb-2 text-center text-xs font-bold ${isToday ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-700))]'}`}>{t > 0 ? t : '—'}</td>;
                                             })}
                                             <td className="pt-2 pb-2 text-center text-xs font-bold text-[hsl(var(--canalco-neutral-700))]">
-                                              {(() => { const g = days.reduce((s, d) => s + execActivityRows.reduce((ss, row) => ss + (execActivityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
+                                              {(() => { const g = allDataDates.reduce((s, d) => s + execActivityRows.reduce((ss, row) => ss + (execActivityDailyMap[d]?.[row.id] ?? 0), 0), 0); return g > 0 ? g : '—'; })()}
                                             </td>
                                             <td />
                                           </tr>

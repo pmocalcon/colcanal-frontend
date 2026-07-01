@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { surveysService, type Work } from '@/services/surveys.service';
-import { directorBudgetsService, type DirectorBudget } from '@/services/director-budgets.service';
+import { schedulesService } from '@/services/schedules.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
@@ -25,16 +25,49 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const VIEW_ONLY_ROLES = ['Director Técnico', 'Gerencia de Proyectos'];
 
+const fmtCOP = (v: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+
 // El número de acta (recordNumber) se reutiliza entre municipios; la identidad real del acta
 // es (empresa, número). Las actas se agrupan/seleccionan por esta clave compuesta.
 const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
   `${companyId ?? 0}:${recordNumber}`;
+
+type ExecutedWork = Work & {
+  municipio: string;
+  value: number;
+};
+
+type ExecutionYearSummary = {
+  year: number;
+  inActa: ExecutedWork[];
+  outActa: ExecutedWork[];
+  inActaValue: number;
+  outActaValue: number;
+};
+
+type SummaryExecutionFilter = 'all' | 'with' | 'without';
+
+type IppDialogTarget = {
+  type: 'work' | 'acta';
+  title: string;
+  subtitle: string;
+  workIds: number[];
+};
 
 export default function PlanAnualPage() {
   const navigate = useNavigate();
@@ -51,6 +84,15 @@ export default function PlanAnualPage() {
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedActas, setSelectedActas] = useState<Set<string>>(new Set());
+  const [expandedSummary, setExpandedSummary] = useState<Set<string>>(new Set());
+  const [summaryYearFilter, setSummaryYearFilter] = useState<string>('all');
+  const [summaryMunicipioFilter, setSummaryMunicipioFilter] = useState<string>('all');
+  const [summaryExecutionFilter, setSummaryExecutionFilter] = useState<SummaryExecutionFilter>('all');
+  const [quickAssigningKey, setQuickAssigningKey] = useState<string | null>(null);
+  const [ippDialog, setIppDialog] = useState<IppDialogTarget | null>(null);
+  const [ippValue, setIppValue] = useState('');
+  const [ippLoading, setIppLoading] = useState(false);
+  const [ippSaving, setIppSaving] = useState(false);
 
   const departments = useMemo(() => {
     if (!access?.companies) return [];
@@ -77,7 +119,9 @@ export default function PlanAnualPage() {
 
   const [allWorks, setAllWorks] = useState<Work[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
-  const [allBudgets, setAllBudgets] = useState<DirectorBudget[]>([]);
+  const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
+  const [executedWorkIds, setExecutedWorkIds] = useState<Set<number>>(new Set());
+  const [expandedExec, setExpandedExec] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
@@ -91,25 +135,44 @@ export default function PlanAnualPage() {
     }
   }, [user?.userId, activeCompanyIds]);
 
+  const loadPlanSummary = async () => {
+    if (allCompanyIds.length === 0) return;
+
+    try {
+      setLoadingAll(true);
+      const worksResponse = await surveysService.getWorks({ companyId: allCompanyIds });
+      const data = Array.isArray(worksResponse) ? worksResponse : (worksResponse.data || []);
+      const planWorks = data.filter((w: Work) => w.annualPlan != null);
+      setAllWorks(planWorks);
+
+      // Valor autoritativo por obra (Valor Total con IPP), igual que en la lista de obras.
+      const ids = planWorks.map((w: Work) => w.workId);
+      if (ids.length > 0) {
+        try {
+          const [values, execStatus] = await Promise.all([
+            surveysService.getWorksValue(ids),
+            schedulesService.getWorksExecutionStatus(ids),
+          ]);
+          setWorkValues(new Map(values.map((v) => [v.workId, v.value])));
+          setExecutedWorkIds(new Set(execStatus.filter((e) => e.hasExecution).map((e) => e.workId)));
+        } catch {
+          setWorkValues(new Map());
+          setExecutedWorkIds(new Set());
+        }
+      } else {
+        setWorkValues(new Map());
+        setExecutedWorkIds(new Set());
+      }
+    } catch {
+      toast.error('Error al cargar el resumen de planes');
+    } finally {
+      setLoadingAll(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab !== '__resumen__' || allCompanyIds.length === 0) return;
-    const load = async () => {
-      try {
-        setLoadingAll(true);
-        const [worksResponse, budgetsResponse] = await Promise.all([
-          surveysService.getWorks({ companyId: allCompanyIds }),
-          directorBudgetsService.getAll({ companyId: allCompanyIds.join(','), limit: 500 }),
-        ]);
-        const data = Array.isArray(worksResponse) ? worksResponse : (worksResponse.data || []);
-        setAllWorks(data.filter((w: Work) => w.annualPlan != null));
-        setAllBudgets(budgetsResponse.data);
-      } catch {
-        toast.error('Error al cargar el resumen de planes');
-      } finally {
-        setLoadingAll(false);
-      }
-    };
-    load();
+    loadPlanSummary();
   }, [activeTab, allCompanyIds]);
 
   // When works or selected year changes, pre-select works already assigned to that year
@@ -224,27 +287,56 @@ export default function PlanAnualPage() {
     return result.filter((a) => a.recordNumber.toLowerCase().includes(term));
   }, [works, selectedYear, searchTerm, selectedMunicipioId]);
 
-  const workIdToBudgetValue = useMemo(() => {
-    const map = new Map<number, number>();
-    const byWork = new Map<number, DirectorBudget[]>();
-    allBudgets.forEach((b) => {
-      if (b.workId == null) return;
-      if (!byWork.has(b.workId)) byWork.set(b.workId, []);
-      byWork.get(b.workId)!.push(b);
+  const summaryYears = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allWorks
+            .map((w) => w.annualPlan)
+            .filter((year): year is number => typeof year === 'number'),
+        ),
+      ).sort((a, b) => b - a),
+    [allWorks],
+  );
+
+  const summaryMunicipios = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allWorks.map((w) =>
+            companyIdToMunicipio.get(w.companyId) ??
+            (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
+          ),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [allWorks, companyIdToMunicipio],
+  );
+
+  const filteredSummaryWorks = useMemo(() => {
+    const yearFilter = summaryYearFilter === 'all' ? null : Number(summaryYearFilter);
+
+    return allWorks.filter((w) => {
+      if (yearFilter !== null && w.annualPlan !== yearFilter) return false;
+
+      const municipio =
+        companyIdToMunicipio.get(w.companyId) ??
+        (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
+      if (summaryMunicipioFilter !== 'all' && municipio !== summaryMunicipioFilter) return false;
+
+      const hasExecution = executedWorkIds.has(w.workId);
+      if (summaryExecutionFilter === 'with' && !hasExecution) return false;
+      if (summaryExecutionFilter === 'without' && hasExecution) return false;
+
+      return true;
     });
-    const statusOrder: Record<string, number> = { final: 0, en_revision: 1, draft: 2 };
-    byWork.forEach((budgets, workId) => {
-      const best = [...budgets].sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3))[0];
-      const subTotal = (best.items ?? []).reduce((acc, item) => {
-        const cant = Number(item.cantidad) || 0;
-        const vr = Number(item.vrUnitario) || 0;
-        return acc + cant * vr * (item.hasIva ? 1.19 : 1);
-      }, 0);
-      const total = subTotal + (Number(best.manoDeObra) || 0);
-      if (total > 0) map.set(workId, total);
-    });
-    return map;
-  }, [allBudgets]);
+  }, [
+    allWorks,
+    companyIdToMunicipio,
+    executedWorkIds,
+    summaryExecutionFilter,
+    summaryMunicipioFilter,
+    summaryYearFilter,
+  ]);
 
   const worksByMunicipio = useMemo(() => {
     // Contar por (empresa, número de acta): el número se reutiliza entre municipios.
@@ -259,7 +351,7 @@ export default function PlanAnualPage() {
     // key: `${year}__${municipio}`
     const map = new Map<string, { year: number; municipio: string; individual: Work[]; actas: Map<string, Work[]> }>();
 
-    allWorks.forEach((w) => {
+    filteredSummaryWorks.forEach((w) => {
       if (!w.annualPlan) return;
       const municipio = companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
       const key = `${w.annualPlan}__${municipio}`;
@@ -278,7 +370,7 @@ export default function PlanAnualPage() {
       .sort((a, b) => b.year - a.year || a.municipio.localeCompare(b.municipio))
       .map((entry) => {
         const allWorksInEntry = [...entry.individual, ...Array.from(entry.actas.values()).flat()];
-        const totalValue = allWorksInEntry.reduce((sum, w) => sum + (workIdToBudgetValue.get(w.workId) ?? 0), 0);
+        const totalValue = allWorksInEntry.reduce((sum, w) => sum + (workValues.get(w.workId) ?? 0), 0);
         return {
           year: entry.year,
           municipio: entry.municipio,
@@ -288,7 +380,57 @@ export default function PlanAnualPage() {
           totalValue,
         };
       });
-  }, [allWorks, companyIdToMunicipio, workIdToBudgetValue]);
+  }, [allWorks, companyIdToMunicipio, filteredSummaryWorks, workValues]);
+
+  // Ejecución por año del plan anual: obras con ejecución registrada en cronograma,
+  // separadas en "dentro del acta" (agrupadas con N° de acta) vs "fuera del acta".
+  const executionSummaries = useMemo<ExecutionYearSummary[]>(() => {
+    const actaCounts = new Map<string, number>();
+    allWorks.forEach((w) => {
+      if (w.recordNumber) {
+        const k = makeActaKey(w.companyId, w.recordNumber);
+        actaCounts.set(k, (actaCounts.get(k) ?? 0) + 1);
+      }
+    });
+
+    const enrich = (w: Work) => ({
+      ...w,
+      municipio: companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
+      value: workValues.get(w.workId) ?? 0,
+    });
+
+    const summaries = new Map<number, { year: number; inActa: ExecutedWork[]; outActa: ExecutedWork[] }>();
+    const getSummary = (year: number) => {
+      if (!summaries.has(year)) {
+        summaries.set(year, { year, inActa: [], outActa: [] });
+      }
+      return summaries.get(year)!;
+    };
+
+    filteredSummaryWorks.forEach((w) => {
+      if (!w.annualPlan) return;
+      const summary = getSummary(w.annualPlan);
+      if (!executedWorkIds.has(w.workId)) return;
+      const isGrouped = w.recordNumber && (actaCounts.get(makeActaKey(w.companyId, w.recordNumber)) ?? 0) >= 2;
+      (isGrouped ? summary.inActa : summary.outActa).push(enrich(w));
+    });
+
+    const byMunicipio = (a: { municipio: string; name: string }, b: { municipio: string; name: string }) =>
+      a.municipio.localeCompare(b.municipio) || a.name.localeCompare(b.name);
+
+    const sumVal = (ws: { value: number }[]) => ws.reduce((s, w) => s + w.value, 0);
+    return Array.from(summaries.values())
+      .sort((a, b) => b.year - a.year)
+      .map((summary) => {
+        summary.inActa.sort(byMunicipio);
+        summary.outActa.sort(byMunicipio);
+        return {
+          ...summary,
+          inActaValue: sumVal(summary.inActa),
+          outActaValue: sumVal(summary.outActa),
+        };
+      });
+  }, [allWorks, companyIdToMunicipio, filteredSummaryWorks, workValues, executedWorkIds]);
 
   const toggleSelect = (workId: number) => {
     setSelectedIds((prev) => {
@@ -388,6 +530,117 @@ export default function PlanAnualPage() {
       await loadWorks();
     } catch {
       toast.error('Error al remover la obra del plan');
+    }
+  };
+
+  const handleQuickAssignToPlan = async (workIds: number[], key: string) => {
+    const year = parseInt(selectedYear, 10);
+    if (isNaN(year) || year < 2000 || year > 2100) {
+      toast.error('Ingrese un año válido para asignar el plan');
+      return;
+    }
+
+    try {
+      setQuickAssigningKey(key);
+      await Promise.all(
+        workIds.map((id) => surveysService.updateWork(id, { annualPlan: year } as any)),
+      );
+      toast.success(
+        workIds.length === 1
+          ? `Obra asignada al Plan ${year}`
+          : `${workIds.length} obras asignadas al Plan ${year}`,
+      );
+      await loadWorks();
+    } catch {
+      toast.error('Error al asignar al plan anual');
+    } finally {
+      setQuickAssigningKey(null);
+    }
+  };
+
+  const closeIppDialog = () => {
+    if (ippSaving) return;
+    setIppDialog(null);
+    setIppValue('');
+  };
+
+  const openIppDialog = async (target: IppDialogTarget) => {
+    const nextTarget = {
+      ...target,
+      workIds: Array.from(new Set(target.workIds)),
+    };
+
+    setIppDialog(nextTarget);
+    setIppValue('');
+    setIppLoading(true);
+
+    try {
+      const currentIpps: number[] = [];
+      for (const workId of nextTarget.workIds) {
+        const survey = await surveysService.getLatestSurveyForWork(workId);
+        if (typeof survey?.previousMonthIpp === 'number') {
+          currentIpps.push(survey.previousMonthIpp);
+        }
+      }
+
+      const uniqueIpps = Array.from(new Set(currentIpps.map((value) => String(value))));
+      if (uniqueIpps.length === 1) {
+        setIppValue(uniqueIpps[0]);
+      }
+    } catch {
+      toast.error('No se pudo consultar el IPP actual');
+    } finally {
+      setIppLoading(false);
+    }
+  };
+
+  const handleSaveIpp = async () => {
+    if (!ippDialog) return;
+
+    const value = Number(ippValue.replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) {
+      toast.error('Ingrese un IPP válido mayor a cero');
+      return;
+    }
+
+    try {
+      setIppSaving(true);
+      let updated = 0;
+      let missing = 0;
+
+      for (const workId of ippDialog.workIds) {
+        const survey = await surveysService.getLatestSurveyForWork(workId);
+        if (!survey?.surveyId) {
+          missing += 1;
+          continue;
+        }
+
+        await surveysService.updateSurveyIpp(survey.surveyId, value);
+        updated += 1;
+      }
+
+      if (updated === 0) {
+        toast.error('No se encontró ningún levantamiento para actualizar');
+        return;
+      }
+
+      toast.success(
+        missing > 0
+          ? `IPP actualizado en ${updated} obra(s). ${missing} obra(s) no tenían levantamiento.`
+          : `IPP actualizado en ${updated} obra(s)`,
+      );
+      setIppDialog(null);
+      setIppValue('');
+
+      if (activeTab === '__resumen__') {
+        await loadPlanSummary();
+      } else {
+        await loadWorks();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error al actualizar el IPP');
+    } finally {
+      setIppSaving(false);
     }
   };
 
@@ -573,89 +826,316 @@ export default function PlanAnualPage() {
               <div className="flex items-center justify-center py-20">
                 <div className="animate-spin w-10 h-10 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full" />
               </div>
-            ) : worksByMunicipio.length === 0 ? (
+            ) : allWorks.length === 0 ? (
               <div className="text-center py-20 text-[hsl(var(--canalco-neutral-500))]">
                 <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No hay obras asignadas a ningún plan anual todavía.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {worksByMunicipio.map(({ year, municipio, individual, actas, total, totalValue }) => (
-                  <div
-                    key={`${year}__${municipio}`}
-                    className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] overflow-hidden flex flex-col"
-                  >
-                    {/* Card header */}
-                    <div className="bg-[hsl(var(--canalco-primary))] px-5 py-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-white/70 text-xs font-medium uppercase tracking-wide">Plan Anual {year}</p>
-                        <p className="text-white text-2xl font-bold leading-tight">{municipio}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white text-2xl font-bold">{total}</p>
-                        <p className="text-white/70 text-xs">obra{total !== 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-
-                    {/* Value strip */}
-                    {totalValue > 0 && (
-                      <div className="bg-[hsl(var(--canalco-primary))]/80 px-5 py-1.5 flex items-center justify-between">
-                        <span className="text-white/70 text-xs">Total presupuestado</span>
-                        <span className="text-white text-sm font-bold">
-                          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalValue)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Card body */}
-                    <div className="p-4 flex flex-col gap-3 flex-1 overflow-y-auto max-h-80">
-                      {/* Individual works */}
-                      {individual.length > 0 && (
-                        <ul className="space-y-1">
-                          {individual.map((w) => (
-                            <li key={w.workId} className="flex items-start gap-2 text-sm">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
-                              <span className="text-[hsl(var(--canalco-neutral-800))] leading-snug">
-                                {w.name}
-                                {w.workCode && (
-                                  <span className="ml-1 text-xs text-[hsl(var(--canalco-neutral-400))] font-mono">
-                                    ({w.workCode})
-                                  </span>
-                                )}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {/* Acta groups */}
-                      {actas.length > 0 && (
-                        <ul className="space-y-2">
-                          {actas.map((acta) => (
-                            <li key={acta.recordNumber} className="rounded-lg border border-[hsl(var(--canalco-neutral-200))] px-3 py-2">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Layers className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
-                                <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-800))]">
-                                  {acta.recordNumber}
-                                </span>
-                                <span className="ml-auto text-xs text-[hsl(var(--canalco-neutral-400))]">
-                                  {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''}
-                                </span>
-                              </div>
-                              <ul className="pl-5 space-y-0.5">
-                                {acta.works.map((w) => (
-                                  <li key={w.workId} className="text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug">
-                                    {w.name}
-                                  </li>
-                                ))}
-                              </ul>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+              <div className="space-y-8">
+              <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Año</label>
+                    <Select value={summaryYearFilter} onValueChange={setSummaryYearFilter}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Año" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los años</SelectItem>
+                        {summaryYears.map((year) => (
+                          <SelectItem key={year} value={String(year)}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ))}
+
+                  <div>
+                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                    <Select value={summaryMunicipioFilter} onValueChange={setSummaryMunicipioFilter}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Municipio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los municipios</SelectItem>
+                        {summaryMunicipios.map((municipio) => (
+                          <SelectItem key={municipio} value={municipio}>
+                            {municipio}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Ejecución</label>
+                    <Select
+                      value={summaryExecutionFilter}
+                      onValueChange={(value) => setSummaryExecutionFilter(value as SummaryExecutionFilter)}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Ejecución" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las obras</SelectItem>
+                        <SelectItem value="with">Con ejecución</SelectItem>
+                        <SelectItem value="without">Sin ejecución</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    className="h-10"
+                    disabled={
+                      summaryYearFilter === 'all' &&
+                      summaryMunicipioFilter === 'all' &&
+                      summaryExecutionFilter === 'all'
+                    }
+                    onClick={() => {
+                      setSummaryYearFilter('all');
+                      setSummaryMunicipioFilter('all');
+                      setSummaryExecutionFilter('all');
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Limpiar filtros
+                  </Button>
+                </div>
+              </div>
+
+              {worksByMunicipio.length === 0 ? (
+                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
+                  No hay obras que coincidan con los filtros seleccionados.
+                </div>
+              ) : (
+              <>
+              <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))] border-0">
+                      <TableHead className="w-10" />
+                      <TableHead className="text-white font-semibold">Municipio</TableHead>
+                      <TableHead className="text-white font-semibold w-24">Año</TableHead>
+                      <TableHead className="text-white font-semibold text-center w-28">N° obras</TableHead>
+                      <TableHead className="text-white font-semibold text-right w-52">Total presupuestado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {worksByMunicipio.map(({ year, municipio, individual, actas, total, totalValue }) => {
+                      const rowKey = `${year}__${municipio}`;
+                      const isOpen = expandedSummary.has(rowKey);
+                      return (
+                        <Fragment key={rowKey}>
+                          <TableRow
+                            className="cursor-pointer hover:bg-[hsl(var(--canalco-neutral-50))]"
+                            onClick={() =>
+                              setExpandedSummary((prev) => {
+                                const next = new Set(prev);
+                                next.has(rowKey) ? next.delete(rowKey) : next.add(rowKey);
+                                return next;
+                              })
+                            }
+                          >
+                            <TableCell className="py-2.5">
+                              <ChevronRight
+                                className={`w-4 h-4 text-[hsl(var(--canalco-neutral-500))] transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{municipio}</TableCell>
+                            <TableCell className="text-[hsl(var(--canalco-neutral-600))]">{year}</TableCell>
+                            <TableCell className="text-center font-medium text-[hsl(var(--canalco-neutral-800))]">{total}</TableCell>
+                            <TableCell className="text-right font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                              {totalValue > 0 ? fmtCOP(totalValue) : '—'}
+                            </TableCell>
+                          </TableRow>
+                          {isOpen && (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell className="p-0" />
+                              <TableCell colSpan={4} className="bg-[hsl(var(--canalco-neutral-50))] py-3 pr-4">
+                                <div className="flex flex-col gap-3">
+                                  {/* Individual works */}
+                                  {individual.length > 0 && (
+                                    <ul className="space-y-1">
+                                      {individual.map((w) => (
+                                        <li key={w.workId} className="flex items-start gap-2 text-sm">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+                                          <span className="text-[hsl(var(--canalco-neutral-800))] leading-snug flex-1">
+                                            {w.name}
+                                            {w.workCode && (
+                                              <span className="ml-1 text-xs text-[hsl(var(--canalco-neutral-400))] font-mono">
+                                                ({w.workCode})
+                                              </span>
+                                            )}
+                                          </span>
+                                          <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] whitespace-nowrap flex-shrink-0 pl-2">
+                                            {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+
+                                  {/* Acta groups */}
+                                  {actas.length > 0 && (
+                                    <ul className="space-y-2">
+                                      {actas.map((acta) => (
+                                        <li key={acta.recordNumber} className="rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-white px-3 py-2">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <Layers className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
+                                            <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-800))]">
+                                              {acta.recordNumber}
+                                            </span>
+                                            <span className="ml-auto text-xs text-[hsl(var(--canalco-neutral-400))]">
+                                              {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''}
+                                            </span>
+                                          </div>
+                                          <ul className="pl-5 space-y-0.5">
+                                            {acta.works.map((w) => (
+                                              <li key={w.workId} className="text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug flex items-start justify-between gap-2">
+                                                <span>{w.name}</span>
+                                                <span className="font-medium whitespace-nowrap flex-shrink-0">
+                                                  {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
+                                                </span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+
+                    {/* Grand total */}
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-100))] font-bold">
+                      <TableCell className="p-0" />
+                      <TableCell className="text-[hsl(var(--canalco-neutral-800))]" colSpan={2}>Total general</TableCell>
+                      <TableCell className="text-center text-[hsl(var(--canalco-neutral-800))]">
+                        {worksByMunicipio.reduce((s, m) => s + m.total, 0)}
+                      </TableCell>
+                      <TableCell className="text-right text-[hsl(var(--canalco-neutral-800))]">
+                        {fmtCOP(worksByMunicipio.reduce((s, m) => s + m.totalValue, 0))}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Ejecución por año: dentro vs fuera del acta */}
+              <div className="space-y-5">
+                {executionSummaries.map((summary) => {
+                  const hasExecution = summary.inActa.length > 0 || summary.outActa.length > 0;
+                  return (
+                    <div key={summary.year}>
+                      <h3 className="text-lg font-bold text-[hsl(var(--canalco-neutral-800))]">Ejecución {summary.year}</h3>
+                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mb-3">
+                        Obras con ejecución registrada en cronograma, separadas dentro y fuera del acta.
+                      </p>
+                      {!hasExecution ? (
+                        <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
+                          Ninguna obra del plan {summary.year} tiene ejecución registrada todavía.
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))] border-0">
+                                <TableHead className="w-10" />
+                                <TableHead className="text-white font-semibold">Categoría ({summary.year})</TableHead>
+                                <TableHead className="text-white font-semibold text-center w-28">N° obras</TableHead>
+                                <TableHead className="text-white font-semibold text-right w-52">Valor total</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {[
+                                { key: `${summary.year}:in`, label: 'Ejecutadas dentro del acta', works: summary.inActa, value: summary.inActaValue, showActa: true },
+                                { key: `${summary.year}:out`, label: 'Ejecutadas fuera del acta', works: summary.outActa, value: summary.outActaValue, showActa: false },
+                              ].map((cat) => {
+                                const isOpen = expandedExec.has(cat.key);
+                                return (
+                                  <Fragment key={cat.key}>
+                                    <TableRow
+                                      className="cursor-pointer hover:bg-[hsl(var(--canalco-neutral-50))]"
+                                      onClick={() =>
+                                        setExpandedExec((prev) => {
+                                          const next = new Set(prev);
+                                          next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
+                                          return next;
+                                        })
+                                      }
+                                    >
+                                      <TableCell className="py-2.5">
+                                        <ChevronRight
+                                          className={`w-4 h-4 text-[hsl(var(--canalco-neutral-500))] transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                        />
+                                      </TableCell>
+                                      <TableCell className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{cat.label}</TableCell>
+                                      <TableCell className="text-center font-medium text-[hsl(var(--canalco-neutral-800))]">{cat.works.length}</TableCell>
+                                      <TableCell className="text-right font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                        {cat.value > 0 ? fmtCOP(cat.value) : '—'}
+                                      </TableCell>
+                                    </TableRow>
+                                    {isOpen && (
+                                      <TableRow className="hover:bg-transparent">
+                                        <TableCell className="p-0" />
+                                        <TableCell colSpan={3} className="bg-[hsl(var(--canalco-neutral-50))] py-3 pr-4">
+                                          {cat.works.length === 0 ? (
+                                            <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">Sin obras en esta categoría.</p>
+                                          ) : (
+                                            <ul className="space-y-1">
+                                              {cat.works.map((w) => (
+                                                <li key={w.workId} className="flex items-start gap-2 text-sm">
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+                                                  <span className="flex-1 leading-snug text-[hsl(var(--canalco-neutral-800))]">
+                                                    <span className="text-xs text-[hsl(var(--canalco-neutral-400))] mr-1.5">{w.municipio}</span>
+                                                    {w.name}
+                                                    {cat.showActa && w.recordNumber && (
+                                                      <span className="ml-1.5 text-xs text-[hsl(var(--canalco-primary))] font-mono">[Acta {w.recordNumber}]</span>
+                                                    )}
+                                                  </span>
+                                                  <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] whitespace-nowrap flex-shrink-0 pl-2">
+                                                    {w.value > 0 ? fmtCOP(w.value) : '—'}
+                                                  </span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
+                                  </Fragment>
+                                );
+                              })}
+
+                              {/* Total */}
+                              <TableRow className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-100))] font-bold">
+                                <TableCell className="p-0" />
+                                <TableCell className="text-[hsl(var(--canalco-neutral-800))]">Total ejecutadas</TableCell>
+                                <TableCell className="text-center text-[hsl(var(--canalco-neutral-800))]">
+                                  {summary.inActa.length + summary.outActa.length}
+                                </TableCell>
+                                <TableCell className="text-right text-[hsl(var(--canalco-neutral-800))]">
+                                  {fmtCOP(summary.inActaValue + summary.outActaValue)}
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              </>
+              )}
               </div>
             )}
           </TabsContent>
@@ -721,7 +1201,7 @@ export default function PlanAnualPage() {
                         <TableHead className="font-semibold">Dirección</TableHead>
                         <TableHead className="font-semibold">No. Acta</TableHead>
                         <TableHead className="font-semibold">Plan Actual</TableHead>
-                        {!isReadOnly && <TableHead className="w-10" />}
+                        {!isReadOnly && <TableHead className="w-56 text-right">Acción</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -773,16 +1253,51 @@ export default function PlanAnualPage() {
                               )}
                             </TableCell>
                             {!isReadOnly && (
-                              <TableCell>
-                                {isAssignedToYear && (
-                                  <button
-                                    title="Quitar del plan"
-                                    onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan([work.workId]); }}
-                                    className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openIppDialog({
+                                        type: 'work',
+                                        title: work.name,
+                                        subtitle: work.workCode || work.recordNumber || 'Obra individual',
+                                        workIds: [work.workId],
+                                      });
+                                    }}
+                                    className="h-8"
                                   >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                )}
+                                    <Percent className="w-3.5 h-3.5 mr-1.5" />
+                                    IPP
+                                  </Button>
+                                  {isAssignedToYear ? (
+                                    <button
+                                      title="Quitar del plan"
+                                      onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan([work.workId]); }}
+                                      className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  ) : !work.annualPlan ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={quickAssigningKey === `work:${work.workId}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleQuickAssignToPlan([work.workId], `work:${work.workId}`);
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
+                                      Asignar
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </TableCell>
                             )}
                           </TableRow>
@@ -842,7 +1357,7 @@ export default function PlanAnualPage() {
                           <TableHead className="font-semibold">No. Obras</TableHead>
                           <TableHead className="font-semibold">Obras incluidas</TableHead>
                           <TableHead className="font-semibold">Plan Actual</TableHead>
-                          {!isReadOnly && <TableHead className="w-10" />}
+                          {!isReadOnly && <TableHead className="w-56 text-right">Acción</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -900,16 +1415,54 @@ export default function PlanAnualPage() {
                                 )}
                               </TableCell>
                               {!isReadOnly && (
-                                <TableCell>
-                                  {isAssignedToYear && (
-                                    <button
-                                      title="Quitar acta del plan"
-                                      onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan(acta.works.map((w) => w.workId)); }}
-                                      className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openIppDialog({
+                                          type: 'acta',
+                                          title: `Acta ${acta.recordNumber}`,
+                                          subtitle: `${acta.works.length} obra${acta.works.length !== 1 ? 's' : ''}`,
+                                          workIds: acta.works.map((w) => w.workId),
+                                        });
+                                      }}
+                                      className="h-8"
                                     >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  )}
+                                      <Percent className="w-3.5 h-3.5 mr-1.5" />
+                                      IPP
+                                    </Button>
+                                    {isAssignedToYear ? (
+                                      <button
+                                        title="Quitar acta del plan"
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan(acta.works.map((w) => w.workId)); }}
+                                        className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    ) : !acta.planActual && !acta.mixed ? (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={quickAssigningKey === `acta:${acta.key}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleQuickAssignToPlan(
+                                            acta.works.map((w) => w.workId),
+                                            `acta:${acta.key}`,
+                                          );
+                                        }}
+                                        className="h-8"
+                                      >
+                                        <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
+                                        Asignar
+                                      </Button>
+                                    ) : null}
+                                  </div>
                                 </TableCell>
                               )}
                             </TableRow>
@@ -924,6 +1477,61 @@ export default function PlanAnualPage() {
           ))}
         </Tabs>
       </main>
+
+      <Dialog open={!!ippDialog} onOpenChange={(open) => { if (!open) closeIppDialog(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar IPP</DialogTitle>
+            <DialogDescription>
+              {ippDialog
+                ? `Se actualizará el IPP para ${ippDialog.type === 'acta' ? 'el acta seleccionada' : 'la obra seleccionada'}.`
+                : 'Actualiza el IPP del levantamiento.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {ippDialog && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-50))] p-3">
+                <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))]">{ippDialog.title}</p>
+                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">{ippDialog.subtitle}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="annual-plan-ipp">IPP Mes Anterior</Label>
+                <Input
+                  id="annual-plan-ipp"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={ippValue}
+                  onChange={(e) => setIppValue(e.target.value)}
+                  disabled={ippLoading || ippSaving}
+                  placeholder={ippLoading ? 'Consultando IPP actual...' : 'Ej: 184.47'}
+                />
+                <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                  {ippDialog.type === 'acta'
+                    ? 'Este valor se aplicará a todas las obras del acta que tengan levantamiento.'
+                    : 'Este valor se aplicará al levantamiento de esta obra.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeIppDialog} disabled={ippSaving}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveIpp}
+              disabled={!ippDialog || ippLoading || ippSaving}
+              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-dark))] text-white"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {ippSaving ? 'Guardando...' : 'Guardar IPP'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </div>

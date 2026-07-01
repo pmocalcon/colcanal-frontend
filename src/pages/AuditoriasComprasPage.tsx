@@ -1105,6 +1105,28 @@ export default function AuditoriasComprasPage() {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Persona</label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={graphRequester}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setGraphRequester(value);
+                          applyRequester(value);
+                        }}
+                        className="h-9 w-56 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
+                      >
+                        <option value="">Todas las personas</option>
+                        {systemUsers.map((u) => (
+                          <option key={u.userId} value={u.nombre}>{u.nombre}</option>
+                        ))}
+                      </select>
+                      {requesterLoading && (
+                        <div className="animate-spin w-4 h-4 border-2 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Desde</label>
                     <input
                       type="date"
@@ -1299,6 +1321,7 @@ export default function AuditoriasComprasPage() {
                         <Tooltip
                           contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
                           cursor={{ fill: '#f9fafb' }}
+                          itemSorter={(item: any) => ['dias', 'cg', 'go', 'rec', 'rc'].indexOf(item?.dataKey)}
                           formatter={(v: number, name: any, item: any) => {
                             const nMap: Record<string, string> = { dias: 'n', cg: 'nCg', go: 'nGo', rec: 'nRec', rc: 'nRc' };
                             const count = item?.payload?.[nMap[item?.dataKey]] ?? 0;
@@ -1334,31 +1357,6 @@ export default function AuditoriasComprasPage() {
                   <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-4">
                     Top 20 materiales por valor en órdenes de compra.
                   </p>
-                  {/* Filtro por persona — aplica solo a este gráfico (recarga silenciosa) */}
-                  <div className="flex flex-wrap items-end gap-2 mb-6">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Persona (solicitante)</label>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={graphRequester}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setGraphRequester(value);
-                            applyRequester(value);
-                          }}
-                          className="h-9 w-64 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
-                        >
-                          <option value="">Todas las personas</option>
-                          {systemUsers.map((u) => (
-                            <option key={u.userId} value={u.nombre}>{u.nombre}</option>
-                          ))}
-                        </select>
-                        {requesterLoading && (
-                          <div className="animate-spin w-4 h-4 border-2 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
                   {topMaterialsData.length === 0 ? (
                     <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
                       No hay datos suficientes para mostrar el gráfico.

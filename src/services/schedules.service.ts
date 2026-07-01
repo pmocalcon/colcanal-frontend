@@ -155,4 +155,9 @@ export const schedulesService = {
     const response = await api.get(`/schedules/work/${workId}/purchase-comparison`);
     return response.data;
   },
+
+  async getWorksExecutionStatus(workIds: number[]): Promise<{ workId: number; hasExecution: boolean }[]> {
+    const response = await api.post('/schedules/execution-status', { workIds });
+    return response.data;
+  },
 };

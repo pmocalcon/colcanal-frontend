@@ -421,6 +421,11 @@ export const surveysService = {
     return response.data;
   },
 
+  async getWorksValue(workIds: number[]): Promise<{ workId: number; value: number }[]> {
+    const response = await api.post('/surveys/works/value', { workIds });
+    return response.data;
+  },
+
   async updateWork(id: number, data: UpdateWorkDto): Promise<Work> {
     const response = await api.put(`/surveys/works/${id}`, data);
     return response.data;
@@ -447,8 +452,20 @@ export const surveysService = {
     return response.data;
   },
 
+  async getLatestSurveyForWork(workId: number): Promise<Survey | null> {
+    const response = await api.get('/surveys', {
+      params: { workId, page: 1, limit: 1 },
+    });
+    return response.data?.data?.[0] ?? null;
+  },
+
   async updateSurvey(id: number, data: UpdateSurveyDto): Promise<Survey> {
     const response = await api.put(`/surveys/${id}`, data);
+    return response.data;
+  },
+
+  async updateSurveyIpp(id: number, previousMonthIpp: number): Promise<Survey> {
+    const response = await api.patch(`/surveys/${id}/ipp`, { previousMonthIpp });
     return response.data;
   },
 
