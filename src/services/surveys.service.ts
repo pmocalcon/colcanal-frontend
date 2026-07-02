@@ -606,12 +606,53 @@ export const surveysService = {
     await api.delete(`/surveys/user-access/${accessId}`);
   },
 
+  // ---- ANNUAL PLAN REVIEW ----
+
+  async getAnnualPlanReview(params: {
+    year: number;
+    municipio: string;
+    zone?: string;
+  }): Promise<AnnualPlanReview | null> {
+    const response = await api.get('/surveys/annual-plan/review', { params });
+    return response.data;
+  },
+
+  async reviewAnnualPlan(data: {
+    year: number;
+    municipio: string;
+    zone?: string;
+    decision: AnnualPlanReviewStatus;
+    comment?: string;
+  }): Promise<AnnualPlanReview> {
+    const response = await api.patch('/surveys/annual-plan/review', data);
+    return response.data;
+  },
+
   // ---- WORK ACTA WORKFLOW ----
 
   // El acta se identifica por (companyId, actaNumber): el número se reutiliza entre municipios.
   async getWorkActa(companyId: number, actaNumber: string): Promise<WorkActa | null> {
     const response = await api.get(`/surveys/actas/${encodeURIComponent(actaNumber)}`, {
       params: { companyId },
+    });
+    return response.data;
+  },
+
+  async getActaSummaryDraft(companyId: number, actaNumber: string): Promise<ActaSummaryDraftResponse> {
+    const response = await api.get(`/surveys/actas/${encodeURIComponent(actaNumber)}/summary-draft`, {
+      params: { companyId },
+    });
+    return response.data;
+  },
+
+  async saveActaSummaryDraft(
+    companyId: number,
+    actaNumber: string,
+    payload: Record<string, any>,
+  ): Promise<ActaSummaryDraftResponse> {
+    const response = await api.put(`/surveys/actas/${encodeURIComponent(actaNumber)}/summary-draft`, {
+      companyId,
+      payload,
     });
     return response.data;
   },
@@ -720,6 +761,24 @@ export interface UserAccessRecord {
 }
 
 // ============================================
+// TYPES - Annual Plan Review
+// ============================================
+export type AnnualPlanReviewStatus = 'pendiente' | 'aprobado' | 'rechazado';
+
+export interface AnnualPlanReview {
+  reviewId: number;
+  year: number;
+  municipio: string;
+  zone: string;
+  status: AnnualPlanReviewStatus;
+  comment: string | null;
+  reviewedBy: number | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================
 // TYPES - Work Acta Workflow
 // ============================================
 export type ActaStatus = 'borrador' | 'en_revision' | 'en_aprobacion' | 'aprobada';
@@ -744,6 +803,12 @@ export interface WorkActa {
   rejectionComment: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ActaSummaryDraftResponse {
+  payload: Record<string, any> | null;
+  updatedAt: string | null;
+  updatedBy: number | null;
 }
 
 export interface PendingBudgetActa {

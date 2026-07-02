@@ -43,6 +43,7 @@ import GestionarUcapsPage from './pages/GestionarUcapsPage'
 import PresupuestoPage from './pages/PresupuestoPage'
 import PresupuestosListPage from './pages/PresupuestosListPage'
 import PlanAnualPage from './pages/PlanAnualPage'
+import ResumenPlanAnualPage from './pages/ResumenPlanAnualPage'
 import ResumenActaPage from './pages/ResumenActaPage'
 import RevisarCantidadesActaPage from './pages/RevisarCantidadesActaPage'
 import CronogramaPage from './pages/CronogramaPage'
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/presupuesto/:id" element={<PresupuestoPage />} />
           <Route path="/dashboard/levantamiento-obras/presupuestos" element={<PresupuestosListPage />} />
           <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
+          <Route path="/dashboard/levantamiento-obras/plan-anual/resumen" element={<ResumenPlanAnualPage />} />
           <Route
             path="/dashboard/levantamiento-obras/cronograma"
             element={

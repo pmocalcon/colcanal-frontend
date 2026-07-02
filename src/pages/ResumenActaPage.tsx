@@ -2,7 +2,7 @@
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, Printer, FileText, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
+import { Home, ArrowLeft, FileText, Save, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
 import { surveysService, type Work, type IppConfig } from '@/services/surveys.service';
 import {
   directorBudgetsService,
@@ -226,6 +226,7 @@ export default function ResumenActaPage() {
   const [ippCurrent, setIppCurrent] = useState('');
   const lastContratoRef = useRef('');
   const [wordStatus, setWordStatus] = useState('');
+  const [saveStatus, setSaveStatus] = useState('');
 
   // ── Editable document state ──
   const [showDocument, setShowDocument] = useState(true);
@@ -264,6 +265,99 @@ export default function ResumenActaPage() {
   const getConsideracionPrefix = (index: number) =>
     consideracionNumeracion === 'decimalDash' ? `${index + 1}.-` : `${ROMAN_NUM[index]}.`;
   const boldIntroFields = new Set(['munNombre', 'municipio', 'conNombre', 'conEmpresa']);
+
+  const getCurrentCompanyId = () =>
+    actaCompanyId ?? works[0]?.companyId ?? (works[0] as any)?.company?.companyId ?? null;
+
+  const getDraftKey = (companyId?: number | null) =>
+    `colcanal:resumen-acta:${companyId ?? 'sin-empresa'}:${recordNumber || 'sin-acta'}`;
+
+  const buildDraftPayload = (companyId?: number | null) => ({
+    version: 1,
+    savedAt: new Date().toISOString(),
+    recordNumber,
+    companyId,
+    docFields,
+    consideraciones,
+    blocks,
+    ippCurrent,
+    partesIntro,
+    partesIntroTemplate,
+    logoUrl,
+    hideMunicipioBanner,
+    encabezadoTabla,
+    consideracionNumeracion,
+  });
+
+  const getSavedDraft = (companyId?: number | null) => {
+    try {
+      const raw = window.localStorage.getItem(getDraftKey(companyId));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const applyDraftPayload = (draft: any) => {
+    if (!draft) return false;
+
+    if (draft.docFields) setDocFields(draft.docFields);
+    if (Array.isArray(draft.consideraciones)) setConsideraciones(draft.consideraciones);
+    if (Array.isArray(draft.blocks)) setBlocks(draft.blocks);
+    if (typeof draft.ippCurrent === 'string') setIppCurrent(draft.ippCurrent);
+    if ('partesIntro' in draft) setPartesIntro(draft.partesIntro);
+    if ('partesIntroTemplate' in draft) setPartesIntroTemplate(draft.partesIntroTemplate);
+    if ('logoUrl' in draft) setLogoUrl(draft.logoUrl);
+    if (typeof draft.hideMunicipioBanner === 'boolean') setHideMunicipioBanner(draft.hideMunicipioBanner);
+    if (Array.isArray(draft.encabezadoTabla)) setEncabezadoTabla(draft.encabezadoTabla);
+    if (draft.consideracionNumeracion === 'roman' || draft.consideracionNumeracion === 'decimalDash') {
+      setConsideracionNumeracion(draft.consideracionNumeracion);
+    }
+    return true;
+  };
+
+  const applySavedDraft = async (companyId?: number | null) => {
+    if (!companyId || !recordNumber) {
+      return applyDraftPayload(getSavedDraft(companyId));
+    }
+
+    try {
+      const response = await surveysService.getActaSummaryDraft(companyId, recordNumber);
+      if (response.payload) return applyDraftPayload(response.payload);
+      return false;
+    } catch {
+      // Fallback local solo para no perder el trabajo si el backend no responde.
+    }
+
+    return applyDraftPayload(getSavedDraft(companyId));
+  };
+
+  const handleSaveDraft = async () => {
+    const companyId = getCurrentCompanyId();
+    if (!companyId || !recordNumber) {
+      setSaveStatus('Falta acta o empresa');
+      window.setTimeout(() => setSaveStatus(''), 2500);
+      return;
+    }
+
+    setSaveStatus('Guardando...');
+    const payload = buildDraftPayload(companyId);
+    try {
+      await surveysService.saveActaSummaryDraft(companyId, recordNumber, payload);
+      window.localStorage.setItem(getDraftKey(companyId), JSON.stringify(payload));
+      setSaveStatus('Guardado');
+    } catch {
+      try {
+        window.localStorage.setItem(getDraftKey(companyId), JSON.stringify(payload));
+      } catch {
+        // Sin acción: el estado visual informa el error principal.
+      }
+      setSaveStatus('No se pudo guardar');
+    } finally {
+      window.setTimeout(() => setSaveStatus(''), 2500);
+    }
+  };
+
   const renderPartesIntroTemplate = (template: string) =>
     template.split(/(\{\{[a-zA-Z0-9_]+\}\})/g).map((part, index) => {
       const match = part.match(/^\{\{([a-zA-Z0-9_]+)\}\}$/);
@@ -449,6 +543,191 @@ export default function ResumenActaPage() {
     });
   };
 
+  const formatWordBudgetCards = (root: HTMLElement) => {
+    const cellBorder = '1px solid #e5e7eb';
+    const headerBg = '#fff7e8';
+    const subHeaderBg = '#f7f7f7';
+    const accent = '#f59e0b';
+    const dark = '#111827';
+    const muted = '#4b5563';
+
+    const cleanText = (element: Element | null) =>
+      element?.textContent?.replace(/\s+/g, ' ').trim() || '';
+
+    const escapeHtml = (text: string) =>
+      text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const budgetTitleHtml = (title: string) => {
+      const upperTitle = title.toUpperCase();
+      const acta = recordNumber.trim().toUpperCase();
+      const index = acta ? upperTitle.indexOf(acta) : -1;
+      if (index < 0) return escapeHtml(upperTitle);
+      return [
+        escapeHtml(upperTitle.slice(0, index)),
+        `<span style="color:${accent};">${escapeHtml(upperTitle.slice(index, index + acta.length))}</span>`,
+        escapeHtml(upperTitle.slice(index + acta.length)),
+      ].join('');
+    };
+
+    const paintCell = (cell: HTMLTableCellElement, align: 'left' | 'center' | 'right' = 'left') => {
+      cell.style.border = cellBorder;
+      cell.style.padding = '6px 8px';
+      cell.style.verticalAlign = 'middle';
+      cell.style.textAlign = align;
+      cell.style.color = dark;
+      cell.style.fontFamily = 'Arial, sans-serif';
+      cell.style.fontSize = '8.5pt';
+      cell.style.lineHeight = '1.35';
+    };
+
+    const appendFooterRow = (
+      tfoot: HTMLTableSectionElement,
+      label: string,
+      value: string,
+      variant: 'base' | 'meta' | 'final',
+    ) => {
+      const tr = tfoot.insertRow();
+      if (variant === 'final') {
+        const empty = tr.insertCell();
+        empty.colSpan = 3;
+        paintCell(empty, 'right');
+        empty.style.backgroundColor = '#ffffff';
+
+        const labelCell = tr.insertCell();
+        labelCell.textContent = label.toUpperCase();
+        paintCell(labelCell, 'center');
+        labelCell.style.backgroundColor = headerBg;
+        labelCell.style.fontWeight = '700';
+
+        const valueCell = tr.insertCell();
+        valueCell.textContent = value;
+        paintCell(valueCell, 'right');
+        valueCell.style.backgroundColor = headerBg;
+        valueCell.style.color = accent;
+        valueCell.style.fontWeight = '700';
+        valueCell.style.fontSize = '10pt';
+        return;
+      }
+
+      const labelCell = tr.insertCell();
+      labelCell.colSpan = 4;
+      labelCell.textContent = label.toUpperCase();
+      paintCell(labelCell, 'right');
+      labelCell.style.fontWeight = variant === 'base' ? '700' : '600';
+      labelCell.style.color = variant === 'base' ? dark : muted;
+      labelCell.style.backgroundColor = variant === 'base' ? subHeaderBg : '#ffffff';
+
+      const valueCell = tr.insertCell();
+      valueCell.textContent = value;
+      paintCell(valueCell, 'right');
+      valueCell.style.fontWeight = '700';
+      valueCell.style.backgroundColor = variant === 'base' ? subHeaderBg : '#ffffff';
+    };
+
+    root.querySelectorAll<HTMLElement>('[data-word-budget-card]').forEach((card) => {
+      const sourceTable = card.querySelector('table');
+      if (!sourceTable) return;
+
+      const isProjectBudget = card.dataset.wordBudgetKind === 'project';
+      const itemCount = Number(card.dataset.wordBudgetItems || '0');
+      if (isProjectBudget && itemCount <= 0) {
+        card.remove();
+        return;
+      }
+
+      const title = card.dataset.wordBudgetTitle || cleanText(card.querySelector('[data-word-budget-title]'));
+      const year = card.dataset.wordBudgetYear || cleanText(card.querySelector('[data-word-budget-year]'));
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.borderCollapse = 'collapse';
+      table.style.margin = '10px 0 18px 0';
+      table.style.fontFamily = 'Arial, sans-serif';
+      table.style.fontSize = '8.5pt';
+      table.style.border = cellBorder;
+
+      const colGroup = document.createElement('colgroup');
+      ['7%', '43%', '13%', '18%', '19%'].forEach((width) => {
+        const col = document.createElement('col');
+        col.style.width = width;
+        colGroup.appendChild(col);
+      });
+      table.appendChild(colGroup);
+
+      const thead = table.createTHead();
+      const titleRow = thead.insertRow();
+      const titleCell = document.createElement('th');
+      titleCell.colSpan = 4;
+      titleCell.innerHTML = budgetTitleHtml(title);
+      paintCell(titleCell, 'center');
+      titleCell.style.backgroundColor = headerBg;
+      titleCell.style.fontWeight = '700';
+      titleCell.style.letterSpacing = '0';
+      titleCell.style.padding = '10px 8px';
+
+      const yearCell = document.createElement('th');
+      yearCell.textContent = year;
+      paintCell(yearCell, 'center');
+      yearCell.style.backgroundColor = headerBg;
+      yearCell.style.fontWeight = '700';
+      yearCell.style.fontSize = '12pt';
+      yearCell.style.padding = '10px 8px';
+      titleRow.append(titleCell, yearCell);
+
+      const headerRow = thead.insertRow();
+      [
+        { text: 'UCAPS', colSpan: 2, align: 'left' as const },
+        { text: 'CANTIDAD', colSpan: 1, align: 'center' as const },
+        { text: 'V. UNITARIO', colSpan: 1, align: 'right' as const },
+        { text: 'V. TOTAL', colSpan: 1, align: 'right' as const },
+      ].forEach((header) => {
+        const th = document.createElement('th');
+        th.textContent = header.text;
+        th.colSpan = header.colSpan;
+        paintCell(th, header.align);
+        th.style.backgroundColor = subHeaderBg;
+        th.style.fontWeight = '700';
+        th.style.padding = '8px 8px';
+        headerRow.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      Array.from(sourceTable.tBodies[0]?.rows || []).forEach((sourceRow, rowIndex) => {
+        const tr = tbody.insertRow();
+        Array.from(sourceRow.cells).forEach((cell, index) => {
+          const td = tr.insertCell();
+          td.colSpan = cell.colSpan;
+          td.textContent = cleanText(cell);
+          paintCell(td, index === 0 || index === 2 ? 'center' : index >= 3 ? 'right' : 'left');
+          td.style.backgroundColor = rowIndex % 2 === 0 ? '#ffffff' : '#fafafa';
+          if (index === 4) td.style.fontWeight = '700';
+          if (index === 0) td.style.color = dark;
+        });
+      });
+
+      const tfoot = table.createTFoot();
+      Array.from(sourceTable.tFoot?.rows || []).forEach((sourceRow) => {
+        const label = cleanText(sourceRow.cells[0]);
+        const isFinal = /valor total|subtotal con ipp/i.test(label);
+        const isBaseTotal = /total obra|subtotal pesos base|mano de obra/i.test(label);
+        const value = cleanText(sourceRow.cells[sourceRow.cells.length - 1]);
+        appendFooterRow(tfoot, label, value, isFinal ? 'final' : isBaseTotal ? 'base' : 'meta');
+      });
+
+      const spacer = document.createElement('p');
+      spacer.innerHTML = '&nbsp;';
+      spacer.style.margin = '0 0 16pt 0';
+      spacer.style.lineHeight = '16pt';
+      spacer.style.fontSize = '1pt';
+
+      card.replaceWith(table, spacer);
+    });
+  };
+
   const cleanWordTextBoxes = (root: HTMLElement) => {
     root.querySelectorAll<HTMLElement>('*').forEach((element) => {
       const tagName = element.tagName.toLowerCase();
@@ -524,6 +803,7 @@ export default function ResumenActaPage() {
     formatWordSignatures(clone);
     appendMetaRowsToWordTables(clone);
     cleanWordTextBoxes(clone);
+    formatWordBudgetCards(clone);
 
     await Promise.all(
       Array.from(clone.querySelectorAll<HTMLImageElement>('img')).map(async (img) => {
@@ -627,6 +907,11 @@ export default function ResumenActaPage() {
       setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
       setEncabezadoTabla(cfg.encabezadoTabla);
       setConsideracionNumeracion(cfg.consideracionNumeracion ?? 'roman');
+      const restoredDraft = await applySavedDraft(companyId);
+      if (restoredDraft) {
+        setSaveStatus('Cambios cargados');
+        window.setTimeout(() => setSaveStatus(''), 2500);
+      }
       const [budgetResults, surveyListResults, ucapRes] = await Promise.all([
         mapLimit(worksInput, 5, (w) =>
           directorBudgetsService.getAll({ workId: w.workId, limit: 10 }).catch(() => ({ data: [] } as any)),
@@ -727,7 +1012,7 @@ export default function ResumenActaPage() {
         .flatMap((res) => res.data ?? [])
         .map((s: any) => s.previousMonthIpp)
         .find((v: any) => v != null && Number(v) > 0);
-      if (ippFromSurvey != null) {
+      if (ippFromSurvey != null && !restoredDraft) {
         setIppCurrent(String(Number(ippFromSurvey)));
       }
     } finally {
@@ -886,10 +1171,12 @@ export default function ResumenActaPage() {
               Resumen de Acta —{' '}
               <span className="text-[hsl(var(--canalco-primary))]">{recordNumber}</span>
             </h1>
-            <Button size="sm" variant="outline" onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-2" />
-              Imprimir
-            </Button>
+            {canEdit && (
+              <Button size="sm" variant="outline" onClick={handleSaveDraft}>
+                <Save className="w-4 h-4 mr-2" />
+                {saveStatus || 'Guardar cambios'}
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={generateWordDocument}>
               <FileText className="w-4 h-4 mr-2" />
               {wordStatus || 'Generar Word'}
@@ -1151,7 +1438,14 @@ export default function ResumenActaPage() {
                           )}
                           <div className="flex-1">
                             {block.tableId === 'consolidated' && (
-                              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm">
+                              <div
+                                data-word-budget-card
+                                data-word-budget-kind="consolidated"
+                                data-word-budget-items={items.length}
+                                data-word-budget-title={`Presupuesto Proyecto — N° Acta: ${recordNumber}`}
+                                data-word-budget-year={docFields.actaYear || String(new Date().getFullYear())}
+                                className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm"
+                              >
                                 <div className="flex border-b border-[hsl(var(--canalco-neutral-200))]">
                                   <div className="flex-1 bg-[hsl(var(--canalco-primary))]/5 px-6 py-3 flex items-center justify-center border-r border-[hsl(var(--canalco-neutral-200))]">
                                     <p className="font-bold text-sm uppercase tracking-wide text-center text-[hsl(var(--canalco-neutral-900))]">
@@ -1219,7 +1513,14 @@ export default function ResumenActaPage() {
                               </div>
                             )}
                             {wk && (
-                              <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm">
+                              <div
+                                data-word-budget-card
+                                data-word-budget-kind="project"
+                                data-word-budget-items={wItems.length}
+                                data-word-budget-title={`Presupuesto ${wk.name}`}
+                                data-word-budget-year={docFields.actaYear || String(new Date().getFullYear())}
+                                className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden shadow-sm"
+                              >
                                 <div className="px-4 py-2 bg-[hsl(var(--canalco-neutral-100))] flex items-center gap-2">
                                   <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{wk.name}</span>
                                   {wk.address && <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">— {wk.address}</span>}

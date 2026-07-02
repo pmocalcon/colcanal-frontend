@@ -42,10 +42,42 @@ const VIEW_ONLY_ROLES = ['Director Técnico', 'Gerencia de Proyectos'];
 const fmtCOP = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
 
+const formatWorkZone = (work: Work) => work.zone?.trim() || 'Sin zona';
+
+const sumNetworkPoints = (value?: string) => {
+  const matches = value?.match(/-?\d+(?:[.,]\d+)?/g) ?? [];
+  return matches.reduce((sum, raw) => {
+    const number = Number(raw.replace(',', '.'));
+    return Number.isFinite(number) ? sum + number : sum;
+  }, 0);
+};
+
 // El número de acta (recordNumber) se reutiliza entre municipios; la identidad real del acta
 // es (empresa, número). Las actas se agrupan/seleccionan por esta clave compuesta.
 const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
-  `${companyId ?? 0}:${recordNumber}`;
+  `${companyId ?? 0}:${recordNumber.trim().replace(/\s+/g, ' ').toLowerCase()}`;
+
+type WorkQuantitySummary = {
+  luminarias: number;
+  postes: number;
+  redElectrica: number;
+};
+
+const emptyQuantitySummary: WorkQuantitySummary = { luminarias: 0, postes: 0, redElectrica: 0 };
+
+const mapLimit = async <T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) => {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map((item, chunkIndex) => mapper(item, i + chunkIndex)));
+    results.push(...chunkResults);
+  }
+  return results;
+};
 
 type ExecutedWork = Work & {
   municipio: string;
@@ -63,7 +95,7 @@ type ExecutionYearSummary = {
 type SummaryExecutionFilter = 'all' | 'with' | 'without';
 
 type IppDialogTarget = {
-  type: 'work' | 'acta';
+  type: 'work' | 'acta' | 'selection';
   title: string;
   subtitle: string;
   workIds: number[];
@@ -85,10 +117,10 @@ export default function PlanAnualPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedActas, setSelectedActas] = useState<Set<string>>(new Set());
   const [expandedSummary, setExpandedSummary] = useState<Set<string>>(new Set());
-  const [summaryYearFilter, setSummaryYearFilter] = useState<string>('all');
-  const [summaryMunicipioFilter, setSummaryMunicipioFilter] = useState<string>('all');
+  const [summaryYearFilter, setSummaryYearFilter] = useState<string>('none');
+  const [summaryMunicipioFilter, setSummaryMunicipioFilter] = useState<string>('none');
+  const [summaryZoneFilter, setSummaryZoneFilter] = useState<string>('all');
   const [summaryExecutionFilter, setSummaryExecutionFilter] = useState<SummaryExecutionFilter>('all');
-  const [quickAssigningKey, setQuickAssigningKey] = useState<string | null>(null);
   const [ippDialog, setIppDialog] = useState<IppDialogTarget | null>(null);
   const [ippValue, setIppValue] = useState('');
   const [ippLoading, setIppLoading] = useState(false);
@@ -120,6 +152,7 @@ export default function PlanAnualPage() {
   const [allWorks, setAllWorks] = useState<Work[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
   const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
+  const [workQuantities, setWorkQuantities] = useState<Map<number, WorkQuantitySummary>>(new Map());
   const [executedWorkIds, setExecutedWorkIds] = useState<Set<number>>(new Set());
   const [expandedExec, setExpandedExec] = useState<Set<string>>(new Set());
 
@@ -142,11 +175,11 @@ export default function PlanAnualPage() {
       setLoadingAll(true);
       const worksResponse = await surveysService.getWorks({ companyId: allCompanyIds });
       const data = Array.isArray(worksResponse) ? worksResponse : (worksResponse.data || []);
-      const planWorks = data.filter((w: Work) => w.annualPlan != null);
-      setAllWorks(planWorks);
+      setAllWorks(data);
+      setWorkQuantities(new Map());
 
       // Valor autoritativo por obra (Valor Total con IPP), igual que en la lista de obras.
-      const ids = planWorks.map((w: Work) => w.workId);
+      const ids = data.map((w: Work) => w.workId);
       if (ids.length > 0) {
         try {
           const [values, execStatus] = await Promise.all([
@@ -175,39 +208,10 @@ export default function PlanAnualPage() {
     loadPlanSummary();
   }, [activeTab, allCompanyIds]);
 
-  // When works or selected year changes, pre-select works already assigned to that year
+  // La selección ahora se usa para acciones masivas, no para representar el estado del plan.
   useEffect(() => {
-    const year = parseInt(selectedYear, 10);
-    if (!isNaN(year) && works.length > 0) {
-      // Agrupar actas por (empresa, número) — el número se reutiliza entre municipios.
-      const actaMap = new Map<string, Work[]>();
-      works.forEach((w) => {
-        if (w.recordNumber) {
-          const key = makeActaKey(w.companyId, w.recordNumber);
-          if (!actaMap.has(key)) actaMap.set(key, []);
-          actaMap.get(key)!.push(w);
-        }
-      });
-      actaMap.forEach((ws, key) => { if (ws.length < 1) actaMap.delete(key); });
-
-      // Individual = no recordNumber OR singleton acta
-      const preselected = new Set(
-        works
-          .filter((w) => (!w.recordNumber || !actaMap.has(makeActaKey(w.companyId, w.recordNumber))) && w.annualPlan === year)
-          .map((w) => w.workId),
-      );
-      setSelectedIds(preselected);
-
-      // Acta groups — pre-select if ALL works in the acta are assigned to this year
-      const preselectedActas = new Set<string>();
-      actaMap.forEach((actaWorks, key) => {
-        if (actaWorks.every((w) => w.annualPlan === year)) preselectedActas.add(key);
-      });
-      setSelectedActas(preselectedActas);
-    } else {
-      setSelectedIds(new Set());
-      setSelectedActas(new Set());
-    }
+    setSelectedIds(new Set());
+    setSelectedActas(new Set());
   }, [works, selectedYear]);
 
   const loadWorks = async () => {
@@ -303,25 +307,90 @@ export default function PlanAnualPage() {
     () =>
       Array.from(
         new Set(
-          allWorks.map((w) =>
-            companyIdToMunicipio.get(w.companyId) ??
-            (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
-          ),
+          allWorks
+            .filter((w) => summaryYearFilter !== 'none' && w.annualPlan === Number(summaryYearFilter))
+            .map((w) =>
+              companyIdToMunicipio.get(w.companyId) ??
+              (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
+            ),
         ),
       ).sort((a, b) => a.localeCompare(b)),
-    [allWorks, companyIdToMunicipio],
+    [allWorks, companyIdToMunicipio, summaryYearFilter],
   );
 
+  const summaryZones = useMemo(() => {
+    if (summaryYearFilter === 'none' || summaryMunicipioFilter === 'none') return [];
+    const yearFilter = Number(summaryYearFilter);
+
+    const getWorkMunicipio = (w: Work) =>
+      companyIdToMunicipio.get(w.companyId) ??
+      (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
+
+    const worksInSelectedPlan = allWorks.filter(
+      (w) => w.annualPlan === yearFilter && getWorkMunicipio(w) === summaryMunicipioFilter,
+    );
+
+    const selectedActaKeys = new Set(
+      worksInSelectedPlan
+        .filter((w) => !!w.recordNumber)
+        .map((w) => makeActaKey(w.companyId, w.recordNumber!)),
+    );
+
+    return Array.from(
+      new Set(
+        allWorks
+          .filter((w) => {
+            if (getWorkMunicipio(w) !== summaryMunicipioFilter) return false;
+            const belongsToSelectedPlan = w.annualPlan === yearFilter;
+            const belongsToSelectedActa =
+              !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.recordNumber));
+            return belongsToSelectedPlan || belongsToSelectedActa;
+          })
+          .map(formatWorkZone),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [allWorks, companyIdToMunicipio, summaryMunicipioFilter, summaryYearFilter]);
+
+  useEffect(() => {
+    if (summaryMunicipioFilter !== 'none' && !summaryMunicipios.includes(summaryMunicipioFilter)) {
+      setSummaryMunicipioFilter('none');
+    }
+  }, [summaryMunicipioFilter, summaryMunicipios]);
+
+  useEffect(() => {
+    if (summaryZoneFilter !== 'all' && !summaryZones.includes(summaryZoneFilter)) {
+      setSummaryZoneFilter('all');
+    }
+  }, [summaryZoneFilter, summaryZones]);
+
   const filteredSummaryWorks = useMemo(() => {
-    const yearFilter = summaryYearFilter === 'all' ? null : Number(summaryYearFilter);
+    if (summaryYearFilter === 'none' || summaryMunicipioFilter === 'none') return [];
+    const yearFilter = Number(summaryYearFilter);
+
+    const getWorkMunicipio = (w: Work) =>
+      companyIdToMunicipio.get(w.companyId) ??
+      (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
+
+    const worksInSelectedPlan = allWorks.filter(
+      (w) => w.annualPlan === yearFilter && getWorkMunicipio(w) === summaryMunicipioFilter,
+    );
+
+    const selectedActaKeys = new Set(
+      worksInSelectedPlan
+        .filter((w) => !!w.recordNumber)
+        .map((w) => makeActaKey(w.companyId, w.recordNumber!)),
+    );
 
     return allWorks.filter((w) => {
-      if (yearFilter !== null && w.annualPlan !== yearFilter) return false;
+      const municipio = getWorkMunicipio(w);
+      if (municipio !== summaryMunicipioFilter) return false;
 
-      const municipio =
-        companyIdToMunicipio.get(w.companyId) ??
-        (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
-      if (summaryMunicipioFilter !== 'all' && municipio !== summaryMunicipioFilter) return false;
+      const belongsToSelectedPlan = w.annualPlan === yearFilter;
+      const belongsToSelectedActa =
+        !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.recordNumber));
+
+      if (!belongsToSelectedPlan && !belongsToSelectedActa) return false;
+      if (summaryZoneFilter !== 'all' && formatWorkZone(w) !== summaryZoneFilter) return false;
 
       const hasExecution = executedWorkIds.has(w.workId);
       if (summaryExecutionFilter === 'with' && !hasExecution) return false;
@@ -336,31 +405,78 @@ export default function PlanAnualPage() {
     summaryExecutionFilter,
     summaryMunicipioFilter,
     summaryYearFilter,
+    summaryZoneFilter,
   ]);
 
+  useEffect(() => {
+    const missingWorkIds = Array.from(
+      new Set(
+        filteredSummaryWorks
+          .map((work) => work.workId)
+          .filter((workId) => !workQuantities.has(workId)),
+      ),
+    );
+
+    if (missingWorkIds.length === 0) return;
+
+    let cancelled = false;
+
+    const loadQuantities = async () => {
+      const quantityResults = await mapLimit(missingWorkIds, 5, async (workId) => {
+        try {
+          const latestSurvey = await surveysService.getLatestSurveyForWork(workId);
+          if (!latestSurvey?.surveyId) {
+            return { workId, quantities: emptyQuantitySummary };
+          }
+
+          const survey = await surveysService.getSurveyById(latestSurvey.surveyId);
+          const quantities = (survey.investmentItems ?? []).reduce<WorkQuantitySummary>(
+            (acc, item) => ({
+              luminarias: acc.luminarias + (Number(item.luminaireQuantity) || 0),
+              postes: acc.postes + (Number(item.poleQuantity) || 0),
+              redElectrica: acc.redElectrica + sumNetworkPoints(item.braidedNetwork),
+            }),
+            { ...emptyQuantitySummary },
+          );
+
+          return { workId, quantities };
+        } catch {
+          return { workId, quantities: emptyQuantitySummary };
+        }
+      });
+
+      if (cancelled) return;
+
+      setWorkQuantities((prev) => {
+        const next = new Map(prev);
+        quantityResults.forEach(({ workId, quantities }) => next.set(workId, quantities));
+        return next;
+      });
+    };
+
+    loadQuantities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredSummaryWorks, workQuantities]);
+
   const worksByMunicipio = useMemo(() => {
-    // Contar por (empresa, número de acta): el número se reutiliza entre municipios.
-    const actaCounts = new Map<string, number>();
-    allWorks.forEach((w) => {
-      if (w.recordNumber) {
-        const k = makeActaKey(w.companyId, w.recordNumber);
-        actaCounts.set(k, (actaCounts.get(k) ?? 0) + 1);
-      }
-    });
+    if (summaryYearFilter === 'none') return [];
+    const selectedSummaryYear = Number(summaryYearFilter);
 
     // key: `${year}__${municipio}`
     const map = new Map<string, { year: number; municipio: string; individual: Work[]; actas: Map<string, Work[]> }>();
 
     filteredSummaryWorks.forEach((w) => {
-      if (!w.annualPlan) return;
       const municipio = companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
-      const key = `${w.annualPlan}__${municipio}`;
-      if (!map.has(key)) map.set(key, { year: w.annualPlan, municipio, individual: [], actas: new Map() });
+      const key = `${selectedSummaryYear}__${municipio}`;
+      if (!map.has(key)) map.set(key, { year: selectedSummaryYear, municipio, individual: [], actas: new Map() });
       const entry = map.get(key)!;
-      const isGrouped = w.recordNumber && (actaCounts.get(makeActaKey(w.companyId, w.recordNumber)) ?? 0) >= 2;
-      if (isGrouped) {
-        if (!entry.actas.has(w.recordNumber!)) entry.actas.set(w.recordNumber!, []);
-        entry.actas.get(w.recordNumber!)!.push(w);
+      if (w.recordNumber) {
+        const actaKey = makeActaKey(w.companyId, w.recordNumber);
+        if (!entry.actas.has(actaKey)) entry.actas.set(actaKey, []);
+        entry.actas.get(actaKey)!.push(w);
       } else {
         entry.individual.push(w);
       }
@@ -375,24 +491,16 @@ export default function PlanAnualPage() {
           year: entry.year,
           municipio: entry.municipio,
           individual: entry.individual,
-          actas: Array.from(entry.actas.entries()).map(([recordNumber, works]) => ({ recordNumber, works })),
+          actas: Array.from(entry.actas.values()).map((works) => ({ recordNumber: works[0]?.recordNumber ?? '', works })),
           total: entry.individual.length + Array.from(entry.actas.values()).reduce((s, ws) => s + ws.length, 0),
           totalValue,
         };
       });
-  }, [allWorks, companyIdToMunicipio, filteredSummaryWorks, workValues]);
+  }, [companyIdToMunicipio, filteredSummaryWorks, summaryYearFilter, workValues]);
 
   // Ejecución por año del plan anual: obras con ejecución registrada en cronograma,
-  // separadas en "dentro del acta" (agrupadas con N° de acta) vs "fuera del acta".
+  // separadas entre obras con N° de acta y obras individuales.
   const executionSummaries = useMemo<ExecutionYearSummary[]>(() => {
-    const actaCounts = new Map<string, number>();
-    allWorks.forEach((w) => {
-      if (w.recordNumber) {
-        const k = makeActaKey(w.companyId, w.recordNumber);
-        actaCounts.set(k, (actaCounts.get(k) ?? 0) + 1);
-      }
-    });
-
     const enrich = (w: Work) => ({
       ...w,
       municipio: companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
@@ -411,8 +519,7 @@ export default function PlanAnualPage() {
       if (!w.annualPlan) return;
       const summary = getSummary(w.annualPlan);
       if (!executedWorkIds.has(w.workId)) return;
-      const isGrouped = w.recordNumber && (actaCounts.get(makeActaKey(w.companyId, w.recordNumber)) ?? 0) >= 2;
-      (isGrouped ? summary.inActa : summary.outActa).push(enrich(w));
+      (w.recordNumber ? summary.inActa : summary.outActa).push(enrich(w));
     });
 
     const byMunicipio = (a: { municipio: string; name: string }, b: { municipio: string; name: string }) =>
@@ -430,7 +537,31 @@ export default function PlanAnualPage() {
           outActaValue: sumVal(summary.outActa),
         };
       });
-  }, [allWorks, companyIdToMunicipio, filteredSummaryWorks, workValues, executedWorkIds]);
+  }, [companyIdToMunicipio, filteredSummaryWorks, workValues, executedWorkIds]);
+
+  const getWorkQuantitySummary = (work: Work) => workQuantities.get(work.workId) ?? emptyQuantitySummary;
+
+  const sumWorkQuantitySummaries = (items: Work[]) =>
+    items.reduce<WorkQuantitySummary>(
+      (sum, work) => {
+        const quantities = getWorkQuantitySummary(work);
+
+        return {
+          luminarias: sum.luminarias + quantities.luminarias,
+          postes: sum.postes + quantities.postes,
+          redElectrica: sum.redElectrica + quantities.redElectrica,
+        };
+      },
+      { ...emptyQuantitySummary },
+    );
+
+  const formatRedElectrica = (value: number) =>
+    value > 0
+      ? new Intl.NumberFormat('es-CO', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(value)
+      : '—';
 
   const toggleSelect = (workId: number) => {
     setSelectedIds((prev) => {
@@ -464,84 +595,40 @@ export default function PlanAnualPage() {
     }
   };
 
-  const handleSave = async () => {
-    const year = parseInt(selectedYear, 10);
-    if (isNaN(year) || year < 2000 || year > 2100) {
-      toast.error('Ingrese un año válido (ej: 2026)');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      // Individual works to assign/unassign
-      const toAssign = filteredWorks.filter(
-        (w) => selectedIds.has(w.workId) && w.annualPlan !== year,
-      );
-      const toUnassign = filteredWorks.filter(
-        (w) => !selectedIds.has(w.workId) && w.annualPlan === year,
-      );
-
-      // Acta works to assign/unassign
-      const actaToAssign: Work[] = [];
-      const actaToUnassign: Work[] = [];
-      groupedActas.forEach((acta) => {
-        acta.works.forEach((w) => {
-          if (selectedActas.has(acta.key) && w.annualPlan !== year) {
-            actaToAssign.push(w);
-          } else if (!selectedActas.has(acta.key) && w.annualPlan === year) {
-            actaToUnassign.push(w);
-          }
-        });
-      });
-
-      await Promise.all([
-        ...toAssign.map((w) => surveysService.updateWork(w.workId, { annualPlan: year } as any)),
-        ...toUnassign.map((w) => surveysService.updateWork(w.workId, { annualPlan: null } as any)),
-        ...actaToAssign.map((w) => surveysService.updateWork(w.workId, { annualPlan: year } as any)),
-        ...actaToUnassign.map((w) => surveysService.updateWork(w.workId, { annualPlan: null } as any)),
-      ]);
-
-      const totalAssigned = toAssign.length + actaToAssign.length;
-      const totalUnassigned = toUnassign.length + actaToUnassign.length;
-      toast.success(
-        `Plan Anual ${year} guardado: ${totalAssigned} asignada(s), ${totalUnassigned} removida(s)`,
-      );
-      await loadWorks();
-    } catch {
-      toast.error('Error al guardar el plan anual');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     setSearchTerm('');
     setSelectedMunicipioId(null);
   };
 
-  const handleRemoveFromPlan = async (workIds: number[]) => {
-    try {
-      await Promise.all(
-        workIds.map((id) => surveysService.updateWork(id, { annualPlan: null } as any)),
-      );
-      toast.success(workIds.length === 1 ? 'Obra removida del plan' : `${workIds.length} obras removidas del plan`);
-      await loadWorks();
-    } catch {
-      toast.error('Error al remover la obra del plan');
-    }
+  const getSelectedWorkIds = () => {
+    const ids = new Set<number>();
+    filteredWorks.forEach((work) => {
+      if (selectedIds.has(work.workId)) ids.add(work.workId);
+    });
+    groupedActas.forEach((acta) => {
+      if (selectedActas.has(acta.key)) {
+        acta.works.forEach((work) => ids.add(work.workId));
+      }
+    });
+    return Array.from(ids);
   };
 
-  const handleQuickAssignToPlan = async (workIds: number[], key: string) => {
+  const handleAssignSelectedToPlan = async () => {
     const year = parseInt(selectedYear, 10);
     if (isNaN(year) || year < 2000 || year > 2100) {
       toast.error('Ingrese un año válido para asignar el plan');
       return;
     }
 
+    const workIds = getSelectedWorkIds();
+    if (workIds.length === 0) {
+      toast.error('Seleccione al menos una obra o acta');
+      return;
+    }
+
     try {
-      setQuickAssigningKey(key);
+      setSaving(true);
       await Promise.all(
         workIds.map((id) => surveysService.updateWork(id, { annualPlan: year } as any)),
       );
@@ -554,8 +641,23 @@ export default function PlanAnualPage() {
     } catch {
       toast.error('Error al asignar al plan anual');
     } finally {
-      setQuickAssigningKey(null);
+      setSaving(false);
     }
+  };
+
+  const openSelectedIppDialog = () => {
+    const workIds = getSelectedWorkIds();
+    if (workIds.length === 0) {
+      toast.error('Seleccione al menos una obra o acta');
+      return;
+    }
+
+    openIppDialog({
+      type: 'selection',
+      title: 'Selección del plan anual',
+      subtitle: `${workIds.length} obra${workIds.length !== 1 ? 's' : ''} seleccionada${workIds.length !== 1 ? 's' : ''}`,
+      workIds,
+    });
   };
 
   const closeIppDialog = () => {
@@ -668,11 +770,8 @@ export default function PlanAnualPage() {
     );
   }
 
-  const assignedCount =
-    filteredWorks.filter((w) => selectedIds.has(w.workId)).length +
-    groupedActas
-      .filter((a) => selectedActas.has(a.key))
-      .reduce((sum, a) => sum + a.works.length, 0);
+  const selectedWorkCount = getSelectedWorkIds().length;
+  const summaryReady = summaryYearFilter !== 'none' && summaryMunicipioFilter !== 'none';
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -749,29 +848,41 @@ export default function PlanAnualPage() {
               )}
             </div>
 
-            <div className="flex flex-col gap-1 sm:ml-auto text-right">
+            <div className="flex flex-col gap-2 sm:ml-auto sm:items-end">
               <span className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                {assignedCount} obra(s) asignadas al año{' '}
+                {selectedWorkCount} obra(s) seleccionada(s) para el año{' '}
                 <strong>{selectedYear || '—'}</strong>
               </span>
               {!isReadOnly && (
-                <Button
-                  onClick={handleSave}
-                  disabled={saving || !selectedYear}
-                  className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Guardar Plan {selectedYear}
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={openSelectedIppDialog}
+                    disabled={ippLoading || ippSaving || selectedWorkCount === 0}
+                  >
+                    <Percent className="w-4 h-4 mr-2" />
+                    Cambiar IPP
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleAssignSelectedToPlan}
+                    disabled={saving || !selectedYear || selectedWorkCount === 0}
+                    className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                        Asignando...
+                      </>
+                    ) : (
+                      <>
+                        <CalendarDays className="w-4 h-4 mr-2" />
+                        Asignar al Plan {selectedYear}
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -834,15 +945,22 @@ export default function PlanAnualPage() {
             ) : (
               <div className="space-y-8">
               <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
                     <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Año</label>
-                    <Select value={summaryYearFilter} onValueChange={setSummaryYearFilter}>
+                    <Select
+                      value={summaryYearFilter}
+                      onValueChange={(value) => {
+                        setSummaryYearFilter(value);
+                        setSummaryMunicipioFilter('none');
+                        setSummaryZoneFilter('all');
+                      }}
+                    >
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Año" />
+                        <SelectValue placeholder="Seleccione año" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos los años</SelectItem>
+                        <SelectItem value="none">Seleccione año</SelectItem>
                         {summaryYears.map((year) => (
                           <SelectItem key={year} value={String(year)}>
                             {year}
@@ -854,15 +972,45 @@ export default function PlanAnualPage() {
 
                   <div>
                     <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
-                    <Select value={summaryMunicipioFilter} onValueChange={setSummaryMunicipioFilter}>
+                    <Select
+                      value={summaryMunicipioFilter}
+                      onValueChange={(value) => {
+                        setSummaryMunicipioFilter(value);
+                        setSummaryZoneFilter('all');
+                      }}
+                      disabled={summaryYearFilter === 'none'}
+                    >
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Municipio" />
+                        <SelectValue placeholder="Seleccione municipio" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos los municipios</SelectItem>
+                        <SelectItem value="none">
+                          {summaryYearFilter === 'none' ? 'Seleccione primero un año' : 'Seleccione municipio'}
+                        </SelectItem>
                         {summaryMunicipios.map((municipio) => (
                           <SelectItem key={municipio} value={municipio}>
                             {municipio}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Zona</label>
+                    <Select
+                      value={summaryZoneFilter}
+                      onValueChange={setSummaryZoneFilter}
+                      disabled={summaryYearFilter === 'none' || summaryMunicipioFilter === 'none'}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Zona" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las zonas</SelectItem>
+                        {summaryZones.map((zone) => (
+                          <SelectItem key={zone} value={zone}>
+                            {zone}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -890,13 +1038,15 @@ export default function PlanAnualPage() {
                     variant="outline"
                     className="h-10"
                     disabled={
-                      summaryYearFilter === 'all' &&
-                      summaryMunicipioFilter === 'all' &&
+                      summaryYearFilter === 'none' &&
+                      summaryMunicipioFilter === 'none' &&
+                      summaryZoneFilter === 'all' &&
                       summaryExecutionFilter === 'all'
                     }
                     onClick={() => {
-                      setSummaryYearFilter('all');
-                      setSummaryMunicipioFilter('all');
+                      setSummaryYearFilter('none');
+                      setSummaryMunicipioFilter('none');
+                      setSummaryZoneFilter('all');
                       setSummaryExecutionFilter('all');
                     }}
                   >
@@ -906,7 +1056,11 @@ export default function PlanAnualPage() {
                 </div>
               </div>
 
-              {worksByMunicipio.length === 0 ? (
+              {!summaryReady ? (
+                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
+                  Seleccione un año y un municipio para ver el resumen del plan anual.
+                </div>
+              ) : worksByMunicipio.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
                   No hay obras que coincidan con los filtros seleccionados.
                 </div>
@@ -927,6 +1081,9 @@ export default function PlanAnualPage() {
                     {worksByMunicipio.map(({ year, municipio, individual, actas, total, totalValue }) => {
                       const rowKey = `${year}__${municipio}`;
                       const isOpen = expandedSummary.has(rowKey);
+                      const individualQuantities = sumWorkQuantitySummaries(individual);
+                      const actaWorks = actas.flatMap((acta) => acta.works);
+                      const actaQuantities = sumWorkQuantitySummaries(actaWorks);
                       return (
                         <Fragment key={rowKey}>
                           <TableRow
@@ -956,56 +1113,152 @@ export default function PlanAnualPage() {
                               <TableCell className="p-0" />
                               <TableCell colSpan={4} className="bg-[hsl(var(--canalco-neutral-50))] py-3 pr-4">
                                 <div className="flex flex-col gap-3">
-                                  {/* Individual works */}
-                                  {individual.length > 0 && (
-                                    <ul className="space-y-1">
-                                      {individual.map((w) => (
-                                        <li key={w.workId} className="flex items-start gap-2 text-sm">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
-                                          <span className="text-[hsl(var(--canalco-neutral-800))] leading-snug flex-1">
-                                            {w.name}
-                                            {w.workCode && (
-                                              <span className="ml-1 text-xs text-[hsl(var(--canalco-neutral-400))] font-mono">
-                                                ({w.workCode})
-                                              </span>
-                                            )}
-                                          </span>
-                                          <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] whitespace-nowrap flex-shrink-0 pl-2">
-                                            {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-
-                                  {/* Acta groups */}
-                                  {actas.length > 0 && (
-                                    <ul className="space-y-2">
-                                      {actas.map((acta) => (
-                                        <li key={acta.recordNumber} className="rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-white px-3 py-2">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <Layers className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))] flex-shrink-0" />
-                                            <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-800))]">
-                                              {acta.recordNumber}
-                                            </span>
-                                            <span className="ml-auto text-xs text-[hsl(var(--canalco-neutral-400))]">
-                                              {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''}
-                                            </span>
+                                  <div className="order-2 rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-white p-3">
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                      <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                        Proyectos sin ejecutar
+                                      </h4>
+                                      <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">
+                                        {individual.length} proyecto{individual.length !== 1 ? 's' : ''} ·{' '}
+                                        {individualQuantities.luminarias} lum. · {individualQuantities.postes} postes ·{' '}
+                                        {fmtCOP(individual.reduce((sum, w) => sum + (workValues.get(w.workId) ?? 0), 0))}
+                                      </span>
+                                    </div>
+                                    {individual.length > 0 ? (
+                                      <div className="overflow-x-auto">
+                                        <div className="min-w-[880px]">
+                                          <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                            <span>Proyecto</span>
+                                            <span className="text-center">Zona</span>
+                                            <span className="text-center">Cant. luminarias</span>
+                                            <span className="text-center">Cant. postes</span>
+                                            <span className="text-center">Red eléctrica</span>
+                                            <span className="text-center">Valor</span>
                                           </div>
-                                          <ul className="pl-5 space-y-0.5">
-                                            {acta.works.map((w) => (
-                                              <li key={w.workId} className="text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug flex items-start justify-between gap-2">
-                                                <span>{w.name}</span>
-                                                <span className="font-medium whitespace-nowrap flex-shrink-0">
+                                      <ul className="space-y-0.5">
+                                        {individual.map((w) => (
+                                          (() => {
+                                            const quantities = getWorkQuantitySummary(w);
+                                            return (
+                                              <li key={w.workId} className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 items-start px-2 py-1 text-sm">
+                                                <span className="text-[hsl(var(--canalco-neutral-800))] leading-snug min-w-0 flex items-start gap-2">
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
+                                                  <span className="min-w-0">
+                                                    {w.name}
+                                                    {w.workCode && (
+                                                      <span className="ml-1 text-xs text-[hsl(var(--canalco-neutral-400))] font-mono">
+                                                        ({w.workCode})
+                                                      </span>
+                                                    )}
+                                                  </span>
+                                                </span>
+                                                <span className="text-center text-xs font-medium text-[hsl(var(--canalco-neutral-600))] truncate" title={formatWorkZone(w)}>
+                                                  {formatWorkZone(w)}
+                                                </span>
+                                                <span className="text-center text-xs font-medium text-[hsl(var(--canalco-neutral-600))] tabular-nums">
+                                                  {quantities.luminarias}
+                                                </span>
+                                                <span className="text-center text-xs font-medium text-[hsl(var(--canalco-neutral-600))] tabular-nums">
+                                                  {quantities.postes}
+                                                </span>
+                                                <span className="text-center text-xs font-medium text-[hsl(var(--canalco-neutral-600))] truncate" title={formatRedElectrica(quantities.redElectrica)}>
+                                                  {formatRedElectrica(quantities.redElectrica)}
+                                                </span>
+                                                <span className="text-center text-xs font-medium text-[hsl(var(--canalco-neutral-600))] whitespace-nowrap">
                                                   {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
                                                 </span>
                                               </li>
-                                            ))}
-                                          </ul>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
+                                            );
+                                          })()
+                                        ))}
+                                      </ul>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">
+                                        No hay proyectos individuales para este filtro.
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="order-1 rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-white p-3">
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                      <h4 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-800))] flex items-center gap-2">
+                                        <Layers className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />
+                                        Proyectos en ejecución
+                                      </h4>
+                                      <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">
+                                        {actas.reduce((sum, acta) => sum + acta.works.length, 0)} proyecto
+                                        {actas.reduce((sum, acta) => sum + acta.works.length, 0) !== 1 ? 's' : ''} ·{' '}
+                                        {actaQuantities.luminarias} lum. · {actaQuantities.postes} postes ·{' '}
+                                        {fmtCOP(
+                                          actas.reduce(
+                                            (sum, acta) =>
+                                              sum + acta.works.reduce((subtotal, w) => subtotal + (workValues.get(w.workId) ?? 0), 0),
+                                            0,
+                                          ),
+                                        )}
+                                      </span>
+                                    </div>
+                                    {actas.length > 0 ? (
+                                      <ul className="space-y-2">
+                                        {actas.map((acta) => {
+                                          const currentActaQuantities = sumWorkQuantitySummaries(acta.works);
+                                          return (
+                                            <li key={acta.recordNumber} className="rounded-md border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] px-3 py-2">
+                                              <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-800))]">
+                                                  Acta {acta.recordNumber}
+                                                </span>
+                                                <span className="ml-auto text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                                  {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''} ·{' '}
+                                                  {currentActaQuantities.luminarias} lum. · {currentActaQuantities.postes} postes ·{' '}
+                                                  {fmtCOP(acta.works.reduce((sum, w) => sum + (workValues.get(w.workId) ?? 0), 0))}
+                                                </span>
+                                              </div>
+                                              <div className="overflow-x-auto">
+                                                <div className="min-w-[880px]">
+                                                  <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                                    <span>Proyecto</span>
+                                                    <span className="text-center">Zona</span>
+                                                    <span className="text-center">Cant. luminarias</span>
+                                                    <span className="text-center">Cant. postes</span>
+                                                    <span className="text-center">Red eléctrica</span>
+                                                    <span className="text-center">Valor</span>
+                                                  </div>
+                                                  <ul className="space-y-0.5">
+                                                    {acta.works.map((w) => {
+                                                      const quantities = getWorkQuantitySummary(w);
+                                                      return (
+                                                        <li key={w.workId} className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 items-start px-2 py-1 text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug">
+                                                          <span className="min-w-0">{w.name}</span>
+                                                          <span className="text-center font-medium truncate" title={formatWorkZone(w)}>
+                                                            {formatWorkZone(w)}
+                                                          </span>
+                                                          <span className="text-center font-medium tabular-nums">{quantities.luminarias}</span>
+                                                          <span className="text-center font-medium tabular-nums">{quantities.postes}</span>
+                                                          <span className="text-center font-medium truncate" title={formatRedElectrica(quantities.redElectrica)}>
+                                                            {formatRedElectrica(quantities.redElectrica)}
+                                                          </span>
+                                                          <span className="text-center font-medium whitespace-nowrap">
+                                                            {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
+                                                          </span>
+                                                        </li>
+                                                      );
+                                                    })}
+                                                  </ul>
+                                                </div>
+                                              </div>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    ) : (
+                                      <p className="text-xs text-[hsl(var(--canalco-neutral-400))]">
+                                        No hay proyectos asociados a actas para este filtro.
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1201,14 +1454,11 @@ export default function PlanAnualPage() {
                         <TableHead className="font-semibold">Dirección</TableHead>
                         <TableHead className="font-semibold">No. Acta</TableHead>
                         <TableHead className="font-semibold">Plan Actual</TableHead>
-                        {!isReadOnly && <TableHead className="w-56 text-right">Acción</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredWorks.map((work) => {
                         const isSelected = selectedIds.has(work.workId);
-                        const year = parseInt(selectedYear, 10);
-                        const isAssignedToYear = work.annualPlan === year;
                         return (
                           <TableRow
                             key={work.workId}
@@ -1252,54 +1502,6 @@ export default function PlanAnualPage() {
                                 <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">Sin asignar</span>
                               )}
                             </TableCell>
-                            {!isReadOnly && (
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openIppDialog({
-                                        type: 'work',
-                                        title: work.name,
-                                        subtitle: work.workCode || work.recordNumber || 'Obra individual',
-                                        workIds: [work.workId],
-                                      });
-                                    }}
-                                    className="h-8"
-                                  >
-                                    <Percent className="w-3.5 h-3.5 mr-1.5" />
-                                    IPP
-                                  </Button>
-                                  {isAssignedToYear ? (
-                                    <button
-                                      title="Quitar del plan"
-                                      onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan([work.workId]); }}
-                                      className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  ) : !work.annualPlan ? (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={quickAssigningKey === `work:${work.workId}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleQuickAssignToPlan([work.workId], `work:${work.workId}`);
-                                      }}
-                                      className="h-8"
-                                    >
-                                      <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
-                                      Asignar
-                                    </Button>
-                                  ) : null}
-                                </div>
-                              </TableCell>
-                            )}
                           </TableRow>
                         );
                       })}
@@ -1357,14 +1559,11 @@ export default function PlanAnualPage() {
                           <TableHead className="font-semibold">No. Obras</TableHead>
                           <TableHead className="font-semibold">Obras incluidas</TableHead>
                           <TableHead className="font-semibold">Plan Actual</TableHead>
-                          {!isReadOnly && <TableHead className="w-56 text-right">Acción</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {groupedActas.map((acta) => {
                           const isSelected = selectedActas.has(acta.key);
-                          const year = parseInt(selectedYear, 10);
-                          const isAssignedToYear = acta.planActual === year;
                           return (
                             <TableRow
                               key={acta.key}
@@ -1414,57 +1613,6 @@ export default function PlanAnualPage() {
                                   <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">Sin asignar</span>
                                 )}
                               </TableCell>
-                              {!isReadOnly && (
-                                <TableCell className="text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openIppDialog({
-                                          type: 'acta',
-                                          title: `Acta ${acta.recordNumber}`,
-                                          subtitle: `${acta.works.length} obra${acta.works.length !== 1 ? 's' : ''}`,
-                                          workIds: acta.works.map((w) => w.workId),
-                                        });
-                                      }}
-                                      className="h-8"
-                                    >
-                                      <Percent className="w-3.5 h-3.5 mr-1.5" />
-                                      IPP
-                                    </Button>
-                                    {isAssignedToYear ? (
-                                      <button
-                                        title="Quitar acta del plan"
-                                        onClick={(e) => { e.stopPropagation(); handleRemoveFromPlan(acta.works.map((w) => w.workId)); }}
-                                        className="p-1 rounded text-[hsl(var(--canalco-neutral-400))] hover:text-red-500 hover:bg-red-50 transition-colors"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    ) : !acta.planActual && !acta.mixed ? (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={quickAssigningKey === `acta:${acta.key}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleQuickAssignToPlan(
-                                            acta.works.map((w) => w.workId),
-                                            `acta:${acta.key}`,
-                                          );
-                                        }}
-                                        className="h-8"
-                                      >
-                                        <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
-                                        Asignar
-                                      </Button>
-                                    ) : null}
-                                  </div>
-                                </TableCell>
-                              )}
                             </TableRow>
                           );
                         })}
@@ -1484,7 +1632,13 @@ export default function PlanAnualPage() {
             <DialogTitle>Cambiar IPP</DialogTitle>
             <DialogDescription>
               {ippDialog
-                ? `Se actualizará el IPP para ${ippDialog.type === 'acta' ? 'el acta seleccionada' : 'la obra seleccionada'}.`
+                ? `Se actualizará el IPP para ${
+                    ippDialog.type === 'acta'
+                      ? 'el acta seleccionada'
+                      : ippDialog.type === 'selection'
+                        ? 'la selección actual'
+                        : 'la obra seleccionada'
+                  }.`
                 : 'Actualiza el IPP del levantamiento.'}
             </DialogDescription>
           </DialogHeader>
@@ -1511,7 +1665,9 @@ export default function PlanAnualPage() {
                 <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
                   {ippDialog.type === 'acta'
                     ? 'Este valor se aplicará a todas las obras del acta que tengan levantamiento.'
-                    : 'Este valor se aplicará al levantamiento de esta obra.'}
+                    : ippDialog.type === 'selection'
+                      ? 'Este valor se aplicará a todas las obras seleccionadas que tengan levantamiento.'
+                      : 'Este valor se aplicará al levantamiento de esta obra.'}
                 </p>
               </div>
             </div>
