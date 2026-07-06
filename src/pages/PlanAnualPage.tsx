@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { surveysService, type Work } from '@/services/surveys.service';
-import { schedulesService } from '@/services/schedules.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
@@ -33,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent, FileText } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -79,20 +78,6 @@ const mapLimit = async <T, R>(
   return results;
 };
 
-type ExecutedWork = Work & {
-  municipio: string;
-  value: number;
-};
-
-type ExecutionYearSummary = {
-  year: number;
-  inActa: ExecutedWork[];
-  outActa: ExecutedWork[];
-  inActaValue: number;
-  outActaValue: number;
-};
-
-type SummaryExecutionFilter = 'all' | 'with' | 'without';
 
 type IppDialogTarget = {
   type: 'work' | 'acta' | 'selection';
@@ -120,7 +105,6 @@ export default function PlanAnualPage() {
   const [summaryYearFilter, setSummaryYearFilter] = useState<string>('none');
   const [summaryMunicipioFilter, setSummaryMunicipioFilter] = useState<string>('none');
   const [summaryZoneFilter, setSummaryZoneFilter] = useState<string>('all');
-  const [summaryExecutionFilter, setSummaryExecutionFilter] = useState<SummaryExecutionFilter>('all');
   const [ippDialog, setIppDialog] = useState<IppDialogTarget | null>(null);
   const [ippValue, setIppValue] = useState('');
   const [ippLoading, setIppLoading] = useState(false);
@@ -153,8 +137,6 @@ export default function PlanAnualPage() {
   const [loadingAll, setLoadingAll] = useState(false);
   const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
   const [workQuantities, setWorkQuantities] = useState<Map<number, WorkQuantitySummary>>(new Map());
-  const [executedWorkIds, setExecutedWorkIds] = useState<Set<number>>(new Set());
-  const [expandedExec, setExpandedExec] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
@@ -182,19 +164,13 @@ export default function PlanAnualPage() {
       const ids = data.map((w: Work) => w.workId);
       if (ids.length > 0) {
         try {
-          const [values, execStatus] = await Promise.all([
-            surveysService.getWorksValue(ids),
-            schedulesService.getWorksExecutionStatus(ids),
-          ]);
+          const values = await surveysService.getWorksValue(ids);
           setWorkValues(new Map(values.map((v) => [v.workId, v.value])));
-          setExecutedWorkIds(new Set(execStatus.filter((e) => e.hasExecution).map((e) => e.workId)));
         } catch {
           setWorkValues(new Map());
-          setExecutedWorkIds(new Set());
         }
       } else {
         setWorkValues(new Map());
-        setExecutedWorkIds(new Set());
       }
     } catch {
       toast.error('Error al cargar el resumen de planes');
@@ -392,17 +368,11 @@ export default function PlanAnualPage() {
       if (!belongsToSelectedPlan && !belongsToSelectedActa) return false;
       if (summaryZoneFilter !== 'all' && formatWorkZone(w) !== summaryZoneFilter) return false;
 
-      const hasExecution = executedWorkIds.has(w.workId);
-      if (summaryExecutionFilter === 'with' && !hasExecution) return false;
-      if (summaryExecutionFilter === 'without' && hasExecution) return false;
-
       return true;
     });
   }, [
     allWorks,
     companyIdToMunicipio,
-    executedWorkIds,
-    summaryExecutionFilter,
     summaryMunicipioFilter,
     summaryYearFilter,
     summaryZoneFilter,
@@ -498,47 +468,6 @@ export default function PlanAnualPage() {
       });
   }, [companyIdToMunicipio, filteredSummaryWorks, summaryYearFilter, workValues]);
 
-  // Ejecución por año del plan anual: obras con ejecución registrada en cronograma,
-  // separadas entre obras con N° de acta y obras individuales.
-  const executionSummaries = useMemo<ExecutionYearSummary[]>(() => {
-    const enrich = (w: Work) => ({
-      ...w,
-      municipio: companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
-      value: workValues.get(w.workId) ?? 0,
-    });
-
-    const summaries = new Map<number, { year: number; inActa: ExecutedWork[]; outActa: ExecutedWork[] }>();
-    const getSummary = (year: number) => {
-      if (!summaries.has(year)) {
-        summaries.set(year, { year, inActa: [], outActa: [] });
-      }
-      return summaries.get(year)!;
-    };
-
-    filteredSummaryWorks.forEach((w) => {
-      if (!w.annualPlan) return;
-      const summary = getSummary(w.annualPlan);
-      if (!executedWorkIds.has(w.workId)) return;
-      (w.recordNumber ? summary.inActa : summary.outActa).push(enrich(w));
-    });
-
-    const byMunicipio = (a: { municipio: string; name: string }, b: { municipio: string; name: string }) =>
-      a.municipio.localeCompare(b.municipio) || a.name.localeCompare(b.name);
-
-    const sumVal = (ws: { value: number }[]) => ws.reduce((s, w) => s + w.value, 0);
-    return Array.from(summaries.values())
-      .sort((a, b) => b.year - a.year)
-      .map((summary) => {
-        summary.inActa.sort(byMunicipio);
-        summary.outActa.sort(byMunicipio);
-        return {
-          ...summary,
-          inActaValue: sumVal(summary.inActa),
-          outActaValue: sumVal(summary.outActa),
-        };
-      });
-  }, [companyIdToMunicipio, filteredSummaryWorks, workValues, executedWorkIds]);
-
   const getWorkQuantitySummary = (work: Work) => workQuantities.get(work.workId) ?? emptyQuantitySummary;
 
   const sumWorkQuantitySummaries = (items: Work[]) =>
@@ -567,6 +496,16 @@ export default function PlanAnualPage() {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(workId) ? next.delete(workId) : next.add(workId);
+      return next;
+    });
+  };
+
+  // Selecciona/deselecciona un grupo de obras (p. ej. "seleccionar todos" en una sección).
+  const toggleSelectMany = (workIds: number[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = workIds.length > 0 && workIds.every((id) => next.has(id));
+      workIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
       return next;
     });
   };
@@ -611,6 +550,12 @@ export default function PlanAnualPage() {
         acta.works.forEach((work) => ids.add(work.workId));
       }
     });
+    // En el Resumen no hay departamento activo: incluir la selección directa sobre allWorks.
+    if (activeTab === '__resumen__') {
+      allWorks.forEach((work) => {
+        if (selectedIds.has(work.workId)) ids.add(work.workId);
+      });
+    }
     return Array.from(ids);
   };
 
@@ -853,37 +798,47 @@ export default function PlanAnualPage() {
                 {selectedWorkCount} obra(s) seleccionada(s) para el año{' '}
                 <strong>{selectedYear || '—'}</strong>
               </span>
-              {!isReadOnly && (
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={openSelectedIppDialog}
-                    disabled={ippLoading || ippSaving || selectedWorkCount === 0}
-                  >
-                    <Percent className="w-4 h-4 mr-2" />
-                    Cambiar IPP
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={handleAssignSelectedToPlan}
-                    disabled={saving || !selectedYear || selectedWorkCount === 0}
-                    className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
-                  >
-                    {saving ? (
-                      <>
-                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                        Asignando...
-                      </>
-                    ) : (
-                      <>
-                        <CalendarDays className="w-4 h-4 mr-2" />
-                        Asignar al Plan {selectedYear}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/dashboard/levantamiento-obras/plan-anual/resumen')}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Resumen del Plan Anual
+                </Button>
+                {!isReadOnly && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openSelectedIppDialog}
+                      disabled={ippLoading || ippSaving || selectedWorkCount === 0}
+                    >
+                      <Percent className="w-4 h-4 mr-2" />
+                      Cambiar IPP
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleAssignSelectedToPlan}
+                      disabled={saving || !selectedYear || selectedWorkCount === 0}
+                      className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
+                    >
+                      {saving ? (
+                        <>
+                          <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                          Asignando...
+                        </>
+                      ) : (
+                        <>
+                          <CalendarDays className="w-4 h-4 mr-2" />
+                          Asignar al Plan {selectedYear}
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1017,37 +972,18 @@ export default function PlanAnualPage() {
                     </Select>
                   </div>
 
-                  <div>
-                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Ejecución</label>
-                    <Select
-                      value={summaryExecutionFilter}
-                      onValueChange={(value) => setSummaryExecutionFilter(value as SummaryExecutionFilter)}
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Ejecución" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas las obras</SelectItem>
-                        <SelectItem value="with">Con ejecución</SelectItem>
-                        <SelectItem value="without">Sin ejecución</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
                   <Button
                     variant="outline"
                     className="h-10"
                     disabled={
                       summaryYearFilter === 'none' &&
                       summaryMunicipioFilter === 'none' &&
-                      summaryZoneFilter === 'all' &&
-                      summaryExecutionFilter === 'all'
+                      summaryZoneFilter === 'all'
                     }
                     onClick={() => {
                       setSummaryYearFilter('none');
                       setSummaryMunicipioFilter('none');
                       setSummaryZoneFilter('all');
-                      setSummaryExecutionFilter('all');
                     }}
                   >
                     <X className="w-4 h-4 mr-2" />
@@ -1126,8 +1062,24 @@ export default function PlanAnualPage() {
                                     </div>
                                     {individual.length > 0 ? (
                                       <div className="overflow-x-auto">
-                                        <div className="min-w-[880px]">
-                                          <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                        <div className="min-w-[920px]">
+                                          <div className="grid grid-cols-[28px_minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                            <span className="flex items-center justify-center">
+                                              {!isReadOnly && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => toggleSelectMany(individual.map((w) => w.workId))}
+                                                  className="flex items-center justify-center"
+                                                  title="Seleccionar todos"
+                                                >
+                                                  {individual.length > 0 && individual.every((w) => selectedIds.has(w.workId)) ? (
+                                                    <CheckSquare className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />
+                                                  ) : (
+                                                    <Square className="w-3.5 h-3.5 text-[hsl(var(--canalco-neutral-400))]" />
+                                                  )}
+                                                </button>
+                                              )}
+                                            </span>
                                             <span>Proyecto</span>
                                             <span className="text-center">Zona</span>
                                             <span className="text-center">Cant. luminarias</span>
@@ -1140,7 +1092,22 @@ export default function PlanAnualPage() {
                                           (() => {
                                             const quantities = getWorkQuantitySummary(w);
                                             return (
-                                              <li key={w.workId} className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 items-start px-2 py-1 text-sm">
+                                              <li key={w.workId} className={`grid grid-cols-[28px_minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 items-start px-2 py-1 text-sm rounded ${selectedIds.has(w.workId) ? 'bg-[hsl(var(--canalco-primary))]/5' : ''}`}>
+                                                <span className="flex items-center justify-center pt-0.5">
+                                                  {!isReadOnly && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => toggleSelect(w.workId)}
+                                                      className="flex items-center justify-center"
+                                                    >
+                                                      {selectedIds.has(w.workId) ? (
+                                                        <CheckSquare className="w-3.5 h-3.5 text-[hsl(var(--canalco-primary))]" />
+                                                      ) : (
+                                                        <Square className="w-3.5 h-3.5 text-[hsl(var(--canalco-neutral-400))]" />
+                                                      )}
+                                                    </button>
+                                                  )}
+                                                </span>
                                                 <span className="text-[hsl(var(--canalco-neutral-800))] leading-snug min-w-0 flex items-start gap-2">
                                                   <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
                                                   <span className="min-w-0">
@@ -1282,111 +1249,6 @@ export default function PlanAnualPage() {
                 </Table>
               </div>
 
-              {/* Ejecución por año: dentro vs fuera del acta */}
-              <div className="space-y-5">
-                {executionSummaries.map((summary) => {
-                  const hasExecution = summary.inActa.length > 0 || summary.outActa.length > 0;
-                  return (
-                    <div key={summary.year}>
-                      <h3 className="text-lg font-bold text-[hsl(var(--canalco-neutral-800))]">Ejecución {summary.year}</h3>
-                      <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mb-3">
-                        Obras con ejecución registrada en cronograma, separadas dentro y fuera del acta.
-                      </p>
-                      {!hasExecution ? (
-                        <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
-                          Ninguna obra del plan {summary.year} tiene ejecución registrada todavía.
-                        </div>
-                      ) : (
-                        <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))] border-0">
-                                <TableHead className="w-10" />
-                                <TableHead className="text-white font-semibold">Categoría ({summary.year})</TableHead>
-                                <TableHead className="text-white font-semibold text-center w-28">N° obras</TableHead>
-                                <TableHead className="text-white font-semibold text-right w-52">Valor total</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {[
-                                { key: `${summary.year}:in`, label: 'Ejecutadas dentro del acta', works: summary.inActa, value: summary.inActaValue, showActa: true },
-                                { key: `${summary.year}:out`, label: 'Ejecutadas fuera del acta', works: summary.outActa, value: summary.outActaValue, showActa: false },
-                              ].map((cat) => {
-                                const isOpen = expandedExec.has(cat.key);
-                                return (
-                                  <Fragment key={cat.key}>
-                                    <TableRow
-                                      className="cursor-pointer hover:bg-[hsl(var(--canalco-neutral-50))]"
-                                      onClick={() =>
-                                        setExpandedExec((prev) => {
-                                          const next = new Set(prev);
-                                          next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
-                                          return next;
-                                        })
-                                      }
-                                    >
-                                      <TableCell className="py-2.5">
-                                        <ChevronRight
-                                          className={`w-4 h-4 text-[hsl(var(--canalco-neutral-500))] transition-transform ${isOpen ? 'rotate-90' : ''}`}
-                                        />
-                                      </TableCell>
-                                      <TableCell className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{cat.label}</TableCell>
-                                      <TableCell className="text-center font-medium text-[hsl(var(--canalco-neutral-800))]">{cat.works.length}</TableCell>
-                                      <TableCell className="text-right font-semibold text-[hsl(var(--canalco-neutral-800))]">
-                                        {cat.value > 0 ? fmtCOP(cat.value) : '—'}
-                                      </TableCell>
-                                    </TableRow>
-                                    {isOpen && (
-                                      <TableRow className="hover:bg-transparent">
-                                        <TableCell className="p-0" />
-                                        <TableCell colSpan={3} className="bg-[hsl(var(--canalco-neutral-50))] py-3 pr-4">
-                                          {cat.works.length === 0 ? (
-                                            <p className="text-sm text-[hsl(var(--canalco-neutral-500))]">Sin obras en esta categoría.</p>
-                                          ) : (
-                                            <ul className="space-y-1">
-                                              {cat.works.map((w) => (
-                                                <li key={w.workId} className="flex items-start gap-2 text-sm">
-                                                  <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
-                                                  <span className="flex-1 leading-snug text-[hsl(var(--canalco-neutral-800))]">
-                                                    <span className="text-xs text-[hsl(var(--canalco-neutral-400))] mr-1.5">{w.municipio}</span>
-                                                    {w.name}
-                                                    {cat.showActa && w.recordNumber && (
-                                                      <span className="ml-1.5 text-xs text-[hsl(var(--canalco-primary))] font-mono">[Acta {w.recordNumber}]</span>
-                                                    )}
-                                                  </span>
-                                                  <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] whitespace-nowrap flex-shrink-0 pl-2">
-                                                    {w.value > 0 ? fmtCOP(w.value) : '—'}
-                                                  </span>
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          )}
-                                        </TableCell>
-                                      </TableRow>
-                                    )}
-                                  </Fragment>
-                                );
-                              })}
-
-                              {/* Total */}
-                              <TableRow className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-100))] font-bold">
-                                <TableCell className="p-0" />
-                                <TableCell className="text-[hsl(var(--canalco-neutral-800))]">Total ejecutadas</TableCell>
-                                <TableCell className="text-center text-[hsl(var(--canalco-neutral-800))]">
-                                  {summary.inActa.length + summary.outActa.length}
-                                </TableCell>
-                                <TableCell className="text-right text-[hsl(var(--canalco-neutral-800))]">
-                                  {fmtCOP(summary.inActaValue + summary.outActaValue)}
-                                </TableCell>
-                              </TableRow>
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
               </>
               )}
               </div>
