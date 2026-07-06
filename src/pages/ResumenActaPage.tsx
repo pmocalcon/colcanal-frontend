@@ -236,6 +236,7 @@ export default function ResumenActaPage() {
   const [consideraciones, setConsideraciones] = useState(() => getActaConfig().consideraciones);
   const [partesIntro, setPartesIntro] = useState<string | undefined>(() => getActaConfig().partesIntro);
   const [partesIntroTemplate, setPartesIntroTemplate] = useState<string | undefined>(() => getActaConfig().partesIntroTemplate);
+  const [preAcuerdanText, setPreAcuerdanText] = useState<string | undefined>(() => getActaConfig().preAcuerdanText);
   const [blocks, setBlocks] = useState<Block[]>(() =>
     getActaConfig().clausulas.map((c, i) => ({
       kind: 'clausula' as const,
@@ -248,8 +249,18 @@ export default function ResumenActaPage() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>(() => getActaConfig().logoUrl);
   const [hideMunicipioBanner, setHideMunicipioBanner] = useState<boolean>(() => getActaConfig().hideMunicipioBanner ?? false);
+  const [showGarantiaRceExtraParagraphs, setShowGarantiaRceExtraParagraphs] = useState<boolean>(
+    () => getActaConfig().showGarantiaRceExtraParagraphs ?? true
+  );
+  const [garantiaCumplimientoTitle, setGarantiaCumplimientoTitle] = useState<string | undefined>(
+    () => getActaConfig().garantiaCumplimientoTitle
+  );
+  const [garantiaRceTitle, setGarantiaRceTitle] = useState<string>(
+    () => getActaConfig().garantiaRceTitle ?? 'I. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:'
+  );
+  const [tituloLineas, setTituloLineas] = useState<string[] | undefined>(() => getActaConfig().tituloLineas);
   const [encabezadoTabla, setEncabezadoTabla] = useState<EncabezadoTablaRow[] | undefined>(() => getActaConfig().encabezadoTabla);
-  const [consideracionNumeracion, setConsideracionNumeracion] = useState<'roman' | 'decimalDash'>(
+  const [consideracionNumeracion, setConsideracionNumeracion] = useState<'roman' | 'decimalDash' | 'alpha'>(
     () => getActaConfig().consideracionNumeracion ?? 'roman'
   );
   const updateEncabezadoRow = (index: number, field: keyof EncabezadoTablaRow, value: string) => {
@@ -262,9 +273,12 @@ export default function ResumenActaPage() {
       1,
       value.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerLine)), 0)
     );
-  const getConsideracionPrefix = (index: number) =>
-    consideracionNumeracion === 'decimalDash' ? `${index + 1}.-` : `${ROMAN_NUM[index]}.`;
-  const boldIntroFields = new Set(['munNombre', 'municipio', 'conNombre', 'conEmpresa']);
+  const getConsideracionPrefix = (index: number) => {
+    if (consideracionNumeracion === 'decimalDash') return `${index + 1}.-`;
+    if (consideracionNumeracion === 'alpha') return `${String.fromCharCode(65 + index)}.`;
+    return `${ROMAN_NUM[index]}.`;
+  };
+  const boldIntroFields = new Set(['munNombre', 'municipio', 'conNombre', 'conEmpresa', 'intNombre', 'intEmpresa']);
 
   const getCurrentCompanyId = () =>
     actaCompanyId ?? works[0]?.companyId ?? (works[0] as any)?.company?.companyId ?? null;
@@ -283,8 +297,10 @@ export default function ResumenActaPage() {
     ippCurrent,
     partesIntro,
     partesIntroTemplate,
+    preAcuerdanText,
     logoUrl,
     hideMunicipioBanner,
+    tituloLineas,
     encabezadoTabla,
     consideracionNumeracion,
   });
@@ -307,10 +323,16 @@ export default function ResumenActaPage() {
     if (typeof draft.ippCurrent === 'string') setIppCurrent(draft.ippCurrent);
     if ('partesIntro' in draft) setPartesIntro(draft.partesIntro);
     if ('partesIntroTemplate' in draft) setPartesIntroTemplate(draft.partesIntroTemplate);
+    if ('preAcuerdanText' in draft) setPreAcuerdanText(draft.preAcuerdanText);
     if ('logoUrl' in draft) setLogoUrl(draft.logoUrl);
     if (typeof draft.hideMunicipioBanner === 'boolean') setHideMunicipioBanner(draft.hideMunicipioBanner);
+    if (Array.isArray(draft.tituloLineas)) setTituloLineas(draft.tituloLineas);
     if (Array.isArray(draft.encabezadoTabla)) setEncabezadoTabla(draft.encabezadoTabla);
-    if (draft.consideracionNumeracion === 'roman' || draft.consideracionNumeracion === 'decimalDash') {
+    if (
+      draft.consideracionNumeracion === 'roman' ||
+      draft.consideracionNumeracion === 'decimalDash' ||
+      draft.consideracionNumeracion === 'alpha'
+    ) {
       setConsideracionNumeracion(draft.consideracionNumeracion);
     }
     return true;
@@ -879,8 +901,9 @@ export default function ResumenActaPage() {
       setConsideraciones(cfg.consideraciones);
       setPartesIntro(cfg.partesIntro);
       setPartesIntroTemplate(cfg.partesIntroTemplate);
+      setPreAcuerdanText(cfg.preAcuerdanText);
       const ts = Date.now();
-      const clausulaBlocks: Block[] = cfg.clausulas.map((c, i) => ({
+      const clausulaBlocks: Extract<Block, { kind: 'clausula' }>[] = cfg.clausulas.map((c, i) => ({
         kind: 'clausula',
         id: `c-${i}-${ts}`,
         title: c.title,
@@ -891,20 +914,25 @@ export default function ResumenActaPage() {
         ...worksInput.map((w) => ({ kind: 'table' as const, id: `tbl-work-${w.workId}`, tableId: `work-${w.workId}` })),
         { kind: 'table', id: 'tbl-detail', tableId: 'detail' },
       ];
-      const cuartoIndex = clausulaBlocks.findIndex(
-        (block) => block.title.toUpperCase().includes('CUARTO')
+      const insertTablesAfterTitle = (cfg.insertTablesAfterClauseTitle ?? 'CUARTO').toUpperCase();
+      const tableInsertIndex = clausulaBlocks.findIndex(
+        (block) => block.title.toUpperCase().includes(insertTablesAfterTitle)
       );
       const orderedBlocks =
-        cuartoIndex >= 0
+        tableInsertIndex >= 0
           ? [
-              ...clausulaBlocks.slice(0, cuartoIndex + 1),
+              ...clausulaBlocks.slice(0, tableInsertIndex + 1),
               ...tableBlocks,
-              ...clausulaBlocks.slice(cuartoIndex + 1),
+              ...clausulaBlocks.slice(tableInsertIndex + 1),
             ]
           : [...clausulaBlocks, ...tableBlocks];
       setBlocks(orderedBlocks);
       setLogoUrl(cfg.logoUrl);
       setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
+      setShowGarantiaRceExtraParagraphs(cfg.showGarantiaRceExtraParagraphs ?? true);
+      setGarantiaCumplimientoTitle(cfg.garantiaCumplimientoTitle);
+      setGarantiaRceTitle(cfg.garantiaRceTitle ?? 'I. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:');
+      setTituloLineas(cfg.tituloLineas);
       setEncabezadoTabla(cfg.encabezadoTabla);
       setConsideracionNumeracion(cfg.consideracionNumeracion ?? 'roman');
       const restoredDraft = await applySavedDraft(companyId);
@@ -1252,24 +1280,34 @@ export default function ResumenActaPage() {
                 )}
 
                 {/* Título del documento */}
-                <div className="text-center mb-6 space-y-0.5 leading-snug">
-                  <p className="font-bold uppercase">
-                    SISTEMA DE ALUMBRADO PÚBLICO DEL MUNICIPIO DE {docFields.municipio}
-                  </p>
-                  <p className="font-bold uppercase">
-                    CONTRATO DE CONCESIÓN No{' '}
-                    <InlineInput value={docFields.contrato} onChange={setDF('contrato')} bold />
-                  </p>
-                  <p className="font-bold uppercase">
-                    ACTA DE OBRA No. <strong>{recordNumber}</strong>
-                  </p>
-                  <p className="font-bold uppercase">
-                    <InlineInput value={docFields.tipoActa} onChange={setDF('tipoActa')} bold />
-                  </p>
-                  <p className="font-bold uppercase">
-                    (<InlineInput value={docFields.actaFecha} onChange={setDF('actaFecha')} bold placeholder="DD DE MES DE YYYY" />)
-                  </p>
-                </div>
+                {tituloLineas && tituloLineas.length > 0 ? (
+                  <div className="text-center mb-6 space-y-0.5 leading-snug">
+                    {tituloLineas.map((line, index) => (
+                      <p key={`title-line-${index}`} className="font-bold uppercase">
+                        {renderPartesIntroTemplate(line)}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center mb-6 space-y-0.5 leading-snug">
+                    <p className="font-bold uppercase">
+                      SISTEMA DE ALUMBRADO PÚBLICO DEL MUNICIPIO DE {docFields.municipio}
+                    </p>
+                    <p className="font-bold uppercase">
+                      CONTRATO DE CONCESIÓN No{' '}
+                      <InlineInput value={docFields.contrato} onChange={setDF('contrato')} bold />
+                    </p>
+                    <p className="font-bold uppercase">
+                      ACTA DE OBRA No. <strong>{recordNumber}</strong>
+                    </p>
+                    <p className="font-bold uppercase">
+                      <InlineInput value={docFields.tipoActa} onChange={setDF('tipoActa')} bold />
+                    </p>
+                    <p className="font-bold uppercase">
+                      (<InlineInput value={docFields.actaFecha} onChange={setDF('actaFecha')} bold placeholder="DD DE MES DE YYYY" />)
+                    </p>
+                  </div>
+                )}
 
                 {/* Tabla de encabezado (opcional, ej. Jericó modernización) */}
                 {encabezadoTabla && encabezadoTabla.length > 0 && (
@@ -1399,6 +1437,14 @@ export default function ResumenActaPage() {
                   >
                     + Agregar consideración
                   </button>
+                )}
+                {preAcuerdanText !== undefined && (
+                  <AutoResizeTextarea
+                    value={preAcuerdanText}
+                    onChange={(e) => setPreAcuerdanText(e.target.value)}
+                    className="w-full bg-transparent border-0 resize-none focus:outline-none focus:bg-blue-50/60 text-justify leading-[1.7] mt-5 mb-5"
+                    style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                  />
                 )}
 
                 {/* ACUERDAN */}
@@ -1647,14 +1693,16 @@ export default function ResumenActaPage() {
                         )}
                         <div className="flex-1">
                           <div data-word-clause="true" className="text-justify">
-                            <div data-word-clause-title>
-                              <AutoResizeTextarea
-                                value={block.title}
-                                onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, title: e.target.value } : b))}
-                                className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
-                                style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
-                              />
-                            </div>
+                            {block.title.trim() && (
+                              <div data-word-clause-title>
+                                <AutoResizeTextarea
+                                  value={block.title}
+                                  onChange={(e) => setBlocks((prev) => prev.map((b) => b.id === block.id && b.kind === 'clausula' ? { ...b, title: e.target.value } : b))}
+                                  className="w-full bg-transparent border-0 border-b border-dashed border-blue-200 resize-none focus:outline-none focus:border-blue-400 font-bold leading-[1.7] print:border-none"
+                                  style={{ fontFamily: 'inherit', fontSize: 'inherit' }}
+                                />
+                              </div>
+                            )}
                             <div data-word-clause-content>
                               <AutoResizeTextarea
                                 value={block.content}
@@ -1677,7 +1725,9 @@ export default function ResumenActaPage() {
                       {/* Tabla de garantías — se muestra tras la cláusula que tenga GARANTÍAS en el título */}
                       {block.title.toUpperCase().includes('GARANTÍAS') && (
                         <div className="mb-6 ml-2 text-[11pt]">
-                          <p className="font-semibold mb-2" contentEditable={canEdit} suppressContentEditableWarning>I. GARANTÍA DE CUMPLIMIENTO DEL CONTRATO Y DEVOLUCIÓN DEL PAGO ANTICIPADO:</p>
+                          {garantiaCumplimientoTitle && (
+                            <p className="font-semibold mb-2" contentEditable={canEdit} suppressContentEditableWarning>{garantiaCumplimientoTitle}</p>
+                          )}
                           <table className="w-full border-collapse text-[10.5pt]" style={{ borderColor: '#555' }}>
                             <tbody>
                               <tr>
@@ -1692,13 +1742,13 @@ export default function ResumenActaPage() {
                               </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>CUMPLIMIENTO DEL CONTRATO.</td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>, contados a</EditableText></td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del acta de obra No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de autorización No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del Acta de autorización No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
                               </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>PÓLIZA PARA GARANTIZAR EL BUEN MANEJO Y CORRECTA INVERSIÓN DEL ANTICIPO.</td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de obra </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre esté cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>.</EditableText></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de autorización </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre está cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
                               </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
@@ -1716,10 +1766,14 @@ export default function ResumenActaPage() {
                               </tr>
                             </tbody>
                           </table>
-                          <p className="font-semibold mt-5 mb-1" contentEditable={canEdit} suppressContentEditableWarning>II. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:</p>
+                          <p className="font-semibold mt-5 mb-1" contentEditable={canEdit} suppressContentEditableWarning>{garantiaRceTitle}</p>
                           <p className="mb-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá contratar un seguro que ampare la responsabilidad civil extracontractual de la empresa con las siguientes características:</p>
                           <table className="w-full border-collapse text-[10.5pt]">
                             <tbody>
+                              <tr>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-600 text-white text-center w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Característica</td>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-600 text-white text-center align-top" contentEditable={canEdit} suppressContentEditableWarning>Condición</td>
+                              </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 w-[28%] align-top" contentEditable={canEdit} suppressContentEditableWarning>Clase</td>
                                 <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>Contrato de seguro contenido en una póliza</td>
@@ -1763,8 +1817,12 @@ export default function ResumenActaPage() {
                           </table>
                           <p className="mt-3 text-justify" contentEditable={canEdit} suppressContentEditableWarning>En esta póliza solamente se podrán pactar deducibles con un tope máximo del diez por ciento (10%) del valor de cada pérdida sin que en ningún caso puedan ser superiores a dos mil (2.000) SMMLV.</p>
                           <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Este seguro deberá constituirse y presentarse para aprobación de la empresa, dentro del mismo término establecido para la garantía única de cumplimiento.</p>
-                          <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Las franquicias, coaseguros obligatorios y demás formas de estipulación que conlleven asunción de parte de la pérdida por la empresa asegurada no serán admisibles.</p>
-                          <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá anexar el comprobante de pago de la prima del seguro de responsabilidad civil extracontractual.</p>
+                          {showGarantiaRceExtraParagraphs && (
+                            <>
+                              <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>Las franquicias, coaseguros obligatorios y demás formas de estipulación que conlleven asunción de parte de la pérdida por la empresa asegurada no serán admisibles.</p>
+                              <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá anexar el comprobante de pago de la prima del seguro de responsabilidad civil extracontractual.</p>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1786,7 +1844,7 @@ export default function ResumenActaPage() {
                       <div>
                         <p className="font-bold uppercase">{docFields.munNombre}</p>
                         <p>C.C. {docFields.munCc}</p>
-                        <p>{docFields.munCargo}</p>
+                        <p>{docFields.munCargoFirma || docFields.munCargo}</p>
                         <p>{docFields.munEntidad || `Municipio de ${docFields.municipio}`}</p>
                       </div>
                       <div>
@@ -1799,8 +1857,8 @@ export default function ResumenActaPage() {
                       <div>
                         <p className="font-bold uppercase">{docFields.conNombre}</p>
                         <p>C.C. {docFields.conCc}</p>
-                        <p>Representante Legal Suplente</p>
-                        <p>{docFields.conEmpresa}</p>
+                        <p>{docFields.conCargoFirma || 'Representante Legal Suplente'}</p>
+                        <p>{docFields.conEmpresaFirma || docFields.conEmpresa}</p>
                       </div>
                       <div>
                         <p className="font-bold uppercase">{docFields.intNombre}</p>
@@ -1820,7 +1878,7 @@ export default function ResumenActaPage() {
                           <div className="border-t border-black pt-1">
                             <p className="font-bold uppercase">{docFields.munNombre}</p>
                             <p>C.C. {docFields.munCc}</p>
-                            <p>{docFields.munCargo}</p>
+                            <p>{docFields.munCargoFirma || docFields.munCargo}</p>
                             <p>Municipio de {docFields.municipio}</p>
                           </div>
                         </div>
@@ -1830,8 +1888,8 @@ export default function ResumenActaPage() {
                           <div className="border-t border-black pt-1">
                             <p className="font-bold uppercase">{docFields.conNombre}</p>
                             <p>C.C. {docFields.conCc}</p>
-                            <p>Representante Legal</p>
-                            <p>{docFields.conEmpresa}</p>
+                            <p>{docFields.conCargoFirma || 'Representante Legal'}</p>
+                            <p>{docFields.conEmpresaFirma || docFields.conEmpresa}</p>
                           </div>
                         </div>
                       </div>

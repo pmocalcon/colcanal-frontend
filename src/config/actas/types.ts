@@ -13,12 +13,15 @@ export interface ActaDocFields {
   munCc: string;
   munCcCiudad: string;
   munCargo: string;
+  munCargoFirma?: string;
   munPosesionFecha: string;
   munEntidad?: string;
   conNombre: string;
   conCc: string;
   conCcCiudad: string;
+  conCargoFirma?: string;
   conEmpresa: string;
+  conEmpresaFirma?: string;
   conNit: string;
   munDireccion?: string;
   conDireccion?: string;
@@ -68,11 +71,17 @@ export interface ActaConfig {
   docFields: ActaDocFields;
   consideraciones: string[];
   clausulas: Clausula[];
+  tituloLineas?: string[];
   encabezadoTabla?: EncabezadoTablaRow[];
   partesIntro?: string;
   partesIntroTemplate?: string;
-  consideracionNumeracion?: 'roman' | 'decimalDash';
+  preAcuerdanText?: string;
+  insertTablesAfterClauseTitle?: string;
+  consideracionNumeracion?: 'roman' | 'decimalDash' | 'alpha';
   logoUrl?: string;
   hideMunicipioBanner?: boolean;
+  showGarantiaRceExtraParagraphs?: boolean;
+  garantiaCumplimientoTitle?: string;
+  garantiaRceTitle?: string;
   printConfig?: ActaPrintConfig;
 }

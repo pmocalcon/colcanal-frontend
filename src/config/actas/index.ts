@@ -6,6 +6,7 @@ import { quimbayaConfig } from './quimbaya';
 import { jericoConfig } from './jerico';
 import { ciudadBolivarConfig } from './ciudadbolivar';
 import { pueblorricoConfig } from './pueblorrico';
+import { tarsoConfig } from './tarso';
 
 // Clave compuesta "companyId:projectId" — usar cuando un companyId se comparte entre proyectos.
 // Clave simple "companyId:" — para UTAPs con companyId único por municipio.
@@ -13,6 +14,7 @@ const registry = new Map<string, ActaConfig>([
   ['1:2',  ciudadBolivarConfig], // Canales & Contactos, proyecto Ciudad Bolívar
   ['14:',  jericoConfig],        // Canales & Contactos, proyecto Jericó
   ['1:4',  pueblorricoConfig],   // Canales & Contactos, proyecto Pueblorrico
+  ['1:5',  tarsoConfig],          // Canales & Contactos, proyecto Tarso
   ['4:',   guacariConfig],
   ['3:',   circasiaConfig],
   ['2:',   cerritoConfig],
