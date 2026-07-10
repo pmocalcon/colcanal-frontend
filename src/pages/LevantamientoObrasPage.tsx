@@ -85,14 +85,6 @@ export default function LevantamientoObrasPage() {
       description: 'Asignar obras al plan anual por año',
     },
     {
-      gestionId: 405,
-      nombre: 'UCAPs',
-      slug: 'ucaps',
-      icono: 'ListOrdered',
-      hasAccess: getSubModuleAccess('ucaps'),
-      description: 'Ver y crear UCAPs por municipio',
-    },
-    {
       gestionId: 410,
       nombre: 'Cronograma',
       slug: 'cronograma',
@@ -241,12 +233,6 @@ export default function LevantamientoObrasPage() {
               <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
               <span>
                 <strong>Plan Anual:</strong> Asigna obras al plan anual por año y departamento.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-2 h-2 rounded-full bg-[hsl(var(--canalco-primary))] mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>UCAPs:</strong> Consulta y crea Unidades de Capacidad por municipio y tipo de red.
               </span>
             </li>
             <li className="flex items-start gap-2">

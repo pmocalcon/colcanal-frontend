@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { surveysService, type Work } from '@/services/surveys.service';
@@ -32,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent, FileText } from 'lucide-react';
+import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent, FileText, MapPin, Building2, Map as MapIcon } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -93,7 +93,11 @@ export default function PlanAnualPage() {
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
 
   const [activeTab, setActiveTab] = useState('');
-  const [selectedMunicipioId, setSelectedMunicipioId] = useState<number | null>(null);
+  // El municipio seleccionado puede ser una empresa (UT) o un proyecto
+  // (municipios de Canales & Contactos, p.ej. en Antioquia).
+  const [selectedMunicipio, setSelectedMunicipio] = useState<
+    { kind: 'company' | 'project'; id: number } | null
+  >(null);
   const [works, setWorks] = useState<Work[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +107,7 @@ export default function PlanAnualPage() {
   const [selectedActas, setSelectedActas] = useState<Set<string>>(new Set());
   const [expandedSummary, setExpandedSummary] = useState<Set<string>>(new Set());
   const [summaryYearFilter, setSummaryYearFilter] = useState<string>('none');
+  const [summaryDeptFilter, setSummaryDeptFilter] = useState<string>('all');
   const [summaryMunicipioFilter, setSummaryMunicipioFilter] = useState<string>('none');
   const [summaryZoneFilter, setSummaryZoneFilter] = useState<string>('all');
   const [ippDialog, setIppDialog] = useState<IppDialogTarget | null>(null);
@@ -121,12 +126,66 @@ export default function PlanAnualPage() {
     return map;
   }, [departments]);
 
+  // projectId -> nombre del municipio (proyectos de Canales & Contactos)
+  const projectIdToMunicipio = useMemo(() => {
+    const map = new Map<number, string>();
+    (access?.projects || []).forEach((p) => {
+      if (p.name.trim().toLowerCase() !== 'oficina principal') map.set(p.projectId, p.name);
+    });
+    return map;
+  }, [access]);
+
+  // companyId -> departamento
+  const companyIdToDept = useMemo(() => {
+    const map = new Map<number, string>();
+    departments.forEach((dept) => dept.companyIds.forEach((id) => map.set(id, dept.name)));
+    return map;
+  }, [departments]);
+
+  // Municipio de una obra: el proyecto (para Canales & Contactos) o la empresa.
+  const getWorkMunicipio = useCallback(
+    (w: Work): string => {
+      if (w.projectId && projectIdToMunicipio.has(w.projectId)) {
+        return projectIdToMunicipio.get(w.projectId)!;
+      }
+      return (
+        companyIdToMunicipio.get(w.companyId) ??
+        (w.company ? getMunicipioName(w.company.name) : 'Sin municipio')
+      );
+    },
+    [companyIdToMunicipio, projectIdToMunicipio],
+  );
+
   const activeDept = useMemo(
     () => departments.find((d) => d.name === activeTab),
     [activeTab, departments],
   );
 
   const activeCompanyIds = useMemo(() => activeDept?.companyIds || [], [activeDept]);
+
+  // Municipios seleccionables del departamento activo.
+  // Para departamentos operados por Canales & Contactos (una sola empresa con
+  // varios proyectos, p.ej. Antioquia) los municipios son sus PROYECTOS; para
+  // el resto son las empresas UT.
+  const municipioOptions = useMemo(() => {
+    if (!activeDept) return [] as Array<{ kind: 'company' | 'project'; id: number; name: string }>;
+    const canales = activeDept.companies.find((c) => c.name === 'Canales & Contactos');
+    if (canales) {
+      return (access?.projects || [])
+        .filter(
+          (p) =>
+            p.companyId === canales.companyId &&
+            p.name.trim().toLowerCase() !== 'oficina principal',
+        )
+        .map((p) => ({ kind: 'project' as const, id: p.projectId, name: p.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return activeDept.companies.map((c) => ({
+      kind: 'company' as const,
+      id: c.companyId,
+      name: getMunicipioName(c.name),
+    }));
+  }, [activeDept, access]);
 
   const allCompanyIds = useMemo(
     () => departments.flatMap((d) => d.companyIds),
@@ -215,8 +274,12 @@ export default function PlanAnualPage() {
       result = result.filter((w) => !w.annualPlan || w.annualPlan === year);
     }
 
-    if (selectedMunicipioId !== null) {
-      result = result.filter((w) => w.companyId === selectedMunicipioId);
+    if (selectedMunicipio) {
+      result = result.filter((w) =>
+        selectedMunicipio.kind === 'company'
+          ? w.companyId === selectedMunicipio.id
+          : w.projectId === selectedMunicipio.id,
+      );
     }
 
     if (!searchTerm.trim()) return result;
@@ -227,7 +290,7 @@ export default function PlanAnualPage() {
         w.workCode?.toLowerCase().includes(term) ||
         w.address?.toLowerCase().includes(term),
     );
-  }, [works, searchTerm, selectedYear, selectedMunicipioId]);
+  }, [works, searchTerm, selectedYear, selectedMunicipio]);
 
   const groupedActas = useMemo(() => {
     const year = parseInt(selectedYear, 10);
@@ -258,14 +321,20 @@ export default function PlanAnualPage() {
       result = result.filter((a) => a.works.some((w) => !w.annualPlan || w.annualPlan === year));
     }
 
-    if (selectedMunicipioId !== null) {
-      result = result.filter((a) => a.works.some((w) => w.companyId === selectedMunicipioId));
+    if (selectedMunicipio) {
+      result = result.filter((a) =>
+        a.works.some((w) =>
+          selectedMunicipio.kind === 'company'
+            ? w.companyId === selectedMunicipio.id
+            : w.projectId === selectedMunicipio.id,
+        ),
+      );
     }
 
     if (!searchTerm.trim()) return result;
     const term = searchTerm.toLowerCase();
     return result.filter((a) => a.recordNumber.toLowerCase().includes(term));
-  }, [works, selectedYear, searchTerm, selectedMunicipioId]);
+  }, [works, selectedYear, searchTerm, selectedMunicipio]);
 
   const summaryYears = useMemo(
     () =>
@@ -285,22 +354,28 @@ export default function PlanAnualPage() {
         new Set(
           allWorks
             .filter((w) => summaryYearFilter !== 'none' && w.annualPlan === Number(summaryYearFilter))
-            .map((w) =>
-              companyIdToMunicipio.get(w.companyId) ??
-              (w.company ? getMunicipioName(w.company.name) : 'Sin municipio'),
-            ),
+            .filter((w) => summaryDeptFilter === 'all' || companyIdToDept.get(w.companyId) === summaryDeptFilter)
+            .map(getWorkMunicipio),
         ),
       ).sort((a, b) => a.localeCompare(b)),
-    [allWorks, companyIdToMunicipio, summaryYearFilter],
+    [allWorks, getWorkMunicipio, companyIdToDept, summaryDeptFilter, summaryYearFilter],
   );
+
+  const summaryDepartments = useMemo(() => {
+    if (summaryYearFilter === 'none') return [];
+    const set = new Set<string>();
+    allWorks
+      .filter((w) => w.annualPlan === Number(summaryYearFilter))
+      .forEach((w) => {
+        const d = companyIdToDept.get(w.companyId);
+        if (d) set.add(d);
+      });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allWorks, companyIdToDept, summaryYearFilter]);
 
   const summaryZones = useMemo(() => {
     if (summaryYearFilter === 'none' || summaryMunicipioFilter === 'none') return [];
     const yearFilter = Number(summaryYearFilter);
-
-    const getWorkMunicipio = (w: Work) =>
-      companyIdToMunicipio.get(w.companyId) ??
-      (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
 
     const worksInSelectedPlan = allWorks.filter(
       (w) => w.annualPlan === yearFilter && getWorkMunicipio(w) === summaryMunicipioFilter,
@@ -325,7 +400,7 @@ export default function PlanAnualPage() {
           .map(formatWorkZone),
       ),
     ).sort((a, b) => a.localeCompare(b));
-  }, [allWorks, companyIdToMunicipio, summaryMunicipioFilter, summaryYearFilter]);
+  }, [allWorks, getWorkMunicipio, summaryMunicipioFilter, summaryYearFilter]);
 
   useEffect(() => {
     if (summaryMunicipioFilter !== 'none' && !summaryMunicipios.includes(summaryMunicipioFilter)) {
@@ -342,10 +417,6 @@ export default function PlanAnualPage() {
   const filteredSummaryWorks = useMemo(() => {
     if (summaryYearFilter === 'none' || summaryMunicipioFilter === 'none') return [];
     const yearFilter = Number(summaryYearFilter);
-
-    const getWorkMunicipio = (w: Work) =>
-      companyIdToMunicipio.get(w.companyId) ??
-      (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
 
     const worksInSelectedPlan = allWorks.filter(
       (w) => w.annualPlan === yearFilter && getWorkMunicipio(w) === summaryMunicipioFilter,
@@ -372,7 +443,7 @@ export default function PlanAnualPage() {
     });
   }, [
     allWorks,
-    companyIdToMunicipio,
+    getWorkMunicipio,
     summaryMunicipioFilter,
     summaryYearFilter,
     summaryZoneFilter,
@@ -439,7 +510,7 @@ export default function PlanAnualPage() {
     const map = new Map<string, { year: number; municipio: string; individual: Work[]; actas: Map<string, Work[]> }>();
 
     filteredSummaryWorks.forEach((w) => {
-      const municipio = companyIdToMunicipio.get(w.companyId) ?? (w.company ? getMunicipioName(w.company.name) : 'Sin municipio');
+      const municipio = getWorkMunicipio(w);
       const key = `${selectedSummaryYear}__${municipio}`;
       if (!map.has(key)) map.set(key, { year: selectedSummaryYear, municipio, individual: [], actas: new Map() });
       const entry = map.get(key)!;
@@ -466,7 +537,7 @@ export default function PlanAnualPage() {
           totalValue,
         };
       });
-  }, [companyIdToMunicipio, filteredSummaryWorks, summaryYearFilter, workValues]);
+  }, [getWorkMunicipio, filteredSummaryWorks, summaryYearFilter, workValues]);
 
   const getWorkQuantitySummary = (work: Work) => workQuantities.get(work.workId) ?? emptyQuantitySummary;
 
@@ -537,7 +608,7 @@ export default function PlanAnualPage() {
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     setSearchTerm('');
-    setSelectedMunicipioId(null);
+    setSelectedMunicipio(null);
   };
 
   const getSelectedWorkIds = () => {
@@ -767,90 +838,62 @@ export default function PlanAnualPage() {
       </header>
 
       {/* Main */}
-      <main className="flex-grow max-w-7xl mx-auto px-6 py-8 w-full">
-        {/* Year selector + save */}
-        <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] flex items-center gap-2">
-                <CalendarDays className="w-4 h-4" />
-                Año del Plan Anual
-              </Label>
-              {isReadOnly ? (
-                <span className="w-32 text-center text-lg font-bold text-[hsl(var(--canalco-neutral-900))] py-2">
-                  {selectedYear || '—'}
-                </span>
-              ) : (
-                <Input
-                  type="number"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="w-32 text-center text-lg font-bold"
-                  min={2000}
-                  max={2100}
-                  placeholder="2026"
-                />
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2 sm:ml-auto sm:items-end">
-              <span className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                {selectedWorkCount} obra(s) seleccionada(s) para el año{' '}
-                <strong>{selectedYear || '—'}</strong>
-              </span>
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate('/dashboard/levantamiento-obras/plan-anual/resumen')}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Resumen del Plan Anual
-                </Button>
-                {!isReadOnly && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={openSelectedIppDialog}
-                      disabled={ippLoading || ippSaving || selectedWorkCount === 0}
-                    >
-                      <Percent className="w-4 h-4 mr-2" />
-                      Cambiar IPP
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={handleAssignSelectedToPlan}
-                      disabled={saving || !selectedYear || selectedWorkCount === 0}
-                      className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
-                    >
-                      {saving ? (
-                        <>
-                          <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                          Asignando...
-                        </>
-                      ) : (
-                        <>
-                          <CalendarDays className="w-4 h-4 mr-2" />
-                          Asignar al Plan {selectedYear}
-                        </>
-                      )}
-                    </Button>
-                  </>
+      <main className={`flex-grow max-w-7xl mx-auto px-6 py-8 w-full ${!isReadOnly && selectedWorkCount > 0 ? 'pb-28' : ''}`}>
+        {/* Panel: año + acceso al resumen */}
+        <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-5 mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-11 h-11 rounded-lg bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] flex-shrink-0">
+                <CalendarDays className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">
+                  Año del Plan Anual
+                </Label>
+                {isReadOnly ? (
+                  <span className="text-2xl font-bold leading-none text-[hsl(var(--canalco-neutral-900))]">
+                    {selectedYear || '—'}
+                  </span>
+                ) : (
+                  <Input
+                    type="number"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="w-28 h-9 text-lg font-bold"
+                    min={2000}
+                    max={2100}
+                    placeholder="2026"
+                  />
                 )}
               </div>
+            </div>
+
+            <div className="sm:ml-auto flex items-center gap-3">
+              {selectedWorkCount > 0 && (
+                <span className="hidden sm:inline-flex items-center rounded-full bg-[hsl(var(--canalco-primary))]/10 px-3 py-1 text-xs font-semibold text-[hsl(var(--canalco-primary))]">
+                  {selectedWorkCount} seleccionada{selectedWorkCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/dashboard/levantamiento-obras/plan-anual/resumen')}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Resumen del Plan Anual
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Works table by department */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <div className="flex flex-wrap items-end gap-4 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-[hsl(var(--canalco-neutral-200))] p-4 mb-4 flex flex-wrap items-end gap-4">
             <div className="w-56">
-              <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+              <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
               <Select value={activeTab} onValueChange={handleTabChange}>
                 <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Seleccionar" />
+                  <span className="flex items-center gap-2 min-w-0"><Building2 className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Seleccionar" /></span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__resumen__">Resumen Plan</SelectItem>
@@ -863,21 +906,25 @@ export default function PlanAnualPage() {
               </Select>
             </div>
 
-            {activeDept && activeDept.companies.length > 1 && (
+            {municipioOptions.length > 1 && (
               <div className="w-56">
-                <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
                 <Select
-                  value={selectedMunicipioId === null ? 'all' : String(selectedMunicipioId)}
-                  onValueChange={(val) => setSelectedMunicipioId(val === 'all' ? null : Number(val))}
+                  value={selectedMunicipio ? `${selectedMunicipio.kind}:${selectedMunicipio.id}` : 'all'}
+                  onValueChange={(val) => {
+                    if (val === 'all') return setSelectedMunicipio(null);
+                    const [kind, id] = val.split(':');
+                    setSelectedMunicipio({ kind: kind as 'company' | 'project', id: Number(id) });
+                  }}
                 >
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Municipio" />
+                    <span className="flex items-center gap-2 min-w-0"><MapPin className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Municipio" /></span>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los municipios</SelectItem>
-                    {activeDept.companies.map((c) => (
-                      <SelectItem key={c.companyId} value={String(c.companyId)}>
-                        {getMunicipioName(c.name)}
+                    {municipioOptions.map((m) => (
+                      <SelectItem key={`${m.kind}:${m.id}`} value={`${m.kind}:${m.id}`}>
+                        {m.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -902,17 +949,18 @@ export default function PlanAnualPage() {
               <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-4">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
-                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Año</label>
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Año</label>
                     <Select
                       value={summaryYearFilter}
                       onValueChange={(value) => {
                         setSummaryYearFilter(value);
+                        setSummaryDeptFilter('all');
                         setSummaryMunicipioFilter('none');
                         setSummaryZoneFilter('all');
                       }}
                     >
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Seleccione año" />
+                        <span className="flex items-center gap-2 min-w-0"><CalendarDays className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Seleccione año" /></span>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Seleccione año</SelectItem>
@@ -926,7 +974,32 @@ export default function PlanAnualPage() {
                   </div>
 
                   <div>
-                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Departamento</label>
+                    <Select
+                      value={summaryDeptFilter}
+                      onValueChange={(value) => {
+                        setSummaryDeptFilter(value);
+                        setSummaryMunicipioFilter('none');
+                        setSummaryZoneFilter('all');
+                      }}
+                      disabled={summaryYearFilter === 'none'}
+                    >
+                      <SelectTrigger className="h-10">
+                        <span className="flex items-center gap-2 min-w-0"><Building2 className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Departamento" /></span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los departamentos</SelectItem>
+                        {summaryDepartments.map((dept) => (
+                          <SelectItem key={dept} value={dept}>
+                            {dept}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
                     <Select
                       value={summaryMunicipioFilter}
                       onValueChange={(value) => {
@@ -936,7 +1009,7 @@ export default function PlanAnualPage() {
                       disabled={summaryYearFilter === 'none'}
                     >
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Seleccione municipio" />
+                        <span className="flex items-center gap-2 min-w-0"><MapPin className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Seleccione municipio" /></span>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">
@@ -952,14 +1025,14 @@ export default function PlanAnualPage() {
                   </div>
 
                   <div>
-                    <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Zona</label>
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))] mb-1 block">Zona</label>
                     <Select
                       value={summaryZoneFilter}
                       onValueChange={setSummaryZoneFilter}
                       disabled={summaryYearFilter === 'none' || summaryMunicipioFilter === 'none'}
                     >
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Zona" />
+                        <span className="flex items-center gap-2 min-w-0"><MapIcon className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] flex-shrink-0" /><SelectValue placeholder="Zona" /></span>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todas las zonas</SelectItem>
@@ -982,6 +1055,7 @@ export default function PlanAnualPage() {
                     }
                     onClick={() => {
                       setSummaryYearFilter('none');
+                      setSummaryDeptFilter('all');
                       setSummaryMunicipioFilter('none');
                       setSummaryZoneFilter('all');
                     }}
@@ -993,24 +1067,26 @@ export default function PlanAnualPage() {
               </div>
 
               {!summaryReady ? (
-                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
-                  Seleccione un año y un municipio para ver el resumen del plan anual.
+                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] py-12 px-6 text-center text-[hsl(var(--canalco-neutral-500))]">
+                  <CalendarDays className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">Seleccione un año y un municipio para ver el resumen del plan anual.</p>
                 </div>
               ) : worksByMunicipio.length === 0 ? (
-                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] p-6 text-center text-sm text-[hsl(var(--canalco-neutral-500))]">
-                  No hay obras que coincidan con los filtros seleccionados.
+                <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] py-12 px-6 text-center text-[hsl(var(--canalco-neutral-500))]">
+                  <Search className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No hay obras que coincidan con los filtros seleccionados.</p>
                 </div>
               ) : (
               <>
               <div className="bg-white rounded-xl shadow-md border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))] border-0">
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-50))] hover:bg-[hsl(var(--canalco-neutral-50))]">
                       <TableHead className="w-10" />
-                      <TableHead className="text-white font-semibold">Municipio</TableHead>
-                      <TableHead className="text-white font-semibold w-24">Año</TableHead>
-                      <TableHead className="text-white font-semibold text-center w-28">N° obras</TableHead>
-                      <TableHead className="text-white font-semibold text-right w-52">Total presupuestado</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Municipio</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] w-24">Año</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] text-center w-28">N° obras</TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] text-right w-52">Total presupuestado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1033,14 +1109,20 @@ export default function PlanAnualPage() {
                             }
                           >
                             <TableCell className="py-2.5">
-                              <ChevronRight
-                                className={`w-4 h-4 text-[hsl(var(--canalco-neutral-500))] transition-transform ${isOpen ? 'rotate-90' : ''}`}
-                              />
+                              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors ${isOpen ? 'bg-[hsl(var(--canalco-primary))]/10' : ''}`}>
+                                <ChevronRight
+                                  className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90 text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-400))]'}`}
+                                />
+                              </span>
                             </TableCell>
                             <TableCell className="font-semibold text-[hsl(var(--canalco-neutral-800))]">{municipio}</TableCell>
-                            <TableCell className="text-[hsl(var(--canalco-neutral-600))]">{year}</TableCell>
-                            <TableCell className="text-center font-medium text-[hsl(var(--canalco-neutral-800))]">{total}</TableCell>
-                            <TableCell className="text-right font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                            <TableCell>
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">{year}</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-flex items-center rounded-md bg-[hsl(var(--canalco-neutral-100))] px-2 py-0.5 text-xs font-medium text-[hsl(var(--canalco-neutral-700))]">{total}</span>
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-[hsl(var(--canalco-primary))]">
                               {totalValue > 0 ? fmtCOP(totalValue) : '—'}
                             </TableCell>
                           </TableRow>
@@ -1235,13 +1317,13 @@ export default function PlanAnualPage() {
                     })}
 
                     {/* Grand total */}
-                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-100))] font-bold">
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-100))] font-bold border-t-2 border-[hsl(var(--canalco-neutral-200))]">
                       <TableCell className="p-0" />
                       <TableCell className="text-[hsl(var(--canalco-neutral-800))]" colSpan={2}>Total general</TableCell>
                       <TableCell className="text-center text-[hsl(var(--canalco-neutral-800))]">
                         {worksByMunicipio.reduce((s, m) => s + m.total, 0)}
                       </TableCell>
-                      <TableCell className="text-right text-[hsl(var(--canalco-neutral-800))]">
+                      <TableCell className="text-right text-[hsl(var(--canalco-primary))]">
                         {fmtCOP(worksByMunicipio.reduce((s, m) => s + m.totalValue, 0))}
                       </TableCell>
                     </TableRow>
@@ -1264,10 +1346,13 @@ export default function PlanAnualPage() {
                   <Input
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Buscar obra..."
+                    placeholder="Buscar obra por nombre, código o dirección..."
                     className="pl-9 h-9"
                   />
                 </div>
+                <span className="hidden sm:inline text-xs text-[hsl(var(--canalco-neutral-500))]">
+                  {filteredWorks.length} obra{filteredWorks.length !== 1 ? 's' : ''}
+                </span>
                 {!isReadOnly && (
                   <Button
                     variant="outline"
@@ -1292,30 +1377,31 @@ export default function PlanAnualPage() {
                   <div className="animate-spin w-10 h-10 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full"></div>
                 </div>
               ) : filteredWorks.length === 0 ? (
-                <div className="text-center py-16 text-[hsl(var(--canalco-neutral-500))]">
-                  No hay obras registradas{searchTerm ? ' con ese criterio de búsqueda' : ''}.
+                <div className="bg-white rounded-xl shadow-sm border border-[hsl(var(--canalco-neutral-200))] py-16 text-center text-[hsl(var(--canalco-neutral-500))]">
+                  <Search className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No hay obras registradas{searchTerm ? ' con ese criterio de búsqueda' : ''}.</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
+                      <TableRow className="bg-[hsl(var(--canalco-neutral-50))] hover:bg-[hsl(var(--canalco-neutral-50))]">
                         {!isReadOnly && (
                           <TableHead className="w-12">
-                            <button onClick={toggleSelectAll} className="flex items-center justify-center">
+                            <button onClick={toggleSelectAll} className="flex items-center justify-center" title="Seleccionar todo">
                               {selectedIds.size === filteredWorks.length && filteredWorks.length > 0 ? (
                                 <CheckSquare className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
                               ) : (
-                                <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
+                                <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-300))]" />
                               )}
                             </button>
                           </TableHead>
                         )}
-                        <TableHead className="font-semibold">Cód. Obra</TableHead>
-                        <TableHead className="font-semibold">Nombre de la Obra</TableHead>
-                        <TableHead className="font-semibold">Dirección</TableHead>
-                        <TableHead className="font-semibold">No. Acta</TableHead>
-                        <TableHead className="font-semibold">Plan Actual</TableHead>
+                        <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Cód. Obra</TableHead>
+                        <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Nombre de la Obra</TableHead>
+                        <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Dirección</TableHead>
+                        <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">No. Acta</TableHead>
+                        <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Plan Actual</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1328,7 +1414,7 @@ export default function PlanAnualPage() {
                               isReadOnly
                                 ? 'hover:bg-[hsl(var(--canalco-neutral-50))]'
                                 : `cursor-pointer ${isSelected
-                                    ? 'bg-[hsl(var(--canalco-primary))]/5 hover:bg-[hsl(var(--canalco-primary))]/10'
+                                    ? 'bg-[hsl(var(--canalco-primary))]/5 hover:bg-[hsl(var(--canalco-primary))]/10 shadow-[inset_3px_0_0_0_hsl(var(--canalco-primary))]'
                                     : 'hover:bg-[hsl(var(--canalco-neutral-50))]'
                                   }`
                             }`}
@@ -1340,28 +1426,43 @@ export default function PlanAnualPage() {
                                   {isSelected ? (
                                     <CheckSquare className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
                                   ) : (
-                                    <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
+                                    <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-300))]" />
                                   )}
                                 </div>
                               </TableCell>
                             )}
-                            <TableCell className="font-mono text-xs text-[hsl(var(--canalco-neutral-600))]">
-                              {work.workCode || '—'}
+                            <TableCell>
+                              {work.workCode ? (
+                                <span className="inline-flex items-center rounded-md bg-[hsl(var(--canalco-neutral-100))] px-2 py-0.5 font-mono text-xs text-[hsl(var(--canalco-neutral-600))]">
+                                  {work.workCode}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[hsl(var(--canalco-neutral-300))]">—</span>
+                              )}
                             </TableCell>
-                            <TableCell className="font-medium text-sm">{work.name}</TableCell>
-                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                            <TableCell className="font-medium text-sm text-[hsl(var(--canalco-neutral-800))]">{work.name}</TableCell>
+                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-500))]">
                               {work.address || '—'}
                             </TableCell>
-                            <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                              {work.recordNumber || '—'}
+                            <TableCell className="text-sm">
+                              {work.recordNumber ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--canalco-primary))]/10 px-2 py-0.5 text-xs font-medium text-[hsl(var(--canalco-primary))]">
+                                  <Layers className="w-3 h-3" />
+                                  {work.recordNumber}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[hsl(var(--canalco-neutral-300))]">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               {work.annualPlan ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                                   {work.annualPlan}
                                 </span>
                               ) : (
-                                <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">Sin asignar</span>
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))]">
+                                  Sin asignar
+                                </span>
                               )}
                             </TableCell>
                           </TableRow>
@@ -1402,25 +1503,25 @@ export default function PlanAnualPage() {
                     )}
                   </div>
 
-                  <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+                  <div className="bg-white rounded-xl shadow-sm border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-[hsl(var(--canalco-neutral-50))]">
+                        <TableRow className="bg-[hsl(var(--canalco-neutral-50))] hover:bg-[hsl(var(--canalco-neutral-50))]">
                           {!isReadOnly && (
                             <TableHead className="w-12">
-                              <button onClick={toggleSelectAllActas} className="flex items-center justify-center">
+                              <button onClick={toggleSelectAllActas} className="flex items-center justify-center" title="Seleccionar todo">
                                 {selectedActas.size === groupedActas.length && groupedActas.length > 0 ? (
                                   <CheckSquare className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
                                 ) : (
-                                  <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
+                                  <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-300))]" />
                                 )}
                               </button>
                             </TableHead>
                           )}
-                          <TableHead className="font-semibold">No. Acta</TableHead>
-                          <TableHead className="font-semibold">No. Obras</TableHead>
-                          <TableHead className="font-semibold">Obras incluidas</TableHead>
-                          <TableHead className="font-semibold">Plan Actual</TableHead>
+                          <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">No. Acta</TableHead>
+                          <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">No. Obras</TableHead>
+                          <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Obras incluidas</TableHead>
+                          <TableHead className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">Plan Actual</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1433,7 +1534,7 @@ export default function PlanAnualPage() {
                                 isReadOnly
                                   ? 'hover:bg-[hsl(var(--canalco-neutral-50))]'
                                   : `cursor-pointer ${isSelected
-                                      ? 'bg-[hsl(var(--canalco-primary))]/5 hover:bg-[hsl(var(--canalco-primary))]/10'
+                                      ? 'bg-[hsl(var(--canalco-primary))]/5 hover:bg-[hsl(var(--canalco-primary))]/10 shadow-[inset_3px_0_0_0_hsl(var(--canalco-primary))]'
                                       : 'hover:bg-[hsl(var(--canalco-neutral-50))]'
                                     }`
                               }`}
@@ -1445,14 +1546,21 @@ export default function PlanAnualPage() {
                                     {isSelected ? (
                                       <CheckSquare className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
                                     ) : (
-                                      <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))]" />
+                                      <Square className="w-4 h-4 text-[hsl(var(--canalco-neutral-300))]" />
                                     )}
                                   </div>
                                 </TableCell>
                               )}
-                              <TableCell className="font-medium text-sm">{acta.recordNumber}</TableCell>
-                              <TableCell className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                                {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''}
+                              <TableCell>
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--canalco-primary))]/10 px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--canalco-primary))]">
+                                  <Layers className="w-3 h-3" />
+                                  {acta.recordNumber}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className="inline-flex items-center rounded-md bg-[hsl(var(--canalco-neutral-100))] px-2 py-0.5 text-xs font-medium text-[hsl(var(--canalco-neutral-600))]">
+                                  {acta.works.length} obra{acta.works.length !== 1 ? 's' : ''}
+                                </span>
                               </TableCell>
                               <TableCell className="text-xs text-[hsl(var(--canalco-neutral-500))] max-w-xs">
                                 {acta.works.slice(0, 3).map((w) => w.name).join(', ')}
@@ -1464,15 +1572,17 @@ export default function PlanAnualPage() {
                               </TableCell>
                               <TableCell>
                                 {acta.planActual ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                                     {acta.planActual}
                                   </span>
                                 ) : acta.mixed ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
                                     Mixto
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">Sin asignar</span>
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))]">
+                                    Sin asignar
+                                  </span>
                                 )}
                               </TableCell>
                             </TableRow>
@@ -1486,6 +1596,64 @@ export default function PlanAnualPage() {
             </TabsContent>
           ))}
         </Tabs>
+
+        {/* Barra de acción flotante (aparece al seleccionar obras/actas) */}
+        {!isReadOnly && selectedWorkCount > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+            <div className="max-w-7xl mx-auto px-6 pb-4">
+              <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-xl border border-[hsl(var(--canalco-neutral-300))] bg-white/95 backdrop-blur shadow-2xl px-5 py-3">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[hsl(var(--canalco-primary))] text-white text-sm font-bold flex-shrink-0">
+                  {selectedWorkCount}
+                </span>
+                <span className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+                  obra{selectedWorkCount !== 1 ? 's' : ''} seleccionada{selectedWorkCount !== 1 ? 's' : ''} para el año{' '}
+                  <strong className="text-[hsl(var(--canalco-neutral-900))]">{selectedYear || '—'}</strong>
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setSelectedIds(new Set()); setSelectedActas(new Set()); }}
+                    className="text-[hsl(var(--canalco-neutral-500))]"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Limpiar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={openSelectedIppDialog}
+                    disabled={ippLoading || ippSaving}
+                  >
+                    <Percent className="w-4 h-4 mr-2" />
+                    Cambiar IPP
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAssignSelectedToPlan}
+                    disabled={saving || !selectedYear}
+                    className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))] text-white"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                        Asignando...
+                      </>
+                    ) : (
+                      <>
+                        <CalendarDays className="w-4 h-4 mr-2" />
+                        Asignar al Plan {selectedYear}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <Dialog open={!!ippDialog} onOpenChange={(open) => { if (!open) closeIppDialog(); }}>

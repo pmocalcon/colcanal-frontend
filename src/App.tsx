@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { Toaster } from 'sonner'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import DashboardModulePage from './pages/DashboardModulePage'
 import ComprasPage from './pages/ComprasPage'
 import RequisicionesPage from './pages/RequisicionesPage'
 import CrearRequisicionPage from './pages/CrearRequisicionPage'
@@ -48,6 +49,12 @@ import ResumenActaPage from './pages/ResumenActaPage'
 import RevisarCantidadesActaPage from './pages/RevisarCantidadesActaPage'
 import CronogramaPage from './pages/CronogramaPage'
 import NotificacionesPage from './pages/NotificacionesPage'
+import CregHomePage from './pages/CregHomePage'
+import CregPage from './pages/CregPage'
+import CregResumenPage from './pages/CregResumenPage'
+import CregParametrosPage from './pages/CregParametrosPage'
+import CregCensoPage from './pages/CregCensoPage'
+import CregUnitFormPage from './pages/CregUnitFormPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
@@ -58,6 +65,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard/dashboard" element={<DashboardModulePage />} />
           <Route path="/dashboard/compras" element={<ComprasPage />} />
           <Route path="/dashboard/compras/requisiciones" element={<RequisicionesPage />} />
           <Route path="/dashboard/compras/requisiciones/crear" element={<CrearRequisicionPage />} />
@@ -140,7 +148,56 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber" element={<ResumenActaPage />} />
           <Route path="/dashboard/levantamiento-obras/acta/:recordNumber/cantidades" element={<RevisarCantidadesActaPage />} />
           <Route path="/dashboard/notificaciones" element={<NotificacionesPage />} />
+          <Route
+            path="/dashboard/creg"
+            element={
+              <ProtectedRoute permission="creg:ver">
+                <CregHomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/unidades"
+            element={
+              <ProtectedRoute permission="creg:unidades">
+                <CregPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/resumen"
+            element={
+              <ProtectedRoute permission="creg:resumen">
+                <CregResumenPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/parametros"
+            element={
+              <ProtectedRoute permission="creg:parametros">
+                <CregParametrosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/censo"
+            element={
+              <ProtectedRoute permission="creg:censo">
+                <CregCensoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/unidad/:id"
+            element={
+              <ProtectedRoute permission="creg:unidades">
+                <CregUnitFormPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

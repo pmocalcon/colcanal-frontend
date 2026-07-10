@@ -160,6 +160,20 @@ export interface ItemApprovalResponse {
 }
 
 // Requisitions Service
+export interface PurchasesDashboardSummary {
+  requisitions: {
+    total: number;
+    byStatus: { name: string; count: number }[];
+    monthly: { month: string; count: number }[];
+  };
+  purchaseOrders: {
+    total: number;
+    value: number;
+    byStatus: { name: string; count: number }[];
+    monthly: { month: string; count: number; value: number }[];
+  };
+}
+
 export const requisitionsService = {
   /**
    * Get my requisitions with filters
@@ -269,6 +283,14 @@ export const requisitionsService = {
     const response = await api.get<RequisitionsListResponse>(
       '/purchases/requisitions/pending-actions',
       { params: filters },
+    );
+    return response.data;
+  },
+
+  /** Resumen agregado de compras (totales exactos + desglose + tendencia mensual). */
+  async getDashboardSummary(): Promise<PurchasesDashboardSummary> {
+    const response = await api.get<PurchasesDashboardSummary>(
+      '/purchases/requisitions/dashboard-summary',
     );
     return response.data;
   },
