@@ -421,7 +421,9 @@ export const surveysService = {
     return response.data;
   },
 
-  async getWorksValue(workIds: number[]): Promise<{ workId: number; value: number }[]> {
+  async getWorksValue(
+    workIds: number[],
+  ): Promise<{ workId: number; value: number; baseIpp: number | null; mesIpp: number | null }[]> {
     const response = await api.post('/surveys/works/value', { workIds });
     return response.data;
   },

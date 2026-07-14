@@ -54,6 +54,8 @@ export default function ObrasListPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('individual');
   const [works, setWorks] = useState<Work[]>([]);
   const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
+  // IPP inicial (base del proyecto) e IPP del mes, por obra.
+  const [workIpps, setWorkIpps] = useState<Map<number, { baseIpp: number | null; mesIpp: number | null }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -140,19 +142,24 @@ export default function ObrasListPage() {
   // Valor Total (con IPP) por obra — se calcula en backend.
   useEffect(() => {
     const ids = works.map((w) => w.workId);
-    if (ids.length === 0) { setWorkValues(new Map()); return; }
+    if (ids.length === 0) { setWorkValues(new Map()); setWorkIpps(new Map()); return; }
     let cancelled = false;
     surveysService.getWorksValue(ids)
       .then((rows) => {
         if (cancelled) return;
         setWorkValues(new Map(rows.map((r) => [r.workId, r.value])));
+        setWorkIpps(new Map(rows.map((r) => [r.workId, { baseIpp: r.baseIpp, mesIpp: r.mesIpp }])));
       })
-      .catch(() => { if (!cancelled) setWorkValues(new Map()); });
+      .catch(() => { if (!cancelled) { setWorkValues(new Map()); setWorkIpps(new Map()); } });
     return () => { cancelled = true; };
   }, [works]);
 
   const fmtCOP = (n: number) =>
     `$${Math.round(n).toLocaleString('es-CO')}`;
+
+  // IPP con 2 decimales; '—' si no hay dato para esa obra.
+  const fmtIpp = (n: number | null | undefined) =>
+    n != null ? n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 
   // Works with record number → grouped by company + acta (prevents mixing companies)
   const groupedWorksMap = useMemo(() => {
@@ -941,6 +948,8 @@ export default function ObrasListPage() {
                                 <tr>
                                   <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Nombre</th>
                                   <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Dirección</th>
+                                  <th className="px-4 py-2 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] whitespace-nowrap" title="Índice de precios al productor inicial (IPP Julio 2015)">IPP inicial</th>
+                                  <th className="px-4 py-2 text-right text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] whitespace-nowrap" title="Índice de precios al productor del mes">IPP del mes</th>
                                   <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Valor</th>
                                   <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Barrio</th>
                                   <th className="px-4 py-2 text-left text-xs font-semibold text-[hsl(var(--canalco-neutral-700))]">Empresa</th>
@@ -955,6 +964,12 @@ export default function ObrasListPage() {
                                   >
                                     <td className="px-4 py-3 font-medium">{work.name}</td>
                                     <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{work.address}</td>
+                                    <td className="px-4 py-3 text-right text-xs text-[hsl(var(--canalco-neutral-600))] tabular-nums whitespace-nowrap">
+                                      {workIpps.has(work.workId) ? fmtIpp(workIpps.get(work.workId)!.baseIpp) : '…'}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-xs text-[hsl(var(--canalco-neutral-600))] tabular-nums whitespace-nowrap">
+                                      {workIpps.has(work.workId) ? fmtIpp(workIpps.get(work.workId)!.mesIpp) : '…'}
+                                    </td>
                                     <td className="px-4 py-3 text-left text-xs font-medium text-[hsl(var(--canalco-neutral-800))] whitespace-nowrap">
                                       {workValues.has(work.workId) ? (workValues.get(work.workId)! > 0 ? fmtCOP(workValues.get(work.workId)!) : '—') : '…'}
                                     </td>
