@@ -283,6 +283,12 @@ export default function ResumenActaPage() {
   const getCurrentCompanyId = () =>
     actaCompanyId ?? works[0]?.companyId ?? (works[0] as any)?.company?.companyId ?? null;
 
+  // El acta se identifica por (empresa, proyecto, número): el proyecto llega en ?project=
+  // (o se toma de las obras del acta).
+  const actaProjectId = searchParams.get('project') ? Number(searchParams.get('project')) : null;
+  const getCurrentProjectId = () =>
+    actaProjectId ?? works[0]?.projectId ?? (works[0] as any)?.project?.projectId ?? null;
+
   const getDraftKey = (companyId?: number | null) =>
     `colcanal:resumen-acta:${companyId ?? 'sin-empresa'}:${recordNumber || 'sin-acta'}`;
 
@@ -344,7 +350,7 @@ export default function ResumenActaPage() {
     }
 
     try {
-      const response = await surveysService.getActaSummaryDraft(companyId, recordNumber);
+      const response = await surveysService.getActaSummaryDraft(companyId, getCurrentProjectId(), recordNumber);
       if (response.payload) return applyDraftPayload(response.payload);
       return false;
     } catch {
@@ -365,7 +371,7 @@ export default function ResumenActaPage() {
     setSaveStatus('Guardando...');
     const payload = buildDraftPayload(companyId);
     try {
-      await surveysService.saveActaSummaryDraft(companyId, recordNumber, payload);
+      await surveysService.saveActaSummaryDraft(companyId, getCurrentProjectId(), recordNumber, payload);
       window.localStorage.setItem(getDraftKey(companyId), JSON.stringify(payload));
       setSaveStatus('Guardado');
     } catch {

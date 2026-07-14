@@ -80,10 +80,11 @@ export default function PresupuestosListPage() {
   const [pendingActas, setPendingActas] = useState<PendingBudgetActa[]>([]);
   const [pendingActasLoading, setPendingActasLoading] = useState(false);
   const [reviewingActa, setReviewingActa] = useState<string | null>(null);
-  const [rejectDialog, setRejectDialog] = useState<{ companyId: number; actaNumber: string } | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ companyId: number; projectId: number | null; actaNumber: string } | null>(null);
   const [rejectMotivo, setRejectMotivo] = useState('');
 
-  const actaKey = (companyId: number, actaNumber: string) => `${companyId}:${actaNumber}`;
+  const actaKey = (companyId: number, projectId: number | null, actaNumber: string) =>
+    `${companyId}:${projectId ?? 0}:${actaNumber}`;
 
   const loadPendingActas = async () => {
     try {
@@ -102,12 +103,12 @@ export default function PresupuestosListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessLoading, canReviewActaBudget]);
 
-  const handleApproveActaBudget = async (companyId: number, actaNumber: string) => {
-    const key = actaKey(companyId, actaNumber);
+  const handleApproveActaBudget = async (companyId: number, projectId: number | null, actaNumber: string) => {
+    const key = actaKey(companyId, projectId, actaNumber);
     try {
       setReviewingActa(key);
-      await surveysService.reviewActaBudget(companyId, actaNumber, 'aprobado');
-      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.actaNumber) !== key));
+      await surveysService.reviewActaBudget(companyId, projectId, actaNumber, 'aprobado');
+      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.projectId, a.actaNumber) !== key));
       toast.success('Presupuesto del acta aprobado. Se notificó al Director Técnico.');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al aprobar el presupuesto del acta');
@@ -118,12 +119,12 @@ export default function PresupuestosListPage() {
 
   const handleRejectActaBudget = async () => {
     if (!rejectDialog) return;
-    const { companyId, actaNumber } = rejectDialog;
-    const key = actaKey(companyId, actaNumber);
+    const { companyId, projectId, actaNumber } = rejectDialog;
+    const key = actaKey(companyId, projectId, actaNumber);
     try {
       setReviewingActa(key);
-      await surveysService.reviewActaBudget(companyId, actaNumber, 'rechazado', rejectMotivo.trim());
-      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.actaNumber) !== key));
+      await surveysService.reviewActaBudget(companyId, projectId, actaNumber, 'rechazado', rejectMotivo.trim());
+      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.projectId, a.actaNumber) !== key));
       toast.success('Presupuesto del acta rechazado. Se notificó al Director Técnico.');
       setRejectDialog(null);
       setRejectMotivo('');
@@ -302,7 +303,7 @@ export default function PresupuestosListPage() {
                 </thead>
                 <tbody>
                   {pendingActas.map((a) => {
-                    const key = actaKey(a.companyId, a.actaNumber);
+                    const key = actaKey(a.companyId, a.projectId, a.actaNumber);
                     const busy = reviewingActa === key;
                     return (
                       <tr key={key} className="border-b border-purple-100 hover:bg-purple-100/50 transition-colors">
@@ -329,7 +330,7 @@ export default function PresupuestosListPage() {
                             <Button
                               size="sm"
                               className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => handleApproveActaBudget(a.companyId, a.actaNumber)}
+                              onClick={() => handleApproveActaBudget(a.companyId, a.projectId, a.actaNumber)}
                               disabled={busy}
                             >
                               {busy
@@ -341,7 +342,7 @@ export default function PresupuestosListPage() {
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-50"
-                              onClick={() => { setRejectDialog({ companyId: a.companyId, actaNumber: a.actaNumber }); setRejectMotivo(''); }}
+                              onClick={() => { setRejectDialog({ companyId: a.companyId, projectId: a.projectId, actaNumber: a.actaNumber }); setRejectMotivo(''); }}
                               disabled={busy}
                             >
                               <XCircle className="w-3.5 h-3.5 mr-1" />
@@ -655,7 +656,7 @@ export default function PresupuestosListPage() {
             <Button
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={handleRejectActaBudget}
-              disabled={!rejectMotivo.trim() || (rejectDialog ? reviewingActa === `${rejectDialog.companyId}:${rejectDialog.actaNumber}` : false)}
+              disabled={!rejectMotivo.trim() || (rejectDialog ? reviewingActa === actaKey(rejectDialog.companyId, rejectDialog.projectId, rejectDialog.actaNumber) : false)}
             >
               <XCircle className="w-4 h-4 mr-1.5" />
               Rechazar presupuesto

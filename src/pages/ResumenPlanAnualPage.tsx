@@ -72,8 +72,12 @@ const parseNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
-  `${companyId ?? 0}:${recordNumber.trim().replace(/\s+/g, ' ').toLowerCase()}`;
+// Identidad del acta: (empresa, proyecto, número normalizado). projectId nulo → 0.
+const makeActaKey = (
+  companyId: number | undefined | null,
+  projectId: number | undefined | null,
+  recordNumber: string,
+) => `${companyId ?? 0}:${projectId ?? 0}:${recordNumber.trim().replace(/\s+/g, ' ').toLowerCase()}`;
 
 const mapLimit = async <T, R>(
   items: T[],
@@ -274,13 +278,13 @@ export default function ResumenPlanAnualPage() {
     const actaKeys = new Set(
       planWorks
         .filter((work) => !!work.recordNumber)
-        .map((work) => makeActaKey(work.companyId, work.recordNumber)),
+        .map((work) => makeActaKey(work.companyId, work.projectId, work.recordNumber)),
     );
 
     return allWorks
       .filter((work) => {
         const belongsToPlan = work.annualPlan === year;
-        const belongsToPlanActa = !!work.recordNumber && actaKeys.has(makeActaKey(work.companyId, work.recordNumber));
+        const belongsToPlanActa = !!work.recordNumber && actaKeys.has(makeActaKey(work.companyId, work.projectId, work.recordNumber));
         if (!belongsToPlan && !belongsToPlanActa) return false;
         if (selectedMunicipio !== 'all' && getWorkMunicipio(work) !== selectedMunicipio) return false;
         return true;

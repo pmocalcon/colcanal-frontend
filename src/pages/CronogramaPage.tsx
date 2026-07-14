@@ -51,6 +51,8 @@ export default function CronogramaPage() {
   // Flujo de revisión del Plan del cronograma (Director de Proyecto → Director Técnico).
   const [actaCronograma, setActaCronograma] = useState<WorkActa | null>(null);
   const [actaCompanyId, setActaCompanyId] = useState<number | null>(null);
+  // El acta se identifica por (empresa, proyecto, número): en Canales el municipio es el proyecto.
+  const [actaProjectId, setActaProjectId] = useState<number | null>(null);
   const [cronogramaActionLoading, setCronogramaActionLoading] = useState(false);
   const [cronogramaRejectOpen, setCronogramaRejectOpen] = useState(false);
   const [cronogramaRejectMotivo, setCronogramaRejectMotivo] = useState('');
@@ -377,11 +379,13 @@ export default function CronogramaPage() {
     setSelectedActa(acta);
     // Estado del flujo de revisión del Plan para esta acta (empresa = la de sus obras).
     const actaCompany = actaWorks[0]?.companyId ?? null;
+    const actaProject = actaWorks[0]?.projectId ?? null;
     setActaCompanyId(actaCompany);
+    setActaProjectId(actaProject);
     setActaCronograma(null);
     setActaDirectorBudgets([]);
     if (actaCompany != null) {
-      surveysService.getWorkActa(actaCompany, acta)
+      surveysService.getWorkActa(actaCompany, actaProject, acta)
         .then((wa) => setActaCronograma(wa))
         .catch(() => setActaCronograma(null));
     }
@@ -633,7 +637,7 @@ export default function CronogramaPage() {
     if (!selectedActa || actaCompanyId == null) return;
     try {
       setCronogramaActionLoading(true);
-      const wa = await surveysService.submitActaCronograma(actaCompanyId, selectedActa);
+      const wa = await surveysService.submitActaCronograma(actaCompanyId, actaProjectId, selectedActa);
       setActaCronograma(wa);
       toast.success('Plan enviado a revisión del Director Técnico');
     } catch (e: any) {
@@ -641,13 +645,13 @@ export default function CronogramaPage() {
     } finally {
       setCronogramaActionLoading(false);
     }
-  }, [selectedActa, actaCompanyId]);
+  }, [selectedActa, actaCompanyId, actaProjectId]);
 
   const handleReviewCronograma = useCallback(async (decision: 'aprobado' | 'rechazado', motivo?: string) => {
     if (!selectedActa || actaCompanyId == null) return;
     try {
       setCronogramaActionLoading(true);
-      const wa = await surveysService.reviewActaCronograma(actaCompanyId, selectedActa, decision, motivo);
+      const wa = await surveysService.reviewActaCronograma(actaCompanyId, actaProjectId, selectedActa, decision, motivo);
       setActaCronograma(wa);
       setCronogramaRejectOpen(false);
       setCronogramaRejectMotivo('');
@@ -657,7 +661,7 @@ export default function CronogramaPage() {
     } finally {
       setCronogramaActionLoading(false);
     }
-  }, [selectedActa, actaCompanyId]);
+  }, [selectedActa, actaCompanyId, actaProjectId]);
 
   // ── save
   const handleSave = async () => {

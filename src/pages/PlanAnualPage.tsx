@@ -53,8 +53,13 @@ const sumNetworkPoints = (value?: string) => {
 
 // El número de acta (recordNumber) se reutiliza entre municipios; la identidad real del acta
 // es (empresa, número). Las actas se agrupan/seleccionan por esta clave compuesta.
-const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
-  `${companyId ?? 0}:${recordNumber.trim().replace(/\s+/g, ' ').toLowerCase()}`;
+// Identidad del acta: (empresa, proyecto, número). El número se normaliza
+// (trim/espacios/minúsculas) igual que antes; projectId nulo → 0.
+const makeActaKey = (
+  companyId: number | undefined | null,
+  projectId: number | undefined | null,
+  recordNumber: string,
+) => `${companyId ?? 0}:${projectId ?? 0}:${recordNumber.trim().replace(/\s+/g, ' ').toLowerCase()}`;
 
 type WorkQuantitySummary = {
   luminarias: number;
@@ -297,7 +302,7 @@ export default function PlanAnualPage() {
     const map = new Map<string, Work[]>();
     works.forEach((w) => {
       if (!w.recordNumber) return;
-      const key = makeActaKey(w.companyId, w.recordNumber);
+      const key = makeActaKey(w.companyId, w.projectId, w.recordNumber);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(w);
     });
@@ -384,7 +389,7 @@ export default function PlanAnualPage() {
     const selectedActaKeys = new Set(
       worksInSelectedPlan
         .filter((w) => !!w.recordNumber)
-        .map((w) => makeActaKey(w.companyId, w.recordNumber!)),
+        .map((w) => makeActaKey(w.companyId, w.projectId, w.recordNumber!)),
     );
 
     return Array.from(
@@ -394,7 +399,7 @@ export default function PlanAnualPage() {
             if (getWorkMunicipio(w) !== summaryMunicipioFilter) return false;
             const belongsToSelectedPlan = w.annualPlan === yearFilter;
             const belongsToSelectedActa =
-              !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.recordNumber));
+              !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.projectId, w.recordNumber));
             return belongsToSelectedPlan || belongsToSelectedActa;
           })
           .map(formatWorkZone),
@@ -425,7 +430,7 @@ export default function PlanAnualPage() {
     const selectedActaKeys = new Set(
       worksInSelectedPlan
         .filter((w) => !!w.recordNumber)
-        .map((w) => makeActaKey(w.companyId, w.recordNumber!)),
+        .map((w) => makeActaKey(w.companyId, w.projectId, w.recordNumber!)),
     );
 
     return allWorks.filter((w) => {
@@ -434,7 +439,7 @@ export default function PlanAnualPage() {
 
       const belongsToSelectedPlan = w.annualPlan === yearFilter;
       const belongsToSelectedActa =
-        !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.recordNumber));
+        !!w.recordNumber && selectedActaKeys.has(makeActaKey(w.companyId, w.projectId, w.recordNumber));
 
       if (!belongsToSelectedPlan && !belongsToSelectedActa) return false;
       if (summaryZoneFilter !== 'all' && formatWorkZone(w) !== summaryZoneFilter) return false;
@@ -515,7 +520,7 @@ export default function PlanAnualPage() {
       if (!map.has(key)) map.set(key, { year: selectedSummaryYear, municipio, individual: [], actas: new Map() });
       const entry = map.get(key)!;
       if (w.recordNumber) {
-        const actaKey = makeActaKey(w.companyId, w.recordNumber);
+        const actaKey = makeActaKey(w.companyId, w.projectId, w.recordNumber);
         if (!entry.actas.has(actaKey)) entry.actas.set(actaKey, []);
         entry.actas.get(actaKey)!.push(w);
       } else {

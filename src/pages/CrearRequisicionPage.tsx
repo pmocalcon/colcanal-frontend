@@ -42,10 +42,11 @@ interface RequisitionItem extends CreateRequisitionItemDto {
 }
 
 interface ActaGroup {
-  key: string; // identidad compuesta `${companyId}:${recordNumber}` — el número de acta se repite entre municipios
+  key: string; // identidad compuesta `${companyId}:${projectId}:${recordNumber}` — el número de acta se repite entre municipios (proyectos)
   recordNumber: string;
   surveys: Survey[];
   companyId: number;
+  projectId: number | null;
   obraCount: number;
 }
 
@@ -108,7 +109,8 @@ export default function CrearRequisicionPage() {
       withApprovedBudget.forEach((survey) => {
         const recordNumber = survey.work?.recordNumber || survey.projectCode || `${survey.surveyId}`;
         const companyId = survey.work?.companyId || 0;
-        const key = `${companyId}:${recordNumber}`;
+        const projectId = survey.work?.projectId ?? null;
+        const key = `${companyId}:${projectId ?? 0}:${recordNumber}`;
         if (!groupMap.has(key)) groupMap.set(key, []);
         groupMap.get(key)!.push(survey);
       });
@@ -120,6 +122,7 @@ export default function CrearRequisicionPage() {
           recordNumber,
           surveys,
           companyId: surveys[0].work?.companyId || 0,
+          projectId: surveys[0].work?.projectId ?? null,
           obraCount: surveys.length,
         });
       });
@@ -196,6 +199,8 @@ export default function CrearRequisicionPage() {
       if (!group) return;
 
       if (group.companyId) setCompanyId(group.companyId);
+      // El proyecto (municipio) del acta, para no mezclar municipios de Canales.
+      setProjectId(group.projectId);
 
       // Consolidar materialItems de todos los levantamientos del acta
       const itemMap = new Map<number, RequisitionItem>();

@@ -29,28 +29,32 @@ import {
 
 type ViewMode = 'individual' | 'agrupado';
 
-const makeActaKey = (companyId: number | undefined | null, recordNumber: string) =>
-  `${companyId ?? 0}:${recordNumber}`;
+// La identidad del acta es (empresa, proyecto, número). projectId nulo → 0.
+const makeActaKey = (
+  companyId: number | undefined | null,
+  projectId: number | undefined | null,
+  recordNumber: string,
+) => `${companyId ?? 0}:${projectId ?? 0}:${recordNumber}`;
 
-// Normaliza un nombre de municipio para comparar empresa-municipio con proyecto:
-// quita el prefijo "Unión Temporal...", acentos y todo lo no alfanumérico
-// (así "Pueblorrico" == "Pueblo Rico").
-const muniKey = (name: string) =>
-  name
-    .replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-const getActaRecordNumber = (key: string) => key.slice(key.indexOf(':') + 1);
-const getActaCompanyId = (key: string) => Number(key.slice(0, key.indexOf(':')));
+// Quita el prefijo "Unión Temporal Alumbrado Público" para mostrar solo el municipio.
+const getMunicipality = (companyName: string) =>
+  companyName.replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '').trim() || companyName;
+
+// key = `company:project:record`  (record puede no tener ':', project es 0 si es nulo)
+const getActaCompanyId = (key: string) => Number(key.split(':')[0]);
+const getActaProjectId = (key: string) => {
+  const p = Number(key.split(':')[1]);
+  return p > 0 ? p : null;
+};
+const getActaRecordNumber = (key: string) => key.slice(key.indexOf(':', key.indexOf(':') + 1) + 1);
 
 export default function ObrasListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
   const [activeTab, setActiveTab] = useState('');
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  // Municipio seleccionado, codificado como `${kind}-${id}` (o null = "Todos").
+  const [selectedMuni, setSelectedMuni] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('individual');
   const [works, setWorks] = useState<Work[]>([]);
   const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
@@ -70,10 +74,10 @@ export default function ObrasListPage() {
   const [actaStatuses, setActaStatuses] = useState<Map<string, WorkActa>>(new Map());
   const [submittingActa, setSubmittingActa] = useState<string | null>(null);
   const [sendingBudget, setSendingBudget] = useState<string | null>(null);
-  const [reviewDialog, setReviewDialog] = useState<{ acta: string; companyId: number } | null>(null);
+  const [reviewDialog, setReviewDialog] = useState<{ acta: string; companyId: number; projectId: number | null } | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [approveDialog, setApproveDialog] = useState<{ acta: string; companyId: number } | null>(null);
+  const [approveDialog, setApproveDialog] = useState<{ acta: string; companyId: number; projectId: number | null } | null>(null);
   const [approveProjectCode, setApproveProjectCode] = useState('');
   const [approveSubmitting, setApproveSubmitting] = useState(false);
 
@@ -87,25 +91,53 @@ export default function ObrasListPage() {
     [departments, activeTab],
   );
 
+  // Municipios seleccionables del departamento activo.
+  // Para departamentos operados por Canales & Contactos (una sola empresa con
+  // varios proyectos, p.ej. Antioquia) los municipios son sus PROYECTOS; para
+  // el resto son las empresas UT.
+  const municipioOptions = useMemo(() => {
+    if (!activeDept) return [] as Array<{ kind: 'company' | 'project'; id: number; name: string }>;
+    const canales = activeDept.companies.find((c) => c.name === 'Canales & Contactos');
+    if (canales) {
+      return (access?.projects || [])
+        .filter(
+          (p) =>
+            p.companyId === canales.companyId &&
+            p.name.trim().toLowerCase() !== 'oficina principal',
+        )
+        .map((p) => ({ kind: 'project' as const, id: p.projectId, name: p.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return activeDept.companies.map((c) => ({
+      kind: 'company' as const,
+      id: c.companyId,
+      name: getMunicipality(c.name),
+    }));
+  }, [activeDept, access]);
+
+  // Nombre de proyecto por id (para etiquetar cada acta con su municipio).
+  const projectNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    (access?.projects || []).forEach((p) => m.set(p.projectId, p.name));
+    return m;
+  }, [access]);
+
   const worksFilter = useMemo<{ companyId?: number[]; projectId?: number }>(() => {
     if (!activeDept) return {};
-    if (selectedCompanyId !== null) {
-      // Municipio seleccionado: si corresponde a un proyecto (ej. Tarso de Canales &
-      // Contactos), cargar por ese proyecto; si no, por la empresa-municipio.
-      const selCompany = activeDept.companies.find((c) => c.companyId === selectedCompanyId);
-      const selKey = selCompany ? muniKey(selCompany.name) : null;
-      const matchProject = selKey
-        ? activeDept.projects.find((p) => muniKey(p.name) === selKey)
-        : undefined;
-      if (matchProject) return { projectId: matchProject.projectId };
-      return { companyId: [selectedCompanyId] };
+    if (selectedMuni !== null) {
+      // Municipio seleccionado: por proyecto (Canales) o por empresa-municipio (UT).
+      const opt = municipioOptions.find((o) => `${o.kind}-${o.id}` === selectedMuni);
+      if (opt) {
+        if (opt.kind === 'project') return { projectId: opt.id };
+        return { companyId: [opt.id] };
+      }
     }
     // "Todos": empresas del departamento + el companyId padre de sus proyectos
     // (ej. Canales & Contactos, dueño de Ciudad Bolívar / Pueblorrico)
     const ids = new Set<number>(activeDept.companyIds);
     activeDept.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
     return { companyId: [...ids] };
-  }, [activeDept, selectedCompanyId]);
+  }, [activeDept, selectedMuni, municipioOptions]);
 
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
@@ -161,13 +193,14 @@ export default function ObrasListPage() {
   const fmtIpp = (n: number | null | undefined) =>
     n != null ? n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 
-  // Works with record number → grouped by company + acta (prevents mixing companies)
+  // Works con número de acta → agrupados por (empresa, proyecto, acta).
+  // Incluir el proyecto evita mezclar municipios (Pueblorrico, Tarso, ...) de Canales.
   const groupedWorksMap = useMemo(() => {
     const map = new Map<string, Work[]>();
     works
       .filter((w) => w.recordNumber)
       .forEach((w) => {
-        const key = makeActaKey(w.companyId, w.recordNumber!);
+        const key = makeActaKey(w.companyId, w.projectId, w.recordNumber!);
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(w);
       });
@@ -177,7 +210,7 @@ export default function ObrasListPage() {
 
   // Individual = no recordNumber OR not present in grouped map (uses composite key)
   const individualWorks = useMemo(
-    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(makeActaKey(w.companyId, w.recordNumber!))),
+    () => works.filter((w) => !w.recordNumber || !groupedWorksMap.has(makeActaKey(w.companyId, w.projectId, w.recordNumber!))),
     [works, groupedWorksMap],
   );
 
@@ -275,12 +308,16 @@ export default function ObrasListPage() {
   useEffect(() => {
     const keys = Array.from(groupedWorksMap.keys());
     if (keys.length === 0) { setActaStatuses(new Map()); return; }
-    const pairs = keys.map((k) => ({ companyId: getActaCompanyId(k), actaNumber: getActaRecordNumber(k) }));
+    const pairs = keys.map((k) => ({
+      companyId: getActaCompanyId(k),
+      projectId: getActaProjectId(k),
+      actaNumber: getActaRecordNumber(k),
+    }));
     surveysService.getWorkActasBulk(pairs)
       .then((actas) => {
-        // El acta se identifica por (companyId, actaNumber); se indexa por la misma clave compuesta.
+        // El acta se identifica por (companyId, projectId, actaNumber); misma clave compuesta.
         const byKey = new Map<string, WorkActa>();
-        actas.forEach((a) => byKey.set(makeActaKey(a.companyId, a.actaNumber), a));
+        actas.forEach((a) => byKey.set(makeActaKey(a.companyId, a.projectId, a.actaNumber), a));
         const map = new Map<string, WorkActa>();
         keys.forEach((key) => {
           const acta = byKey.get(key);
@@ -293,10 +330,11 @@ export default function ObrasListPage() {
 
   const handleSubmitActa = async (actaKey: string) => {
     const companyId = getActaCompanyId(actaKey);
+    const projectId = getActaProjectId(actaKey);
     const recordNumber = getActaRecordNumber(actaKey);
     try {
       setSubmittingActa(actaKey);
-      const updated = await surveysService.submitActaForReview(companyId, recordNumber);
+      const updated = await surveysService.submitActaForReview(companyId, projectId, recordNumber);
       setActaStatuses((prev) => new Map(prev).set(actaKey, updated));
       toast.success('Acta enviada a revisión al Director Técnico');
     } catch (err: any) {
@@ -308,10 +346,11 @@ export default function ObrasListPage() {
 
   const handleSendToBudget = async (actaKey: string) => {
     const companyId = getActaCompanyId(actaKey);
+    const projectId = getActaProjectId(actaKey);
     const recordNumber = getActaRecordNumber(actaKey);
     try {
       setSendingBudget(actaKey);
-      const updated = await surveysService.sendActaToBudget(companyId, recordNumber);
+      const updated = await surveysService.sendActaToBudget(companyId, projectId, recordNumber);
       setActaStatuses((prev) => new Map(prev).set(actaKey, updated));
       toast.success('Acta enviada a presupuesto. Se notificó a la Directora Financiera.');
     } catch (err: any) {
@@ -323,10 +362,10 @@ export default function ObrasListPage() {
 
   const handleReviewActa = async (approved: boolean) => {
     if (!reviewDialog) return;
-    const key = makeActaKey(reviewDialog.companyId, reviewDialog.acta);
+    const key = makeActaKey(reviewDialog.companyId, reviewDialog.projectId, reviewDialog.acta);
     try {
       setReviewSubmitting(true);
-      const updated = await surveysService.reviewActa(reviewDialog.companyId, reviewDialog.acta, approved, reviewComment || undefined);
+      const updated = await surveysService.reviewActa(reviewDialog.companyId, reviewDialog.projectId, reviewDialog.acta, approved, reviewComment || undefined);
       setActaStatuses((prev) => new Map(prev).set(key, updated));
       toast.success(approved ? 'Acta enviada a aprobación de Gerencia' : 'Acta devuelta al Director de Proyecto');
       setReviewDialog(null);
@@ -340,10 +379,10 @@ export default function ObrasListPage() {
 
   const handleApproveActa = async () => {
     if (!approveDialog || !approveProjectCode.trim()) return;
-    const key = makeActaKey(approveDialog.companyId, approveDialog.acta);
+    const key = makeActaKey(approveDialog.companyId, approveDialog.projectId, approveDialog.acta);
     try {
       setApproveSubmitting(true);
-      const updated = await surveysService.approveActa(approveDialog.companyId, approveDialog.acta, approveProjectCode.trim());
+      const updated = await surveysService.approveActa(approveDialog.companyId, approveDialog.projectId, approveDialog.acta, approveProjectCode.trim());
       setActaStatuses((prev) => new Map(prev).set(key, updated));
       toast.success('Acta aprobada con código de proyecto asignado');
       setApproveDialog(null);
@@ -369,12 +408,10 @@ export default function ObrasListPage() {
     }
   };
 
-  const getMunicipality = (companyName: string) =>
-    companyName.replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '').trim() || companyName;
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
-    setSelectedCompanyId(null);
+    setSelectedMuni(null);
     setSelectedIds(new Set());
     setShowActaInput(false);
     setActaInput('');
@@ -550,21 +587,21 @@ export default function ObrasListPage() {
             </div>
 
             {/* Municipality filter dropdown */}
-            {activeDept && activeDept.companies.length > 1 && (
+            {municipioOptions.length > 1 && (
               <div className="w-56">
                 <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
                 <Select
-                  value={selectedCompanyId === null ? 'all' : String(selectedCompanyId)}
-                  onValueChange={(val) => setSelectedCompanyId(val === 'all' ? null : Number(val))}
+                  value={selectedMuni === null ? 'all' : selectedMuni}
+                  onValueChange={(val) => setSelectedMuni(val === 'all' ? null : val)}
                 >
                   <SelectTrigger className="h-10">
                     <SelectValue placeholder="Municipio" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {activeDept.companies.map((c) => (
-                      <SelectItem key={c.companyId} value={String(c.companyId)}>
-                        {getMunicipality(c.name)}
+                    {municipioOptions.map((o) => (
+                      <SelectItem key={`${o.kind}-${o.id}`} value={`${o.kind}-${o.id}`}>
+                        {o.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -750,8 +787,16 @@ export default function ObrasListPage() {
                     <div className="space-y-5">
                       {Array.from(filteredGroupedMap.entries()).map(([actaKey, actaWorks]) => {
                         const recordNumber = getActaRecordNumber(actaKey);
+                        const actaCompanyId = getActaCompanyId(actaKey);
+                        const actaProjectId = getActaProjectId(actaKey);
+                        // Sufijo de query con empresa (+ proyecto si aplica) para navegar al acta.
+                        const actaQuery = `company=${actaCompanyId}${actaProjectId != null ? `&project=${actaProjectId}` : ''}`;
                         const companyName = actaWorks[0]?.company?.name ?? '';
-                        const municipality = getMunicipality(companyName);
+                        // El municipio del acta: para Canales es el nombre del proyecto;
+                        // si no, el municipio de la empresa-UT.
+                        const municipality = actaProjectId != null
+                          ? getMunicipality(projectNameById.get(actaProjectId) ?? companyName)
+                          : getMunicipality(companyName);
                         return (
                         <div
                           key={actaKey}
@@ -817,7 +862,7 @@ export default function ObrasListPage() {
                                 </span>
 
                                 {/* Municipality tag — visible when viewing "Todos" */}
-                                {selectedCompanyId === null && municipality && (
+                                {municipality && (
                                   <span className="text-xs font-medium text-[hsl(var(--canalco-neutral-600))] bg-white border border-[hsl(var(--canalco-neutral-300))] px-2 py-0.5 rounded-full">
                                     {municipality}
                                   </span>
@@ -877,7 +922,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => setReviewDialog({ acta: recordNumber, companyId: getActaCompanyId(actaKey) })}
+                                      onClick={() => setReviewDialog({ acta: recordNumber, companyId: actaCompanyId, projectId: actaProjectId })}
                                     >
                                       <ThumbsUp className="w-3 h-3 mr-1.5" />
                                       Revisar acta
@@ -887,7 +932,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-                                      onClick={() => setApproveDialog({ acta: recordNumber, companyId: getActaCompanyId(actaKey) })}
+                                      onClick={() => setApproveDialog({ acta: recordNumber, companyId: actaCompanyId, projectId: actaProjectId })}
                                     >
                                       <BadgeCheck className="w-3 h-3 mr-1.5" />
                                       Aprobar acta
@@ -913,7 +958,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-neutral-400))] text-[hsl(var(--canalco-neutral-700))] hover:bg-[hsl(var(--canalco-neutral-100))]"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}/cantidades?company=${getActaCompanyId(actaKey)}`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}/cantidades?${actaQuery}`,
                                         { state: { works: actaWorks } },
                                       )
                                     }
@@ -927,7 +972,7 @@ export default function ObrasListPage() {
                                     className="h-7 text-xs border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10"
                                     onClick={() =>
                                       navigate(
-                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}?company=${getActaCompanyId(actaKey)}`,
+                                        `/dashboard/levantamiento-obras/acta/${encodeURIComponent(recordNumber)}?${actaQuery}`,
                                         { state: { works: actaWorks } },
                                       )
                                     }
