@@ -25,11 +25,13 @@ export function getMunicipioName(name: string): string {
 
 export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects: string[] }> = {
   Antioquia: {
-    // Antioquia se opera bajo Canales & Contactos (proyectos: Ciudad Bolívar,
-    // Jericó, Tarso, Pueblo Rico). Las UT propias de esos municipios son
-    // duplicados sin uso y no se incluyen.
+    // Antioquia se opera bajo Canales & Contactos; sus municipios son PROYECTOS
+    // de esa empresa. El Director de Proyecto Antioquia tiene acceso a esos
+    // proyectos (no a la empresa), así que se listan aquí para que el
+    // departamento se arme también con acceso a nivel de proyecto. Las UT
+    // propias de esos municipios son duplicados sin uso y no se incluyen.
     companies: ['Canales & Contactos'],
-    projects: [],
+    projects: ['Ciudad Bolívar', 'Jericó', 'Tarso', 'Pueblo Rico'],
   },
   'Valle del Cauca': {
     companies: [

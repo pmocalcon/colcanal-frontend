@@ -166,22 +166,23 @@ export default function PlanAnualPage() {
     [activeTab, departments],
   );
 
-  const activeCompanyIds = useMemo(() => activeDept?.companyIds || [], [activeDept]);
+  // Empresas a consultar: las del departamento + la empresa padre de sus
+  // proyectos (para Antioquia, cuyo acceso es a proyectos de Canales, no a la empresa).
+  const activeCompanyIds = useMemo(() => {
+    if (!activeDept) return [] as number[];
+    const ids = new Set<number>(activeDept.companyIds);
+    activeDept.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
+    return [...ids];
+  }, [activeDept]);
 
   // Municipios seleccionables del departamento activo.
-  // Para departamentos operados por Canales & Contactos (una sola empresa con
-  // varios proyectos, p.ej. Antioquia) los municipios son sus PROYECTOS; para
-  // el resto son las empresas UT.
+  // Para departamentos operados por proyectos (Canales & Contactos → Antioquia)
+  // los municipios son sus PROYECTOS; para el resto, las empresas UT.
   const municipioOptions = useMemo(() => {
     if (!activeDept) return [] as Array<{ kind: 'company' | 'project'; id: number; name: string }>;
-    const canales = activeDept.companies.find((c) => c.name === 'Canales & Contactos');
-    if (canales) {
-      return (access?.projects || [])
-        .filter(
-          (p) =>
-            p.companyId === canales.companyId &&
-            p.name.trim().toLowerCase() !== 'oficina principal',
-        )
+    if (activeDept.projects.length > 0) {
+      return activeDept.projects
+        .filter((p) => p.name.trim().toLowerCase() !== 'oficina principal')
         .map((p) => ({ kind: 'project' as const, id: p.projectId, name: p.name }))
         .sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -190,12 +191,16 @@ export default function PlanAnualPage() {
       id: c.companyId,
       name: getMunicipioName(c.name),
     }));
-  }, [activeDept, access]);
+  }, [activeDept]);
 
-  const allCompanyIds = useMemo(
-    () => departments.flatMap((d) => d.companyIds),
-    [departments],
-  );
+  const allCompanyIds = useMemo(() => {
+    const ids = new Set<number>();
+    departments.forEach((d) => {
+      d.companyIds.forEach((id) => ids.add(id));
+      d.projects.forEach((p) => { if (p.companyId) ids.add(p.companyId); });
+    });
+    return [...ids];
+  }, [departments]);
 
   const [allWorks, setAllWorks] = useState<Work[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);

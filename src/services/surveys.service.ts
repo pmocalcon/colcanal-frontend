@@ -341,6 +341,7 @@ export interface Ucap {
   ucapId: number;
   code: string;
   description: string;
+  grupo: string | null;
   value: number;
   initialIpp: number;
 }
@@ -550,6 +551,7 @@ export const surveysService = {
       ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
+      grupo: ucap.grupo ?? null,
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));
@@ -567,6 +569,7 @@ export const surveysService = {
       ucapId: ucap.ucapId,
       code: ucap.code,
       description: ucap.description,
+      grupo: ucap.grupo ?? null,
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));

@@ -8,8 +8,9 @@ import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 import {
-  ArrowLeft, Plus, Loader2, Pencil, AlertCircle, Zap, Search, X, CheckCircle2,
+  ArrowLeft, Plus, Loader2, Pencil, Trash2, AlertCircle, Zap, Search, X, CheckCircle2,
 } from 'lucide-react';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -17,6 +18,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 
 const EXCLUDED_COMPANY_NAMES = [
   'Inversiones Garcés Escalante',
@@ -49,6 +53,9 @@ export default function CregPage() {
   const [loadingUcaps, setLoadingUcaps] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // UCAP marcada para eliminar (abre el diálogo de confirmación).
+  const [deleteTarget, setDeleteTarget] = useState<Ucap | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     masterDataService.getCompanies()
@@ -114,6 +121,21 @@ export default function CregPage() {
     navigate(`/dashboard/creg/unidad/nueva?company=${selectedCompanyId}${project}`);
   };
   const openUcap = (u: Ucap) => navigate(`/dashboard/creg/unidad/${u.ucapId}`);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await cregService.deleteUnit(deleteTarget.ucapId);
+      toast.success(`UCAP "${deleteTarget.code}" eliminada`);
+      setDeleteTarget(null);
+      if (selectedCompanyId) load(selectedCompanyId, selectedProjectId);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error al eliminar la UCAP');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const ready = selectedCompanyId && (!isCanalesContactos || selectedProjectId);
 
@@ -212,11 +234,11 @@ export default function CregPage() {
                   <TableHeader>
                     <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
                       <TableHead className="font-semibold">Código</TableHead>
-                      <TableHead className="font-semibold">Descripción</TableHead>
+                      <TableHead className="font-semibold">UCAP</TableHead>
                       <TableHead className="font-semibold text-right">Valor</TableHead>
                       <TableHead className="font-semibold text-right">IPP inicial</TableHead>
                       <TableHead className="font-semibold text-center">Hoja de costos</TableHead>
-                      <TableHead className="w-28" />
+                      <TableHead className="w-36" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -249,10 +271,15 @@ export default function CregPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center justify-end">
+                              <div className="flex items-center justify-end gap-1">
                                 <Button variant="outline" size="sm" title="Editar la UCAP y su hoja de costos"
                                   className="h-7 gap-1 text-xs" onClick={() => openUcap(u)}>
                                   <Pencil className="w-3.5 h-3.5" /> Editar
+                                </Button>
+                                <Button variant="ghost" size="icon" title="Eliminar la UCAP"
+                                  className="h-7 w-7 text-[hsl(var(--canalco-neutral-500))] hover:text-red-600"
+                                  onClick={() => setDeleteTarget(u)}>
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </TableCell>
@@ -279,6 +306,36 @@ export default function CregPage() {
           </div>
         )}
       </main>
+
+      {/* Confirmación de borrado de UCAP */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar UCAP</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+            ¿Seguro que deseas eliminar la UCAP{' '}
+            <strong>{deleteTarget?.code}</strong> — {deleteTarget?.description}? Se borrará también su
+            hoja de costos. Esta acción no se puede deshacer y libera el código para reutilizarlo.
+          </p>
+          <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+            Si la UCAP está en uso por presupuestos o levantamientos, no podrá eliminarse.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white gap-2"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

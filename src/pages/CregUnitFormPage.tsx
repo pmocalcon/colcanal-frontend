@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { cregService } from '@/services/creg.service';
+import { cregService, UCAP_GRUPOS } from '@/services/creg.service';
 import type { CregItemSection } from '@/services/creg.service';
 import { materialsService } from '@/services/materials.service';
 import type { Material } from '@/services/materials.service';
@@ -62,6 +62,7 @@ export default function CregUnitFormPage() {
   const [companyName, setCompanyName] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [grupo, setGrupo] = useState<string | null>(null);
   const [hasCostSheet, setHasCostSheet] = useState(false);
   const [items, setItems] = useState<FormItem[]>([]);
   const [pct, setPct] = useState({
@@ -102,6 +103,7 @@ export default function CregUnitFormPage() {
           setCompanyName(companies.find((c) => c.companyId === unit.companyId)?.name ?? '');
           setName(unit.name);
           setCode(unit.code ?? '');
+          setGrupo(unit.grupo ?? null);
           setHasCostSheet(unit.hasCostSheet);
           setManualValue(unit.value);
           setInitialIpp(unit.initialIpp ?? cfg.companyIppBase);
@@ -250,6 +252,7 @@ export default function CregUnitFormPage() {
     const payload = {
       code: trimmedCode,
       description: trimmedName,
+      grupo,
       initialIpp,
       // El valor solo se escribe a mano mientras no haya líneas de costos.
       roundedValue: items.length === 0 ? manualValue : undefined,
@@ -341,6 +344,21 @@ export default function CregUnitFormPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">Grupo</label>
+              <Select
+                value={grupo ?? '__none__'}
+                onValueChange={(v) => setGrupo(v === '__none__' ? null : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="— Sin grupo —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Sin grupo —</SelectItem>
+                  {UCAP_GRUPOS.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">Valor</label>
               {items.length > 0 ? (

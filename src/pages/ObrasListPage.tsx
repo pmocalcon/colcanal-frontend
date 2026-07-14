@@ -97,16 +97,22 @@ export default function ObrasListPage() {
   // el resto son las empresas UT.
   const municipioOptions = useMemo(() => {
     if (!activeDept) return [] as Array<{ kind: 'company' | 'project'; id: number; name: string }>;
+    const projMap = new Map<number, { kind: 'project'; id: number; name: string }>();
+    // Proyectos ya mapeados al departamento (acceso a nivel de proyecto, p.ej. Antioquia).
+    activeDept.projects.forEach((p) => {
+      if (p.name.trim().toLowerCase() !== 'oficina principal') {
+        projMap.set(p.projectId, { kind: 'project', id: p.projectId, name: p.name });
+      }
+    });
+    // Si además tiene la empresa Canales & Contactos, incluir sus proyectos desde el acceso.
     const canales = activeDept.companies.find((c) => c.name === 'Canales & Contactos');
     if (canales) {
-      return (access?.projects || [])
-        .filter(
-          (p) =>
-            p.companyId === canales.companyId &&
-            p.name.trim().toLowerCase() !== 'oficina principal',
-        )
-        .map((p) => ({ kind: 'project' as const, id: p.projectId, name: p.name }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      (access?.projects || [])
+        .filter((p) => p.companyId === canales.companyId && p.name.trim().toLowerCase() !== 'oficina principal')
+        .forEach((p) => projMap.set(p.projectId, { kind: 'project', id: p.projectId, name: p.name }));
+    }
+    if (projMap.size > 0) {
+      return [...projMap.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
     return activeDept.companies.map((c) => ({
       kind: 'company' as const,

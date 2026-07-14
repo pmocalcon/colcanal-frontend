@@ -1,5 +1,23 @@
 import api from './api';
 
+/**
+ * Lista fija de grupos/categorías de UCAP, en el orden en que se muestran.
+ * (Confirmar/completar con el listado oficial del negocio.)
+ */
+export const UCAP_GRUPOS = [
+  'LUMINARIAS',
+  'FOTOCONTROLES',
+  'ELEMENTOS DE SOPORTE',
+  'BOMBILLAS',
+  'POSTES',
+  'REDES',
+  'CANALIZACIONES',
+  'TRANSFORMADORES',
+  'MEDIDORES',
+  'PUESTA A TIERRA',
+  'TELEGESTIÓN',
+] as const;
+
 // ============ TIPOS ============
 
 export type CregItemSection = 'material' | 'transporte' | 'obra_civil' | 'montaje';
@@ -76,6 +94,8 @@ export interface CregUnit {
   projectId: number | null;
   code: string;
   name: string;
+  /** Grupo/categoría de la UCAP (para agrupar en las tablas). */
+  grupo: string | null;
   value: number;
   /** IPP inicial propio de la UCAP (columna "IPP inicial" de la lista). */
   initialIpp: number | null;
@@ -108,6 +128,7 @@ export interface SaveUcapCostSheetPayload {
   /** Datos de la propia UCAP, editables desde la hoja de costos. */
   code?: string;
   description?: string;
+  grupo?: string | null;
   initialIpp?: number | null;
   /** Solo se usa cuando la hoja no tiene líneas. */
   roundedValue?: number | null;
@@ -210,7 +231,14 @@ export const cregService = {
     return data;
   },
 
+  /** Borra solo la hoja de costos, dejando la UCAP. */
   async clearSheet(ucapId: number): Promise<{ message: string }> {
+    const { data } = await api.delete<{ message: string }>(`${BASE}/units/${ucapId}/sheet`);
+    return data;
+  },
+
+  /** Elimina la UCAP por completo (libera el código). Falla si está en uso. */
+  async deleteUnit(ucapId: number): Promise<{ message: string }> {
     const { data } = await api.delete<{ message: string }>(`${BASE}/units/${ucapId}`);
     return data;
   },
