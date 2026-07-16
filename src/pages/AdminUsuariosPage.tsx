@@ -50,7 +50,7 @@ import {
   type Gestion,
   type CreateRoleDto,
 } from '@/services/users.service';
-import { masterDataService } from '@/services/master-data.service';
+import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { surveysService } from '@/services/surveys.service';
 import { mapCompaniesToDepartments, mapProjectsToDepartments } from '@/utils/departmentMapper';
 
@@ -113,8 +113,8 @@ export default function AdminUsuariosPage() {
   // Estados para gestión de accesos
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
-  const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
-  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
   const [userCompanyAccess, setUserCompanyAccess] = useState<number[]>([]);
   const [userProjectAccess, setUserProjectAccess] = useState<number[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
@@ -404,13 +404,9 @@ export default function AdminUsuariosPage() {
 
     try {
       setAccessSaving(true);
-      console.log('🔍 [handleSaveAccess] Guardando accesos para usuario:', selectedUserForAccess.userId);
-      console.log('🔍 [handleSaveAccess] Empresas seleccionadas:', userCompanyAccess);
-      console.log('🔍 [handleSaveAccess] Proyectos seleccionados:', userProjectAccess);
 
       // Obtener accesos actuales
       const currentAccess = await surveysService.getUserAccess(selectedUserForAccess.userId);
-      console.log('🔍 [handleSaveAccess] Accesos actuales:', currentAccess);
 
       // Determinar qué agregar y qué eliminar (usar || [] para evitar undefined)
       const currentCompanyIds = (currentAccess.companies || []).map((c) => c.companyId);
@@ -422,17 +418,11 @@ export default function AdminUsuariosPage() {
       const projectsToAdd = userProjectAccess.filter((id) => !currentProjectIds.includes(id));
       const projectsToRemove = (currentAccess.projects || []).filter((p) => !userProjectAccess.includes(p.projectId));
 
-      console.log('🔍 [handleSaveAccess] Empresas a agregar:', companiesToAdd);
-      console.log('🔍 [handleSaveAccess] Empresas a eliminar:', companiesToRemove);
-      console.log('🔍 [handleSaveAccess] Proyectos a agregar:', projectsToAdd);
-      console.log('🔍 [handleSaveAccess] Proyectos a eliminar:', projectsToRemove);
-
       // Ejecutar cambios
       const operations = [];
 
       // Agregar nuevas empresas
       for (const companyId of companiesToAdd) {
-        console.log('🔍 [handleSaveAccess] Agregando empresa:', companyId);
         operations.push(
           surveysService.addUserAccess({
             userId: selectedUserForAccess.userId,
@@ -441,29 +431,23 @@ export default function AdminUsuariosPage() {
         );
       }
 
-      // Agregar nuevos proyectos
+      // Agregar nuevos proyectos (el acceso por proyecto necesita su companyId)
       for (const projectId of projectsToAdd) {
-        console.log('🔍 [handleSaveAccess] Agregando proyecto:', projectId);
-        // Encontrar el proyecto para obtener su companyId
-        const project = allProjects.find(p => p.projectId === projectId);
+        const project = availableProjects.find((p) => p.projectId === projectId);
         if (project) {
-          console.log('🔍 [handleSaveAccess] Proyecto encontrado:', project);
           operations.push(
             surveysService.addUserAccess({
               userId: selectedUserForAccess.userId,
               projectId,
-              companyId: project.companyId, // El proyecto necesita su companyId
+              companyId: project.companyId,
             })
           );
-        } else {
-          console.error('❌ [handleSaveAccess] No se encontró el proyecto:', projectId);
         }
       }
 
       // Eliminar empresas
       for (const company of companiesToRemove) {
         if (company.accessId) {
-          console.log('🔍 [handleSaveAccess] Eliminando empresa accessId:', company.accessId);
           operations.push(surveysService.deleteUserAccess(company.accessId));
         }
       }
@@ -471,21 +455,16 @@ export default function AdminUsuariosPage() {
       // Eliminar proyectos
       for (const project of projectsToRemove) {
         if (project.accessId) {
-          console.log('🔍 [handleSaveAccess] Eliminando proyecto accessId:', project.accessId);
           operations.push(surveysService.deleteUserAccess(project.accessId));
         }
       }
 
-      console.log('🔍 [handleSaveAccess] Total operaciones:', operations.length);
-      const results = await Promise.all(operations);
-      console.log('✅ [handleSaveAccess] Operaciones completadas:', results);
+      await Promise.all(operations);
 
       setSuccessMessage('Accesos actualizados correctamente');
       setShowAccessModal(false);
     } catch (error: any) {
-      console.error('❌ [handleSaveAccess] Error saving access:', error);
-      console.error('❌ [handleSaveAccess] Error response:', error.response?.data);
-      console.error('❌ [handleSaveAccess] Error status:', error.response?.status);
+      console.error('Error saving access:', error);
       setError(`Error al guardar los accesos: ${error.response?.data?.message || error.message}`);
     } finally {
       setAccessSaving(false);

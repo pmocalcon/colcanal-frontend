@@ -22,6 +22,14 @@ export const UCAP_GRUPOS = [
 
 export type CregItemSection = 'material' | 'transporte' | 'obra_civil' | 'montaje';
 
+/** Apellido/variante de una UCAP. */
+export interface UcapApellido {
+  apellidoId: number;
+  ucapId?: number;
+  apellido: string;
+  sortOrder?: number;
+}
+
 export interface CregConfig {
   configId?: number;
   companyId: number;
@@ -96,6 +104,8 @@ export interface CregUnit {
   name: string;
   /** Grupo/categoría de la UCAP (para agrupar en las tablas). */
   grupo: string | null;
+  /** Apellidos/variantes de la UCAP (mismo nombre base, distinto origen). */
+  apellidos: UcapApellido[];
   value: number;
   /** IPP inicial propio de la UCAP (columna "IPP inicial" de la lista). */
   initialIpp: number | null;
@@ -228,6 +238,31 @@ export const cregService = {
 
   async saveSheet(ucapId: number, payload: SaveUcapCostSheetPayload): Promise<CregUnit> {
     const { data } = await api.put<CregUnit>(`${BASE}/units/${ucapId}`, payload);
+    return data;
+  },
+
+  // ---- Apellidos/variantes de una UCAP ----
+
+  async getApellidos(ucapId: number): Promise<UcapApellido[]> {
+    const { data } = await api.get<UcapApellido[]>(`${BASE}/units/${ucapId}/apellidos`);
+    return data;
+  },
+
+  /** Agrega un apellido/variante a la UCAP. */
+  async addApellido(ucapId: number, apellido: string): Promise<UcapApellido> {
+    const { data } = await api.post<UcapApellido>(`${BASE}/units/${ucapId}/apellidos`, { apellido });
+    return data;
+  },
+
+  /** Renombra un apellido/variante. */
+  async renameApellido(apellidoId: number, apellido: string): Promise<UcapApellido> {
+    const { data } = await api.patch<UcapApellido>(`${BASE}/apellidos/${apellidoId}`, { apellido });
+    return data;
+  },
+
+  /** Elimina un apellido/variante (idempotente: 'alreadyGone' si ya no existía). */
+  async deleteApellido(apellidoId: number): Promise<{ message: string; apellidoId: number; ucapId: number | null; alreadyGone?: boolean }> {
+    const { data } = await api.delete<{ message: string; apellidoId: number; ucapId: number | null; alreadyGone?: boolean }>(`${BASE}/apellidos/${apellidoId}`);
     return data;
   },
 

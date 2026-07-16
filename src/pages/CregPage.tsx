@@ -112,7 +112,9 @@ export default function CregPage() {
   const filteredUcaps = ucaps.filter((u) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return u.code.toLowerCase().includes(q) || u.description.toLowerCase().includes(q);
+    return u.code.toLowerCase().includes(q)
+      || u.description.toLowerCase().includes(q)
+      || u.apellidos.some((a) => a.apellido.toLowerCase().includes(q));
   });
 
   // Crear y editar viven en el mismo formulario que la hoja de costos.

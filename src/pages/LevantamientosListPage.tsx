@@ -55,6 +55,12 @@ const normalizeLocationName = (name?: string | null) =>
     .toLowerCase()
     .trim();
 
+// La empresa matriz no es un municipio: en Antioquia los municipios son sus
+// proyectos (Ciudad Bolívar, Jericó, ...), así que se oculta del filtro.
+const HIDDEN_MUNICIPALITY_NAMES = new Set(['canales & contactos']);
+const visibleMunicipalitiesOf = (munis: Municipality[] = []): Municipality[] =>
+  munis.filter((m) => !(m.type === 'company' && HIDDEN_MUNICIPALITY_NAMES.has(normalizeLocationName(m.name))));
+
 export default function LevantamientosListPage() {
   const navigate = useNavigate();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
@@ -103,6 +109,11 @@ export default function LevantamientosListPage() {
     () => new Set((activeDept?.municipalities || []).map((m) => normalizeLocationName(m.name))),
     [activeDept],
   );
+  // Municipios visibles en el filtro (sin la empresa matriz Canales & Contactos).
+  const visibleMunicipalities = useMemo(
+    () => visibleMunicipalitiesOf(activeDept?.municipalities),
+    [activeDept],
+  );
 
   // Filtrar por municipio seleccionado dentro del departamento
   const displaySurveys = useMemo(() => {
@@ -136,14 +147,11 @@ export default function LevantamientosListPage() {
     }
   }, [departments, activeTab]);
 
-  // Al cambiar de departamento, seleccionar el primer municipio automáticamente
+  // Al cambiar de departamento, seleccionar el primer municipio visible automáticamente
   useEffect(() => {
     const dept = departments.find((d) => d.name === activeTab);
-    if (dept && dept.municipalities.length > 0) {
-      setActiveMunicipality(dept.municipalities[0]);
-    } else {
-      setActiveMunicipality(null);
-    }
+    const munis = visibleMunicipalitiesOf(dept?.municipalities);
+    setActiveMunicipality(munis.length > 0 ? munis[0] : null);
   }, [activeTab, departments]);
 
   useEffect(() => {
@@ -552,13 +560,13 @@ export default function LevantamientosListPage() {
                 </Select>
               </div>
 
-              {activeDept && activeDept.municipalities.length > 0 && (
+              {activeDept && visibleMunicipalities.length > 0 && (
                 <div className="w-56">
                   <label className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-1 block">Municipio</label>
                   <Select
                     value={activeMunicipality ? `${activeMunicipality.type}-${activeMunicipality.id}` : ''}
                     onValueChange={(val) => {
-                      const muni = activeDept.municipalities.find((m) => `${m.type}-${m.id}` === val);
+                      const muni = visibleMunicipalities.find((m) => `${m.type}-${m.id}` === val);
                       if (muni) setActiveMunicipality(muni);
                     }}
                   >
@@ -566,7 +574,7 @@ export default function LevantamientosListPage() {
                       <SelectValue placeholder="Seleccionar municipio" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activeDept.municipalities.map((muni) => (
+                      {visibleMunicipalities.map((muni) => (
                         <SelectItem key={`${muni.type}-${muni.id}`} value={`${muni.type}-${muni.id}`}>
                           {getMunicipioName(muni.name)}
                         </SelectItem>

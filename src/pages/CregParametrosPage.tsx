@@ -72,7 +72,7 @@ const SECTIONS: SectionDef[] = [
       { key: 'expansionVegetativa12a20', label: 'Expansión vegetativa 12 a 20 años', type: 'percent' },
       { key: 'expansionNavidad', label: 'Expansión navidad', type: 'percent' },
       { key: 'eficienciaLuminarias', label: 'Eficiencia de las luminarias [Lm/W]', type: 'number' },
-      { key: 'utv', label: 'UTV', type: 'money' },
+      { key: 'utv', label: 'UVT', type: 'money' },
       { key: 'valorKwh', label: 'Valor KWh', type: 'money' },
       { key: 'ippoNov2015', label: 'IPPo nov 2015', type: 'number' },
       { key: 'ippFinal', label: 'IPP final', type: 'number' },
@@ -112,7 +112,6 @@ const SECTIONS: SectionDef[] = [
 // Valores por defecto (los mismos de la hoja Excel de referencia).
 const DEFAULT_VALUES: Record<string, any> = {
   resolucionVigente: '123-11',
-  contratista: 'ALUMBRADO PUBLICO',
   iva: 19, pctPropuesto: 99.6, faomOficial: 10.3, faomPropuesto: 10.3,
   waccOficial: 12.09, waccPropuesto: 11.3, ne: 4.1, costoSiapLuminaria: 450,
   costoTransporteElementos: 3, costoIngenieria: 4, costoAdministracion: 16,
@@ -239,7 +238,7 @@ export default function CregParametrosPage() {
     try {
       await cregService.saveParametrizacion(
         selectedCompanyId,
-        { ...data, municipioContratante: municipioName, faomRows },
+        { ...data, contratista: municipioName, faomRows },
         selectedProjectId,
       );
       toast.success('Parametrización guardada');
@@ -419,15 +418,15 @@ function ParamCard({
       </div>
       <div className={`p-4 grid gap-3 ${twoCols ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
         {section.fields.map((f) => {
-          // El municipio contratante se toma del municipio elegido (no editable).
-          const isMuni = f.key === 'municipioContratante';
+          // El contratista se toma del nombre de la empresa/unión elegida (no editable).
+          const isContratista = f.key === 'contratista';
           return (
             <ParamField
               key={f.key}
               field={f}
-              value={isMuni ? (municipioName ?? '') : data[f.key]}
+              value={isContratista ? (municipioName ?? '') : data[f.key]}
               onChange={(v) => setField(f.key, v)}
-              disabled={isMuni}
+              disabled={isContratista}
             />
           );
         })}

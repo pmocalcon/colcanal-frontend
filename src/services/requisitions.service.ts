@@ -161,6 +161,13 @@ export interface ItemApprovalResponse {
 
 // Requisitions Service
 export interface PurchasesDashboardSummary {
+  year: number | null;
+  years: number[];
+  savings: { value: number; items: number };
+  poPending: { value: number; count: number };
+  byCompany: { name: string; count: number; value: number }[];
+  byCategory: { name: string; value: number }[];
+  monthlyByYear: { year: number; month: number; value: number }[];
   requisitions: {
     total: number;
     byStatus: { name: string; count: number }[];
@@ -169,8 +176,10 @@ export interface PurchasesDashboardSummary {
   purchaseOrders: {
     total: number;
     value: number;
-    byStatus: { name: string; count: number }[];
+    byStatus: { name: string; count: number; value: number }[];
+    bySupplier: { name: string; count: number; value: number }[];
     monthly: { month: string; count: number; value: number }[];
+    byYear: { year: number; count: number; value: number }[];
   };
 }
 
@@ -288,9 +297,10 @@ export const requisitionsService = {
   },
 
   /** Resumen agregado de compras (totales exactos + desglose + tendencia mensual). */
-  async getDashboardSummary(): Promise<PurchasesDashboardSummary> {
+  async getDashboardSummary(year?: number): Promise<PurchasesDashboardSummary> {
     const response = await api.get<PurchasesDashboardSummary>(
       '/purchases/requisitions/dashboard-summary',
+      { params: year ? { year } : undefined },
     );
     return response.data;
   },

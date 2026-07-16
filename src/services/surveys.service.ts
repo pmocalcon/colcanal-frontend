@@ -337,11 +337,20 @@ export interface WorksListResponse {
   totalPages: number;
 }
 
+/** Apellido/variante de una UCAP (mismo elemento, distinto origen: acta, otrosí...). */
+export interface UcapApellido {
+  apellidoId: number;
+  ucapId?: number;
+  apellido: string;
+  sortOrder?: number;
+}
+
 export interface Ucap {
   ucapId: number;
   code: string;
   description: string;
   grupo: string | null;
+  apellidos: UcapApellido[];
   value: number;
   initialIpp: number;
 }
@@ -552,6 +561,12 @@ export const surveysService = {
       code: ucap.code,
       description: ucap.description,
       grupo: ucap.grupo ?? null,
+      apellidos: (ucap.apellidos || []).map((a: any) => ({
+        apellidoId: a.apellidoId,
+        ucapId: a.ucapId,
+        apellido: a.apellido,
+        sortOrder: a.sortOrder ?? 0,
+      })),
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));
@@ -570,6 +585,12 @@ export const surveysService = {
       code: ucap.code,
       description: ucap.description,
       grupo: ucap.grupo ?? null,
+      apellidos: (ucap.apellidos || []).map((a: any) => ({
+        apellidoId: a.apellidoId,
+        ucapId: a.ucapId,
+        apellido: a.apellido,
+        sortOrder: a.sortOrder ?? 0,
+      })),
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
     }));

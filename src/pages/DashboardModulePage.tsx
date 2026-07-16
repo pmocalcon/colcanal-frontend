@@ -4,28 +4,31 @@ import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { surveysService, type Work, type WorkActa } from '@/services/surveys.service';
 import { requisitionsService } from '@/services/requisitions.service';
 import { getPendingPurchaseOrdersForApproval } from '@/services/purchase-orders.service';
-import { cregService, type CregSummary } from '@/services/creg.service';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import {
-  Home, ArrowLeft, Loader2, HardHat, CalendarDays, DollarSign, ShoppingCart,
-  Layers, ArrowRight, Zap, TrendingUp, ClipboardList, ClipboardCheck, PackageCheck,
-  Filter, BadgeCheck,
+  Home, ArrowLeft, Loader2, HardHat, DollarSign, ShoppingCart,
+  TrendingUp, PackageCheck, Filter, BadgeCheck, Printer,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip as RTooltip, Cell, AreaChart, Area,
+  Tooltip as RTooltip, Cell, AreaChart, Area, LineChart, Line, Legend,
 } from 'recharts';
 
 const fmtCOP = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
 const fmtNum = (v: number) => new Intl.NumberFormat('es-CO').format(v || 0);
 
+// Delta año vs. año: se omite cuando el año anterior es parcial/de arranque
+// (menos del 20% del actual), porque el % no sería representativo (ej. +2927%).
+const yoyDelta = (cur: number, prev: number): number | null =>
+  prev > 0 && (cur - prev) / prev <= 4 ? (cur - prev) / prev : null;
+
 // Paleta para las gráficas (naranja de marca + complementarios).
 const PRIMARY = '#F59E0B';
 const PALETTE = ['#F59E0B', '#3B82F6', '#10B981', '#8B5CF6', '#EF4444', '#14B8A6', '#EC4899', '#6366F1', '#F97316', '#0EA5E9'];
 
-type ModuleKey = 'obras' | 'compras' | 'creg';
+type ModuleKey = 'obras' | 'compras';
 const MODULE_STORAGE_KEY = 'dashboard.module';
 
 // Identidad de un acta: (empresa, proyecto, número).
@@ -48,17 +51,27 @@ const ACTA_STATUS_COLOR: Record<string, string> = {
 };
 
 type NameValue = { name: string; value: number };
+type StatusVal = { name: string; count: number; value: number };
 
 interface ComprasData {
   available: boolean;
+  years: number[];
   reqTotal: number;
   poTotal: number;
   poPending: number;
   poValue: number;
+  poPendingValue: number;
+  savings: number;
+  savingsItems: number;
   reqByStatus: NameValue[];
-  poByStatus: NameValue[];
+  poByStatus: StatusVal[];
+  bySupplier: StatusVal[];
+  byCompany: StatusVal[];
+  byCategory: NameValue[];
   reqMonthly: { month: string; count: number }[];
-  poMonthly: { month: string; value: number }[];
+  poMonthly: { month: string; count: number; value: number }[];
+  poByYear: { year: number; count: number; value: number }[];
+  monthlyByYear: { year: number; month: number; value: number }[];
 }
 
 const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -77,15 +90,14 @@ export default function DashboardModulePage() {
   const [ippByWork, setIppByWork] = useState<Map<number, { baseIpp: number | null; mesIpp: number | null }>>(new Map());
   // Estado de cada acta, para el embudo en $ y lo pendiente de aprobación.
   const [actaStatusMap, setActaStatusMap] = useState<Map<string, WorkActa>>(new Map());
-  const [pendingReqs, setPendingReqs] = useState<number | null>(null);
   const [compras, setCompras] = useState<ComprasData | null>(null);
-  const [creg, setCreg] = useState<CregSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Filtros de la sección Obras + métrica (valor $ / cantidad).
   const [filterYear, setFilterYear] = useState<number | 'all'>('all');
   const [filterDept, setFilterDept] = useState<string>('all');
-  const [obrasMetric, setObrasMetric] = useState<'valor' | 'cantidad'>('valor');
+  // Filtro de año de la sección Compras (siempre en valor $).
+  const [comprasYear, setComprasYear] = useState<number | 'all'>('all');
 
   const companyIds = useMemo(
     () => (access?.companies || []).map((c) => c.companyId),
@@ -151,47 +163,7 @@ export default function DashboardModulePage() {
         }
       }
 
-      // Requisiciones pendientes de acción (puede no tener permiso → se oculta).
-      try {
-        const res = await requisitionsService.getPendingActions();
-        if (!cancelled) setPendingReqs(res.total ?? res.data?.length ?? 0);
-      } catch {
-        if (!cancelled) setPendingReqs(null);
-      }
-
-      // Desglose de compras: resumen agregado exacto (se oculta si no hay acceso).
-      try {
-        const sum = await requisitionsService.getDashboardSummary();
-        let poPending = 0;
-        try {
-          const pend = await getPendingPurchaseOrdersForApproval(1, 1);
-          poPending = pend.total ?? 0;
-        } catch { /* sin permiso de aprobación */ }
-
-        if (!cancelled) {
-          setCompras({
-            available: true,
-            reqTotal: sum.requisitions.total,
-            reqByStatus: sum.requisitions.byStatus.map((x) => ({ name: x.name, value: x.count })),
-            reqMonthly: sum.requisitions.monthly,
-            poTotal: sum.purchaseOrders.total,
-            poValue: sum.purchaseOrders.value,
-            poByStatus: sum.purchaseOrders.byStatus.map((x) => ({ name: x.name, value: x.count })),
-            poMonthly: sum.purchaseOrders.monthly.map((m) => ({ month: m.month, value: m.value })),
-            poPending,
-          });
-        }
-      } catch {
-        if (!cancelled) setCompras({ available: false, reqTotal: 0, poTotal: 0, poPending: 0, poValue: 0, reqByStatus: [], poByStatus: [], reqMonthly: [], poMonthly: [] });
-      }
-
-      // Resumen CREG (si el rol no tiene acceso, la sección se oculta).
-      try {
-        const summary = await cregService.getSummary();
-        if (!cancelled) setCreg(summary);
-      } catch {
-        if (!cancelled) setCreg(null);
-      }
+      // El desglose de compras se carga en su propio efecto (depende del año).
 
       if (!cancelled) setLoading(false);
     };
@@ -199,6 +171,47 @@ export default function DashboardModulePage() {
     load();
     return () => { cancelled = true; };
   }, [accessLoading, companyIds]);
+
+  // Compras: se recarga al cambiar el año seleccionado.
+  useEffect(() => {
+    if (accessLoading) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const sum = await requisitionsService.getDashboardSummary(comprasYear === 'all' ? undefined : comprasYear);
+        let poPending = 0;
+        try {
+          const pend = await getPendingPurchaseOrdersForApproval(1, 1);
+          poPending = pend.total ?? 0;
+        } catch { /* sin permiso de aprobación */ }
+        if (!cancelled) {
+          setCompras({
+            available: true,
+            years: sum.years,
+            reqTotal: sum.requisitions.total,
+            reqByStatus: sum.requisitions.byStatus.map((x) => ({ name: x.name, value: x.count })),
+            reqMonthly: sum.requisitions.monthly,
+            poTotal: sum.purchaseOrders.total,
+            poValue: sum.purchaseOrders.value,
+            poByStatus: sum.purchaseOrders.byStatus,
+            bySupplier: sum.purchaseOrders.bySupplier,
+            poMonthly: sum.purchaseOrders.monthly,
+            poByYear: sum.purchaseOrders.byYear,
+            monthlyByYear: sum.monthlyByYear,
+            byCompany: sum.byCompany,
+            byCategory: sum.byCategory,
+            poPendingValue: sum.poPending?.value ?? 0,
+            savings: sum.savings?.value ?? 0,
+            savingsItems: sum.savings?.items ?? 0,
+            poPending,
+          });
+        }
+      } catch {
+        if (!cancelled) setCompras({ available: false, years: [], reqTotal: 0, poTotal: 0, poPending: 0, poValue: 0, poPendingValue: 0, savings: 0, savingsItems: 0, reqByStatus: [], poByStatus: [], bySupplier: [], byCompany: [], byCategory: [], reqMonthly: [], poMonthly: [], poByYear: [], monthlyByYear: [] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [accessLoading, comprasYear]);
 
   // Años y departamentos disponibles (para los filtros de Obras).
   const years = useMemo(
@@ -253,7 +266,7 @@ export default function DashboardModulePage() {
     });
     const byDept = [...byDeptMap.entries()]
       .map(([name, e]) => ({ name, ...e }))
-      .sort((a, b) => (obrasMetric === 'valor' ? b.value - a.value : b.count - a.count));
+      .sort((a, b) => b.value - a.value);
 
     // Por municipio (valor)
     const byMuniMap = new Map<string, { value: number; count: number }>();
@@ -292,6 +305,38 @@ export default function DashboardModulePage() {
 
     const municipios = new Set(fw.map((w) => getMunicipioName(w.company?.name || '')).filter(Boolean));
 
+    // Top obras por valor.
+    const topObras = fw
+      .map((w) => ({ name: (w.name?.trim() || w.workCode || `Obra ${w.workId}`), value: valOf(w) }))
+      .filter((o) => o.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+
+    // Top actas por valor (agrupadas por acta).
+    const topActas = [...actaVal.entries()]
+      .map(([k, value]) => {
+        const num = actaStatusMap.get(k)?.actaNumber ?? k.split(':')[2] ?? '—';
+        return { name: `Acta ${num}`, value };
+      })
+      .filter((a) => a.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+
+    // Ticket promedio.
+    const actaCount = actaVal.size;
+    const avgPerObra = fw.length > 0 ? valorTotal / fw.length : 0;
+    const avgPerActa = actaCount > 0 ? [...actaVal.values()].reduce((s, v) => s + v, 0) / actaCount : 0;
+
+    // Comparativo año vs. año (últimos dos años de plan con valor).
+    const yoy = byYear.length >= 2
+      ? {
+          curYear: byYear[byYear.length - 1].year,
+          curValue: byYear[byYear.length - 1].value,
+          prevYear: byYear[byYear.length - 2].year,
+          prevValue: byYear[byYear.length - 2].value,
+        }
+      : null;
+
     return {
       total: fw.length,
       valorTotal,
@@ -305,8 +350,14 @@ export default function DashboardModulePage() {
       pendienteValor: pendiente.value,
       pendienteCount: pendiente.count,
       municipios: municipios.size,
+      topObras,
+      topActas,
+      actaCount,
+      avgPerObra,
+      avgPerActa,
+      yoy,
     };
-  }, [works, values, ippByWork, actaStatusMap, companyIdToDept, filterYear, filterDept, obrasMetric]);
+  }, [works, values, ippByWork, actaStatusMap, companyIdToDept, filterYear, filterDept]);
 
   const busy = accessLoading || loading;
 
@@ -315,9 +366,8 @@ export default function DashboardModulePage() {
     const list: { key: ModuleKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [];
     if (works.length > 0) list.push({ key: 'obras', label: 'Obras', icon: HardHat });
     if (compras?.available) list.push({ key: 'compras', label: 'Compras', icon: ShoppingCart });
-    if (creg && creg.totalUcaps > 0) list.push({ key: 'creg', label: 'CREG', icon: Zap });
     return list;
-  }, [works.length, compras, creg]);
+  }, [works.length, compras]);
 
   // Módulo seleccionado: se recuerda la última elección (localStorage).
   const [selectedModule, setSelectedModule] = useState<ModuleKey | null>(
@@ -329,9 +379,12 @@ export default function DashboardModulePage() {
     setSelectedModule((cur) => {
       if (cur && keys.includes(cur)) return cur;
       const remembered = localStorage.getItem(MODULE_STORAGE_KEY) as ModuleKey | null;
+      // El módulo Compras se resuelve en su propio efecto: si es el recordado y
+      // aún no ha cargado, esperar en vez de saltar a otro módulo.
+      if (remembered === 'compras' && compras === null) return cur;
       return remembered && keys.includes(remembered) ? remembered : keys[0];
     });
-  }, [modules]);
+  }, [modules, compras]);
 
   const selectModule = (key: ModuleKey) => {
     setSelectedModule(key);
@@ -340,6 +393,14 @@ export default function DashboardModulePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 12mm; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          header { position: static !important; box-shadow: none !important; }
+          .recharts-wrapper, .recharts-surface { overflow: visible !important; }
+        }
+      `}</style>
       {/* Header */}
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
@@ -360,6 +421,13 @@ export default function DashboardModulePage() {
               Indicadores y resumen general de tu operación
             </p>
           </div>
+          <Button
+            onClick={() => window.print()}
+            className="ml-auto print:hidden bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white gap-2"
+            title="Exportar el tablero a PDF"
+          >
+            <Printer className="w-4 h-4" /> <span className="hidden sm:inline">Exportar PDF</span>
+          </Button>
         </div>
       </header>
 
@@ -373,14 +441,16 @@ export default function DashboardModulePage() {
         ) : (
           <>
             {/* Selector de módulo */}
-            <ModuleTabs modules={modules} active={selectedModule} onSelect={selectModule} />
+            <div className="print:hidden">
+              <ModuleTabs modules={modules} active={selectedModule} onSelect={selectModule} />
+            </div>
 
             {/* Obras */}
             {selectedModule === 'obras' && works.length > 0 && (() => {
-              const isVal = obrasMetric === 'valor';
-              const dataKey = isVal ? 'value' : 'count';
-              const fmtMetric = (v: number) => (isVal ? fmtCOP(v) : fmtNum(v));
-              const metricLabel = isVal ? 'Valor' : 'Obras';
+              const isVal = true;
+              const dataKey = 'value';
+              const fmtMetric = (v: number) => fmtCOP(v);
+              const metricLabel = 'Valor';
               return (
               <section className="space-y-5">
                 <SectionHeader icon={HardHat} title="Obras" />
@@ -412,70 +482,43 @@ export default function DashboardModulePage() {
                       {depts.map((d) => (<option key={d} value={d}>{d}</option>))}
                     </select>
                   </div>
-                  <div className="ml-auto inline-flex items-center gap-1 rounded-lg bg-[hsl(var(--canalco-neutral-100))] p-1">
-                    {(['valor', 'cantidad'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setObrasMetric(m)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                          obrasMetric === m ? 'bg-white text-[hsl(var(--canalco-primary))] shadow-sm' : 'text-[hsl(var(--canalco-neutral-500))]'
-                        }`}
-                      >
-                        {m === 'valor' ? 'Valor $' : 'Cantidad'}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {/* KPIs (foco en plata) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <StatCard icon={DollarSign} label="Valor total (actualizado)" value={fmtCOP(obrasView.valorTotal)}
-                    hint={`${fmtNum(obrasView.total)} obra${obrasView.total !== 1 ? 's' : ''}`} accent />
+                    hint={`${fmtNum(obrasView.total)} obra${obrasView.total !== 1 ? 's' : ''} · prom. ${fmtCOP(obrasView.avgPerObra)}/obra`} accent
+                    onClick={() => navigate('/dashboard/levantamiento-obras')} />
                   <StatCard icon={BadgeCheck} label="Pendiente de tu aprobación" value={fmtCOP(obrasView.pendienteValor)}
                     hint={`${fmtNum(obrasView.pendienteCount)} acta${obrasView.pendienteCount !== 1 ? 's' : ''} en aprobación`}
                     accent={obrasView.pendienteValor > 0}
                     onClick={() => navigate('/dashboard/levantamiento-obras')} />
-                  <StatCard icon={TrendingUp} label="Efecto IPP (indexación)" value={fmtCOP(obrasView.deltaIpp)}
-                    hint={`Valor base: ${fmtCOP(obrasView.valorBase)}`} />
-                  <StatCard icon={HardHat} label="Obras" value={fmtNum(obrasView.total)}
-                    hint={`${obrasView.municipios} municipio${obrasView.municipios !== 1 ? 's' : ''} · ${obrasView.inActas} en actas`}
-                    onClick={() => navigate('/dashboard/levantamiento-obras')} />
+                </div>
+
+                {/* Indicadores: ejecución presupuestal, año vs. año y ticket por acta */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {compras?.available ? (
+                    <MiniPanel label="Ejecución presupuestal"
+                      value={`${obrasView.valorTotal > 0 ? Math.round((compras.poValue / obrasView.valorTotal) * 100) : 0}%`}
+                      hint={`Comprometido ${fmtCOP(compras.poValue)} · Planeado ${fmtCOP(obrasView.valorTotal)}`}
+                      progress={obrasView.valorTotal > 0 ? compras.poValue / obrasView.valorTotal : 0} />
+                  ) : (
+                    <MiniPanel label="Ejecución presupuestal" value="—" hint="Sin acceso a compras" />
+                  )}
+                  {obrasView.yoy ? (
+                    <MiniPanel label={`Comparativo ${obrasView.yoy.prevYear} vs ${obrasView.yoy.curYear}`}
+                      value={fmtCOP(obrasView.yoy.curValue)}
+                      delta={yoyDelta(obrasView.yoy.curValue, obrasView.yoy.prevValue)}
+                      hint={`${obrasView.yoy.prevYear}: ${fmtCOP(obrasView.yoy.prevValue)}`} />
+                  ) : (
+                    <MiniPanel label="Comparativo año vs año" value="—" hint="Se necesitan 2+ años de plan" />
+                  )}
+                  <MiniPanel label="Ticket promedio por acta"
+                    value={fmtCOP(obrasView.avgPerActa)}
+                    hint={`${fmtNum(obrasView.actaCount)} acta${obrasView.actaCount !== 1 ? 's' : ''} · ${fmtCOP(obrasView.avgPerObra)}/obra`} />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Por año de plan */}
-                  <ChartCard title={`${metricLabel} por año de plan`} className="lg:col-span-2">
-                    {obrasView.byYear.length === 0 ? <EmptyChart /> : (
-                      <ResponsiveContainer width="100%" height={260}>
-                        <BarChart data={obrasView.byYear} margin={{ top: 8, right: 8, left: isVal ? 12 : -16, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                          <XAxis dataKey="year" tick={{ fontSize: 12 }} />
-                          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={isVal ? 84 : 40}
-                            tickFormatter={isVal ? (v: number) => fmtCOP(v) : undefined} />
-                          <RTooltip formatter={(v: number) => [fmtMetric(v), metricLabel]} />
-                          <Bar dataKey={dataKey} fill={PRIMARY} radius={[4, 4, 0, 0]} maxBarSize={56} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </ChartCard>
-
-                  {/* Embudo de actas (siempre en $) */}
-                  <ChartCard title="Actas por estado (valor)">
-                    {obrasView.funnel.length === 0 ? <EmptyChart /> : (
-                      <ResponsiveContainer width="100%" height={Math.max(200, obrasView.funnel.length * 56)}>
-                        <BarChart data={obrasView.funnel} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
-                          <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 11 }} />
-                          <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${p?.payload?.count ?? 0} acta(s)`, 'Valor']} />
-                          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={30}>
-                            {obrasView.funnel.map((d, i) => (<Cell key={i} fill={ACTA_STATUS_COLOR[d.status] ?? PRIMARY} />))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </ChartCard>
-
                   {/* Por departamento */}
                   <ChartCard title={`${metricLabel} por departamento`} className="lg:col-span-2">
                     {obrasView.byDept.length === 0 ? <EmptyChart /> : (
@@ -508,101 +551,280 @@ export default function DashboardModulePage() {
                       </ResponsiveContainer>
                     )}
                   </ChartCard>
+
+                  {/* Top obras por valor */}
+                  <ChartCard title="Top obras por valor" className="lg:col-span-2">
+                    {obrasView.topObras.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={Math.max(160, obrasView.topObras.length * 34)}>
+                        <BarChart data={obrasView.topObras} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <YAxis type="category" dataKey="name" width={200} tick={{ fontSize: 11 }}
+                            tickFormatter={(v: string) => (v.length > 30 ? `${v.slice(0, 29)}…` : v)} />
+                          <RTooltip formatter={(v: number) => [fmtCOP(v), 'Valor']} />
+                          <Bar dataKey="value" fill={PRIMARY} radius={[0, 4, 4, 0]} maxBarSize={22} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  {/* Top actas por valor */}
+                  <ChartCard title="Top actas por valor">
+                    {obrasView.topActas.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={Math.max(160, obrasView.topActas.length * 34)}>
+                        <BarChart data={obrasView.topActas} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                          <RTooltip formatter={(v: number) => [fmtCOP(v), 'Valor']} />
+                          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                            {obrasView.topActas.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  {/* Por año de plan */}
+                  <ChartCard title={`${metricLabel} por año de plan`} className="lg:col-span-2">
+                    {obrasView.byYear.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={obrasView.byYear} margin={{ top: 8, right: 8, left: isVal ? 12 : -16, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                          <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={isVal ? 84 : 40}
+                            tickFormatter={isVal ? (v: number) => fmtCOP(v) : undefined} />
+                          <RTooltip formatter={(v: number) => [fmtMetric(v), metricLabel]} />
+                          <Bar dataKey={dataKey} fill={PRIMARY} radius={[4, 4, 0, 0]} maxBarSize={56} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  {/* Embudo de actas (siempre en $) */}
+                  <ChartCard title="Actas por estado (valor)">
+                    {obrasView.funnel.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={Math.max(200, obrasView.funnel.length * 56)}>
+                        <BarChart data={obrasView.funnel} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 11 }} />
+                          <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${p?.payload?.count ?? 0} acta(s)`, 'Valor']} />
+                          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={30}>
+                            {obrasView.funnel.map((d, i) => (<Cell key={i} fill={ACTA_STATUS_COLOR[d.status] ?? PRIMARY} />))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
                 </div>
               </section>
               );
             })()}
 
             {/* Desglose de compras */}
-            {selectedModule === 'compras' && compras?.available && (
+            {selectedModule === 'compras' && compras?.available && (() => {
+              const promedio = compras.poTotal > 0 ? compras.poValue / compras.poTotal : 0;
+              // Comparativo año vs. año (valor de OC, últimos dos años).
+              const poYoY = compras.poByYear.length >= 2
+                ? {
+                    curYear: compras.poByYear[compras.poByYear.length - 1].year,
+                    curValue: compras.poByYear[compras.poByYear.length - 1].value,
+                    prevYear: compras.poByYear[compras.poByYear.length - 2].year,
+                    prevValue: compras.poByYear[compras.poByYear.length - 2].value,
+                  }
+                : null;
+              // Gasto acumulado a partir de la serie mensual de OC.
+              let acc = 0;
+              const cumulative = compras.poMonthly.map((m) => {
+                acc += m.value;
+                return { label: monthLabel(m.month), value: acc };
+              });
+              // Tasa de aprobación de órdenes (aprobadas / total).
+              const approvedCount = compras.poByStatus
+                .filter((s) => /aprob/i.test(s.name) && !/rech/i.test(s.name))
+                .reduce((n, s) => n + s.count, 0);
+              const tasaAprob = compras.poTotal > 0 ? approvedCount / compras.poTotal : 0;
+              // Comparativo mensual sobrepuesto (una línea por año).
+              const moYears = [...new Set(compras.monthlyByYear.map((r) => r.year))].sort((a, b) => a - b);
+              const overlay = MONTH_ABBR.map((abbr, i) => {
+                const row: Record<string, number | string> = { month: abbr };
+                moYears.forEach((y) => {
+                  row[String(y)] = compras.monthlyByYear.find((r) => r.year === y && r.month === i + 1)?.value ?? 0;
+                });
+                return row;
+              });
+              return (
               <section className="space-y-5">
                 <SectionHeader icon={ShoppingCart} title="Compras" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard icon={ClipboardList} label="Requisiciones" value={fmtNum(compras.reqTotal)}
-                    hint="Total en el sistema" onClick={() => navigate('/dashboard/compras/requisiciones')} />
-                  <StatCard icon={ClipboardCheck} label="Pendientes de tu acción"
-                    value={pendingReqs == null ? '—' : fmtNum(pendingReqs)}
-                    hint="Requieren tu revisión"
-                    accent={(pendingReqs ?? 0) > 0}
-                    onClick={() => navigate('/dashboard/compras')} />
-                  <StatCard icon={ShoppingCart} label="Órdenes de compra" value={fmtNum(compras.poTotal)}
-                    hint={compras.poValue > 0 ? `${fmtCOP(compras.poValue)} recientes` : 'Total emitidas'}
+
+                {/* Filtros + métrica */}
+                <div className="flex flex-wrap items-end gap-3 bg-white rounded-2xl border border-[hsl(var(--canalco-neutral-200))] shadow-sm p-4">
+                  <div className="flex items-center gap-2 text-[hsl(var(--canalco-neutral-500))] pb-1.5">
+                    <Filter className="w-4 h-4" /><span className="text-xs font-semibold uppercase tracking-wide">Filtros</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[hsl(var(--canalco-neutral-500))] mb-1">Año</label>
+                    <select
+                      value={String(comprasYear)}
+                      onChange={(e) => setComprasYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                      className="h-9 rounded-lg border border-[hsl(var(--canalco-neutral-300))] bg-white px-3 text-sm min-w-[120px]"
+                    >
+                      <option value="all">Todos</option>
+                      {compras.years.map((y) => (<option key={y} value={y}>{y}</option>))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* KPIs (todo en plata) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <StatCard icon={DollarSign} label="Valor total órdenes" value={fmtCOP(compras.poValue)}
+                    hint={`Ticket promedio ${fmtCOP(promedio)}`} accent
                     onClick={() => navigate('/dashboard/compras/ordenes')} />
-                  <StatCard icon={PackageCheck} label="Órdenes por aprobar" value={fmtNum(compras.poPending)}
-                    hint="Pendientes de aprobación" accent={compras.poPending > 0}
+                  <StatCard icon={PackageCheck} label="Valor pendiente de aprobación" value={fmtCOP(compras.poPendingValue)}
+                    hint="Esperando tu visto bueno" accent={compras.poPendingValue > 0}
                     onClick={() => navigate('/dashboard/compras/ordenes-compra/aprobar')} />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <ChartCard title="Requisiciones por estado">
-                    <StatusBarChart data={compras.reqByStatus} label="Requisiciones" />
-                  </ChartCard>
-                  <ChartCard title="Órdenes de compra por estado">
-                    <StatusBarChart data={compras.poByStatus} label="Órdenes" />
-                  </ChartCard>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <ChartCard title="Requisiciones por mes">
-                    <MonthlyAreaChart
-                      data={compras.reqMonthly.map((m) => ({ label: monthLabel(m.month), value: m.count }))}
-                      label="Requisiciones" />
-                  </ChartCard>
-                  {compras.poTotal > 0 && (
-                    <ChartCard title="Valor de órdenes por mes">
-                      <MonthlyAreaChart
-                        data={compras.poMonthly.map((m) => ({ label: monthLabel(m.month), value: m.value }))}
-                        label="Valor" currency />
-                    </ChartCard>
+                {/* Tasa de aprobación + comparativo año vs. año */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <MiniPanel label="Tasa de aprobación"
+                    value={`${Math.round(tasaAprob * 100)}%`}
+                    progress={tasaAprob}
+                    hint="Órdenes aprobadas sobre el total" />
+                  {poYoY ? (
+                    <MiniPanel label={`Comparativo ${poYoY.prevYear} vs ${poYoY.curYear}`}
+                      value={fmtCOP(poYoY.curValue)}
+                      delta={yoyDelta(poYoY.curValue, poYoY.prevValue)}
+                      hint={`${poYoY.prevYear}: ${fmtCOP(poYoY.prevValue)}`} />
+                  ) : (
+                    <MiniPanel label="Comparativo año vs año" value="—" hint="Se necesitan 2+ años de órdenes" />
                   )}
                 </div>
-              </section>
-            )}
 
-            {/* Desglose CREG */}
-            {selectedModule === 'creg' && creg && creg.totalUcaps > 0 && (
-              <section className="space-y-5">
-                <SectionHeader icon={Zap} title="CREG · Unidades constructivas" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard icon={Zap} label="UCAPs valoradas" value={fmtNum(creg.totalUcaps)}
-                    hint={`${fmtNum(creg.totalUcapsAll)} UCAPs en total`} onClick={() => navigate('/dashboard/creg/resumen')} />
-                  <StatCard icon={DollarSign} label="Valor total UCAPs" value={fmtCOP(creg.totalValue)}
-                    hint="Suma de totales c/indirectos" accent />
-                  <StatCard icon={Layers} label="Municipios con UCAPs" value={fmtNum(creg.municipios)}
-                    hint="Con hoja de costos" />
-                  <StatCard icon={TrendingUp} label="Valor promedio / UCAP"
-                    value={fmtCOP(creg.totalUcaps > 0 ? creg.totalValue / creg.totalUcaps : 0)}
-                    hint="Total c/indirectos medio" />
+                {/* Órdenes por estado (valor) */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <ChartCard title="Órdenes por estado (valor)">
+                  {compras.poByStatus.length === 0 ? <EmptyChart /> : (
+                    <ResponsiveContainer width="100%" height={Math.max(160, compras.poByStatus.length * 40)}>
+                      <BarChart data={compras.poByStatus} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                        <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }} />
+                        <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${fmtNum(p?.payload?.count ?? 0)} OC`, 'Valor']} />
+                        <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={26}>
+                          {compras.poByStatus.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                  </ChartCard>
+
+                  {/* Valor de órdenes por año (comparativo) */}
+                  <ChartCard title="Valor de órdenes por año">
+                    {compras.poByYear.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={compras.poByYear.map((y) => ({ year: String(y.year), value: y.value, count: y.count }))}
+                          margin={{ top: 8, right: 8, left: 12, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                          <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 11 }} width={84} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${fmtNum(p?.payload?.count ?? 0)} OC`, 'Valor']} />
+                          <Bar dataKey="value" fill={PRIMARY} radius={[4, 4, 0, 0]} maxBarSize={56} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
                 </div>
 
-                {creg.byMunicipio.length > 0 && (
-                  <ChartCard title="Valor de UCAPs por municipio">
-                    <ResponsiveContainer width="100%" height={Math.max(180, Math.min(creg.byMunicipio.length, 12) * 42)}>
-                      <BarChart data={creg.byMunicipio.slice(0, 12)} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                {/* Top proveedores por valor */}
+                {compras.bySupplier.length > 0 && (
+                  <ChartCard title="Top proveedores por valor de órdenes">
+                    <ResponsiveContainer width="100%" height={Math.max(160, compras.bySupplier.length * 36)}>
+                      <BarChart data={compras.bySupplier} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtCOP(v)} />
-                        <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12 }} />
-                        <RTooltip formatter={(v: number) => [fmtCOP(v), 'Valor']} />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={28}>
-                          {creg.byMunicipio.slice(0, 12).map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
-                        </Bar>
+                        <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                        <YAxis type="category" dataKey="name" width={180} tick={{ fontSize: 11 }} />
+                        <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${fmtNum(p?.payload?.count ?? 0)} OC`, 'Valor']} />
+                        <Bar dataKey="value" fill={PRIMARY} radius={[0, 4, 4, 0]} maxBarSize={24} />
                       </BarChart>
                     </ResponsiveContainer>
                   </ChartCard>
                 )}
-              </section>
-            )}
 
-            {/* Accesos rápidos */}
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-3">Accesos rápidos</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <QuickLink icon={HardHat} label="Obras" onClick={() => navigate('/dashboard/levantamiento-obras')} />
-                <QuickLink icon={CalendarDays} label="Plan Anual" onClick={() => navigate('/dashboard/levantamiento-obras/plan-anual')} />
-                <QuickLink icon={Zap} label="CREG" onClick={() => navigate('/dashboard/creg')} />
-                <QuickLink icon={ShoppingCart} label="Compras" onClick={() => navigate('/dashboard/compras')} />
-              </div>
-            </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Gasto por empresa / municipio */}
+                  <ChartCard title="Gasto por empresa / municipio">
+                    {compras.byCompany.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={Math.max(160, compras.byCompany.length * 36)}>
+                        <BarChart data={compras.byCompany.map((c) => ({ name: getMunicipioName(c.name) || c.name, value: c.value, count: c.count }))}
+                          layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }}
+                            tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 23)}…` : v)} />
+                          <RTooltip formatter={(v: number, _n, p: any) => [`${fmtCOP(v)} · ${fmtNum(p?.payload?.count ?? 0)} OC`, 'Valor']} />
+                          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                            {compras.byCompany.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  {/* Gasto por categoría de material */}
+                  <ChartCard title="Gasto por categoría de material">
+                    {compras.byCategory.length === 0 ? <EmptyChart /> : (
+                      <ResponsiveContainer width="100%" height={Math.max(160, compras.byCategory.length * 36)}>
+                        <BarChart data={compras.byCategory} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
+                          <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }}
+                            tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 23)}…` : v)} />
+                          <RTooltip formatter={(v: number) => [fmtCOP(v), 'Valor']} />
+                          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                            {compras.byCategory.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <ChartCard title="Valor de órdenes por mes">
+                    <MonthlyAreaChart
+                      data={compras.poMonthly.map((m) => ({ label: monthLabel(m.month), value: m.value }))}
+                      label="Valor" currency />
+                  </ChartCard>
+
+                  {/* Gasto acumulado */}
+                  <ChartCard title="Gasto acumulado (órdenes)">
+                    <MonthlyAreaChart data={cumulative} label="Acumulado" currency />
+                  </ChartCard>
+                </div>
+
+                {/* Comparativo mensual sobrepuesto (una línea por año) */}
+                {moYears.length > 0 && (
+                  <ChartCard title="Comparativo mensual por año (valor de órdenes)">
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={overlay} margin={{ top: 8, right: 12, left: 12, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                        <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} width={84} tickFormatter={(v: number) => fmtCOP(v)} />
+                        <RTooltip formatter={(v: number, n) => [fmtCOP(v), String(n)]} />
+                        <Legend />
+                        {moYears.map((y, i) => (
+                          <Line key={y} type="monotone" dataKey={String(y)} name={String(y)}
+                            stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 2 }} />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+                )}
+              </section>
+              );
+            })()}
           </>
         )}
       </main>
@@ -644,6 +866,34 @@ function StatCard({ icon: Icon, label, value, hint, accent, onClick }: {
   );
 }
 
+function MiniPanel({ label, value, hint, delta, progress }: {
+  label: string; value: string; hint?: string; delta?: number | null; progress?: number;
+}) {
+  const up = (delta ?? 0) >= 0;
+  const pct = progress != null ? Math.min(100, Math.max(0, progress * 100)) : null;
+  return (
+    <div className="rounded-2xl border border-[hsl(var(--canalco-neutral-200))] bg-white shadow-sm p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[hsl(var(--canalco-neutral-500))]">{label}</p>
+        {delta != null && (
+          <span className={`inline-flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-md ${
+            up ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50'
+          }`}>
+            {up ? '▲' : '▼'} {Math.abs(delta * 100).toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <p className="mt-1.5 text-[1.4rem] leading-tight font-bold text-[hsl(var(--canalco-neutral-900))] truncate">{value}</p>
+      {pct != null && (
+        <div className="mt-2 h-1.5 w-full rounded-full bg-[hsl(var(--canalco-neutral-100))] overflow-hidden">
+          <div className="h-full rounded-full bg-[hsl(var(--canalco-primary))]" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {hint && <p className="mt-1.5 text-xs text-[hsl(var(--canalco-neutral-500))] truncate">{hint}</p>}
+    </div>
+  );
+}
+
 function ModuleTabs({ modules, active, onSelect }: {
   modules: { key: ModuleKey; label: string; icon: React.ComponentType<{ className?: string }> }[];
   active: ModuleKey | null;
@@ -679,7 +929,7 @@ function EmptyDashboard({ onGoHome }: { onGoHome: () => void }) {
       </div>
       <p className="text-lg font-semibold text-[hsl(var(--canalco-neutral-800))]">Aún no hay indicadores para mostrar</p>
       <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1 max-w-md">
-        Cuando tengas obras, compras o UCAPs en tu alcance, sus indicadores aparecerán aquí.
+        Cuando tengas obras o compras en tu alcance, sus indicadores aparecerán aquí.
       </p>
       <Button onClick={onGoHome} className="mt-5 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white">
         Ir al inicio
@@ -744,36 +994,3 @@ function MonthlyAreaChart({ data, label, currency }: {
   );
 }
 
-function StatusBarChart({ data, label }: { data: NameValue[]; label: string }) {
-  if (data.length === 0) return <EmptyChart />;
-  return (
-    <ResponsiveContainer width="100%" height={Math.max(160, data.length * 40)}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
-        <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11 }} />
-        <RTooltip formatter={(v: number) => [fmtNum(v), label]} />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={26}>
-          {data.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
-function QuickLink({ icon: Icon, label, onClick }: {
-  icon: React.ComponentType<{ className?: string }>; label: string; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="group flex items-center gap-3 bg-white rounded-2xl shadow-sm border border-[hsl(var(--canalco-neutral-200))] p-4 text-left transition-all hover:shadow-md hover:border-[hsl(var(--canalco-primary))] hover:-translate-y-0.5"
-    >
-      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-primary))] flex-shrink-0">
-        <Icon className="w-5 h-5" />
-      </div>
-      <span className="flex-1 text-sm font-semibold text-[hsl(var(--canalco-neutral-800))]">{label}</span>
-      <ArrowRight className="w-4 h-4 text-[hsl(var(--canalco-neutral-400))] group-hover:text-[hsl(var(--canalco-primary))] group-hover:translate-x-0.5 transition-all" />
-    </button>
-  );
-}
