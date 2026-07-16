@@ -54,6 +54,7 @@ import CregPage from './pages/CregPage'
 import CregResumenPage from './pages/CregResumenPage'
 import CregParametrosPage from './pages/CregParametrosPage'
 import CregCensoPage from './pages/CregCensoPage'
+import CregLiquidacionPage from './pages/CregLiquidacionPage'
 import CregUnitFormPage from './pages/CregUnitFormPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
@@ -185,6 +186,14 @@ export default function App() {
             element={
               <ProtectedRoute permission="creg:censo">
                 <CregCensoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/liquidacion"
+            element={
+              <ProtectedRoute permission="creg:liquidacion">
+                <CregLiquidacionPage />
               </ProtectedRoute>
             }
           />

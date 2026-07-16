@@ -26,7 +26,7 @@ import { materialsService, type Material } from '@/services/materials.service';
 import { surveysService, type Work } from '@/services/surveys.service';
 import { directorBudgetsService, type BudgetStatus } from '@/services/director-budgets.service';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
-import { mapCompaniesToDepartments, getMunicipioName, type Department } from '@/utils/departmentMapper';
+import { mapToDepartments, getMunicipioName, visibleMunicipalitiesOf, type Department, type Municipality } from '@/utils/departmentMapper';
 
 type WorkSelectionMode = 'individual' | 'agrupado';
 
@@ -307,13 +307,22 @@ export default function PresupuestoPage() {
   // Gerencia, al autorizar (en_revision), puede editar SOLO Otros Costos y Costos L.N.A.
   const canEditAuthFields = canApprove && budgetStatus === 'en_revision';
 
+  // Los municipios de Antioquia son PROYECTOS de "Canales & Contactos", así que
+  // hay que mapear empresas y proyectos: solo con empresas se pierden los que no
+  // tienen una UT homónima (p. ej. Pueblo Rico).
   const departments = useMemo(() => {
     if (!access?.companies) return [];
-    return mapCompaniesToDepartments(access.companies);
+    return mapToDepartments(access.companies, access.projects || []);
   }, [access]);
 
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
-  const [selectedMunicipalityId, setSelectedMunicipalityId] = useState<number | null>(null);
+  const [selectedMunicipality, setSelectedMunicipality] = useState<Municipality | null>(null);
+
+  // Municipios elegibles: sin la empresa matriz, que no es un municipio.
+  const visibleMunicipalities = useMemo(
+    () => visibleMunicipalitiesOf(selectedDept?.municipalities),
+    [selectedDept],
+  );
   const [workSelectionMode, setWorkSelectionMode] = useState<WorkSelectionMode>('individual');
   const [selectedWorkId, setSelectedWorkId] = useState<number | null>(null);
   const [selectedWorkName, setSelectedWorkName] = useState('');
@@ -649,35 +658,26 @@ export default function PresupuestoPage() {
       setWorks([]);
       return;
     }
-    const muniKey = (name: string) =>
-      getMunicipioName(name)
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/\s+/g, '')
-        .trim();
-
-    const deptMuniKeys = new Set(selectedDept.companies.map((c) => muniKey(c.name)));
-    const deptProjects = (access?.projects ?? []).filter((p) => deptMuniKeys.has(muniKey(p.name)));
-
     let companyIds: number[] | undefined;
     let projectId: number | undefined;
 
-    if (selectedMunicipalityId === null) {
+    if (selectedMunicipality === null) {
       // Todos: empresas del depto + empresas dueñas de sus proyectos (p. ej. Canales & Contactos)
       companyIds = Array.from(
-        new Set([...selectedDept.companyIds, ...deptProjects.map((p) => p.companyId)]),
+        new Set([
+          ...selectedDept.companyIds,
+          ...selectedDept.municipalities
+            .filter((m) => m.type === 'project' && m.companyId != null)
+            .map((m) => m.companyId!),
+        ]),
       );
+    } else if (selectedMunicipality.type === 'project') {
+      projectId = selectedMunicipality.id;
+    } else if (selectedMunicipality.linkedProjectId != null) {
+      // La UT homónima existe pero las obras cuelgan del proyecto del mismo nombre.
+      projectId = selectedMunicipality.linkedProjectId;
     } else {
-      const selCompany = selectedDept.companies.find((c) => c.companyId === selectedMunicipalityId);
-      const matchProject = selCompany
-        ? deptProjects.find((p) => muniKey(p.name) === muniKey(selCompany.name))
-        : undefined;
-      if (matchProject) {
-        projectId = matchProject.projectId; // obras de la empresa dueña, filtradas por ese municipio
-      } else {
-        companyIds = [selectedMunicipalityId];
-      }
+      companyIds = [selectedMunicipality.id];
     }
 
     const load = async () => {
@@ -693,7 +693,7 @@ export default function PresupuestoPage() {
       }
     };
     load();
-  }, [selectedDept, selectedMunicipalityId, access]);
+  }, [selectedDept, selectedMunicipality, access]);
 
   // VALOR FACTURADO = UCAPs (cantidad × valor unitario del catálogo) ajustadas por IPP del mes.
   //   valor = base × (IPP del mes / IPP inicial). IPP inicial: ippConfig de la empresa; IPP del mes: del levantamiento.
@@ -1041,13 +1041,10 @@ export default function PresupuestoPage() {
   const selectedMunicipioName = useMemo(() => {
     if (!selectedDept) return '';
     // 1) Municipio elegido explícitamente en el filtro
-    if (selectedMunicipalityId != null) {
-      const c = selectedDept.companies.find((x) => x.companyId === selectedMunicipalityId);
-      if (c) return getMunicipioName(c.name);
-    }
+    if (selectedMunicipality) return getMunicipioName(selectedMunicipality.name);
     // 2) Departamento con un solo municipio
-    if (selectedDept.companies.length === 1) {
-      return getMunicipioName(selectedDept.companies[0].name);
+    if (selectedDept.municipalities.length === 1) {
+      return getMunicipioName(selectedDept.municipalities[0].name);
     }
     // 3) Individual: municipio de la obra seleccionada (proyecto o empresa)
     if (workSelectionMode === 'individual' && selectedWorkId != null) {
@@ -1059,7 +1056,7 @@ export default function PresupuestoPage() {
       return resolveMunicipioName(works.filter((w) => w.recordNumber === selectedActa));
     }
     return '';
-  }, [selectedDept, selectedMunicipalityId, workSelectionMode, selectedWorkId, selectedActa, works, resolveMunicipioName]);
+  }, [selectedDept, selectedMunicipality, workSelectionMode, selectedWorkId, selectedActa, works, resolveMunicipioName]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -1238,7 +1235,8 @@ export default function PresupuestoPage() {
                             value={d.name}
                             onSelect={() => {
                               setSelectedDept(d);
-                              setSelectedMunicipalityId(null);
+                              // Sin opción "Todos": siempre queda un municipio elegido.
+                              setSelectedMunicipality(visibleMunicipalitiesOf(d.municipalities)[0] ?? null);
                               clearWorkSelection();
                               setWorkSelectionMode('individual');
                               setDeptOpen(false);
@@ -1258,7 +1256,7 @@ export default function PresupuestoPage() {
               <button
                 onClick={() => {
                   setSelectedDept(null);
-                  setSelectedMunicipalityId(null);
+                  setSelectedMunicipality(null);
                   clearWorkSelection();
                   setWorkSelectionMode('individual');
                 }}
@@ -1271,35 +1269,25 @@ export default function PresupuestoPage() {
           </div>
 
           {/* Municipality filter pills */}
-          {selectedDept && selectedDept.companies.length > 1 && (
+          {selectedDept && visibleMunicipalities.length > 1 && (
             <div className="flex items-center gap-2 flex-wrap">
               <label className="text-[16px] font-semibold text-[hsl(var(--canalco-neutral-700))] whitespace-nowrap">
                 Municipio:
               </label>
               <div className="flex gap-1.5 flex-wrap">
-                <button
-                  onClick={() => { setSelectedMunicipalityId(null); clearWorkSelection(); }}
-                  disabled={isReadOnly}
-                  className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                    selectedMunicipalityId === null
-                      ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
-                      : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
-                  }`}
-                >
-                  Todos
-                </button>
-                {selectedDept.companies.map((company) => (
+                {/* Los ids de empresa y de proyecto son secuencias distintas: la llave lleva el tipo. */}
+                {visibleMunicipalities.map((muni) => (
                   <button
-                    key={company.companyId}
-                    onClick={() => { setSelectedMunicipalityId(company.companyId); clearWorkSelection(); }}
+                    key={`${muni.type}-${muni.id}`}
+                    onClick={() => { setSelectedMunicipality(muni); clearWorkSelection(); }}
                     disabled={isReadOnly}
                     className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                      selectedMunicipalityId === company.companyId
+                      selectedMunicipality?.type === muni.type && selectedMunicipality?.id === muni.id
                         ? 'bg-[hsl(var(--canalco-primary))] text-white border-transparent'
                         : 'bg-white text-[hsl(var(--canalco-neutral-600))] border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:text-[hsl(var(--canalco-primary))]'
                     }`}
                   >
-                    {getMunicipioName(company.name)}
+                    {getMunicipioName(muni.name)}
                   </button>
                 ))}
               </div>

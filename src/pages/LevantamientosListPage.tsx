@@ -10,7 +10,7 @@ import {
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { useAuth } from '@/contexts/AuthContext';
-import { mapToDepartments, getMunicipioName, type Municipality } from '@/utils/departmentMapper';
+import { mapToDepartments, getMunicipioName, visibleMunicipalitiesOf, type Municipality } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -54,12 +54,6 @@ const normalizeLocationName = (name?: string | null) =>
     .replace(/^union temporal alumbrado publico\s+/i, '')
     .toLowerCase()
     .trim();
-
-// La empresa matriz no es un municipio: en Antioquia los municipios son sus
-// proyectos (Ciudad Bolívar, Jericó, ...), así que se oculta del filtro.
-const HIDDEN_MUNICIPALITY_NAMES = new Set(['canales & contactos']);
-const visibleMunicipalitiesOf = (munis: Municipality[] = []): Municipality[] =>
-  munis.filter((m) => !(m.type === 'company' && HIDDEN_MUNICIPALITY_NAMES.has(normalizeLocationName(m.name))));
 
 export default function LevantamientosListPage() {
   const navigate = useNavigate();

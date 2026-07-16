@@ -184,6 +184,23 @@ export interface CregCenso {
   exists: boolean;
 }
 
+/** Datos propios de un mes liquidado (lo demás se calcula del censo + parámetros). */
+export interface LiquidacionMes {
+  /** IPP(m-1) usado en el mes. Si no se define, se toma el de Parámetros. */
+  ippMes?: number | null;
+  ajusteAom?: number | null;
+  ajusteInv?: number | null;
+  observacion?: string;
+}
+
+export interface CregLiquidacion {
+  companyId: number;
+  projectId: number | null;
+  /** { meses: { [YYYY-MM]: LiquidacionMes } } */
+  data: { meses?: Record<string, LiquidacionMes> } | null;
+  exists: boolean;
+}
+
 export interface CregSummaryMunicipio {
   companyId: number;
   projectId: number | null;
@@ -317,6 +334,28 @@ export const cregService = {
   ): Promise<CregCenso> {
     const { data } = await api.put<CregCenso>(
       `${BASE}/censo/${companyId}`,
+      { data: payload },
+      { params: projectId != null ? { projectId } : undefined },
+    );
+    return data;
+  },
+
+  // ---- Liquidacion mensual ----
+
+  async getLiquidacion(companyId: number, projectId?: number | null): Promise<CregLiquidacion> {
+    const { data } = await api.get<CregLiquidacion>(`${BASE}/liquidacion/${companyId}`, {
+      params: projectId != null ? { projectId } : undefined,
+    });
+    return data;
+  },
+
+  async saveLiquidacion(
+    companyId: number,
+    payload: { meses: Record<string, LiquidacionMes> },
+    projectId?: number | null,
+  ): Promise<CregLiquidacion> {
+    const { data } = await api.put<CregLiquidacion>(
+      `${BASE}/liquidacion/${companyId}`,
       { data: payload },
       { params: projectId != null ? { projectId } : undefined },
     );

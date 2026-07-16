@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Boxes, ClipboardList, SlidersHorizontal, Table2, Zap } from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardList, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 
@@ -32,6 +32,13 @@ const SUBMODULES = [
     description: 'Cantidad de UCAPs instaladas por mes, con rango de fechas y subtotales de costo',
     Icon: ClipboardList,
     permission: 'creg:censo',
+  },
+  {
+    slug: 'liquidacion',
+    nombre: 'Liquidación',
+    description: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
+    Icon: Receipt,
+    permission: 'creg:liquidacion',
   },
 ];
 

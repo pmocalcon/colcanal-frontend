@@ -12,7 +12,15 @@ const normalizeMunicipalityName = (name: string): string =>
     .toLowerCase()
     .trim();
 
-export function getMunicipioName(name: string): string {
+/**
+ * Municipios cuyo nombre en BD no coincide con el oficial. Se corrige solo al
+ * mostrarlo: la BD sigue siendo la fuente de verdad y el mapeo usa su nombre.
+ */
+const NOMBRE_OFICIAL: Record<string, string> = {
+  'pueblo rico': 'Pueblorico',
+};
+
+function stripUtPrefix(name: string): string {
   const normalized = name
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -21,6 +29,11 @@ export function getMunicipioName(name: string): string {
   if (normalized !== name) return normalized || name;
   const prefix = 'Unión Temporal Alumbrado Público ';
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+export function getMunicipioName(name: string): string {
+  const municipio = stripUtPrefix(name);
+  return NOMBRE_OFICIAL[municipio.toLowerCase().trim()] ?? municipio;
 }
 
 export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects: string[] }> = {
@@ -72,6 +85,19 @@ export interface Department {
   companies: Array<{ companyId: number; name: string }>;
   /** @deprecated Use municipalities instead */
   projects: Array<{ projectId: number; name: string; companyId: number }>;
+}
+
+/**
+ * La empresa matriz no es un municipio: en Antioquia los municipios son sus
+ * proyectos (Ciudad Bolívar, Jericó, Tarso, Pueblorico), así que se oculta de
+ * los filtros de municipio.
+ */
+const HIDDEN_MUNICIPALITY_NAMES = new Set(['canales & contactos']);
+
+export function visibleMunicipalitiesOf(munis: Municipality[] = []): Municipality[] {
+  return munis.filter(
+    (m) => !(m.type === 'company' && HIDDEN_MUNICIPALITY_NAMES.has(normalizeMunicipalityName(m.name))),
+  );
 }
 
 export function mapToDepartments(
