@@ -201,35 +201,39 @@ export function BudgetSection({
     loadUcaps();
   }, [companyId, projectId]);
 
-  // Update items with unitValue when UCAPs are loaded (for edit mode)
+  // Sincroniza cada ítem con el precio VIGENTE de su UCAP.
+  //
+  // El levantamiento guarda `unit_value` como una foto del precio al momento de
+  // crearlo, y esa foto queda vieja si luego cambia la hoja de costos de la UCAP.
+  // Además, el valor de obra se calcula como Σ(unit_value × cantidad) × factor IPP:
+  // si la foto trae un IPP viejo incorporado, el IPP se aplicaría dos veces.
+  // El valor unitario es de solo lectura (solo se edita la cantidad), así que
+  // siempre debe reflejar el precio actual de la UCAP.
   useEffect(() => {
     if (ucaps.length === 0) return;
 
-    // Check if any item has ucapId but no unitValue (loaded from backend)
-    const needsUpdate = items.some(item => item.ucapId !== null && item.unitValue === 0);
+    const currentFor = (item: BudgetItemData) =>
+      item.ucapId === null ? undefined : ucaps.find((u) => u.ucapId === item.ucapId);
+
+    // Sale cuando ya todos coinciden, así el efecto converge y no cicla.
+    const needsUpdate = items.some((item) => {
+      const ucap = currentFor(item);
+      return !!ucap && item.unitValue !== ucap.value;
+    });
     if (!needsUpdate) return;
 
-    const updatedItems = items.map(item => {
-      if (item.ucapId !== null && item.unitValue === 0) {
-        const ucap = ucaps.find(u => u.ucapId === item.ucapId);
-        if (ucap) {
-          return {
-            ...item,
-            ucapCode: ucap.code,
-            ucapDescription: ucap.description,
-            unitValue: ucap.value,
-            initialIpp: ucap.initialIpp,
-            budgetedValue: item.quantity * ucap.value,
-          };
-        }
-      }
-      return item;
-    });
-
-    // Only update if there were changes
-    if (updatedItems !== items) {
-      onItemsChange(updatedItems);
-    }
+    onItemsChange(items.map((item) => {
+      const ucap = currentFor(item);
+      if (!ucap || item.unitValue === ucap.value) return item;
+      return {
+        ...item,
+        ucapCode: ucap.code,
+        ucapDescription: ucap.description,
+        unitValue: ucap.value,
+        initialIpp: ucap.initialIpp,
+        budgetedValue: item.quantity * ucap.value,
+      };
+    }));
   }, [ucaps, items, onItemsChange]);
 
   // Add a new empty row

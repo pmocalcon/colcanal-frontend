@@ -215,7 +215,9 @@ export default function CregUnitFormPage() {
 
   // ---- Cálculos (espejo del backend) ----
   const totals = useMemo(() => {
-    // Redondeo a peso entero en cada paso (igual que Excel y el backend).
+    // Espejo del backend (computeTotals): las líneas de costo directo se
+    // redondean a peso, pero los indirectos van con toda su precisión y el
+    // redondeo se aplica una sola vez, TRUNCANDO el total.
     const r = (n: number) => Math.round(n);
     const sum = (s: CregItemSection) =>
       items.filter((it) => it.section === s).reduce((a, it) => a + r((it.quantity || 0) * (it.unitPrice || 0)), 0);
@@ -225,20 +227,20 @@ export default function CregUnitFormPage() {
     const subtotalMontaje = sum('montaje');
     const subtotalDirectos = subtotalMaterials + subtotalTransporte + subtotalObraCivil + subtotalMontaje;
     const indirect = {
-      transport: r(subtotalDirectos * (pct.transport / 100)),
-      engineering: r(subtotalDirectos * (pct.engineering / 100)),
-      administration: r(subtotalDirectos * (pct.administration / 100)),
-      inspection: r(subtotalDirectos * (pct.inspection / 100)),
-      interventoria: r(subtotalDirectos * (pct.interventoria / 100)),
-      retieRetilap: r(subtotalDirectos * (pct.retieRetilap / 100)),
-      financial: r(subtotalDirectos * (pct.financial / 100)),
-      environmental: r(subtotalDirectos * (pct.environmental / 100)),
+      transport: subtotalDirectos * (pct.transport / 100),
+      engineering: subtotalDirectos * (pct.engineering / 100),
+      administration: subtotalDirectos * (pct.administration / 100),
+      inspection: subtotalDirectos * (pct.inspection / 100),
+      interventoria: subtotalDirectos * (pct.interventoria / 100),
+      retieRetilap: subtotalDirectos * (pct.retieRetilap / 100),
+      financial: subtotalDirectos * (pct.financial / 100),
+      environmental: subtotalDirectos * (pct.environmental / 100),
     };
     const totalIndirectos = indirect.transport + indirect.engineering + indirect.administration + indirect.inspection
       + indirect.interventoria + indirect.retieRetilap + indirect.financial + indirect.environmental;
-    const totalUnit = subtotalDirectos + totalIndirectos;
+    const totalUnit = Math.floor(subtotalDirectos + totalIndirectos);
     const ippFactor = ippBase && ippCurrent && ippBase !== 0 ? ippCurrent / ippBase : 1;
-    const finalValue = r(totalUnit * ippFactor);
+    const finalValue = Math.floor(totalUnit * ippFactor);
     return { subtotalMaterials, subtotalObraCivil, subtotalMontaje, subtotalDirectos, indirect, totalIndirectos, totalUnit, ippFactor, finalValue };
   }, [items, pct, ippBase, ippCurrent]);
 
