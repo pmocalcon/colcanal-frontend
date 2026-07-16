@@ -173,6 +173,36 @@ type Block =
   | { kind: 'clausula'; id: string; title: string; content: string }
   | { kind: 'table'; id: string; tableId: string };
 
+const workIdOfBlock = (block: Block): number | null =>
+  block.kind === 'table' && block.tableId.startsWith('work-')
+    ? Number(block.tableId.slice('work-'.length))
+    : null;
+
+/**
+ * Ajusta los bloques de un borrador a las obras que hoy tiene el acta: descarta los
+ * de obras ajenas (que se dibujarían como un hueco vacío) y agrega las que falten,
+ * respetando el orden que el usuario haya dejado guardado.
+ */
+function reconcileWorkBlocks(blocks: Block[], works: Array<{ workId: number }>): Block[] {
+  const validIds = new Set(works.map((w) => w.workId));
+  const kept = blocks.filter((b) => {
+    const workId = workIdOfBlock(b);
+    return workId == null || validIds.has(workId);
+  });
+
+  const present = new Set(kept.map(workIdOfBlock).filter((id): id is number => id != null));
+  const missing: Block[] = works
+    .filter((w) => !present.has(w.workId))
+    .map((w) => ({ kind: 'table', id: `tbl-work-${w.workId}`, tableId: `work-${w.workId}` }));
+  if (missing.length === 0) return kept;
+
+  // Las obras nuevas van donde viven las demás: junto al detalle por proyecto.
+  const detailIndex = kept.findIndex((b) => b.kind === 'table' && b.tableId === 'detail');
+  return detailIndex >= 0
+    ? [...kept.slice(0, detailIndex), ...missing, ...kept.slice(detailIndex)]
+    : [...kept, ...missing];
+}
+
 /**
  * map con concurrencia limitada: evita disparar decenas de peticiones a la vez
  * (el pool de conexiones del backend es pequeño y las últimas hacían timeout).
@@ -289,8 +319,13 @@ export default function ResumenActaPage() {
   const getCurrentProjectId = () =>
     actaProjectId ?? works[0]?.projectId ?? (works[0] as any)?.project?.projectId ?? null;
 
+  // La llave lleva el proyecto: sin él, dos actas con el mismo número dentro de la
+  // misma empresa (Tarso y Pueblorico comparten "01-2026") se pisan el borrador,
+  // y con él el IPP, que es lo que multiplica el valor de todas las obras.
   const getDraftKey = (companyId?: number | null) =>
-    `colcanal:resumen-acta:${companyId ?? 'sin-empresa'}:${recordNumber || 'sin-acta'}`;
+    `colcanal:resumen-acta:${companyId ?? 'sin-empresa'}:${getCurrentProjectId() ?? 'sin-proyecto'}:${
+      recordNumber || 'sin-acta'
+    }`;
 
   const buildDraftPayload = (companyId?: number | null) => ({
     version: 1,
@@ -943,6 +978,11 @@ export default function ResumenActaPage() {
       setConsideracionNumeracion(cfg.consideracionNumeracion ?? 'roman');
       const restoredDraft = await applySavedDraft(companyId);
       if (restoredDraft) {
+        // El borrador guarda la lista de bloques, y puede traer bloques de obras que
+        // ya no son de esta acta (los borradores viejos se guardaron cuando el acta
+        // mezclaba municipios). Un bloque sin obra no falla: se dibuja vacío, dejando
+        // un hueco. Se descartan los sobrantes y se agregan las obras sin bloque.
+        setBlocks((prev) => reconcileWorkBlocks(prev, worksInput));
         setSaveStatus('Cambios cargados');
         window.setTimeout(() => setSaveStatus(''), 2500);
       }
@@ -1103,10 +1143,14 @@ export default function ResumenActaPage() {
       .getWorks({ companyId: allCompanyIds, limit: 1000 } as any)
       .then((res) => {
         const all: Work[] = Array.isArray(res) ? res : (res as any).data ?? [];
+        // El acta se identifica por (empresa, proyecto, número). Dentro de una misma
+        // empresa dos municipios reutilizan el número —Tarso y Pueblorico tienen cada
+        // uno su 01-2026—, así que sin acotar por proyecto se mezclan las dos actas.
         const filtered = all.filter(
           (w) =>
             w.recordNumber === recordNumber &&
-            (actaCompanyId == null || w.companyId === actaCompanyId),
+            (actaCompanyId == null || w.companyId === actaCompanyId) &&
+            (actaProjectId == null || w.projectId === actaProjectId),
         );
         return loadBudgetsForWorks(filtered);
       })

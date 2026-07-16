@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,14 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Home, ArrowLeft, Plus, FileText, Pencil, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { Home, ArrowLeft, Plus, FileText, Pencil, Clock, Eye } from 'lucide-react';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
@@ -79,12 +71,21 @@ export default function PresupuestosListPage() {
   // Bandeja de actas con presupuesto en revisión (Directora Financiera)
   const [pendingActas, setPendingActas] = useState<PendingBudgetActa[]>([]);
   const [pendingActasLoading, setPendingActasLoading] = useState(false);
-  const [reviewingActa, setReviewingActa] = useState<string | null>(null);
-  const [rejectDialog, setRejectDialog] = useState<{ companyId: number; projectId: number | null; actaNumber: string } | null>(null);
-  const [rejectMotivo, setRejectMotivo] = useState('');
 
   const actaKey = (companyId: number, projectId: number | null, actaNumber: string) =>
     `${companyId}:${projectId ?? 0}:${actaNumber}`;
+
+  // El acta trae el nombre de la EMPRESA, que en Antioquia es "Canales & Contactos"
+  // para todos los municipios. El nombre del municipio sale del proyecto.
+  const projectNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    (access?.projects ?? []).forEach((p) => map.set(p.projectId, p.name));
+    return map;
+  }, [access]);
+
+  const actaMunicipio = (a: PendingBudgetActa): string =>
+    (a.projectId != null ? projectNameById.get(a.projectId) : undefined) ??
+    getMunicipality(a.companyName);
 
   const loadPendingActas = async () => {
     try {
@@ -102,38 +103,6 @@ export default function PresupuestosListPage() {
     loadPendingActas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessLoading, canReviewActaBudget]);
-
-  const handleApproveActaBudget = async (companyId: number, projectId: number | null, actaNumber: string) => {
-    const key = actaKey(companyId, projectId, actaNumber);
-    try {
-      setReviewingActa(key);
-      await surveysService.reviewActaBudget(companyId, projectId, actaNumber, 'aprobado');
-      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.projectId, a.actaNumber) !== key));
-      toast.success('Presupuesto del acta aprobado. Se notificó al Director Técnico.');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al aprobar el presupuesto del acta');
-    } finally {
-      setReviewingActa(null);
-    }
-  };
-
-  const handleRejectActaBudget = async () => {
-    if (!rejectDialog) return;
-    const { companyId, projectId, actaNumber } = rejectDialog;
-    const key = actaKey(companyId, projectId, actaNumber);
-    try {
-      setReviewingActa(key);
-      await surveysService.reviewActaBudget(companyId, projectId, actaNumber, 'rechazado', rejectMotivo.trim());
-      setPendingActas((prev) => prev.filter((a) => actaKey(a.companyId, a.projectId, a.actaNumber) !== key));
-      toast.success('Presupuesto del acta rechazado. Se notificó al Director Técnico.');
-      setRejectDialog(null);
-      setRejectMotivo('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al rechazar el presupuesto del acta');
-    } finally {
-      setReviewingActa(null);
-    }
-  };
 
   useEffect(() => {
     if (departments.length > 0 && !activeTab) {
@@ -232,7 +201,7 @@ export default function PresupuestosListPage() {
             </Button>
             <div className="flex-1">
               <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">
-                Presupuestos Director de Proyectos
+                Presupuestos de Proyectos
               </h1>
             </div>
             <div className="flex rounded-lg overflow-hidden border border-[hsl(var(--canalco-neutral-300))]">
@@ -304,11 +273,10 @@ export default function PresupuestosListPage() {
                 <tbody>
                   {pendingActas.map((a) => {
                     const key = actaKey(a.companyId, a.projectId, a.actaNumber);
-                    const busy = reviewingActa === key;
                     return (
                       <tr key={key} className="border-b border-purple-100 hover:bg-purple-100/50 transition-colors">
                         <td className="px-4 py-2 font-mono font-semibold text-purple-900">{a.actaNumber}</td>
-                        <td className="px-4 py-2 text-purple-700">{getMunicipality(a.companyName)}</td>
+                        <td className="px-4 py-2 text-purple-700">{actaMunicipio(a)}</td>
                         <td className="px-4 py-2 text-center text-purple-700">{a.worksCount}</td>
                         <td className="px-4 py-2 text-center text-xs text-purple-600">{fmtDate(a.updatedAt)}</td>
                         <td className="px-4 py-2">
@@ -319,34 +287,18 @@ export default function PresupuestosListPage() {
                               className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
                               onClick={() =>
                                 navigate(
-                                  `/dashboard/levantamiento-obras/acta/${encodeURIComponent(a.actaNumber)}?company=${a.companyId}`,
+                                  // Abre el presupuesto del acta ya cargado. El acta se identifica
+                                  // por (empresa, proyecto, número): sin el proyecto, un mismo
+                                  // número arrastra las obras de otro municipio.
+                                  `/dashboard/levantamiento-obras/presupuesto?company=${a.companyId}${
+                                    a.projectId != null ? `&project=${a.projectId}` : ''
+                                  }&acta=${encodeURIComponent(a.actaNumber)}`,
                                 )
                               }
-                              title="Ver detalle del acta"
+                              title="Abrir el presupuesto de esta acta"
                             >
                               <Eye className="w-3.5 h-3.5 mr-1" />
-                              Ver detalle
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => handleApproveActaBudget(a.companyId, a.projectId, a.actaNumber)}
-                              disabled={busy}
-                            >
-                              {busy
-                                ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
-                                : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
-                              Aprobar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-50"
-                              onClick={() => { setRejectDialog({ companyId: a.companyId, projectId: a.projectId, actaNumber: a.actaNumber }); setRejectMotivo(''); }}
-                              disabled={busy}
-                            >
-                              <XCircle className="w-3.5 h-3.5 mr-1" />
-                              Rechazar
+                              Realizar presupuesto
                             </Button>
                           </div>
                         </td>
@@ -632,38 +584,6 @@ export default function PresupuestosListPage() {
         )}
       </main>
 
-      {/* Diálogo de rechazo del presupuesto del acta — motivo obligatorio */}
-      <Dialog open={!!rejectDialog} onOpenChange={(open) => { if (!open) { setRejectDialog(null); setRejectMotivo(''); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Rechazar presupuesto — Acta {rejectDialog?.actaNumber}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] block">
-              Motivo del rechazo (obligatorio)
-            </label>
-            <textarea
-              value={rejectMotivo}
-              onChange={(e) => setRejectMotivo(e.target.value)}
-              placeholder="Explique por qué se rechaza el presupuesto del acta..."
-              className="w-full text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md p-2 resize-none h-24 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setRejectDialog(null); setRejectMotivo(''); }}>
-              Cancelar
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={handleRejectActaBudget}
-              disabled={!rejectMotivo.trim() || (rejectDialog ? reviewingActa === actaKey(rejectDialog.companyId, rejectDialog.projectId, rejectDialog.actaNumber) : false)}
-            >
-              <XCircle className="w-4 h-4 mr-1.5" />
-              Rechazar presupuesto
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
@@ -292,6 +292,12 @@ export default function PresupuestoPage() {
   const { user } = useAuth();
   const { hasPermission } = useGranularPermissions();
   const { id: budgetIdParam } = useParams<{ id: string }>();
+  // Preselección al llegar desde la bandeja de actas: ?company=&project=&acta=
+  const [searchParams] = useSearchParams();
+  const preCompanyId = searchParams.get('company') ? Number(searchParams.get('company')) : null;
+  const preProjectId = searchParams.get('project') ? Number(searchParams.get('project')) : null;
+  const preActa = searchParams.get('acta');
+  const preselectAppliedRef = useRef(false);
   const [budgetId, setBudgetId] = useState<number | null>(budgetIdParam ? Number(budgetIdParam) : null);
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>('draft');
   const [saving, setSaving] = useState(false);
@@ -477,6 +483,38 @@ export default function PresupuestoPage() {
     };
     load();
   }, [budgetId, departments, accessLoading]);
+
+  // Preselección al llegar desde la bandeja de actas pendientes: deja el presupuesto
+  // en modo agrupado sobre esa acta; los efectos de abajo cargan materiales, costos
+  // de viaje y valor facturado solos, igual que si se hubiera elegido a mano.
+  useEffect(() => {
+    if (budgetId || preselectAppliedRef.current) return;
+    if (accessLoading || departments.length === 0) return;
+    if (preCompanyId == null || !preActa) return;
+
+    const dept = departments.find(
+      (d) =>
+        d.companyIds.includes(preCompanyId) ||
+        (preProjectId != null && d.projectIds.includes(preProjectId)),
+    );
+    if (!dept) return;
+
+    // El municipio puede ser el proyecto en sí, o la empresa que lo tiene enlazado
+    // (una UT homónima, como Tarso). Sin proyecto, el municipio es la empresa.
+    const muni =
+      preProjectId != null
+        ? dept.municipalities.find(
+            (m) =>
+              (m.type === 'project' && m.id === preProjectId) || m.linkedProjectId === preProjectId,
+          )
+        : dept.municipalities.find((m) => m.type === 'company' && m.id === preCompanyId);
+
+    preselectAppliedRef.current = true;
+    setSelectedDept(dept);
+    setSelectedMunicipality(muni ?? null);
+    setWorkSelectionMode('agrupado');
+    setSelectedActa(preActa);
+  }, [budgetId, departments, accessLoading, preCompanyId, preProjectId, preActa]);
 
   // Resuelve el municipio de un conjunto de obras. En Antioquia el municipio es el PROYECTO
   // (las obras pertenecen a "Canales & Contactos" y el municipio sale del proyecto); en otros
