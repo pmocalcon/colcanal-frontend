@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { surveysService, type Work, type WorkActa, type ActaStatus } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
-import { mapToDepartments } from '@/utils/departmentMapper';
+import { mapToDepartments, getMunicipioName } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
@@ -36,9 +36,10 @@ const makeActaKey = (
   recordNumber: string,
 ) => `${companyId ?? 0}:${projectId ?? 0}:${recordNumber}`;
 
-// Quita el prefijo "Unión Temporal Alumbrado Público" para mostrar solo el municipio.
-const getMunicipality = (companyName: string) =>
-  companyName.replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '').trim() || companyName;
+// Nombre del municipio para mostrar. Delega en getMunicipioName, que además del
+// prefijo "Unión Temporal Alumbrado Público" resuelve el nombre oficial.
+const getMunicipality = (name: string | null | undefined): string =>
+  name ? getMunicipioName(name) : '-';
 
 // key = `company:project:record`  (record puede no tener ':', project es 0 si es nulo)
 const getActaCompanyId = (key: string) => Number(key.split(':')[0]);

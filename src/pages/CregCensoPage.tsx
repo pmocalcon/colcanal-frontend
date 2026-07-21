@@ -14,6 +14,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 
 const EXCLUDED_COMPANY_NAMES = [
   'Inversiones Garcés Escalante',
@@ -137,6 +140,12 @@ export default function CregCensoPage() {
   const [apBusyId, setApBusyId] = useState<number | null>(null);
   // Apellidos con un borrado en curso (evita doble clic / peticiones duplicadas).
   const [deletingApIds, setDeletingApIds] = useState<Set<number>>(new Set());
+  // Variante marcada para eliminar (abre el diálogo de confirmación). El borrado
+  // viaja al servidor de inmediato, sin pasar por Guardar, así que no hay forma de
+  // echarse atrás una vez confirmado.
+  const [apDeleteTarget, setApDeleteTarget] = useState<
+    { ucap: Ucap; apellidoId: number; apellido: string | null } | null
+  >(null);
 
   useEffect(() => {
     masterDataService.getCompanies()
@@ -200,7 +209,9 @@ export default function CregCensoPage() {
     setApBusyId(u.ucapId);
     const wasEmpty = u.apellidos.length === 0;
     try {
-      const created = await cregService.addApellido(u.ucapId, `Variante ${u.apellidos.length + 1}`);
+      // Nace en blanco: se escribe desde cero, sin borrar antes un nombre puesto
+      // por el sistema.
+      const created = await cregService.addApellido(u.ucapId, '');
       setUcaps((prev) => prev.map((x) =>
         x.ucapId === u.ucapId ? { ...x, apellidos: [...x.apellidos, created] } : x));
       // Si era la primera variante, traslada las cantidades de la fila base a ella
@@ -215,7 +226,7 @@ export default function CregCensoPage() {
           return next;
         });
       }
-      toast.success('Apellido agregado · renómbralo');
+      toast.success('Variante agregada · escribe su nombre');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Error al agregar el apellido');
       refreshUcaps();
@@ -227,7 +238,8 @@ export default function CregCensoPage() {
   const handleRenameApellido = async (u: Ucap, apellidoId: number, raw: string) => {
     const value = raw.trim();
     const current = u.apellidos.find((a) => a.apellidoId === apellidoId)?.apellido ?? '';
-    if (!value || value === current) return;
+    // Se permite dejarlo vacío; solo se descarta el guardado si no cambió nada.
+    if (value === current) return;
     // Optimista.
     setUcaps((prev) => prev.map((x) =>
       x.ucapId === u.ucapId
@@ -383,6 +395,15 @@ export default function CregCensoPage() {
     () => Object.values(totalsByYm.cost).reduce((a, c) => a + c, 0),
     [totalsByYm],
   );
+
+  // Meses con cantidades capturadas en la variante que se va a borrar, para avisar
+  // de lo que se pierde antes de confirmar.
+  const apDeleteMeses = useMemo(() => {
+    if (!apDeleteTarget) return 0;
+    const porMes = quantities[`${apDeleteTarget.ucap.ucapId}:${apDeleteTarget.apellidoId}`];
+    if (!porMes) return 0;
+    return Object.values(porMes).filter((c) => cellTotal(normalizeCell(c)) > 0).length;
+  }, [apDeleteTarget, quantities]);
 
   const handleSave = async () => {
     if (!selectedCompanyId) return;
@@ -711,7 +732,7 @@ export default function CregCensoPage() {
                         <tr className="bg-[hsl(var(--canalco-neutral-100))]">
                           <th rowSpan={2} className="sticky left-0 z-20 bg-[hsl(var(--canalco-neutral-100))] px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[80px]">CÓDIGO</th>
                           <th rowSpan={2} className="sticky left-[80px] z-20 bg-[hsl(var(--canalco-neutral-100))] px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">UCAP</th>
-                          <th rowSpan={2} className="px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">Apellido / variante</th>
+                          <th rowSpan={2} className="px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">Obras</th>
                           <th colSpan={4} className="px-3 py-2 text-center font-semibold border border-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-500))]">
                             {prevCol
                               ? <>MES {prevCol.mes} · {prevCol.label} · anterior</>
@@ -752,13 +773,13 @@ export default function CregCensoPage() {
                                 <Fragment key={u.ucapId}>
                                   {rows.map((row, ri) => (
                                     <tr key={row.key} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
+                                      {/* Cada variante se lee como una fila completa, no como
+                                          un colgajo de la anterior: repite código y descripción. */}
                                       <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium border border-[hsl(var(--canalco-neutral-200))] whitespace-nowrap">
-                                        {ri === 0 ? row.ucap.code : ''}
+                                        {row.ucap.code}
                                       </td>
                                       <td className="sticky left-[80px] z-10 bg-white px-2 py-1 border border-[hsl(var(--canalco-neutral-200))] whitespace-nowrap">
-                                        {ri === 0
-                                          ? row.ucap.description
-                                          : <span className="text-[hsl(var(--canalco-neutral-300))] pl-2">↳</span>}
+                                        {row.ucap.description}
                                       </td>
                                       <td className="px-2 py-1 border border-[hsl(var(--canalco-neutral-100))]">
                                         <div className="flex items-center gap-1">
@@ -775,9 +796,13 @@ export default function CregCensoPage() {
                                               />
                                               <button
                                                 type="button"
-                                                title="Eliminar este apellido (y sus cantidades)"
+                                                title="Eliminar esta variante (y sus cantidades)"
                                                 disabled={deletingApIds.has(row.apellidoId!)}
-                                                onClick={() => handleDeleteApellido(u, row.apellidoId!)}
+                                                onClick={() => setApDeleteTarget({
+                                                  ucap: u,
+                                                  apellidoId: row.apellidoId!,
+                                                  apellido: row.apellido,
+                                                })}
                                                 className="text-[hsl(var(--canalco-neutral-400))] hover:text-red-600 disabled:opacity-50"
                                               >
                                                 {deletingApIds.has(row.apellidoId!)
@@ -1029,6 +1054,56 @@ export default function CregCensoPage() {
           </div>
         )}
       </main>
+
+      {/* Confirmación de borrado de variante */}
+      <Dialog
+        open={!!apDeleteTarget}
+        onOpenChange={(open) => { if (!open) setApDeleteTarget(null); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar variante</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
+            ¿Seguro que deseas eliminar{' '}
+            {apDeleteTarget?.apellido
+              ? <><strong>{apDeleteTarget.apellido}</strong> de la UCAP </>
+              : <>una variante sin nombre de la UCAP </>}
+            <strong>{apDeleteTarget?.ucap.code}</strong> — {apDeleteTarget?.ucap.description}?
+          </p>
+          {apDeleteMeses > 0 ? (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+              Tiene cantidades capturadas en {apDeleteMeses}{' '}
+              {apDeleteMeses === 1 ? 'mes' : 'meses'}. Se borrarán con ella.
+            </p>
+          ) : (
+            <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+              No tiene cantidades capturadas.
+            </p>
+          )}
+          <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+            Se elimina de una vez, sin pasar por Guardar, y no se puede deshacer.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setApDeleteTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white gap-2"
+              disabled={!!apDeleteTarget && deletingApIds.has(apDeleteTarget.apellidoId)}
+              onClick={() => {
+                if (!apDeleteTarget) return;
+                const { ucap, apellidoId } = apDeleteTarget;
+                setApDeleteTarget(null);
+                handleDeleteApellido(ucap, apellidoId);
+              }}
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

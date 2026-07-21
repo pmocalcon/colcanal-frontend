@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import {
   getRequisitionWithPrices,
   assignPrices,
@@ -45,7 +45,7 @@ interface ItemPriceState {
 export default function AsignarPreciosPage() {
   const navigate = useNavigate();
   const { requisitionId } = useParams<{ requisitionId: string }>();
-  const { user } = useAuth();
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
   const [requisition, setRequisition] = useState<RequisitionWithQuotations | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,7 +59,8 @@ export default function AsignarPreciosPage() {
   const [supplierOtherValues, setSupplierOtherValues] = useState<Map<number, string>>(new Map());
   const [supplierObservations, setSupplierObservations] = useState<Map<number, string>>(new Map());
 
-  const isCompras = user?.nombreRol === 'Compras';
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   // Ítems que tienen cotizaciones activas para cotizar
   const cotizarItems = requisition?.items.filter((item) =>
@@ -67,12 +68,14 @@ export default function AsignarPreciosPage() {
   ) || [];
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
     loadRequisition();
-  }, [requisitionId, isCompras]);
+  }, [requisitionId, cargandoPermisos, puedeCotizar]);
 
   const loadShippingContact = async (companyId: number, projectId?: number) => {
     try {
@@ -445,7 +448,7 @@ export default function AsignarPreciosPage() {
     return Array.from(groups.values());
   }, [cotizarItems, itemPrices, supplierOtherValues]);
 
-  if (!isCompras) return null;
+  if (cargandoPermisos || !puedeCotizar) return null;
 
   if (loading) {
     return (

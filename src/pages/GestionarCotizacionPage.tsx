@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import {
   getRequisitionQuotation,
   manageQuotation,
@@ -55,7 +55,7 @@ export default function GestionarCotizacionPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { requisitionId } = useParams<{ requisitionId: string }>();
-  const { user } = useAuth();
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
 
   // Determinar la ruta de retorno basada en la URL actual
   const backPath = location.pathname.includes('/ordenes/')
@@ -75,7 +75,8 @@ export default function GestionarCotizacionPage() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check if user is Compras
-  const isCompras = user?.nombreRol === 'Compras';
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   // Load all suppliers on mount for fast local filtering
   useEffect(() => {
@@ -101,7 +102,9 @@ export default function GestionarCotizacionPage() {
   }, []);
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
@@ -110,7 +113,7 @@ export default function GestionarCotizacionPage() {
       return;
     }
     loadRequisition();
-  }, [requisitionId, isCompras, backPath]);
+  }, [requisitionId, cargandoPermisos, puedeCotizar, backPath]);
 
   const loadShippingContact = async (companyId: number, projectId?: number) => {
     try {
@@ -561,7 +564,7 @@ export default function GestionarCotizacionPage() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [requisition]);
 
-  if (!isCompras) {
+  if (cargandoPermisos || !puedeCotizar) {
     return null;
   }
 

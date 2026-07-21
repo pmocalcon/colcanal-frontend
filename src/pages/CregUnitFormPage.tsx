@@ -79,6 +79,7 @@ export default function CregUnitFormPage() {
   const [ucapYear, setUcapYear] = useState<number | null>(null);
   const [powerNominal, setPowerNominal] = useState<number | null>(null);
   const [powerLosses, setPowerLosses] = useState<number | null>(null);
+  const [efficiencyLmW, setEfficiencyLmW] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -123,6 +124,7 @@ export default function CregUnitFormPage() {
           setUcapYear(unit.ucapYear);
           setPowerNominal(unit.powerNominal);
           setPowerLosses(unit.powerLosses);
+          setEfficiencyLmW(unit.efficiencyLmW);
           setItems(unit.items.map((it) => ({
             key: nextKey(), itemId: it.itemId, section: it.section, materialId: it.materialId ?? null,
             name: it.name, unit: it.unit, quantity: it.quantity, unitPrice: it.unitPrice,
@@ -215,12 +217,11 @@ export default function CregUnitFormPage() {
 
   // ---- Cálculos (espejo del backend) ----
   const totals = useMemo(() => {
-    // Espejo del backend (computeTotals): las líneas de costo directo se
-    // redondean a peso, pero los indirectos van con toda su precisión y el
-    // redondeo se aplica una sola vez, TRUNCANDO el total.
-    const r = (n: number) => Math.round(n);
+    // Espejo del backend (computeTotals): como en el Excel, nada se redondea en
+    // el camino. Las líneas conservan su producto exacto y el redondeo se aplica
+    // una sola vez, al final, con round (no floor).
     const sum = (s: CregItemSection) =>
-      items.filter((it) => it.section === s).reduce((a, it) => a + r((it.quantity || 0) * (it.unitPrice || 0)), 0);
+      items.filter((it) => it.section === s).reduce((a, it) => a + (it.quantity || 0) * (it.unitPrice || 0), 0);
     const subtotalMaterials = sum('material');
     const subtotalTransporte = sum('transporte');
     const subtotalObraCivil = sum('obra_civil');
@@ -238,9 +239,9 @@ export default function CregUnitFormPage() {
     };
     const totalIndirectos = indirect.transport + indirect.engineering + indirect.administration + indirect.inspection
       + indirect.interventoria + indirect.retieRetilap + indirect.financial + indirect.environmental;
-    const totalUnit = Math.floor(subtotalDirectos + totalIndirectos);
+    const totalUnit = Math.round(subtotalDirectos + totalIndirectos);
     const ippFactor = ippBase && ippCurrent && ippBase !== 0 ? ippCurrent / ippBase : 1;
-    const finalValue = Math.floor(totalUnit * ippFactor);
+    const finalValue = Math.round(totalUnit * ippFactor);
     return { subtotalMaterials, subtotalObraCivil, subtotalMontaje, subtotalDirectos, indirect, totalIndirectos, totalUnit, ippFactor, finalValue };
   }, [items, pct, ippBase, ippCurrent]);
 
@@ -261,7 +262,7 @@ export default function CregUnitFormPage() {
       pctEngineering: pct.engineering, pctAdministration: pct.administration, pctInspection: pct.inspection,
       pctInterventoria: pct.interventoria, pctFinancial: pct.financial,
       pctTransport: pct.transport, pctRetieRetilap: pct.retieRetilap, pctEnvironmental: pct.environmental,
-      ippCurrent, ucapMonth, ucapYear, powerNominal, powerLosses,
+      ippCurrent, ucapMonth, ucapYear, powerNominal, powerLosses, efficiencyLmW,
       items: items.map((it, idx) => ({
         section: it.section, materialId: it.materialId, name: it.name.trim() || '(sin nombre)',
         unit: it.unit || 'UND', quantity: it.quantity || 0, unitPrice: it.unitPrice || 0, sortOrder: idx,
@@ -415,6 +416,14 @@ export default function CregUnitFormPage() {
               <label className="block text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">Potencia con pérdidas (W)</label>
               <Input type="number" disabled className="bg-[hsl(var(--canalco-neutral-100))]"
                 value={powerNominal != null || powerLosses != null ? (powerNominal ?? 0) + (powerLosses ?? 0) : ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[hsl(var(--canalco-neutral-700))] mb-1">Eficiencia (Lm/W)</label>
+              <Input type="number" min="0" placeholder="160" value={efficiencyLmW ?? ''}
+                onChange={(e) => setEfficiencyLmW(e.target.value === '' ? null : parseInt(e.target.value))} />
+              <p className="mt-1 text-xs text-[hsl(var(--canalco-neutral-500))]">
+                La liquidación la usa para la anualidad de inversión: 130 sodio, 160 LED.
+              </p>
             </div>
           </div>
         </section>

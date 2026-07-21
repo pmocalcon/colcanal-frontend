@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileText, Package } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import {
   getPurchaseOrdersByRequisition,
   type PurchaseOrder,
@@ -27,8 +27,9 @@ const getStatusClass = (code?: string) => statusStyles[code || ''] || 'bg-gray-1
 export default function VerOrdenCompraPage() {
   const navigate = useNavigate();
   const { requisitionId } = useParams<{ requisitionId: string }>();
-  const { user } = useAuth();
-  const isCompras = user?.nombreRol === 'Compras';
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   const [requisition, setRequisition] = useState<RequisitionWithQuotations | null>(null);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -87,7 +88,9 @@ export default function VerOrdenCompraPage() {
   }, [requisitionId, loadShippingContact]);
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
@@ -96,7 +99,7 @@ export default function VerOrdenCompraPage() {
       return;
     }
     loadData();
-  }, [isCompras, requisitionId, loadData, navigate]);
+  }, [cargandoPermisos, puedeCotizar, requisitionId, loadData, navigate]);
 
   const totals = useMemo(() => {
     return purchaseOrders.reduce(
@@ -124,7 +127,7 @@ export default function VerOrdenCompraPage() {
     return map;
   }, [requisition]);
 
-  if (!isCompras) {
+  if (cargandoPermisos || !puedeCotizar) {
     return null;
   }
 

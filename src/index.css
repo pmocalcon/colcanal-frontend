@@ -99,4 +99,17 @@
     @apply bg-background text-foreground;
     font-family: var(--canalco-font-primary);
   }
+
+  /* Las flechas del input numérico aparecen al pasar por encima y cambian el
+     valor con un solo clic. En hojas de costos y censos eso altera cifras sin
+     que se note, así que se ocultan: el campo se sigue escribiendo a mano. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }

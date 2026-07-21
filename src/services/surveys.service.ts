@@ -353,6 +353,8 @@ export interface Ucap {
   apellidos: UcapApellido[];
   value: number;
   initialIpp: number;
+  /** Eficiencia luminosa [Lm/W]: distingue sodio (130) de LED (160) dentro de un grupo. */
+  efficiencyLmW?: number | null;
 }
 
 export interface CreateUcapPayload {

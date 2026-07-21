@@ -38,10 +38,10 @@ const fmtDate = (iso: string) =>
     year: 'numeric',
   });
 
-const getMunicipality = (companyName: string | null | undefined): string => {
-  if (!companyName) return '-';
-  return companyName.replace(/^Uni[oó]n Temporal Alumbrado P[uú]blico\s+/i, '').trim() || companyName;
-};
+// Nombre del municipio para mostrar. Delega en getMunicipioName, que además del
+// prefijo "Unión Temporal Alumbrado Público" resuelve el nombre oficial.
+const getMunicipality = (name: string | null | undefined): string =>
+  name ? getMunicipioName(name) : '-';
 
 export default function PresupuestosListPage() {
   const navigate = useNavigate();
@@ -84,8 +84,9 @@ export default function PresupuestosListPage() {
   }, [access]);
 
   const actaMunicipio = (a: PendingBudgetActa): string =>
-    (a.projectId != null ? projectNameById.get(a.projectId) : undefined) ??
-    getMunicipality(a.companyName);
+    getMunicipality(
+      (a.projectId != null ? projectNameById.get(a.projectId) : undefined) ?? a.companyName,
+    );
 
   const loadPendingActas = async () => {
     try {

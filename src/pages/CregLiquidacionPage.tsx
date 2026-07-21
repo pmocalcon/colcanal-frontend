@@ -1,15 +1,15 @@
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { cregService, UCAP_GRUPOS } from '@/services/creg.service';
-import type { LiquidacionMes } from '@/services/creg.service';
+import { cregService, UCAP_GRUPOS, indiceDisponibilidad, indiceDisponibilidadOn, vceein } from '@/services/creg.service';
+import type { LiquidacionMes, IddOffMes, IddOnMes } from '@/services/creg.service';
 import { surveysService } from '@/services/surveys.service';
 import type { Ucap } from '@/services/surveys.service';
 import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, Save, Receipt, AlertCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Receipt, AlertCircle } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -111,17 +111,40 @@ const toNum = (v: unknown): number | null => {
 };
 
 /**
- * Anualidad clásica: r / (1 - (1+r)^-n).
- *
- * ⚠️ PENDIENTE DE CONFIRMAR: en el Excel de Puerto Asís el factor observado
- * varía por fila (0,14746 / 0,14756 / 0,14727) aunque todas tengan vida útil 15,
- * mientras que esta fórmula con r=11,3% y n=15 da 0,14139 (~4% por debajo).
- * Falta la fórmula real de esa columna.
+ * PAGO de Excel (PMT): cuota que amortiza `pv` en `nper` periodos a `rate`.
+ * El Excel la invoca con pv negativo para que la cuota salga positiva.
  */
-const annuityFactor = (r: number | null, n: number | null): number | null => {
-  if (r == null || n == null || n <= 0) return null;
-  if (r === 0) return 1 / n;
-  return r / (1 - Math.pow(1 + r, -n));
+const pago = (rate: number, nper: number, pv: number): number => {
+  if (nper <= 0) return 0;
+  if (rate === 0) return -pv / nper;
+  return (-pv * rate) / (1 - Math.pow(1 + rate, -nper));
+};
+
+/**
+ * Anualidad de inversión (CINV anual), réplica de la hoja UCAPs del Excel CREG:
+ *
+ *   =(PAGO(r; vidaUtil; -valorInversion)
+ *     + PAGO(r; vidaUtil; -valorTotal) * ne) * IDapagadas
+ *
+ * Los dos PAGO usan la vida útil del grupo de la UCAP (15 años luminarias, 30
+ * postes/redes, 10 medidores). El primero amortiza el valor de la inversión
+ * UTAP; el segundo, el valor total, ponderado por NE (reposición). No se escala
+ * por eficiencia luminosa ni se usa un periodo Vi aparte. Verificado contra el
+ * Excel de Puerto Asís (junio 2026): fila LED 35W = 962.270.282,95, al peso.
+ */
+const cinvAnual = (p: {
+  r: number | null;
+  ne: number | null;
+  idApagadas: number | null;
+  vidaUtil: number | null;
+  valorInversion: number;
+  valorTotal: number;
+}): number | null => {
+  const { r, ne, idApagadas, vidaUtil } = p;
+  if (r == null || ne == null || vidaUtil == null || vidaUtil <= 0) return null;
+  const inversion = pago(r, vidaUtil, -p.valorInversion);
+  const reposicion = pago(r, vidaUtil, -p.valorTotal) * ne;
+  return (inversion + reposicion) * (idApagadas ?? 1);
 };
 
 export default function CregLiquidacionPage() {
@@ -136,8 +159,13 @@ export default function CregLiquidacionPage() {
   const [params, setParams] = useState<Record<string, any>>({});
   const [quantities, setQuantities] = useState<Record<string, Record<string, CellQty | number>>>({});
   const [meses, setMeses] = useState<Record<string, LiquidacionMes>>({});
+  const [iddMeses, setIddMeses] = useState<Record<string, IddOffMes>>({});
+  const [iddOnMeses, setIddOnMeses] = useState<Record<string, IddOnMes>>({});
   const [selYm, setSelYm] = useState<string | null>(null);
 
+  // Las UCAPs sin cantidades en el mes se ocultan: aportan 0 a todas las
+  // columnas, así que esconderlas no cambia subtotales ni total.
+  const [mostrarSinCantidad, setMostrarSinCantidad] = useState(false);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -170,12 +198,16 @@ export default function CregLiquidacionPage() {
       cregService.getParametrizacion(companyId, projectId),
       cregService.getCenso(companyId, projectId),
       cregService.getLiquidacion(companyId, projectId),
+      cregService.getIddOff(companyId, projectId),
+      cregService.getIddOn(companyId, projectId),
     ])
-      .then(([ucapsRes, param, censo, liq]) => {
+      .then(([ucapsRes, param, censo, liq, idd, iddOn]) => {
         setUcaps(ucapsRes.ucaps);
         setParams(param.data ?? {});
         setQuantities(censo.data?.quantities ?? {});
         setMeses(liq.data?.meses ?? {});
+        setIddMeses(idd.data?.meses ?? {});
+        setIddOnMeses(iddOn.data?.meses ?? {});
         setLoading(false);
       })
       .catch(() => { setError('Error al cargar la liquidación'); setLoading(false); });
@@ -203,12 +235,17 @@ export default function CregLiquidacionPage() {
     municipio: params.municipioContratante ?? null,
     contratista: params.contratista ?? null,
     resolucion: params.resolucionVigente ?? null,
-    r: toNum(params.waccOficial),                  // r (WACC)
+    // r = WACC Propuesto: es el 11,3% que el Excel usa como r y rotula en la
+    // columna "CINV Anual 11,3%". El Oficial (12,09%) no interviene.
+    r: toNum(params.waccPropuesto),                // r (WACC)
     faom: toNum(params.faomOficial),               // FAOM CREG 123/11
+    faoms: toNum(params.faomsOficial) ?? 0,        // FAOMS: 2º factor de AOM (0 si no aplica)
+    idEncendidasParam: toNum(params.idEncendidas), // ID encendidas (respaldo)
     ippo: toNum(params.ippoNov2015),               // IPPo nov 2015
     ippFinal: toNum(params.ippFinal),              // IPP(m-1) por defecto
-    siapLum: toNum(params.costoSiapLuminaria),     // costo SIAP por luminaria
-    ambiental: toNum(params.costosAmbientalesMensual) ?? toNum(params.costosAmbientalesAnual),
+    // Entradas de la anualidad de inversión (CINV).
+    ne: toNum(params.ne),                          // NE: 2º término de la anualidad
+    idApagadas: toNum(params.idApagadas),          // IDapagadas
   }), [params]);
 
   /** Vida útil (años) de una UCAP según su grupo. */
@@ -216,6 +253,35 @@ export default function CregLiquidacionPage() {
     const key = VIDA_UTIL_KEY[(grupo || '').trim().toUpperCase()];
     return key ? toNum(params[key]) : null;
   }, [params]);
+
+  /**
+   * IDapagadas del mes: lo calcula IDD OFF con las fallas de ese periodo. El
+   * parámetro de la hoja es solo respaldo — está quemado a un mes concreto, así
+   * que si hay datos del periodo mandan ellos.
+   */
+  const idCalculado = useMemo(() => {
+    if (!selYm) return null;
+    const m = iddMeses[selYm];
+    return m ? indiceDisponibilidad(m.fallas ?? [], m.wt, m.t) : null;
+  }, [iddMeses, selYm]);
+
+  const idApagadas = idCalculado ?? P.idApagadas;
+
+  /**
+   * ID de encendidas y VCEEIn del mes: los calcula ID ON con las fallas del
+   * periodo (luminarias prendidas de día). El Excel multiplica el AOM por este
+   * ID. Si no hay datos del mes, cae al parámetro (respaldo, por defecto 1).
+   */
+  const idOnMes = selYm ? iddOnMeses[selYm] : undefined;
+  const idEncendidasCalc = useMemo(
+    () => (idOnMes ? indiceDisponibilidadOn(idOnMes.fallas ?? [], idOnMes.wt, idOnMes.t) : null),
+    [idOnMes],
+  );
+  const idEncendidas = idEncendidasCalc ?? P.idEncendidasParam ?? 1;
+  const vceeinMes = useMemo(
+    () => (idOnMes ? vceein(idOnMes.fallas ?? [], idOnMes.teen) : null),
+    [idOnMes],
+  );
 
   const mesActual: LiquidacionMes = (selYm && meses[selYm]) || {};
   const ippMes = mesActual.ippMes ?? P.ippFinal;
@@ -242,13 +308,13 @@ export default function CregLiquidacionPage() {
 
   /**
    * Cálculo por fila (Res. CREG 123 de 2011).
-   *  cantA  = inversión inicial            -> base de INVERSIÓN
-   *  cantB  = municipios y terceros + concesionario
-   *  total  = cantA + cantB                -> base de AOM
-   *  activo      = valor unitario x total
+   *  cantA  = inversión inicial            -> "Cantidades Inversión UTAP Nuevas"
+   *  cantB  = municipios y terceros + concesionario -> "Inversión Municipio y Otros"
+   *  total  = cantA + cantB
+   *  activo      = valor unitario x total   -> "Valor UCAPs"
    *  aomAnual    = activo x FAOM ;  aomMes = aomAnual / 12
-   *  inversion   = valor unitario x cantA
-   *  invAnual    = inversion x anualidad(r, vida útil) ;  invMes = invAnual / 12
+   *  inversion   = valor unitario x cantA   -> "Valor Total UCAPs"
+   *  invAnual    = anualidad del Excel (ver cinvAnual) ;  invMes = invAnual / 12
    */
   const filas = useMemo(() => {
     if (!selYm) return [];
@@ -259,12 +325,21 @@ export default function CregLiquidacionPage() {
       const total = cantA + cantB;
       const vu = row.ucap.value || 0;
       const activo = vu * total;
-      const aomAnual = P.faom != null ? activo * (P.faom / 100) : 0;
+      // AOM anual = activo × (FAOM + FAOMS) × ID_encendidas (Excel: H×(I5+I6)×I3).
+      const aomAnual = P.faom != null ? activo * ((P.faom + P.faoms) / 100) * idEncendidas : 0;
       const inversion = vu * cantA;
-      // La anualidad depende de la vida útil del grupo de la UCAP.
+      // La anualidad amortiza inversión y valor total a la vida útil del grupo
+      // de la UCAP (Res. CREG 123), ponderando la reposición por NE.
       const vidaUtil = vidaUtilDe(row.ucap.grupo);
-      const factor = annuityFactor(P.r != null ? P.r / 100 : null, vidaUtil);
-      const invAnual = factor != null ? inversion * factor : 0;
+      const invAnual =
+        cinvAnual({
+          r: P.r != null ? P.r / 100 : null,
+          ne: P.ne != null ? P.ne / 100 : null,
+          idApagadas,
+          vidaUtil,
+          valorInversion: inversion,
+          valorTotal: activo,
+        }) ?? 0;
       return {
         ...row,
         vidaUtil,
@@ -277,7 +352,7 @@ export default function CregLiquidacionPage() {
         invMes: invAnual / 12,
       };
     });
-  }, [allRows, selYm, getCell, P.faom, P.r, vidaUtilDe]);
+  }, [allRows, selYm, getCell, P.faom, P.faoms, P.r, P.ne, idApagadas, idEncendidas, vidaUtilDe]);
 
   const filaPorKey = useMemo(() => new Map(filas.map((f) => [f.key, f])), [filas]);
 
@@ -312,19 +387,12 @@ export default function CregLiquidacionPage() {
   const totalGeneral = useMemo(() => sumar(filas), [filas]);
 
   // ---- Bloque de resultados ----
-  // Verificado contra el Excel: ambientales = AOM x %; SIAP = costo/lum x luminarias;
-  // total = AOM + INV + ambientales + SIAP + ajustes.
-  const valorAom = totalGeneral.aomMes * (indice ?? 1) + ajusteAom;
-  const valorInv = totalGeneral.invMes * (indice ?? 1) + ajusteInv;
-  const costosAmbientales = P.ambiental != null ? valorAom * (P.ambiental / 100) : 0;
-  const luminarias = useMemo(
-    () => filas
-      .filter((f) => (f.ucap.grupo || '').toUpperCase().includes('LUMINARIA'))
-      .reduce((a, f) => a + f.total, 0),
-    [filas],
-  );
-  const costoSiap = (P.siapLum ?? 0) * luminarias;
-  const valorAPagar = valorAom + valorInv + costosAmbientales + costoSiap;
+  // Estructura del Excel: AOM e INV van SIN los ajustes, y el valor a pagar los
+  // suma aparte: total = AOM + INV + ajuste AOM + ajuste inversión [+ CVURA,
+  // pendiente]. No hay costos ambientales ni SIAP en la liquidación CREG 123.
+  const valorAom = totalGeneral.aomMes * (indice ?? 1);
+  const valorInv = totalGeneral.invMes * (indice ?? 1);
+  const valorAPagar = valorAom + valorInv + ajusteAom + ajusteInv;
 
   const handleSave = async () => {
     if (!selectedCompanyId) return;
@@ -444,21 +512,6 @@ export default function CregLiquidacionPage() {
 
         {ready && !loading && selYm && (
           <>
-            {/* Aviso: fórmula pendiente de confirmar */}
-            <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-900">
-                <p className="font-semibold">La anualidad de inversión está pendiente de confirmar</p>
-                <p className="text-xs mt-1 text-amber-800">
-                  Las columnas <strong>Inv. anual</strong> e <strong>Inv. mes</strong> (y por tanto el VALOR A PAGAR INV)
-                  usan la anualidad clásica <code>r / (1 − (1+r)^−n)</code>, con la vida útil del grupo de cada UCAP.
-                  En el Excel de Puerto Asís el factor observado es ~0,1475 y varía por fila, mientras que con r={fmtPct(P.r)} y
-                  n=15 esta fórmula da {fmtNum(annuityFactor(P.r != null ? P.r / 100 : null, 15), 5)}, así que estos dos valores
-                  aún <strong>no cuadran con el Excel</strong>. El resto (activo, AOM, índice, ambientales, SIAP y el total) sí está verificado.
-                </p>
-              </div>
-            </div>
-
             {/* Cabecera: contrato + parámetros + resultados */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Contrato */}
@@ -479,13 +532,16 @@ export default function CregLiquidacionPage() {
                   Se editan en la hoja de <strong>Parámetros</strong> del municipio.
                 </p>
                 <dl className="space-y-2 text-sm">
-                  <Row label="r (WACC)" value={fmtPct(P.r)} />
-                  <Row label="Vida útil (luminarias)" value={vidaUtilDe('LUMINARIAS') != null ? `${vidaUtilDe('LUMINARIAS')} años` : '—'}
-                    hint="cada grupo usa la suya" />
+                  <Row label="r" value={fmtPct(P.r)} />
+                  <Row label="VCEEIn" value={vceeinMes != null ? fmtCOP(vceeinMes) : '—'}
+                    hint="valor de energía de las encendidas (ID ON)" />
+                  <Row label="IDencendidas" value={fmtNum(idEncendidas, 9)}
+                    hint={idEncendidasCalc != null ? 'calculado en ID ON con las fallas del mes' : 'de Parámetros: sin fallas cargadas en ID ON'} />
+                  <Row label="IDapagadas" value={fmtNum(idApagadas, 9)}
+                    hint={idCalculado != null ? 'calculado en IDD OFF con las fallas del mes' : 'de Parámetros: sin fallas cargadas en IDD OFF'} />
+                  <Row label="FAOM" value={fmtPct(P.faom)} />
+                  <Row label="FAOMS" value={fmtPct(P.faoms)} />
                   <Row label="IPPo noviembre 2015" value={fmtNum(P.ippo)} />
-                  <Row label="FAOM CREG 123/11" value={fmtPct(P.faom)} />
-                  <Row label="% Costos ambientales" value={fmtPct(P.ambiental)} />
-                  <Row label="Costo SIAP / luminaria" value={P.siapLum != null ? fmtCOP(P.siapLum) : '—'} />
                 </dl>
                 <div className="mt-4 pt-3 border-t border-[hsl(var(--canalco-neutral-200))]">
                   <label className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -509,9 +565,7 @@ export default function CregLiquidacionPage() {
                 <dl className="space-y-2 text-sm">
                   <Row label="Índice actualización precio" value={fmtNum(indice)} hint="IPP(m-1) / IPPo" />
                   <Row label="Valor a pagar AOM" value={fmtCOP(valorAom)} />
-                  <Row label="Valor a pagar INV" value={fmtCOP(valorInv)} pending />
-                  <Row label="Costos ambientales A.P." value={fmtCOP(costosAmbientales)} hint={`AOM × ${fmtPct(P.ambiental)}`} />
-                  <Row label={`Costo SIAP (${fmtQty(luminarias)} lum.)`} value={fmtCOP(costoSiap)} />
+                  <Row label="Valor a pagar INV" value={fmtCOP(valorInv)} />
                 </dl>
                 <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))]">
                   <div>
@@ -540,10 +594,17 @@ export default function CregLiquidacionPage() {
 
             {/* Tabla: cálculo de activo */}
             <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
-              <div className="px-4 py-2 bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))]">
-                <h2 className="text-sm font-bold text-center uppercase tracking-wide text-[hsl(var(--canalco-neutral-800))]">
+              <div className="px-4 py-2 bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center gap-3">
+                <h2 className="flex-1 text-sm font-bold text-center uppercase tracking-wide text-[hsl(var(--canalco-neutral-800))]">
                   Cálculo de activo en Resolución CREG 123 de 2011
                 </h2>
+                <label className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--canalco-neutral-700))] cursor-pointer select-none whitespace-nowrap print:hidden"
+                  title="Por defecto solo se listan las UCAPs con cantidades en el mes. Los subtotales no cambian: las ocultas valen 0.">
+                  <input type="checkbox" checked={mostrarSinCantidad}
+                    onChange={(e) => setMostrarSinCantidad(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[hsl(var(--canalco-primary))]" />
+                  Mostrar UCAPs sin cantidades
+                </label>
               </div>
               <div className="overflow-auto max-h-[65vh]">
                 <table className="text-xs border-collapse w-full">
@@ -560,8 +621,8 @@ export default function CregLiquidacionPage() {
                       <th className="px-2 py-2 text-right font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[100px]">AOM anual</th>
                       <th className="px-2 py-2 text-right font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[100px]">AOM mes</th>
                       <th className="px-2 py-2 text-right font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[110px]">Inversión</th>
-                      <th className="px-2 py-2 text-right font-semibold border border-amber-300 bg-amber-50 min-w-[100px]">Inv. anual</th>
-                      <th className="px-2 py-2 text-right font-semibold border border-amber-300 bg-amber-50 min-w-[100px]">Inv. mes</th>
+                      <th className="px-2 py-2 text-right font-semibold border border-[hsl(var(--canalco-neutral-300))] min-w-[100px]">Inv. anual</th>
+                      <th className="px-2 py-2 text-right font-semibold border border-[hsl(var(--canalco-neutral-300))] min-w-[100px]">Inv. mes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -577,6 +638,10 @@ export default function CregLiquidacionPage() {
                           .map((r) => filaPorKey.get(r.key))
                           .filter((f): f is NonNullable<typeof f> => !!f);
                         const st = sumar(rows);
+                        // Solo las que tienen cantidades este mes (el subtotal no
+                        // cambia: las ocultas valen 0 en todas las columnas).
+                        const visibles = mostrarSinCantidad ? rows : rows.filter((f) => f.total > 0);
+                        if (visibles.length === 0) return null;
                         return (
                           <Fragment key={g.grupo}>
                             {/* Subtotal del grupo (como en el Excel: encabeza el bloque) */}
@@ -592,10 +657,10 @@ export default function CregLiquidacionPage() {
                               <td className="px-2 py-1.5 text-right tabular-nums border border-[hsl(var(--canalco-neutral-300))]">{fmtCOP(st.aomAnual)}</td>
                               <td className="px-2 py-1.5 text-right tabular-nums border border-[hsl(var(--canalco-neutral-300))]">{fmtCOP(st.aomMes)}</td>
                               <td className="px-2 py-1.5 text-right tabular-nums border border-[hsl(var(--canalco-neutral-300))]">{fmtCOP(st.inversion)}</td>
-                              <td className="px-2 py-1.5 text-right tabular-nums border border-amber-300 bg-amber-50/60">{fmtCOP(st.invAnual)}</td>
-                              <td className="px-2 py-1.5 text-right tabular-nums border border-amber-300 bg-amber-50/60">{fmtCOP(st.invMes)}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums border border-[hsl(var(--canalco-neutral-300))]">{fmtCOP(st.invAnual)}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums border border-[hsl(var(--canalco-neutral-300))]">{fmtCOP(st.invMes)}</td>
                             </tr>
-                            {rows.map((f) => (
+                            {visibles.map((f) => (
                               <tr key={f.key} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
                                 <td className="px-2 py-1 border border-[hsl(var(--canalco-neutral-100))] whitespace-nowrap">{rowLabel(f)}</td>
                                 <td className="px-2 py-1 text-center border border-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-500))]">Un.</td>
@@ -610,13 +675,21 @@ export default function CregLiquidacionPage() {
                                 <td className="px-2 py-1 text-right tabular-nums border border-[hsl(var(--canalco-neutral-100))]">{f.aomAnual ? fmtCOP(f.aomAnual) : <Dash />}</td>
                                 <td className="px-2 py-1 text-right tabular-nums border border-[hsl(var(--canalco-neutral-100))]">{f.aomMes ? fmtCOP(f.aomMes) : <Dash />}</td>
                                 <td className="px-2 py-1 text-right tabular-nums border border-[hsl(var(--canalco-neutral-100))]">{f.inversion ? fmtCOP(f.inversion) : <Dash />}</td>
-                                <td className="px-2 py-1 text-right tabular-nums border border-amber-200 bg-amber-50/40">{f.invAnual ? fmtCOP(f.invAnual) : <Dash />}</td>
-                                <td className="px-2 py-1 text-right tabular-nums border border-amber-200 bg-amber-50/40">{f.invMes ? fmtCOP(f.invMes) : <Dash />}</td>
+                                <td className="px-2 py-1 text-right tabular-nums border border-[hsl(var(--canalco-neutral-200))]">{f.invAnual ? fmtCOP(f.invAnual) : <Dash />}</td>
+                                <td className="px-2 py-1 text-right tabular-nums border border-[hsl(var(--canalco-neutral-200))]">{f.invMes ? fmtCOP(f.invMes) : <Dash />}</td>
                               </tr>
                             ))}
                           </Fragment>
                         );
                       })
+                    )}
+                    {ucaps.length > 0 && !mostrarSinCantidad && !filas.some((f) => f.total > 0) && (
+                      <tr>
+                        <td colSpan={13} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                          <p className="text-sm">Ninguna UCAP tiene cantidades en {monthLongLabel(selYm)}.</p>
+                          <p className="text-xs mt-1">Se cargan en el <strong>Censo</strong>. Marca «Mostrar UCAPs sin cantidades» para ver el catálogo completo.</p>
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                   {ucaps.length > 0 && (
@@ -632,8 +705,8 @@ export default function CregLiquidacionPage() {
                         <td className="px-2 py-2 text-right tabular-nums border border-emerald-300">{fmtCOP(totalGeneral.aomAnual)}</td>
                         <td className="px-2 py-2 text-right tabular-nums border border-emerald-300">{fmtCOP(totalGeneral.aomMes)}</td>
                         <td className="px-2 py-2 text-right tabular-nums border border-emerald-300">{fmtCOP(totalGeneral.inversion)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums border border-amber-400 bg-amber-100">{fmtCOP(totalGeneral.invAnual)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums border border-amber-400 bg-amber-100">{fmtCOP(totalGeneral.invMes)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums border border-[hsl(var(--canalco-neutral-400))]">{fmtCOP(totalGeneral.invAnual)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums border border-[hsl(var(--canalco-neutral-400))]">{fmtCOP(totalGeneral.invMes)}</td>
                       </tr>
                     </tfoot>
                   )}

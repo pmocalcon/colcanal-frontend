@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cregService } from '@/services/creg.service';
+import { cregService, UCAP_GRUPOS } from '@/services/creg.service';
 import type { CregUnit } from '@/services/creg.service';
 import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
@@ -69,6 +69,22 @@ export default function CregResumenPage() {
   const col = (getter: (u: CregUnit) => number) => units.reduce((a, u) => a + getter(u), 0);
   const ready = selectedCompanyId && (!isCanalesContactos || selectedProjectId);
   const ippBase = units[0]?.ippBase ?? null;
+
+  // UCAPs agrupadas por grupo, en el orden de la lista fija.
+  const grupos = useMemo(() => {
+    const order = new Map<string, number>();
+    UCAP_GRUPOS.forEach((g, i) => order.set(g, i));
+    const byGroup = new Map<string, CregUnit[]>();
+    for (const u of units) {
+      const key = u.grupo?.trim() || 'Sin grupo';
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key)!.push(u);
+    }
+    const rank = (k: string) => (order.has(k) ? order.get(k)! : k === 'Sin grupo' ? 9999 : 5000);
+    return [...byGroup.keys()]
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+      .map((grupo) => ({ grupo, items: byGroup.get(grupo)! }));
+  }, [units]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -141,7 +157,7 @@ export default function CregResumenPage() {
                 </h2>
                 <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
                   {units.length} {units.length === 1 ? 'UCAP' : 'UCAPs'} con hoja de costos
-                  {ippBase != null && <> · IPP base {fmt(ippBase)}</>}
+                  {ippBase != null && <> · IPP base {(ippBase)}</>}
                 </p>
               </div>
             </div>
@@ -180,7 +196,36 @@ export default function CregResumenPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {units.map((u, i) => (
+                    {grupos.map((g) => {
+                      // Subtotal del grupo, encabezando su bloque (como en la Liquidación).
+                      const sub = (getter: (u: CregUnit) => number) =>
+                        g.items.reduce((a, u) => a + getter(u), 0);
+                      return (
+                    <Fragment key={g.grupo}>
+                      <tr className="bg-[hsl(var(--canalco-neutral-200))] font-semibold text-[hsl(var(--canalco-neutral-800))] border-t-2 border-[hsl(var(--canalco-neutral-300))]">
+                        <Td className="text-left uppercase text-[11px] tracking-wide sticky left-0 bg-[hsl(var(--canalco-neutral-200))]" colSpan={3}>
+                          {g.grupo} <span className="font-normal normal-case text-[hsl(var(--canalco-neutral-600))]">({g.items.length})</span>
+                        </Td>
+                        <Td>{fmt(sub((u) => u.totals.subtotalMaterials))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.subtotalTransporte))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.subtotalObraCivil))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.subtotalMontaje))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.transport))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.engineering))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.administration))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.inspection))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.interventoria))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.retieRetilap))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.financial))}</Td>
+                        <Td>{fmt(sub((u) => u.totals.indirect.environmental))}</Td>
+                        <Td className="bg-[hsl(var(--canalco-neutral-300))]/60">{fmt(sub((u) => u.totals.totalUnit))}</Td>
+                        <Td className="text-[hsl(var(--canalco-primary))] bg-[hsl(var(--canalco-primary))]/10">{fmtCOP(sub((u) => u.totals.finalValue))}</Td>
+                        {/* La potencia no se suma: no tiene sentido agregarla por grupo. */}
+                        <Td />
+                        <Td />
+                        <Td />
+                      </tr>
+                      {g.items.map((u, i) => (
                       <tr key={u.ucapId} className={i % 2 ? 'bg-[hsl(var(--canalco-neutral-50))]' : 'bg-white'}>
                         <Td className="text-left font-mono sticky left-0 bg-inherit">{u.code}</Td>
                         <Td className="text-left sticky left-[70px] bg-inherit font-medium">{u.name}</Td>
@@ -203,7 +248,10 @@ export default function CregResumenPage() {
                         <Td>{u.powerLosses != null ? fmt(u.powerLosses) : ''}</Td>
                         <Td className="font-medium">{u.powerWithLosses != null ? fmt(u.powerWithLosses) : ''}</Td>
                       </tr>
-                    ))}
+                      ))}
+                    </Fragment>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-[hsl(var(--canalco-neutral-200))] font-semibold border-t-2 border-[hsl(var(--canalco-neutral-300))]">

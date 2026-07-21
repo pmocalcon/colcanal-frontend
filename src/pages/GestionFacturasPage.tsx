@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import { ArrowLeft, Eye, FileText, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +32,7 @@ const STATUS_PRIORITY: Record<string, number> = {
 
 const GestionFacturasPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderForInvoicing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +46,8 @@ const GestionFacturasPage: React.FC = () => {
   const [filterProveedor, setFilterProveedor] = useState('');
   const [filterEstadoFactura, setFilterEstadoFactura] = useState('');
 
-  const isCompras = user?.nombreRol === 'Compras';
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   const loadPurchaseOrders = useCallback(async () => {
     try {
@@ -66,12 +67,14 @@ const GestionFacturasPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
     loadPurchaseOrders();
-  }, [isCompras, navigate, loadPurchaseOrders]);
+  }, [cargandoPermisos, puedeCotizar, navigate, loadPurchaseOrders]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -180,7 +183,7 @@ const GestionFacturasPage: React.FC = () => {
     });
   }, [purchaseOrders, filterOrden, filterRequisicion, filterEstadoReq, filterEmpresa, filterProveedor, filterEstadoFactura]);
 
-  if (!isCompras) {
+  if (cargandoPermisos || !puedeCotizar) {
     return null;
   }
 

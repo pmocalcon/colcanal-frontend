@@ -49,6 +49,23 @@ import { getMunicipioName } from '@/utils/departmentMapper';
 /** Grupo con el que arranca el control de compras, como el Excel de luminarias. */
 const GRUPO_LUMINARIAS = 'LUMINARIAS Y PROYECTORES';
 
+/**
+ * El tipo de obra se captura a mano en la requisición, así que llega con variantes
+ * de escritura de un mismo valor. Solo se unifican las que son la misma palabra
+ * (tilde y plural); lo demás se muestra tal cual se guardó, para no inventar una
+ * clasificación que nadie decidió.
+ */
+const TIPO_OBRA_EQUIVALENTES: Record<string, string> = {
+  expansion: 'Expansión',
+  expansiones: 'Expansión',
+};
+
+const tipoObraDe = (raw: string | null): string => {
+  const valor = (raw ?? '').trim();
+  if (!valor) return '';
+  return TIPO_OBRA_EQUIVALENTES[valor.toLowerCase()] ?? valor;
+};
+
 const MATRIX_ACTION_LABELS: Record<string, string> = {
   crear_requisicion: 'Creación',
   revisar_aprobar: 'Revisión ✓',
@@ -405,7 +422,7 @@ export default function AuditoriasComprasPage() {
           const limpio = getMunicipioName(f.companyName);
           if (limpio !== f.companyName) municipio = limpio;
         }
-        return { ...f, municipio };
+        return { ...f, municipio, tipoObra: tipoObraDe(f.tipoObra) };
       })
       .filter((f) => {
         if (!texto) return true;
@@ -414,6 +431,7 @@ export default function AuditoriasComprasPage() {
           f.purchaseOrderNumber,
           f.invoiceNumber ?? '',
           f.materialDescription,
+          f.tipoObra,
           f.requisitionNumber,
         ].some((v) => v.toLowerCase().includes(texto));
       });
@@ -1653,6 +1671,7 @@ export default function AuditoriasComprasPage() {
                       <TableHead>Fecha Factura</TableHead>
                       <TableHead>Factura</TableHead>
                       <TableHead>Descripción</TableHead>
+                      <TableHead>Tipo de Obra</TableHead>
                       <TableHead className="text-right">Cantidad</TableHead>
                       <TableHead>Requisición</TableHead>
                     </TableRow>
@@ -1660,14 +1679,14 @@ export default function AuditoriasComprasPage() {
                   <TableBody>
                     {controlLoading && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                        <TableCell colSpan={9} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
                           Cargando…
                         </TableCell>
                       </TableRow>
                     )}
                     {!controlLoading && controlRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                        <TableCell colSpan={9} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
                           No hay compras que coincidan con el filtro.
                         </TableCell>
                       </TableRow>
@@ -1692,6 +1711,11 @@ export default function AuditoriasComprasPage() {
                           )}
                         </TableCell>
                         <TableCell>{f.materialDescription}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {f.tipoObra || (
+                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right font-semibold">
                           {f.quantity.toLocaleString('es-CO')}
                         </TableCell>

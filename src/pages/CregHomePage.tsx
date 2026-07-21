@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Boxes, ClipboardList, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardList, Power, PowerOff, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 
@@ -39,6 +39,20 @@ const SUBMODULES = [
     description: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
     Icon: Receipt,
     permission: 'creg:liquidacion',
+  },
+  {
+    slug: 'idd-off',
+    nombre: 'ID OFF',
+    description: 'Índice de disponibilidad de las apagadas: horas fuera de servicio del periodo',
+    Icon: PowerOff,
+    permission: 'creg:iddoff',
+  },
+  {
+    slug: 'idd-on',
+    nombre: 'ID ON',
+    description: 'Índice de disponibilidad de las encendidas: prendidas cuando deben estar apagadas',
+    Icon: Power,
+    permission: 'creg:iddon',
   },
 ];
 

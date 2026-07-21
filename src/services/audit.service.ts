@@ -133,6 +133,7 @@ export interface MaterialPurchaseRow {
   materialDescription: string;
   groupName: string;
   quantity: number;
+  tipoObra: string | null;
   requisitionNumber: string;
   orderDate: string | null;
 }

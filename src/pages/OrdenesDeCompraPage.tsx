@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import { getRequisitionsForPurchaseOrders } from '@/services/purchase-orders.service';
 import type { Requisition } from '@/services/requisitions.service';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ const getStatusColor = (statusCode: string) => {
 
 export default function OrdenesDeCompraPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +55,8 @@ export default function OrdenesDeCompraPage() {
     status: '',
   });
 
-  // Check if user is Compras
-  const isCompras = user?.nombreRol === 'Compras';
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   const loadRequisitions = useCallback(async () => {
     try {
@@ -75,12 +75,14 @@ export default function OrdenesDeCompraPage() {
   }, [page, limit]);
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
     loadRequisitions();
-  }, [isCompras, navigate, loadRequisitions]);
+  }, [cargandoPermisos, puedeCotizar, navigate, loadRequisitions]);
 
   const handleView = (requisition: Requisition) => {
     navigate(`/dashboard/compras/ordenes/${requisition.requisitionId}/ver`);
@@ -235,7 +237,7 @@ export default function OrdenesDeCompraPage() {
     );
   };
 
-  if (!isCompras) {
+  if (cargandoPermisos || !puedeCotizar) {
     return null;
   }
 

@@ -45,6 +45,7 @@ const SECTIONS: SectionDef[] = [
       { key: 'pctPropuesto', label: '% Propuesto', type: 'percent' },
       { key: 'faomOficial', label: 'FAOM Oficial', type: 'percent' },
       { key: 'faomPropuesto', label: 'FAOM Propuesto', type: 'percent' },
+      { key: 'faomsOficial', label: 'FAOMS', type: 'percent' },
       { key: 'waccOficial', label: 'WACC Oficial', type: 'percent' },
       { key: 'waccPropuesto', label: 'WACC Propuesto', type: 'percent' },
       { key: 'ne', label: 'NE', type: 'percent' },
@@ -76,6 +77,11 @@ const SECTIONS: SectionDef[] = [
       { key: 'valorKwh', label: 'Valor KWh', type: 'money' },
       { key: 'ippoNov2015', label: 'IPPo nov 2015', type: 'number' },
       { key: 'ippFinal', label: 'IPP final', type: 'number' },
+      // Entradas de la anualidad de inversión (CINV) de la Liquidación.
+      { key: 'viPeriodoAnios', label: 'Vi: periodo (años)', type: 'number' },
+      { key: 'idEncendidas', label: 'IDencendidas', type: 'number' },
+      { key: 'idApagadas', label: 'IDapagadas', type: 'number' },
+      { key: 'vceein', label: 'VCEEIn', type: 'number' },
     ],
   },
   {
@@ -123,6 +129,9 @@ const DEFAULT_VALUES: Record<string, any> = {
   expansionVegetativa2a7: 10, expansionVegetativa8a11: 10, expansionVegetativa12a20: 10,
   expansionNavidad: 30, eficienciaLuminarias: 165, utv: 38004, valorKwh: 631.4822,
   ippoNov2015: 107.59,
+  // Entradas de la anualidad de inversión (CINV). IDapagadas lleva sus decimales
+  // completos: multiplica el total del mes, así que redondearla mueve pesos.
+  viPeriodoAnios: 15, idEncendidas: 1, idApagadas: 0.999838634, vceein: 0,
   retefuenteDeclarante6: 6, retefuenteDeclarante10: 10, reteiva: 4, reteica: '8 X 1000',
   vuLuminariaLed: 15, vuFotocontrol: 15, vuElementosSoporte: 30, vuBombillas: 3.5,
   vuPostes: 30, vuRedes: 30, vuCanalizaciones: 30, vuTransformadores: 20,

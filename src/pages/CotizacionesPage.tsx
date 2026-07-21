@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks';
 import { getRequisitionsForQuotation } from '@/services/quotation.service';
 import type { Requisition } from '@/services/requisitions.service';
 import { Button } from '@/components/ui/button';
@@ -42,7 +42,7 @@ const QUOTABLE_STATUSES = ['aprobada_gerencia', 'en_cotizacion', 'cotizada'];
 
 export default function CotizacionesPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { permissions, loading: cargandoPermisos } = usePermissions('compras');
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,16 +62,18 @@ export default function CotizacionesPage() {
     status: '',
   });
 
-  // Check if user is Compras
-  const isCompras = user?.nombreRol === 'Compras';
+  // Mismo permiso con el que el módulo de Compras habilita la tarjeta.
+  const puedeCotizar = permissions?.cotizar === true;
 
   useEffect(() => {
-    if (!isCompras) {
+    // Sin esperar a que carguen los permisos se redirige a todo el mundo.
+    if (cargandoPermisos) return;
+    if (!puedeCotizar) {
       navigate('/dashboard');
       return;
     }
     loadRequisitions();
-  }, [isCompras]);
+  }, [cargandoPermisos, puedeCotizar]);
 
   const loadRequisitions = async () => {
     try {
@@ -206,7 +208,7 @@ export default function CotizacionesPage() {
     });
   }, [requisitions, filters]);
 
-  if (!isCompras) {
+  if (cargandoPermisos || !puedeCotizar) {
     return null;
   }
 
