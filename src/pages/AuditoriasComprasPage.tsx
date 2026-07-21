@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auditService } from '@/services/audit.service';
-import type { AuditLog, MatrixResponse, AuditStats } from '@/services/audit.service';
+import type {
+  AuditLog,
+  MatrixResponse,
+  AuditStats,
+  MaterialPurchaseControlResponse,
+} from '@/services/audit.service';
 import { usersService } from '@/services/users.service';
 import type { User } from '@/services/users.service';
 import { Button } from '@/components/ui/button';
@@ -14,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2 } from 'lucide-react';
+import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -39,6 +44,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateShort } from '@/utils/dateUtils';
+import { getMunicipioName } from '@/utils/departmentMapper';
+
+/** Grupo con el que arranca el control de compras, como el Excel de luminarias. */
+const GRUPO_LUMINARIAS = 'LUMINARIAS Y PROYECTORES';
 
 const MATRIX_ACTION_LABELS: Record<string, string> = {
   crear_requisicion: 'Creación',
@@ -169,7 +178,9 @@ const ACTION_COLORS: Record<string, string> = {
 
 export default function AuditoriasComprasPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'registros' | 'matriz' | 'graficos'>('registros');
+  const [activeTab, setActiveTab] = useState<
+    'registros' | 'matriz' | 'graficos' | 'control'
+  >('registros');
 
   // ── Registros state ──
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -185,6 +196,14 @@ export default function AuditoriasComprasPage() {
 
   // ── Stats state ──
   const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
+
+  // ── Control de compras state ──
+  const [control, setControl] = useState<MaterialPurchaseControlResponse | null>(null);
+  const [controlLoading, setControlLoading] = useState(false);
+  const [controlGrupo, setControlGrupo] = useState<string>('');
+  const [controlAnio, setControlAnio] = useState<string>('todos');
+  const [controlSoloFacturadas, setControlSoloFacturadas] = useState(false);
+  const [controlBusqueda, setControlBusqueda] = useState('');
 
   // ── Matriz state ──
   const [matrixData, setMatrixData] = useState<MatrixResponse | null>(null);
@@ -327,6 +346,35 @@ export default function AuditoriasComprasPage() {
     }
   }, [graphFrom, graphTo, graphCompany, graphMaterial]);
 
+  const loadControl = useCallback(async () => {
+    try {
+      setControlLoading(true);
+      // El grupo se manda por id, que hay que buscar en la respuesta anterior; en la
+      // primera carga se traen todos y se filtra por nombre al pintar.
+      const grupoId = control?.groups.find((g) => g.name === controlGrupo)?.groupId;
+      const data = await auditService.getMaterialsPurchaseControl({
+        groupId: grupoId,
+        year: controlAnio !== 'todos' ? Number(controlAnio) : undefined,
+        onlyInvoiced: controlSoloFacturadas,
+      });
+      setControl(data);
+      // Al abrir por primera vez se posiciona en luminarias, como el Excel.
+      if (!controlGrupo && data.groups.some((g) => g.name === GRUPO_LUMINARIAS)) {
+        setControlGrupo(GRUPO_LUMINARIAS);
+      }
+    } catch {
+      /* sin interrumpir el resto del tab */
+    } finally {
+      setControlLoading(false);
+    }
+    // control?.groups queda fuera a propósito: solo se usa para traducir nombre a id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlGrupo, controlAnio, controlSoloFacturadas]);
+
+  useEffect(() => {
+    if (activeTab === 'control') loadControl();
+  }, [activeTab, loadControl]);
+
   useEffect(() => {
     if ((activeTab === 'matriz' || activeTab === 'graficos') && !matrixLoaded) {
       loadMatrix({ search: '', from: '2026-01-10', to: '', company: '' });
@@ -340,6 +388,41 @@ export default function AuditoriasComprasPage() {
         .catch(() => {});
     }
   }, [activeTab, matrixLoaded, loadMatrix, auditStats, systemUsers.length]);
+
+  const controlRows = useMemo(() => {
+    if (!control) return [];
+    const texto = controlBusqueda.trim().toLowerCase();
+    return control.data
+      .filter((f) => !controlGrupo || f.groupName === controlGrupo)
+      .map((f) => {
+        // En Antioquia el municipio es un proyecto; en Valle y Quindío va dentro del
+        // nombre de la unión temporal. La empresa matriz nunca es un municipio, así
+        // que si el nombre no cambia al quitarle el prefijo se deja vacío.
+        let municipio = '';
+        if (f.projectName) {
+          municipio = getMunicipioName(f.projectName);
+        } else if (f.companyName) {
+          const limpio = getMunicipioName(f.companyName);
+          if (limpio !== f.companyName) municipio = limpio;
+        }
+        return { ...f, municipio };
+      })
+      .filter((f) => {
+        if (!texto) return true;
+        return [
+          f.municipio,
+          f.purchaseOrderNumber,
+          f.invoiceNumber ?? '',
+          f.materialDescription,
+          f.requisitionNumber,
+        ].some((v) => v.toLowerCase().includes(texto));
+      });
+  }, [control, controlGrupo, controlBusqueda]);
+
+  const controlTotalCantidad = useMemo(
+    () => controlRows.reduce((suma, f) => suma + f.quantity, 0),
+    [controlRows]
+  );
 
   const monthlyChartData = useMemo(() => {
     if (!matrixData) return [];
@@ -647,6 +730,14 @@ export default function AuditoriasComprasPage() {
           >
             <BarChart2 className="w-4 h-4 mr-2" />
             Gráficos
+          </Button>
+          <Button
+            variant={activeTab === 'control' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('control')}
+            className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+          >
+            <Lightbulb className="w-4 h-4 mr-2" />
+            Control de Compras
           </Button>
         </div>
 
@@ -1471,6 +1562,159 @@ export default function AuditoriasComprasPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── CONTROL DE COMPRAS TAB ── */}
+        {activeTab === 'control' && (
+          <div>
+            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                Control de compra de materiales: una fila por ítem de orden de compra, con
+                su factura cuando ya está registrada. La información es de solo lectura.
+              </p>
+            </div>
+
+            {/* Filtros */}
+            <div className="mb-4 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] p-4">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+                  <Input
+                    placeholder="Municipio, orden, factura, material…"
+                    value={controlBusqueda}
+                    onChange={(e) => setControlBusqueda(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={controlGrupo} onValueChange={setControlGrupo}>
+                  <SelectTrigger className="w-[240px]">
+                    <SelectValue placeholder="Tipo de material" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(control?.groups ?? []).map((g) => (
+                      <SelectItem key={g.groupId} value={g.name}>
+                        {g.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={controlAnio} onValueChange={setControlAnio}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Año" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los años</SelectItem>
+                    {(control?.years ?? []).map((a) => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <label className="flex items-center gap-2 text-sm text-[hsl(var(--canalco-neutral-700))] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={controlSoloFacturadas}
+                    onChange={(e) => setControlSoloFacturadas(e.target.checked)}
+                    className="rounded border-[hsl(var(--canalco-neutral-300))]"
+                  />
+                  Solo con factura
+                </label>
+
+                {(controlBusqueda || controlAnio !== 'todos' || controlSoloFacturadas) && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setControlBusqueda('');
+                      setControlAnio('todos');
+                      setControlSoloFacturadas(false);
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Limpiar
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Tabla */}
+            <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                      <TableHead className="w-16">Ítem</TableHead>
+                      <TableHead>Municipio</TableHead>
+                      <TableHead>Orden de Compra</TableHead>
+                      <TableHead>Fecha Factura</TableHead>
+                      <TableHead>Factura</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead>Requisición</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {controlLoading && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                          Cargando…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!controlLoading && controlRows.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                          No hay compras que coincidan con el filtro.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!controlLoading && controlRows.map((f, i) => (
+                      <TableRow key={f.poItemId}>
+                        <TableCell className="text-[hsl(var(--canalco-neutral-500))]">{i + 1}</TableCell>
+                        <TableCell className="font-medium">
+                          {f.municipio || (
+                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{f.purchaseOrderNumber}</TableCell>
+                        <TableCell>
+                          {f.invoiceDate ? formatDateShort(f.invoiceDate) : (
+                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {f.invoiceNumber ?? (
+                            <span className="text-[hsl(var(--canalco-neutral-400))]">Sin factura</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{f.materialDescription}</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {f.quantity.toLocaleString('es-CO')}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-[hsl(var(--canalco-neutral-500))]">
+                          {f.requisitionNumber}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {!controlLoading && controlRows.length > 0 && (
+                <div className="flex justify-between items-center px-4 py-3 border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] text-sm">
+                  <span className="text-[hsl(var(--canalco-neutral-600))]">
+                    {controlRows.length} {controlRows.length === 1 ? 'compra' : 'compras'}
+                  </span>
+                  <span className="font-semibold">
+                    Total: {controlTotalCantidad.toLocaleString('es-CO')} unidades
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

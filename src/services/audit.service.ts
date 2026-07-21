@@ -122,6 +122,28 @@ export interface MatrixResponse {
   topMaterialsByMonth?: { year: number; month: number; code: string; description: string; reqCount: number; totalQuantity: number; totalAmount: number }[];
 }
 
+export interface MaterialPurchaseRow {
+  poItemId: number;
+  projectName: string | null;
+  companyName: string | null;
+  purchaseOrderNumber: string;
+  invoiceDate: string | null;
+  invoiceNumber: string | null;
+  materialCode: string;
+  materialDescription: string;
+  groupName: string;
+  quantity: number;
+  requisitionNumber: string;
+  orderDate: string | null;
+}
+
+export interface MaterialPurchaseControlResponse {
+  data: MaterialPurchaseRow[];
+  total: number;
+  groups: { groupId: number; name: string }[];
+  years: number[];
+}
+
 export const auditService = {
   async getAuditLogs(filters?: FilterAuditParams): Promise<AuditLogsResponse> {
     const params = new URLSearchParams();
@@ -167,6 +189,21 @@ export const auditService = {
 
   async getStats(): Promise<AuditStats> {
     const response = await api.get<AuditStats>('/audit/stats');
+    return response.data;
+  },
+
+  async getMaterialsPurchaseControl(filters?: {
+    groupId?: number;
+    year?: number;
+    onlyInvoiced?: boolean;
+  }): Promise<MaterialPurchaseControlResponse> {
+    const params = new URLSearchParams();
+    if (filters?.groupId) params.append('groupId', filters.groupId.toString());
+    if (filters?.year) params.append('year', filters.year.toString());
+    if (filters?.onlyInvoiced) params.append('onlyInvoiced', 'true');
+    const response = await api.get<MaterialPurchaseControlResponse>(
+      `/audit/materials-purchase-control?${params.toString()}`
+    );
     return response.data;
   },
 };
