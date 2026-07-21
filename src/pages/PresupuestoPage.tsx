@@ -580,8 +580,18 @@ export default function PresupuestoPage() {
       new Set(list.filter((w) => w.projectId != null).map((w) => w.projectId)),
     );
     if (projectIds.length === 1) {
-      const p = access?.projects?.find((pr) => pr.projectId === projectIds[0]);
-      if (p?.name) return getMunicipioName(p.name);
+      const id = projectIds[0];
+      // El proyecto puede no estar en `access` (fuera del alcance del usuario, o
+      // todavía cargando); el departamento también lo lista como municipio.
+      const nombre =
+        access?.projects?.find((pr) => pr.projectId === id)?.name
+        ?? selectedDept?.projects?.find((pr) => pr.projectId === id)?.name
+        ?? selectedDept?.municipalities?.find((m) => m.type === 'project' && m.id === id)?.name;
+      if (nombre) return getMunicipioName(nombre);
+      // Si las obras son de un proyecto, el municipio ES el proyecto. Caer a la
+      // empresa daría la matriz (Canales & Contactos en Antioquia), que no es un
+      // municipio: mejor vacío que un nombre equivocado.
+      return '';
     }
     const companyIds = Array.from(new Set(list.map((w) => w.companyId)));
     if (companyIds.length === 1 && selectedDept) {
@@ -597,16 +607,24 @@ export default function PresupuestoPage() {
       const selectedWork = works.find((w) => w.workId === selectedWorkId);
       // Guardamos el municipio resuelto (proyecto en Antioquia, empresa en el resto) como
       // companyName, así la lista lo muestra. '' si el acta abarca varios municipios.
-      const municipio =
+      const obrasDelPresupuesto =
         workSelectionMode === 'agrupado' && selectedActa
-          ? resolveMunicipioName(works.filter((w) => w.recordNumber === selectedActa))
+          ? works.filter((w) => w.recordNumber === selectedActa)
           : selectedWork
-            ? resolveMunicipioName([selectedWork])
-            : '';
+            ? [selectedWork]
+            : [];
+      const municipio = resolveMunicipioName(obrasDelPresupuesto);
+      // Con obras de un proyecto el municipio ES el proyecto, así que no se cae a
+      // la empresa: sería la matriz (Canales & Contactos) y pisaría el municipio.
+      // Sin municipio se manda undefined, que el backend ignora y conserva el
+      // valor guardado, en vez de sobrescribirlo con algo equivocado.
+      const esPorProyecto = obrasDelPresupuesto.some((w) => w.projectId != null);
       const companyName =
         (municipio || undefined) ??
-        selectedWork?.company?.name ??
-        (selectedDept?.companies?.length === 1 ? selectedDept.companies[0].name : undefined);
+        (esPorProyecto
+          ? undefined
+          : selectedWork?.company?.name ??
+            (selectedDept?.companies?.length === 1 ? selectedDept.companies[0].name : undefined));
       const dto = {
         workId: workSelectionMode === 'individual' ? selectedWorkId : null,
         departmentName: selectedDept?.name,
