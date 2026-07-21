@@ -57,6 +57,13 @@ const TRAVEL_EXPENSE_LABELS: Record<string, string> = {
 
 const FIXED_ROW_NAMES = ['POLIZA', 'IMPREVISTOS', 'TRANSPORTE', 'STICKERS'] as const;
 
+/**
+ * Descripciones con las que se guardan las filas de viáticos. Sirven para
+ * reconocerlas al releer el presupuesto y no cargarlas como filas de material.
+ */
+const TRAVEL_ROW_NAMES: string[] = Object.values(TRAVEL_EXPENSE_LABELS);
+const esFilaViatico = (desc?: string | null) => !!desc && TRAVEL_ROW_NAMES.includes(desc);
+
 const createFixedRow = (name: string): PresupuestoRow => ({
   id: 0,
   materialId: null,
@@ -381,6 +388,34 @@ export default function PresupuestoPage() {
   const skipActaMaterialsLoad = useRef(false);
   const budgetLoadedRef = useRef(false);
   const [travelRows, setTravelRows] = useState<PresupuestoRow[]>([]);
+  /**
+   * Viáticos ya guardados en el presupuesto, por descripción. La obra solo dice
+   * QUÉ conceptos hay; los importes editados viven en el presupuesto. Se guardan
+   * aparte porque las filas se reconstruyen desde la obra cada vez que cargan
+   * los levantamientos, y eso puede pasar después de leer el presupuesto.
+   */
+  const viaticosGuardados = useRef<Map<string, PresupuestoRow>>(new Map());
+
+  /**
+   * Vuelca los viáticos guardados sobre los que arma el levantamiento. Los que
+   * estén guardados y ya no vengan de la obra se conservan al final, para no
+   * borrar importes capturados si la obra cambió.
+   */
+  const fusionarViaticos = useCallback((deLaObra: PresupuestoRow[]): PresupuestoRow[] => {
+    const guardados = viaticosGuardados.current;
+    if (guardados.size === 0) return deLaObra;
+    const usados = new Set<string>();
+    const fusionadas = deLaObra.map((fila) => {
+      const guardada = guardados.get(fila.descripcion);
+      if (!guardada) return fila;
+      usados.add(fila.descripcion);
+      return { ...fila, ...guardada };
+    });
+    const soloGuardadas = [...guardados.entries()]
+      .filter(([nombre]) => !usados.has(nombre))
+      .map(([, fila]) => fila);
+    return [...fusionadas, ...soloGuardadas];
+  }, []);
   const [editingTravelCantidadIdx, setEditingTravelCantidadIdx] = useState<number | null>(null);
   const [editingTravelVrUnitarioIdx, setEditingTravelVrUnitarioIdx] = useState<number | null>(null);
 
@@ -447,8 +482,26 @@ export default function PresupuestoPage() {
         setEstampillaPct(b.estampillaPct != null ? String(b.estampillaPct) : '');
         setEstampillaPctEj(b.estampillaPctEj != null ? String(b.estampillaPctEj) : '');
         if (b.items?.length) {
+          // Los viáticos guardados se apartan: no son filas de material y se
+          // vuelcan sobre las que arma el levantamiento.
+          viaticosGuardados.current = new Map(
+            b.items
+              .filter((item) => esFilaViatico(item.descripcion))
+              .map((item) => [item.descripcion as string, {
+                ...createEmptyRow(0),
+                descripcion: item.descripcion as string,
+                cantidad: item.cantidad != null ? String(item.cantidad) : '',
+                vrUnitario: item.vrUnitario != null ? String(item.vrUnitario) : '',
+                cantBodega: item.cantBodega != null ? String(item.cantBodega) : '',
+                costoTransporte: item.costoTransporte != null ? String(item.costoTransporte) : '',
+                ejecutado: item.ejecutado != null ? String(item.ejecutado) : '',
+                hasIva: item.hasIva === true,
+              }]),
+          );
+          setTravelRows((prev) => fusionarViaticos(prev));
           const regularItems = b.items.filter(
             (item) => !FIXED_ROW_NAMES.includes(item.descripcion as any)
+              && !esFilaViatico(item.descripcion)
           );
           const loaded: PresupuestoRow[] = regularItems.map((item, i) => ({
             id: i + 1,
@@ -583,7 +636,9 @@ export default function PresupuestoPage() {
         estampillaPct: estampillaPct ? parseFloat(estampillaPct) : null,
         estampillaPctEj: estampillaPctEj ? parseFloat(estampillaPctEj) : null,
         status: 'draft' as const,
-        items: rows.map((r, i) => ({
+        // Los viáticos van al final: son filas del presupuesto como las demás y
+        // sin esto lo que se capture en ellas se pierde al recargar.
+        items: [...rows, ...travelRows].map((r, i) => ({
           itemOrder: i + 1,
           materialId: r.materialId ?? null,
           codigo: r.codigo || undefined,
@@ -615,7 +670,7 @@ export default function PresupuestoPage() {
     fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes, valorActualExcedentesTexto,
     observaciones, manoDeObra, manoDeObraEj, materialesInventario, materialesInventarioEj,
     valorFacturado, valorFacturadoEj, otrosCostos, otrosCostosEj,
-    leg, legEj, retPct, retPctEj, estampillaPct, estampillaPctEj, rows, works, resolveMunicipioName, navigate,
+    leg, legEj, retPct, retPctEj, estampillaPct, estampillaPctEj, rows, travelRows, works, resolveMunicipioName, navigate,
   ]);
 
   const handleSubmitForReview = useCallback(async () => {
@@ -781,7 +836,7 @@ export default function PresupuestoPage() {
 
         const fullSurveys = await Promise.all(surveyIds.map((id) => surveysService.getSurveyById(id)));
 
-        setTravelRows(buildTravelRows(fullSurveys));
+        setTravelRows(fusionarViaticos(buildTravelRows(fullSurveys)));
 
         if (skipRows) return;
 
@@ -863,7 +918,7 @@ export default function PresupuestoPage() {
           allSurveyIds.map((id) => surveysService.getSurveyById(id))
         );
 
-        setTravelRows(buildTravelRows(fullSurveys));
+        setTravelRows(fusionarViaticos(buildTravelRows(fullSurveys)));
 
         if (skipRows) return;
 
