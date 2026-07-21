@@ -453,8 +453,11 @@ export default function PresupuestoPage() {
           const loaded: PresupuestoRow[] = regularItems.map((item, i) => ({
             id: i + 1,
             materialId: item.materialId,
-            codigo: item.codigo ?? '',
-            descripcion: item.descripcion ?? '',
+            // Los presupuestos creados desde el levantamiento se guardaron sin
+            // descripción (solo con el código), así que se cae a la del material.
+            // Va con || y no con ??: lo guardado es cadena vacía, no null.
+            codigo: item.codigo || item.material?.code || '',
+            descripcion: item.descripcion || item.material?.description || '',
             cantidad: item.cantidad != null ? String(item.cantidad) : '',
             vrUnitario: item.vrUnitario != null ? String(item.vrUnitario) : '',
             cantBodega: item.cantBodega != null ? String(item.cantBodega) : '',
@@ -787,7 +790,7 @@ export default function PresupuestoPage() {
         const vf = await computeValorFacturado(fullSurveys, selWork?.companyId, selWork?.projectId);
         setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
-        const materialMap = new Map<number, { materialId: number; codigo: string; cantidad: number }>();
+        const materialMap = new Map<number, { materialId: number; codigo: string; descripcion: string; cantidad: number }>();
         for (const survey of fullSurveys) {
           for (const item of survey.materialItems ?? []) {
             const qty = Number(item.quantity) || 0;
@@ -798,6 +801,7 @@ export default function PresupuestoPage() {
               materialMap.set(item.materialId, {
                 materialId: item.materialId,
                 codigo: item.material?.code ?? '',
+                descripcion: item.material?.description ?? '',
                 cantidad: qty,
               });
             }
@@ -812,6 +816,7 @@ export default function PresupuestoPage() {
           ...createEmptyRow(i + 1),
           materialId: m.materialId,
           codigo: m.codigo,
+          descripcion: m.descripcion,
           cantidad: String(m.cantidad),
           vrUnitario: (priceMap.get(m.materialId) ?? 0) > 0 ? String(priceMap.get(m.materialId)) : '',
         }));
@@ -868,7 +873,7 @@ export default function PresupuestoPage() {
         setValorFacturado(vf > 0 ? String(Math.round(vf)) : '');
 
         // Merge: same materialId → sum quantities (Number() handles decimal-as-string from TypeORM)
-        const materialMap = new Map<number, { materialId: number; codigo: string; cantidad: number }>();
+        const materialMap = new Map<number, { materialId: number; codigo: string; descripcion: string; cantidad: number }>();
         for (const survey of fullSurveys) {
           for (const item of survey.materialItems ?? []) {
             const qty = Number(item.quantity) || 0;
@@ -879,6 +884,7 @@ export default function PresupuestoPage() {
               materialMap.set(item.materialId, {
                 materialId: item.materialId,
                 codigo: item.material?.code ?? '',
+                descripcion: item.material?.description ?? '',
                 cantidad: qty,
               });
             }
@@ -893,6 +899,7 @@ export default function PresupuestoPage() {
           ...createEmptyRow(i + 1),
           materialId: m.materialId,
           codigo: m.codigo,
+          descripcion: m.descripcion,
           cantidad: String(m.cantidad),
           vrUnitario: (priceMap.get(m.materialId) ?? 0) > 0 ? String(priceMap.get(m.materialId)) : '',
         }));
