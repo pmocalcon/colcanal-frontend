@@ -1030,6 +1030,28 @@ export default function PresupuestoPage() {
     });
   }, [travelRows]);
 
+  /**
+   * Columnas de seguimiento (Cant. Bodega → Ejecutado). En un presupuesto que
+   * todavía no se ejecuta van vacías y en el papel solo estorban, así que se
+   * ocultan al imprimir. En pantalla siguen siempre, para poder capturarlas.
+   * Cada una se evalúa por separado: si solo hay ejecutado, se imprime esa.
+   */
+  const colVacia = useMemo(() => {
+    const todas = [...rows, ...travelRows];
+    const vacia = (campo: 'cantBodega' | 'costoTransporte' | 'ejecutado') =>
+      todas.every((r) => (r[campo] ?? '').trim() === '');
+    return {
+      cantBodega: vacia('cantBodega'),
+      costoTransporte: vacia('costoTransporte'),
+      // Calculada: sale en '-' salvo que la fila tenga bodega y transporte.
+      conTransporte: [...calculated, ...travelCalculated].every((c) => c.vrTotalConTransporte <= 0),
+      ejecutado: vacia('ejecutado'),
+    };
+  }, [rows, travelRows, calculated, travelCalculated]);
+
+  /** Clase para esconder una columna solo en impresión. */
+  const sinImprimir = (vacia: boolean) => (vacia ? ' print:hidden' : '');
+
   const totals = useMemo(() => {
     const subTotal = calculated.reduce((s, r) => s + r.vrTotal, 0)
       + travelCalculated.reduce((s, r) => s + r.vrTotal, 0);
@@ -1549,10 +1571,10 @@ export default function PresupuestoPage() {
                   <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28">IVA Unitario (19%)</th>
                   <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28">Subtotal Unitario</th>
                   <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28">Vr. Total</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-24">Cant. Bodega</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28">Costo de Transporte</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-32">Vr Total (Con Transporte)</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28">Ejecutado</th>
+                  <th className={`border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-24${sinImprimir(colVacia.cantBodega)}`}>Cant. Bodega</th>
+                  <th className={`border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28${sinImprimir(colVacia.costoTransporte)}`}>Costo de Transporte</th>
+                  <th className={`border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-32${sinImprimir(colVacia.conTransporte)}`}>Vr Total (Con Transporte)</th>
+                  <th className={`border border-[hsl(var(--canalco-neutral-300))] px-2 py-2 text-center font-semibold w-28${sinImprimir(colVacia.ejecutado)}`}>Ejecutado</th>
                   <th className="border border-[hsl(var(--canalco-neutral-300))] px-1 py-2 w-8 print:hidden" />
                 </tr>
               </thead>
@@ -1651,7 +1673,7 @@ export default function PresupuestoPage() {
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium">
                         {calc.vrTotal > 0 ? fmtTable(calc.vrTotal) : '-'}
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.cantBodega)}`}>
                         <Input
                           type="number"
                           min="0"
@@ -1661,7 +1683,7 @@ export default function PresupuestoPage() {
                           className="h-6 text-[16px] text-center border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.costoTransporte)}`}>
                         <FormattedInput
                           value={row.costoTransporte}
                           onChange={(v) => updateRow(row.id, 'costoTransporte', v)}
@@ -1669,10 +1691,10 @@ export default function PresupuestoPage() {
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium${sinImprimir(colVacia.conTransporte)}`}>
                         {calc.vrTotalConTransporte > 0 ? fmtTable(calc.vrTotalConTransporte) : '-'}
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.ejecutado)}`}>
                         <FormattedInput
                           value={row.ejecutado}
                           onChange={(v) => updateRow(row.id, 'ejecutado', v)}
@@ -1757,7 +1779,7 @@ export default function PresupuestoPage() {
                       <td className="border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium">
                         {calc.vrTotal > 0 ? fmtTable(calc.vrTotal) : '-'}
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.cantBodega)}`}>
                         <Input
                           type="number"
                           min="0"
@@ -1767,7 +1789,7 @@ export default function PresupuestoPage() {
                           className="h-6 text-[16px] text-center border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.costoTransporte)}`}>
                         <FormattedInput
                           value={row.costoTransporte}
                           onChange={(v) => updateTravelRow(i, 'costoTransporte', v)}
@@ -1775,10 +1797,10 @@ export default function PresupuestoPage() {
                           className="h-6 text-[16px] text-right border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent disabled:opacity-100 disabled:cursor-default"
                         />
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-2 py-1 text-right font-medium${sinImprimir(colVacia.conTransporte)}`}>
                         {calc.vrTotalConTransporte > 0 ? fmtTable(calc.vrTotalConTransporte) : '-'}
                       </td>
-                      <td className="border border-[hsl(var(--canalco-neutral-200))] px-1 py-1">
+                      <td className={`border border-[hsl(var(--canalco-neutral-200))] px-1 py-1${sinImprimir(colVacia.ejecutado)}`}>
                         <FormattedInput
                           value={row.ejecutado}
                           onChange={(v) => updateTravelRow(i, 'ejecutado', v)}
