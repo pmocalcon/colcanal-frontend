@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { auditService, type RequisitionDetailResponse } from '@/services/audit.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +39,19 @@ const ACTION_COLORS: Record<string, string> = {
 
 export default function AuditoriasComprasDetallePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { requisitionId } = useParams<{ requisitionId: string }>();
+
+  /**
+   * Vuelve a Auditorías conservando la pestaña que estabas viendo. Si llegamos
+   * aquí desde esa página (hay historial), retrocede a la entrada exacta —con su
+   * ?tab y scroll—; si se abrió el detalle en frío (recarga/enlace directo,
+   * location.key === 'default'), cae a la ruta base.
+   */
+  const goBack = () => {
+    if (location.key !== 'default') navigate(-1);
+    else navigate('/dashboard/auditorias/compras');
+  };
   const [detail, setDetail] = useState<RequisitionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +112,7 @@ export default function AuditoriasComprasDetallePage() {
           </div>
           <Button
             variant="outline"
-            onClick={() => navigate('/dashboard/auditorias/compras')}
+            onClick={goBack}
             className="mt-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -155,7 +167,7 @@ export default function AuditoriasComprasDetallePage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/dashboard/auditorias/compras')}
+                onClick={goBack}
                 className="hover:bg-[hsl(var(--canalco-neutral-200))]"
                 title="Volver a Auditorías - Compras"
               >
@@ -195,8 +207,8 @@ export default function AuditoriasComprasDetallePage() {
                 variant="ghost"
                 className="w-full justify-start"
                 onClick={() => {
-                  navigate('/dashboard/auditorias/compras');
                   setSidebarOpen(false);
+                  goBack();
                 }}
               >
                 Volver a Compras
@@ -508,7 +520,7 @@ export default function AuditoriasComprasDetallePage() {
         <div className="flex justify-center pt-4">
           <Button
             variant="outline"
-            onClick={() => navigate('/dashboard/auditorias/compras')}
+            onClick={goBack}
             className="px-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />

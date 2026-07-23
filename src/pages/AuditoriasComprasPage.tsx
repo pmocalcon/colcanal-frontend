@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { auditService } from '@/services/audit.service';
 import type {
   AuditLog,
@@ -193,11 +193,24 @@ const ACTION_COLORS: Record<string, string> = {
   rechazar_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
 };
 
+type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control';
+const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control'];
+
 export default function AuditoriasComprasPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<
-    'registros' | 'matriz' | 'graficos' | 'control'
-  >('registros');
+  // La pestaña activa vive en la URL (?tab=...) para que al entrar a una
+  // requisición y volver con "atrás" se restaure la que estabas viendo, en vez
+  // de reiniciar a "Registros".
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
+    ? (tabParam as AuditTab)
+    : 'registros';
+  const setActiveTab = useCallback((tab: AuditTab) => {
+    const p = new URLSearchParams(searchParams);
+    p.set('tab', tab);
+    setSearchParams(p, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // ── Registros state ──
   const [logs, setLogs] = useState<AuditLog[]>([]);

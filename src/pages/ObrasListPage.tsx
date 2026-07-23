@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { surveysService, type Work, type WorkActa, type ActaStatus } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,10 +53,16 @@ export default function ObrasListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { access, loading: accessLoading, error: accessError } = useSurveyAccess();
-  const [activeTab, setActiveTab] = useState('');
+  // Departamento, municipio y modo de vista viven en la URL (?dept, ?muni,
+  // ?vista) para que al entrar a una obra y volver se restaure lo que estabas
+  // viendo, en vez de reiniciar al primer departamento sin filtro.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('dept') ?? '');
   // Municipio seleccionado, codificado como `${kind}-${id}` (o null = "Todos").
-  const [selectedMuni, setSelectedMuni] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('individual');
+  const [selectedMuni, setSelectedMuni] = useState<string | null>(() => searchParams.get('muni'));
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (searchParams.get('vista') === 'agrupado' ? 'agrupado' : 'individual'),
+  );
   const [works, setWorks] = useState<Work[]>([]);
   const [workValues, setWorkValues] = useState<Map<number, number>>(new Map());
   // IPP inicial (base del proyecto) e IPP del mes, por obra.
@@ -168,6 +174,16 @@ export default function ObrasListPage() {
       setActiveTab(departments[0].name);
     }
   }, [departments, activeTab]);
+
+  // Refleja departamento/municipio/vista en la URL (replace: no ensucia el
+  // historial). Al volver del editor, el remonte relee estos parámetros.
+  useEffect(() => {
+    const p = new URLSearchParams(searchParams);
+    if (activeTab) p.set('dept', activeTab); else p.delete('dept');
+    if (selectedMuni) p.set('muni', selectedMuni); else p.delete('muni');
+    if (viewMode !== 'individual') p.set('vista', viewMode); else p.delete('vista');
+    if (p.toString() !== searchParams.toString()) setSearchParams(p, { replace: true });
+  }, [activeTab, selectedMuni, viewMode, searchParams, setSearchParams]);
 
   useEffect(() => {
     const hasScope = (worksFilter.companyId?.length ?? 0) > 0 || worksFilter.projectId != null;

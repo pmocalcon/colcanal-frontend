@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { surveysService, type CreateWorkDto, type CreateSurveyDto } from '@/services/surveys.service';
 import { usersService } from '@/services/users.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
@@ -83,8 +83,19 @@ function LockableSection({ locked, children }: { locked: boolean; children: Reac
 
 export default function CrearObraPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
+
+  /**
+   * Vuelve a donde estabas: si llegamos aquí desde la lista de obras (hay
+   * historial), retrocede a esa entrada con su ?dept/?muni/?vista; si se abrió
+   * en frío (recarga/enlace directo), cae al home de levantamientos.
+   */
+  const goBack = () => {
+    if (location.key !== 'default') navigate(-1);
+    else navigate('/dashboard/levantamiento-obras');
+  };
 
   // State
   const [formData, setFormData] = useState<FormData>(() => ({ ...INITIAL_FORM_DATA, requestDate: getTodayLocal() }));
@@ -610,7 +621,7 @@ export default function CrearObraPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/dashboard/levantamiento-obras')}
+                onClick={goBack}
                 className="hover:bg-[hsl(var(--canalco-neutral-200))]"
                 title="Volver"
               >
