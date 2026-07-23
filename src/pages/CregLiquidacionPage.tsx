@@ -9,10 +9,12 @@ import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, Save, Receipt, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Receipt, AlertCircle, Download } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { buildXlsxBlob, downloadBlob } from '@/utils/xlsxWriter';
+import type { XlsxRow, XlsxImage } from '@/utils/xlsxWriter';
 
 const EXCLUDED_COMPANY_NAMES = [
   'Inversiones Garcés Escalante',
@@ -169,6 +171,7 @@ export default function CregLiquidacionPage() {
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -494,6 +497,244 @@ export default function CregLiquidacionPage() {
     }
   };
 
+  /**
+   * Exporta la liquidación del mes a un .xlsx que reproduce lo que se ve en
+   * pantalla: encabezado (municipio, mes, resolución), parámetros, resultados,
+   * el valor a pagar y la tabla de activo con subtotales por grupo y total. Los
+   * campos de resumen van como texto con el mismo formato de la pantalla; las
+   * celdas de la tabla van como números reales para que Excel pueda re-sumar.
+   */
+  const handleExportExcel = async () => {
+    if (!selectedCompanyId || !selYm) return;
+    setExporting(true);
+    try {
+      const projName = isCanalesContactos
+        ? projects.find((p) => p.projectId === selectedProjectId)?.name
+        : undefined;
+      const municipioLabel = [selectedCompany?.name, projName].filter(Boolean).join(' — ');
+      const resLabel = es101 ? '101 de 2013' : '123 de 2011';
+      const mesLabel = monthLongLabel(selYm);
+      const rows: XlsxRow[] = [];
+      const merges: string[] = [];
+      // Fila de 13 celdas vacías (una por columna A..M) para posicionar cada
+      // tarjeta en su franja de columnas.
+      const blank = (): XlsxRow => Array.from({ length: 13 }, () => ({ v: '' as string }));
+
+      // ── Encabezado en 3 tarjetas, tal como en pantalla ──
+      // Izquierda: identidad + contexto. Centro: PARÁMETROS. Derecha:
+      // LIQUIDACIÓN (resultados + ajustes). Debajo, la barra verde del total.
+      const leftCard: [string, string][] = [
+        ['Mes de liquidación', mesLabel],
+        ['Resolución vigente', `Res. CREG ${resLabel}`],
+        ['IPP(m-1) del mes liquidado', fmtNum(ippMes)],
+      ];
+      const midCard: [string, string][] = [
+        ['r', fmtPct(P.r)],
+        ['VCEEIn', vceeinMes != null ? fmtCOP(vceeinMes) : '—'],
+        ['ID encendidas', fmtNum(idEncendidas, 9)],
+        ['ID apagadas', fmtNum(idApagadas, 9)],
+        [es101 ? 'FAOML' : 'FAOM', fmtPct(es101 ? faomlDelAnio : P.faom)],
+        ['FAOMS', fmtPct(P.faoms)],
+        ...(es101 ? [['Costos ambientales', fmtPct(P.costosAmbientales)] as [string, string]] : []),
+        ['Fracción Activos NE', fmtNum(P.ne, 3)],
+        ...(es101 ? [['Valor Ef. Mínima', fmtNum(P.efMinima)] as [string, string]] : []),
+        ['IPPo noviembre 2015', fmtNum(P.ippo)],
+      ];
+      // El valor es número (dinero, formato $) o texto (el índice).
+      const rightCard: { label: string; value: number | string; money: boolean }[] = [
+        { label: 'Índice actualización precio', value: fmtNum(indice), money: false },
+        { label: 'Valor a pagar AOM', value: Math.round(valorAom), money: true },
+        { label: 'Valor a pagar INV', value: Math.round(valorInv), money: true },
+        ...(es101 ? [
+          { label: 'Costos ambientales anuales', value: Math.round(ambAnual), money: true },
+          { label: 'Costos ambientales mensuales', value: Math.round(ambMes), money: true },
+        ] : []),
+        { label: 'Ajuste AOM', value: Math.round(ajusteAom), money: true },
+        { label: 'Ajuste inversión', value: Math.round(ajusteInv), money: true },
+        ...(es101 ? [
+          { label: 'Ajuste costos ambientales', value: Math.round(ajusteAmb), money: true },
+          { label: 'Valor a pagar c/hura (inversión)', value: Math.round(valorChura), money: true },
+        ] : []),
+      ];
+
+      // ── Cuadrícula del encabezado en 3 tarjetas ──
+      // La tarjeta izquierda reserva las primeras filas para el logo; el título
+      // (municipio) y sus datos van debajo. Las tarjetas central y derecha
+      // arrancan desde la fila 1.
+      const LOGO_ROWS = 6;
+      const leftHeaderRow = LOGO_ROWS;        // fila (0-based) del título del municipio
+      const leftFirstItem = LOGO_ROWS + 1;
+      const headerHeight = Math.max(
+        1 + midCard.length,
+        1 + rightCard.length,
+        leftFirstItem + leftCard.length,
+      );
+      const grid: XlsxRow[] = Array.from({ length: headerHeight }, () => blank());
+      const XLR = (i: number) => i + 1; // fila Excel del índice de grid (bloque desde la fila 1)
+
+      // Tarjeta central (PARÁMETROS): título en la fila 1, datos debajo.
+      grid[0][4] = { v: 'PARÁMETROS', s: 'cardHeader' };
+      [5, 6, 7].forEach((c) => { grid[0][c] = { v: '', s: 'cardHeader' }; });
+      merges.push('E1:H1');
+      midCard.forEach(([label, value], j) => {
+        const gi = 1 + j;
+        grid[gi][4] = { v: label, s: 'cardLabel' };
+        grid[gi][5] = { v: '', s: 'cardLabel' };
+        grid[gi][6] = { v: value, s: 'cardValue' };
+        grid[gi][7] = { v: '', s: 'cardValue' };
+        merges.push(`E${XLR(gi)}:F${XLR(gi)}`, `G${XLR(gi)}:H${XLR(gi)}`);
+      });
+
+      // Tarjeta derecha (LIQUIDACIÓN).
+      grid[0][8] = { v: 'LIQUIDACIÓN', s: 'cardHeader' };
+      [9, 10, 11, 12].forEach((c) => { grid[0][c] = { v: '', s: 'cardHeader' }; });
+      merges.push('I1:M1');
+      rightCard.forEach((it, j) => {
+        const gi = 1 + j;
+        const vStyle = it.money ? 'value' : 'cardValue';
+        grid[gi][8] = { v: it.label, s: 'cardLabel' };
+        grid[gi][9] = { v: '', s: 'cardLabel' };
+        grid[gi][10] = { v: '', s: 'cardLabel' };
+        grid[gi][11] = { v: it.value, s: vStyle };
+        grid[gi][12] = { v: '', s: vStyle };
+        merges.push(`I${XLR(gi)}:K${XLR(gi)}`, `L${XLR(gi)}:M${XLR(gi)}`);
+      });
+
+      // Tarjeta izquierda: logo arriba (A1:D{LOGO_ROWS}), luego municipio y datos.
+      grid[leftHeaderRow][0] = { v: municipioLabel, s: 'cardHeader' };
+      [1, 2, 3].forEach((c) => { grid[leftHeaderRow][c] = { v: '', s: 'cardHeader' }; });
+      merges.push(`A${XLR(leftHeaderRow)}:D${XLR(leftHeaderRow)}`);
+      leftCard.forEach(([label, value], j) => {
+        const gi = leftFirstItem + j;
+        grid[gi][0] = { v: label, s: 'cardLabel' };
+        grid[gi][1] = { v: value, s: 'cardValue' };
+        grid[gi][2] = { v: '', s: 'cardValue' };
+        grid[gi][3] = { v: '', s: 'cardValue' };
+        merges.push(`B${XLR(gi)}:D${XLR(gi)}`);
+      });
+
+      grid.forEach((r) => rows.push(r));
+
+      // Barra verde del total, abarcando todo el ancho (como la fila del Excel).
+      rows.push(blank());
+      const gR = rows.length + 1;
+      const bar = blank();
+      for (let c = 0; c <= 7; c++) bar[c] = { v: '', s: 'greenBarText' };
+      bar[0] = { v: `VALOR A PAGAR ${mesLabel.toUpperCase()}`, s: 'greenBarText' };
+      for (let c = 8; c <= 12; c++) bar[c] = { v: '', s: 'greenBarMoney' };
+      bar[8] = { v: Math.round(valorAPagar), s: 'greenBarMoney' };
+      rows.push(bar);
+      merges.push(`A${gR}:H${gR}`, `I${gR}:M${gR}`);
+      // Los valores de tarjeta van con formato de pantalla (texto): silenciamos
+      // el aviso "número guardado como texto" en toda la franja del encabezado.
+      const ignoredTextRanges = [`A1:M${gR}`];
+      rows.push(blank());
+
+      // ---- Tabla de activo ----
+      rows.push([{ v: `Cálculo de activo en Resolución CREG ${resLabel}`, s: 'title' }]);
+      const header = ['UCAP', 'Un.', 'Vida útil', 'Valor unit.', 'Inv. inicial', 'Mun./conc.',
+        'Total', 'Activo', 'AOM anual', 'AOM mes', 'Inversión', 'Inv. anual', 'Inv. mes'];
+      rows.push(header.map((h) => ({ v: h, s: 'header' as const })));
+
+      for (const g of grupos) {
+        const groupRows = g.items.flatMap(rowsForUcap)
+          .map((r) => filaPorKey.get(r.key))
+          .filter((f): f is NonNullable<typeof f> => !!f);
+        const visibles = mostrarSinCantidad ? groupRows : groupRows.filter((f) => f.total > 0);
+        if (visibles.length === 0) continue;
+        const st = sumar(groupRows);
+        // Subtotal del grupo (encabeza el bloque, como en pantalla).
+        rows.push([
+          { v: g.grupo, s: 'groupText' },
+          { v: '', s: 'groupText' }, { v: '', s: 'groupText' }, { v: '', s: 'groupText' },
+          { v: st.cantA, s: 'groupQty' },
+          { v: st.cantB, s: 'groupQty' },
+          { v: st.total, s: 'groupQty' },
+          { v: Math.round(st.activo), s: 'groupMoney' },
+          { v: Math.round(st.aomAnual), s: 'groupMoney' },
+          { v: Math.round(st.aomMes), s: 'groupMoney' },
+          { v: Math.round(st.inversion), s: 'groupMoney' },
+          { v: Math.round(st.invAnual), s: 'groupMoney' },
+          { v: Math.round(st.invMes), s: 'groupMoney' },
+        ]);
+        for (const f of visibles) {
+          rows.push([
+            { v: rowLabel(f), s: 'text' },
+            { v: 'Un.', s: 'text' },
+            { v: f.vidaUtil ?? '', s: 'qty' },
+            { v: Math.round(f.ucap.value || 0), s: 'money' },
+            { v: f.cantA || '', s: 'qty' },
+            { v: f.cantB || '', s: 'qty' },
+            { v: f.total || '', s: 'qty' },
+            { v: f.activo ? Math.round(f.activo) : '', s: 'money' },
+            { v: f.aomAnual ? Math.round(f.aomAnual) : '', s: 'money' },
+            { v: f.aomMes ? Math.round(f.aomMes) : '', s: 'money' },
+            { v: f.inversion ? Math.round(f.inversion) : '', s: 'money' },
+            { v: f.invAnual ? Math.round(f.invAnual) : '', s: 'money' },
+            { v: f.invMes ? Math.round(f.invMes) : '', s: 'money' },
+          ]);
+        }
+      }
+
+      // ---- Total general ----
+      rows.push([
+        { v: `Total Costo (Pesos Diciembre 2015) Resolución CREG ${es101 ? '101' : '123'}`, s: 'totalText' },
+        { v: '', s: 'totalText' }, { v: '', s: 'totalText' }, { v: '', s: 'totalText' },
+        { v: totalGeneral.cantA, s: 'totalQty' },
+        { v: totalGeneral.cantB, s: 'totalQty' },
+        { v: totalGeneral.total, s: 'totalQty' },
+        { v: Math.round(totalGeneral.activo), s: 'totalMoney' },
+        { v: Math.round(totalGeneral.aomAnual), s: 'totalMoney' },
+        { v: Math.round(totalGeneral.aomMes), s: 'totalMoney' },
+        { v: Math.round(totalGeneral.inversion), s: 'totalMoney' },
+        { v: Math.round(totalGeneral.invAnual), s: 'totalMoney' },
+        { v: Math.round(totalGeneral.invMes), s: 'totalMoney' },
+      ]);
+
+      const colWidths = [44, 8, 10, 15, 13, 13, 12, 17, 16, 15, 17, 16, 15];
+      // Conserva letras con tilde; solo quita lo que Windows prohíbe en nombres
+      // de archivo (\ / : * ? " < > |) y colapsa espacios en guion bajo.
+      const fileMuni = (selectedCompany?.name || 'liquidacion')
+        .replace(/[\\/:*?"<>|]+/g, '')
+        .replace(/\s+/g, '_');
+
+      // Logo (membrete) en la esquina superior izquierda, sobre la tarjeta del
+      // municipio. Si falla la carga se exporta sin logo, sin romper.
+      let logo: XlsxImage | undefined;
+      try {
+        const resp = await fetch('/assets/images/logo-alumbrado.png');
+        if (resp.ok) {
+          const buf = await resp.arrayBuffer();
+          const dv = new DataView(buf);
+          // PNG: ancho/alto (big-endian) en el chunk IHDR, offsets 16 y 20.
+          const wPx = dv.getUint32(16);
+          const hPx = dv.getUint32(20);
+          if (wPx > 0 && hPx > 0) {
+            const EMU = 9525; // EMU por pixel a 96 dpi
+            // Dimensiono por ALTO para que el logo quepa en las LOGO_ROWS filas
+            // reservadas (fila ≈ 20 px) y no se encime con el título de abajo.
+            // El ancho sale de la proporción real del PNG.
+            const heightPx = LOGO_ROWS * 20 - 12;
+            const widthPx = heightPx * (wPx / hPx);
+            logo = {
+              data: new Uint8Array(buf),
+              col: 0, row: 0, colOff: 45720, rowOff: 45720,
+              widthEmu: widthPx * EMU,
+              heightEmu: heightPx * EMU,
+            };
+          }
+        }
+      } catch { /* sin logo */ }
+
+      const blob = await buildXlsxBlob(`Liquidación ${selYm}`, rows, colWidths, merges, ignoredTextRanges, logo);
+      downloadBlob(blob, `Liquidacion_${fileMuni}_${selYm}.xlsx`);
+    } catch {
+      toast.error('No se pudo generar el Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const ready = selectedCompanyId && (!isCanalesContactos || selectedProjectId);
 
   return (
@@ -515,11 +756,19 @@ export default function CregLiquidacionPage() {
             </p>
           </div>
           {ready && (
-            <Button onClick={handleSave} disabled={saving || loading}
-              className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Guardar
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleExportExcel}
+                disabled={exporting || loading || ucaps.length === 0}
+                className="gap-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50">
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Excel
+              </Button>
+              <Button onClick={handleSave} disabled={saving || loading}
+                className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar
+              </Button>
+            </>
           )}
         </div>
       </header>
