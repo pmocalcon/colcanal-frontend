@@ -43,7 +43,11 @@ export const DEPARTMENT_MAPPING: Record<string, { companies: string[]; projects:
     // proyectos (no a la empresa), así que se listan aquí para que el
     // departamento se arme también con acceso a nivel de proyecto. Las UT
     // propias de esos municipios son duplicados sin uso y no se incluyen.
-    companies: ['Canales & Contactos'],
+    //
+    // Excepción: Santa Bárbara NO tiene proyecto en Canales & Contactos; se opera
+    // como UT propia (Res. CREG 101), así que su empresa sí es un municipio real
+    // del departamento y va incluida.
+    companies: ['Canales & Contactos', 'Unión Temporal Alumbrado Público Santa Bárbara'],
     projects: ['Ciudad Bolívar', 'Jericó', 'Tarso', 'Pueblo Rico'],
   },
   'Valle del Cauca': {

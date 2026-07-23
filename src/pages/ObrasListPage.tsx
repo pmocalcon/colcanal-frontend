@@ -112,8 +112,25 @@ export default function ObrasListPage() {
         .filter((p) => p.companyId === canales.companyId && p.name.trim().toLowerCase() !== 'oficina principal')
         .forEach((p) => projMap.set(p.projectId, { kind: 'project', id: p.projectId, name: p.name }));
     }
-    if (projMap.size > 0) {
-      return [...projMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // Empresas que son municipios reales por sí mismas (UT propias, p.ej. Santa
+    // Bárbara). La matriz Canales & Contactos NO es un municipio, se excluye. Se
+    // suman a los proyectos, no en su lugar: Antioquia tiene proyectos Y una UT.
+    const companyMunis = activeDept.companies
+      .filter((c) => c.name !== 'Canales & Contactos')
+      .map((c) => ({ kind: 'company' as const, id: c.companyId, name: getMunicipality(c.name) }));
+
+    // La BD tiene proyectos duplicados con y sin tilde (Ciudad Bolívar / Ciudad
+    // Bolivar, Jericó / Jerico), con IDs distintos, que salían dos veces en el
+    // filtro. Se deduplican por nombre normalizado, conservando el primero.
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const porNombre = new Map<string, { kind: 'company' | 'project'; id: number; name: string }>();
+    for (const o of [...projMap.values(), ...companyMunis]) {
+      const k = norm(o.name);
+      if (!porNombre.has(k)) porNombre.set(k, o);
+    }
+    const todos = [...porNombre.values()];
+    if (todos.length > 0) {
+      return todos.sort((a, b) => a.name.localeCompare(b.name));
     }
     return activeDept.companies.map((c) => ({
       kind: 'company' as const,
