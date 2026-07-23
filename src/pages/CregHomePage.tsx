@@ -34,13 +34,6 @@ const SUBMODULES = [
     permission: 'creg:censo',
   },
   {
-    slug: 'liquidacion',
-    nombre: 'Liquidación',
-    description: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
-    Icon: Receipt,
-    permission: 'creg:liquidacion',
-  },
-  {
     slug: 'idd-off',
     nombre: 'ID OFF',
     description: 'Índice de disponibilidad de las apagadas: horas fuera de servicio del periodo',
@@ -53,6 +46,13 @@ const SUBMODULES = [
     description: 'Índice de disponibilidad de las encendidas: prendidas cuando deben estar apagadas',
     Icon: Power,
     permission: 'creg:iddon',
+  },
+    {
+    slug: 'liquidacion',
+    nombre: 'Liquidación',
+    description: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
+    Icon: Receipt,
+    permission: 'creg:liquidacion',
   },
 ];
 

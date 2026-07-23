@@ -193,6 +193,9 @@ export interface LiquidacionMes {
   ippMes?: number | null;
   ajusteAom?: number | null;
   ajusteInv?: number | null;
+  /** Ajuste de costos ambientales y CVURA. Solo aplican en la Res. 101-013. */
+  ajusteAmb?: number | null;
+  valorChura?: number | null;
   observacion?: string;
 }
 

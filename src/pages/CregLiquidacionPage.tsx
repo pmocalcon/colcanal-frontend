@@ -244,9 +244,35 @@ export default function CregLiquidacionPage() {
     ippo: toNum(params.ippoNov2015),               // IPPo nov 2015
     ippFinal: toNum(params.ippFinal),              // IPP(m-1) por defecto
     // Entradas de la anualidad de inversión (CINV).
-    ne: toNum(params.ne),                          // NE: 2º término de la anualidad
+    ne: toNum(params.ne),                          // Fracción Activos NE
     idApagadas: toNum(params.idApagadas),          // IDapagadas
+    costosAmbientales: toNum(params.costosAmbientalesDisposicion), // Costos ambientales
+    // Divisor del factor de ajuste de eficacia (k) en la 101-013: el Excel lo
+    // rotula "Valor Ef. Mínima" y en Santa Bárbara vale 130.
+    efMinima: toNum(params.eficienciaLuminarias),
   }), [params]);
+
+  /** true cuando el municipio liquida por la Res. 101-013 en vez de la 123. */
+  const es101 = params.resolucionVigente === '101-103';
+
+  /**
+   * FAOML del año liquidado (Res. 101-013). Sale de la tabla FAOML/FAOMn de
+   * Parámetros, columna 101-013, que varía año a año. En la 123 no aplica: allí
+   * el factor de AOM es el FAOM Oficial, constante.
+   */
+  const faomlDelAnio = useMemo(() => {
+    if (!es101 || !selYm) return null;
+    const anio = Number(selYm.slice(0, 4));
+    const filas: any[] = Array.isArray(params.faomRows) ? params.faomRows : [];
+    const fila = filas.find((f) => Number(f?.year) === anio);
+    return fila?.faomlA != null ? Number(fila.faomlA) * 100 : null;
+  }, [es101, selYm, params.faomRows]);
+
+  /** Factor de AOM: (FAOML + FAOMS) en la 101-013, (FAOM + FAOMS) en la 123. */
+  const factorAom = useMemo(() => {
+    const base = es101 ? faomlDelAnio : P.faom;
+    return base != null ? (base + P.faoms) / 100 : null;
+  }, [es101, faomlDelAnio, P.faom, P.faoms]);
 
   /** Vida útil (años) de una UCAP según su grupo. */
   const vidaUtilDe = useCallback((grupo: string | null): number | null => {
@@ -293,6 +319,33 @@ export default function CregLiquidacionPage() {
     setMeses((prev) => ({ ...prev, [selYm]: { ...(prev[selYm] ?? {}), [field]: value } }));
   };
 
+  const [guardandoResolucion, setGuardandoResolucion] = useState(false);
+
+  /**
+   * La resolución vive en los Parámetros del municipio, no en el mes. Se guarda
+   * de una vez —sin pasar por el botón Guardar, que persiste los meses— y hay que
+   * reenviar el resto de parámetros: saveParametrizacion reemplaza el JSON entero.
+   */
+  const cambiarResolucion = async (valor: string) => {
+    if (!selectedCompanyId || valor === params.resolucionVigente) return;
+    const previos = params;
+    setParams({ ...previos, resolucionVigente: valor });
+    setGuardandoResolucion(true);
+    try {
+      await cregService.saveParametrizacion(
+        selectedCompanyId,
+        { ...previos, resolucionVigente: valor },
+        selectedProjectId,
+      );
+      toast.success(`Resolución vigente: ${valor}`);
+    } catch (err: any) {
+      setParams(previos);
+      toast.error(err?.response?.data?.message || 'No se pudo guardar la resolución');
+    } finally {
+      setGuardandoResolucion(false);
+    }
+  };
+
   /** Índice de actualización de precio = IPP(m-1) / IPPo nov 2015. */
   const indice = useMemo(
     () => (ippMes != null && P.ippo ? ippMes / P.ippo : null),
@@ -325,11 +378,25 @@ export default function CregLiquidacionPage() {
       const total = cantA + cantB;
       const vu = row.ucap.value || 0;
       const activo = vu * total;
-      // AOM anual = activo × (FAOM + FAOMS) × ID_encendidas (Excel: H×(I5+I6)×I3).
-      const aomAnual = P.faom != null ? activo * ((P.faom + P.faoms) / 100) * idEncendidas : 0;
-      const inversion = vu * cantA;
-      // La anualidad amortiza inversión y valor total a la vida útil del grupo
-      // de la UCAP (Res. CREG 123), ponderando la reposición por NE.
+      // AOM anual = activo × factor × ID_encendidas. El factor lo decide la
+      // resolución: FAOML en la 101-013, FAOM en la 123.
+      const aomAnual = factorAom != null ? activo * factorAom * idEncendidas : 0;
+      /**
+       * Base de la inversión.
+       *  123      → V/Unit × cantidades de inversión (sin ajuste de eficacia).
+       *  101-013  → V/Unit × k × (Modernización + Expansión), con
+       *             k = eficacia Lm/W de la UCAP ÷ Valor Ef. Mínima.
+       * Sin eficacia cargada en la UCAP no hay k, y esa fila aporta 0 a la
+       * inversión: se avisa arriba en vez de calcularla como si k fuese 1.
+       */
+      const k = es101
+        ? (row.ucap.efficiencyLmW != null && P.efMinima ? row.ucap.efficiencyLmW / P.efMinima : null)
+        : 1;
+      const cantInversion = es101 ? c.inv + c.con : cantA;
+      const inversion = k != null ? vu * k * cantInversion : 0;
+      // La anualidad amortiza inversión y valor total a la vida útil del grupo de
+      // la UCAP, ponderando la reposición por NE. Es la misma en las dos
+      // resoluciones; lo que cambia es la base de inversión que entra aquí.
       const vidaUtil = vidaUtilDe(row.ucap.grupo);
       const invAnual =
         cinvAnual({
@@ -343,7 +410,7 @@ export default function CregLiquidacionPage() {
       return {
         ...row,
         vidaUtil,
-        cantA, cantB, total,
+        cantA, cantB, total, cantInversion,
         activo,
         aomAnual,
         aomMes: aomAnual / 12,
@@ -352,7 +419,18 @@ export default function CregLiquidacionPage() {
         invMes: invAnual / 12,
       };
     });
-  }, [allRows, selYm, getCell, P.faom, P.faoms, P.r, P.ne, idApagadas, idEncendidas, vidaUtilDe]);
+  }, [allRows, selYm, getCell, factorAom, es101, P.efMinima, P.r, P.ne, idApagadas, idEncendidas, vidaUtilDe]);
+
+  /**
+   * UCAPs con cantidades de inversión pero sin eficacia Lm/W: en la 101-013 no se
+   * les puede calcular k, así que quedan fuera de la inversión.
+   */
+  const sinEficacia = useMemo(() => {
+    if (!es101) return [];
+    return filas
+      .filter((f) => f.ucap.efficiencyLmW == null && f.cantInversion > 0)
+      .map((f) => f.ucap.code);
+  }, [es101, filas]);
 
   const filaPorKey = useMemo(() => new Map(filas.map((f) => [f.key, f])), [filas]);
 
@@ -387,12 +465,21 @@ export default function CregLiquidacionPage() {
   const totalGeneral = useMemo(() => sumar(filas), [filas]);
 
   // ---- Bloque de resultados ----
-  // Estructura del Excel: AOM e INV van SIN los ajustes, y el valor a pagar los
-  // suma aparte: total = AOM + INV + ajuste AOM + ajuste inversión [+ CVURA,
-  // pendiente]. No hay costos ambientales ni SIAP en la liquidación CREG 123.
+  // AOM e INV van SIN los ajustes; el valor a pagar los suma aparte.
+  //   123      → AOM + INV + ajuste AOM + ajuste inversión.
+  //   101-013  → agrega los costos ambientales mensuales, su ajuste y el CVURA.
   const valorAom = totalGeneral.aomMes * (indice ?? 1);
   const valorInv = totalGeneral.invMes * (indice ?? 1);
-  const valorAPagar = valorAom + valorInv + ajusteAom + ajusteInv;
+  // Costos ambientales = CAOM × % ambiental × índice (Excel: L81×L5×O2 anual,
+  // M81×L5×O2 mensual). Solo existen en la 101-013.
+  const pctAmbiental = es101 && P.costosAmbientales != null ? P.costosAmbientales / 100 : 0;
+  const ambAnual = totalGeneral.aomAnual * pctAmbiental * (indice ?? 1);
+  const ambMes = totalGeneral.aomMes * pctAmbiental * (indice ?? 1);
+  const ajusteAmb = es101 ? (mesActual.ajusteAmb ?? 0) : 0;
+  const valorChura = es101 ? (mesActual.valorChura ?? 0) : 0;
+  const valorAPagar = es101
+    ? valorAom + valorInv + ambMes + ajusteAom + ajusteInv + ajusteAmb + valorChura
+    : valorAom + valorInv + ajusteAom + ajusteInv;
 
   const handleSave = async () => {
     if (!selectedCompanyId) return;
@@ -424,7 +511,7 @@ export default function CregLiquidacionPage() {
               <Receipt className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Liquidación
             </h1>
             <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-              Cálculo de activo y valor a pagar del mes (Res. CREG 123 de 2011)
+              Cálculo de activo y valor a pagar del mes (Res. CREG {es101 ? '101 de 2013' : '123 de 2011'})
             </p>
           </div>
           {ready && (
@@ -513,82 +600,122 @@ export default function CregLiquidacionPage() {
         {ready && !loading && selYm && (
           <>
             {/* Cabecera: contrato + parámetros + resultados */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Contrato */}
-              <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-5">
-                <h2 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] mb-3">Contrato</h2>
-                <dl className="space-y-2 text-sm">
-                  <Row label="Municipio contratante" value={P.municipio ?? '—'} />
-                  <Row label="Contratista" value={P.contratista ?? '—'} />
-                  <Row label="Resolución vigente" value={P.resolucion ?? '—'} />
-                  <Row label="Mes de liquidación" value={monthLongLabel(selYm)} strong />
-                </dl>
-              </div>
-
-              {/* Parámetros (solo lectura) */}
-              <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-5">
-                <h2 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">Parámetros</h2>
-                <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))] mb-3">
-                  Se editan en la hoja de <strong>Parámetros</strong> del municipio.
+            {sinEficacia.length > 0 && (
+              <div className="mb-4 flex gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <p>
+                  <strong>{sinEficacia.length}</strong>{' '}
+                  {sinEficacia.length === 1 ? 'UCAP tiene cantidades' : 'UCAPs tienen cantidades'} de
+                  inversión pero no {sinEficacia.length === 1 ? 'tiene' : 'tienen'} eficacia Lm/W
+                  cargada, así que no aportan a la inversión. Cárgala en la hoja de cada UCAP:{' '}
+                  <span className="font-mono">{sinEficacia.slice(0, 8).join(', ')}</span>
+                  {sinEficacia.length > 8 && ` y ${sinEficacia.length - 8} más`}.
                 </p>
-                <dl className="space-y-2 text-sm">
-                  <Row label="r" value={fmtPct(P.r)} />
-                  <Row label="VCEEIn" value={vceeinMes != null ? fmtCOP(vceeinMes) : '—'}
-                    hint="valor de energía de las encendidas (ID ON)" />
-                  <Row label="IDencendidas" value={fmtNum(idEncendidas, 9)}
-                    hint={idEncendidasCalc != null ? 'calculado en ID ON con las fallas del mes' : 'de Parámetros: sin fallas cargadas en ID ON'} />
-                  <Row label="IDapagadas" value={fmtNum(idApagadas, 9)}
-                    hint={idCalculado != null ? 'calculado en IDD OFF con las fallas del mes' : 'de Parámetros: sin fallas cargadas en IDD OFF'} />
-                  <Row label="FAOM" value={fmtPct(P.faom)} />
-                  <Row label="FAOMS" value={fmtPct(P.faoms)} />
-                  <Row label="IPPo noviembre 2015" value={fmtNum(P.ippo)} />
-                </dl>
-                <div className="mt-4 pt-3 border-t border-[hsl(var(--canalco-neutral-200))]">
-                  <label className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
-                    IPP(m-1) del mes liquidado
-                  </label>
-                  <Input
-                    type="number" step="0.01" placeholder={P.ippFinal != null ? String(P.ippFinal) : '—'}
-                    value={mesActual.ippMes ?? ''}
-                    onChange={(e) => setMesField('ippMes', e.target.value === '' ? null : parseFloat(e.target.value))}
-                    className="h-8 text-sm"
-                  />
-                  <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))] mt-1">
-                    Vacío = usa el IPP final de Parámetros ({fmtNum(P.ippFinal)}).
-                  </p>
+              </div>
+            )}
+
+            {/* Encabezado estilo Excel: identidad · parámetros · resultados, con la
+                barra del total abajo abarcando todo. */}
+            <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[hsl(var(--canalco-neutral-200))]">
+
+                {/* Identidad + entradas de contexto */}
+                <div className="p-4 space-y-3">
+                  <div className="text-sm font-bold uppercase leading-tight text-[hsl(var(--canalco-neutral-800))]">
+                    {P.municipio ?? 'Contrato'}
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">Mes de liquidación</label>
+                    <div className="text-sm font-bold text-[hsl(var(--canalco-neutral-900))]">{monthLongLabel(selYm)}</div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">Resolución vigente</label>
+                    <Select
+                      value={P.resolucion ?? ''}
+                      disabled={!selectedCompanyId || guardandoResolucion}
+                      onValueChange={cambiarResolucion}
+                    >
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="— Selecciona —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="123-11">123-11</SelectItem>
+                        <SelectItem value="101-103">101-103</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">IPP(m-1) del mes liquidado</label>
+                    <Input
+                      type="number" step="0.01" placeholder={P.ippFinal != null ? String(P.ippFinal) : '—'}
+                      value={mesActual.ippMes ?? ''}
+                      onChange={(e) => setMesField('ippMes', e.target.value === '' ? null : parseFloat(e.target.value))}
+                      className="h-8 text-sm"
+                    />
+                    <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-0.5">
+                      Vacío = IPP final de Parámetros ({fmtNum(P.ippFinal)}).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Parámetros (solo lectura) */}
+                <div className="p-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Parámetros</h3>
+                  <dl className="space-y-1.5 text-sm">
+                    <Row label="r" value={fmtPct(P.r)} />
+                    <Row label="VCEEIn" value={vceeinMes != null ? fmtCOP(vceeinMes) : '—'}
+                      hint="valor de energía de las encendidas (ID ON)" />
+                    <Row label="ID encendidas" value={fmtNum(idEncendidas, 9)}
+                      hint={idEncendidasCalc != null ? 'calculado en ID ON con las fallas del mes' : 'de Parámetros: sin fallas cargadas en ID ON'} />
+                    <Row label="ID apagadas" value={fmtNum(idApagadas, 9)}
+                      hint={idCalculado != null ? 'calculado en IDD OFF con las fallas del mes' : 'de Parámetros: sin fallas cargadas en IDD OFF'} />
+                    <Row label={es101 ? 'FAOML' : 'FAOM'} value={fmtPct(es101 ? faomlDelAnio : P.faom)}
+                      hint={es101 ? 'de la tabla FAOML/FAOMn del año liquidado' : undefined} />
+                    <Row label="FAOMS" value={fmtPct(P.faoms)} />
+                    {es101 && <Row label="Costos ambientales" value={fmtPct(P.costosAmbientales)} />}
+                    <Row label="Fracción Activos NE" value={fmtNum(P.ne, 3)} />
+                    {es101 && <Row label="Valor Ef. Mínima" value={fmtNum(P.efMinima)} hint="divisor del factor k" />}
+                    <Row label="IPPo noviembre 2015" value={fmtNum(P.ippo)} />
+                  </dl>
+                </div>
+
+                {/* Resultados + ajustes editables inline */}
+                <div className="p-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mb-2">Liquidación</h3>
+                  <dl className="space-y-1.5 text-sm">
+                    <Row label="Índice actualización precio" value={fmtNum(indice)} hint="IPP(m-1) / IPPo" />
+                    <Row label="Valor a pagar AOM" value={fmtCOP(valorAom)} />
+                    <Row label="Valor a pagar INV" value={fmtCOP(valorInv)} />
+                    {es101 && (
+                      <>
+                        <Row label="Costos ambientales anuales" value={fmtCOP(ambAnual)} />
+                        <Row label="Costos ambientales mensuales" value={fmtCOP(ambMes)} />
+                      </>
+                    )}
+                    <div className="pt-1.5 mt-1.5 border-t border-[hsl(var(--canalco-neutral-200))] space-y-1.5">
+                      <InputRow label="Ajuste AOM" value={mesActual.ajusteAom}
+                        onChange={(v) => setMesField('ajusteAom', v)} />
+                      <InputRow label="Ajuste inversión" value={mesActual.ajusteInv}
+                        onChange={(v) => setMesField('ajusteInv', v)} />
+                      {es101 && (
+                        <>
+                          <InputRow label="Ajuste costos ambientales" value={mesActual.ajusteAmb}
+                            onChange={(v) => setMesField('ajusteAmb', v)} />
+                          <InputRow label="Valor a pagar c/hura (inversión)" value={mesActual.valorChura}
+                            onChange={(v) => setMesField('valorChura', v)} />
+                        </>
+                      )}
+                    </div>
+                  </dl>
                 </div>
               </div>
 
-              {/* Resultados */}
-              <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-5">
-                <h2 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] mb-3">Liquidación del mes</h2>
-                <dl className="space-y-2 text-sm">
-                  <Row label="Índice actualización precio" value={fmtNum(indice)} hint="IPP(m-1) / IPPo" />
-                  <Row label="Valor a pagar AOM" value={fmtCOP(valorAom)} />
-                  <Row label="Valor a pagar INV" value={fmtCOP(valorInv)} />
-                </dl>
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))]">
-                  <div>
-                    <label className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">Ajuste AOM</label>
-                    <Input type="number" placeholder="0" value={mesActual.ajusteAom ?? ''}
-                      onChange={(e) => setMesField('ajusteAom', e.target.value === '' ? null : parseFloat(e.target.value))}
-                      className="h-8 text-sm text-right" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">Ajuste inversión</label>
-                    <Input type="number" placeholder="0" value={mesActual.ajusteInv ?? ''}
-                      onChange={(e) => setMesField('ajusteInv', e.target.value === '' ? null : parseFloat(e.target.value))}
-                      className="h-8 text-sm text-right" />
-                  </div>
-                </div>
-                <div className="mt-4 bg-[hsl(var(--canalco-primary))]/10 border-2 border-[hsl(var(--canalco-primary))] rounded-md px-3 py-2 flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wide text-[hsl(var(--canalco-neutral-800))]">
-                    Valor a pagar
-                  </span>
-                  <span className="text-lg font-bold tabular-nums text-[hsl(var(--canalco-primary))]">
-                    {fmtCOP(valorAPagar)}
-                  </span>
-                </div>
+              {/* Barra del total, como la fila verde del Excel */}
+              <div className="bg-emerald-600 px-4 py-2.5 flex items-center justify-between">
+                <span className="text-sm font-bold uppercase tracking-wide text-white">
+                  Valor a pagar {monthLongLabel(selYm)}
+                </span>
+                <span className="text-xl font-bold tabular-nums text-white">
+                  {fmtCOP(valorAPagar)}
+                </span>
               </div>
             </div>
 
@@ -596,7 +723,7 @@ export default function CregLiquidacionPage() {
             <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
               <div className="px-4 py-2 bg-[hsl(var(--canalco-primary))]/10 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center gap-3">
                 <h2 className="flex-1 text-sm font-bold text-center uppercase tracking-wide text-[hsl(var(--canalco-neutral-800))]">
-                  Cálculo de activo en Resolución CREG 123 de 2011
+                  Cálculo de activo en Resolución CREG {es101 ? '101 de 2013' : '123 de 2011'}
                 </h2>
                 <label className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--canalco-neutral-700))] cursor-pointer select-none whitespace-nowrap print:hidden"
                   title="Por defecto solo se listan las UCAPs con cantidades en el mes. Los subtotales no cambian: las ocultas valen 0.">
@@ -696,7 +823,7 @@ export default function CregLiquidacionPage() {
                     <tfoot className="sticky bottom-0 z-10">
                       <tr className="bg-emerald-100 font-bold border-t-2 border-emerald-600">
                         <td colSpan={4} className="px-2 py-2 border border-emerald-300 whitespace-nowrap">
-                          Total Costo (Pesos Diciembre 2015) Resolución CREG 123
+                          Total Costo (Pesos Diciembre 2015) Resolución CREG {es101 ? '101' : '123'}
                         </td>
                         <td className="px-2 py-2 text-center tabular-nums border border-emerald-300">{fmtQty(totalGeneral.cantA)}</td>
                         <td className="px-2 py-2 text-center tabular-nums border border-emerald-300">{fmtQty(totalGeneral.cantB)}</td>
@@ -722,14 +849,54 @@ export default function CregLiquidacionPage() {
 
 const Dash = () => <span className="text-[hsl(var(--canalco-neutral-300))]">–</span>;
 
+/** Fila con la etiqueta a la izquierda y un input numérico a la derecha (como los
+ *  "AJUSTE AOM = 0" del Excel). */
+function InputRow({ label, value, onChange }: {
+  label: string; value: number | null | undefined; onChange: (v: number | null) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-[hsl(var(--canalco-neutral-600))] text-xs italic">{label}</dt>
+      <Input
+        type="number" placeholder="0" value={value ?? ''}
+        onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+        className="h-7 w-28 text-sm text-right"
+      />
+    </div>
+  );
+}
+
+/** Celda compacta (etiqueta arriba, valor abajo) para la franja de parámetros. */
+function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="min-w-0">
+      <dt
+        className={`text-[10px] uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] truncate ${
+          hint ? 'underline decoration-dotted decoration-[hsl(var(--canalco-neutral-300))] underline-offset-2 cursor-help' : ''
+        }`}
+        title={hint}
+      >
+        {label}
+      </dt>
+      <dd className="tabular-nums text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] truncate">{value}</dd>
+    </div>
+  );
+}
+
 function Row({ label, value, hint, strong, pending }: {
   label: string; value: string; hint?: string; strong?: boolean; pending?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-[hsl(var(--canalco-neutral-600))] text-xs">
+      {/* El hint va como tooltip, no como segundo renglón: mantiene la tarjeta
+          compacta sin perder la explicación. El subrayado punteado lo señala. */}
+      <dt
+        className={`text-[hsl(var(--canalco-neutral-600))] text-xs ${
+          hint ? 'underline decoration-dotted decoration-[hsl(var(--canalco-neutral-300))] underline-offset-2 cursor-help' : ''
+        }`}
+        title={hint}
+      >
         {label}
-        {hint && <span className="block text-[10px] text-[hsl(var(--canalco-neutral-400))]">{hint}</span>}
       </dt>
       <dd className={`tabular-nums text-right ${strong ? 'font-bold' : 'font-medium'} ${
         pending ? 'text-amber-700' : 'text-[hsl(var(--canalco-neutral-900))]'
