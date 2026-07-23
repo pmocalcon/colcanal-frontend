@@ -150,9 +150,26 @@ export default function CregIddOffPage() {
   const [importText, setImportText] = useState('');
   const [importModo, setImportModo] = useState<'reemplazar' | 'agregar'>('reemplazar');
 
+  /**
+   * Estados que cuentan como luminaria fuera de servicio. El filtro compara por
+   * contención, así que "MAL ESTADO" reconoce también "EN MAL ESTADO", que es
+   * como lo escribe el export de mantenimiento.
+   */
+  const ESTADOS_FUERA_DE_SERVICIO = useMemo(
+    () => ['APAGADA', 'INTERMITENTE', 'DESCONECTADA', 'MAL ESTADO'],
+    [],
+  );
+
   const preview = useMemo(
-    () => (importText.trim() ? parseFallas(importText, { soloEstado: ['APAGADA', 'INTERMITENTE'] }) : null),
-    [importText],
+    () => (importText.trim()
+      ? parseFallas(importText, {
+          soloEstado: ESTADOS_FUERA_DE_SERVICIO,
+          // Lo preventivo, las reparaciones en bodega y las visitas técnicas no
+          // son fallas de disponibilidad.
+          soloTipoMantenimiento: 'MANTENIMIENTO CORRECTIVO',
+        })
+      : null),
+    [importText, ESTADOS_FUERA_DE_SERVICIO],
   );
 
   const handleFile = async (file: File | undefined) => {

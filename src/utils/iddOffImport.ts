@@ -233,10 +233,59 @@ export interface ParseOpts {
    * trae columna de estado, no se filtra y se avisa.
    */
   soloEstado?: string | string[];
+  /**
+   * Igual que soloEstado, pero sobre S_TIPO_MANTENIMIENTO. IDD OFF usa
+   * 'MANTENIMIENTO CORRECTIVO': lo preventivo, las reparaciones en bodega y las
+   * visitas técnicas no son fallas de disponibilidad.
+   */
+  soloTipoMantenimiento?: string | string[];
 }
 
 /** Encabezados que identifican la columna de estado del export de mantenimiento. */
 const ESTADO_HEADERS = new Set(['s_estado', 'estado']);
+
+/** Encabezados de la columna de tipo de mantenimiento. */
+const TIPO_MANT_HEADERS = new Set([
+  's_tipo_mantenimiento', 'tipo de mantenimiento', 'tipo mantenimiento',
+]);
+
+/**
+ * Filtro por columna de texto del export. Compara por contención y no por
+ * igualdad porque el reporte antepone palabras a los valores ("EN BUEN ESTADO"
+ * en vez de "BUEN ESTADO"), y guarda lo descartado para poder avisar de ello.
+ */
+class FiltroColumna {
+  readonly terminos: string[];
+  readonly etiqueta: string;
+  readonly descartados = new Map<string, number>();
+
+  constructor(pedido: string | string[] | undefined) {
+    const lista = pedido ? (Array.isArray(pedido) ? pedido : [pedido]) : [];
+    this.terminos = lista.map(normalize).filter(Boolean);
+    this.etiqueta = lista.join(' o ');
+  }
+
+  get activo(): boolean {
+    return this.terminos.length > 0;
+  }
+
+  /** true si la fila pasa; si no, la contabiliza como descartada. */
+  acepta(valor: string): boolean {
+    const v = normalize(valor);
+    if (this.terminos.some((t) => v === t || v.includes(t))) return true;
+    const bruto = valor.trim();
+    if (bruto) this.descartados.set(bruto, (this.descartados.get(bruto) ?? 0) + 1);
+    return false;
+  }
+
+  /** Detalle "VALOR (n), OTRO (m)" para el aviso. */
+  get detalle(): string {
+    return [...this.descartados.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([valor, n]) => `${valor} (${n})`)
+      .join(', ');
+  }
+}
 
 export function parseFallas(text: string, opts: ParseOpts = {}): ImportResult {
   const lineas = text.split(/\r?\n/).filter((l) => l.trim() !== '');
@@ -274,23 +323,28 @@ export function parseFallas(text: string, opts: ParseOpts = {}): ImportResult {
   mapa = desambiguarInicialFinal(mapa);
   headerIdx += headerFilas - 1; // los datos empiezan tras la ultima fila de titulos
 
-  // Columna de estado (S_ESTADO), para filtrar apagadas/encendidas. Se busca en
-  // las filas de titulo (una o dos).
-  let estadoCol = -1;
-  for (let h = headerIdx; h >= Math.max(0, headerIdx - (headerFilas - 1)); h--) {
-    const idx = filas[h].findIndex((c) => ESTADO_HEADERS.has(normalize(c)));
-    if (idx >= 0) { estadoCol = idx; break; }
-  }
-  const estadosPedidos = opts.soloEstado
-    ? (Array.isArray(opts.soloEstado) ? opts.soloEstado : [opts.soloEstado])
-    : [];
-  const filtroEstado = estadosPedidos.length ? new Set(estadosPedidos.map(normalize)) : null;
-  const estadoLabel = estadosPedidos.join(' o ');
+  // Columnas de filtrado (S_ESTADO y S_TIPO_MANTENIMIENTO). Se buscan en las
+  // filas de titulo (una o dos).
+  const buscarCol = (headers: ReadonlySet<string>): number => {
+    for (let h = headerIdx; h >= Math.max(0, headerIdx - (headerFilas - 1)); h--) {
+      const idx = filas[h].findIndex((c) => headers.has(normalize(c)));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+  const estadoCol = buscarCol(ESTADO_HEADERS);
+  const tipoMantCol = buscarCol(TIPO_MANT_HEADERS);
+
+  const filtroEstado = new FiltroColumna(opts.soloEstado);
+  const filtroTipoMant = new FiltroColumna(opts.soloTipoMantenimiento);
 
   const columnas = mapa.filter(Boolean) as string[];
   const avisos: string[] = [];
-  if (filtroEstado && estadoCol < 0) {
-    avisos.push(`El archivo no trae columna de estado: no pude filtrar por "${estadoLabel}"; se importan todas las filas.`);
+  if (filtroTipoMant.activo && tipoMantCol < 0) {
+    avisos.push(`El archivo no trae columna de tipo de mantenimiento: no pude filtrar por "${filtroTipoMant.etiqueta}"; se importan todas las filas.`);
+  }
+  if (filtroEstado.activo && estadoCol < 0) {
+    avisos.push(`El archivo no trae columna de estado: no pude filtrar por "${filtroEstado.etiqueta}"; se importan todas las filas.`);
   }
   // El export de mantenimiento solo trae la potencia nominal y la tecnología.
   // Sin columna Potencia+XL, se calcula con la tabla del Excel (LED = nominal;
@@ -312,13 +366,20 @@ export function parseFallas(text: string, opts: ParseOpts = {}): ImportResult {
   let fechasMalas = 0;
   let horasMalas = 0;
   let omitidasPorEstado = 0;
+  let omitidasPorTipoMant = 0;
   let omitidasSinPotencia = 0;
 
   for (let i = headerIdx + 1; i < filas.length; i++) {
     const fila = filas[i];
     if (fila.every((c) => (c ?? '').trim() === '')) continue; // fila vacía
-    // Filtro por estado: APAGADA/INTERMITENTE (IDD OFF) o ENCENDIDA DE DIA (ID ON).
-    if (filtroEstado && estadoCol >= 0 && !filtroEstado.has(normalize(fila[estadoCol] ?? ''))) {
+    // Tipo de mantenimiento: solo el correctivo es una falla de disponibilidad.
+    // Va antes que el estado para que el conteo de omitidas no se solape.
+    if (filtroTipoMant.activo && tipoMantCol >= 0 && !filtroTipoMant.acepta(fila[tipoMantCol] ?? '')) {
+      omitidasPorTipoMant++;
+      continue;
+    }
+    // Filtro por estado: los apagados (IDD OFF) o ENCENDIDA DE DIA (ID ON).
+    if (filtroEstado.activo && estadoCol >= 0 && !filtroEstado.acepta(fila[estadoCol] ?? '')) {
       omitidasPorEstado++;
       continue;
     }
@@ -367,8 +428,20 @@ export function parseFallas(text: string, opts: ParseOpts = {}): ImportResult {
   if (horasMalas > 0) {
     avisos.push(`${horasMalas} hora(s) no se entendieron y quedaron vacías (formato: 18:30).`);
   }
+  // En los dos avisos se listan los valores descartados: si el reporte escribe
+  // alguno de otra forma (p. ej. "EN MAL ESTADO"), aquí se ve en vez de perderse
+  // en silencio.
+  if (omitidasPorTipoMant > 0) {
+    avisos.push(
+      `Se omitieron ${omitidasPorTipoMant} fila(s) con tipo de mantenimiento distinto de "${filtroTipoMant.etiqueta}".`
+      + (filtroTipoMant.detalle ? ` Tipos omitidos: ${filtroTipoMant.detalle}.` : '')
+    );
+  }
   if (omitidasPorEstado > 0) {
-    avisos.push(`Se omitieron ${omitidasPorEstado} fila(s) con estado distinto de "${estadoLabel}".`);
+    avisos.push(
+      `Se omitieron ${omitidasPorEstado} fila(s) con estado distinto de "${filtroEstado.etiqueta}".`
+      + (filtroEstado.detalle ? ` Estados omitidos: ${filtroEstado.detalle}.` : '')
+    );
   }
   if (omitidasSinPotencia > 0) {
     avisos.push(`Se omitieron ${omitidasSinPotencia} fila(s) sin potencia (reportes sin luminaria identificada).`);
