@@ -145,6 +145,30 @@ export interface MaterialPurchaseControlResponse {
   years: number[];
 }
 
+export interface SupplierPurchaseRow {
+  poItemId: number;
+  supplierId: number;
+  supplierName: string;
+  supplierNit: string;
+  materialCode: string;
+  materialDescription: string;
+  groupName: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  purchaseOrderNumber: string;
+  orderDate: string | null;
+  companyName: string | null;
+  projectName: string | null;
+}
+
+export interface SupplierPurchasesResponse {
+  data: SupplierPurchaseRow[];
+  total: number;
+  suppliers: { supplierId: number; name: string; nit: string }[];
+  years: number[];
+}
+
 export const auditService = {
   async getAuditLogs(filters?: FilterAuditParams): Promise<AuditLogsResponse> {
     const params = new URLSearchParams();
@@ -204,6 +228,19 @@ export const auditService = {
     if (filters?.onlyInvoiced) params.append('onlyInvoiced', 'true');
     const response = await api.get<MaterialPurchaseControlResponse>(
       `/audit/materials-purchase-control?${params.toString()}`
+    );
+    return response.data;
+  },
+
+  async getSupplierPurchases(filters?: {
+    supplierId?: number;
+    year?: number;
+  }): Promise<SupplierPurchasesResponse> {
+    const params = new URLSearchParams();
+    if (filters?.supplierId) params.append('supplierId', filters.supplierId.toString());
+    if (filters?.year) params.append('year', filters.year.toString());
+    const response = await api.get<SupplierPurchasesResponse>(
+      `/audit/supplier-purchases?${params.toString()}`
     );
     return response.data;
   },

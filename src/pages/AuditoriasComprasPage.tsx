@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { auditService } from '@/services/audit.service';
 import type {
@@ -6,9 +6,11 @@ import type {
   MatrixResponse,
   AuditStats,
   MaterialPurchaseControlResponse,
+  SupplierPurchasesResponse,
 } from '@/services/audit.service';
 import { usersService } from '@/services/users.service';
 import type { User } from '@/services/users.service';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -19,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb } from 'lucide-react';
+import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb, Truck, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -193,19 +195,26 @@ const ACTION_COLORS: Record<string, string> = {
   rechazar_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
 };
 
-type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control';
-const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control'];
+type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control' | 'proveedores';
+const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control', 'proveedores'];
 
 export default function AuditoriasComprasPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // "Control de Compras" cruza órdenes de compra con facturas: solo lo ve el Analista PMO.
+  const canSeeControl = user?.nombreRol === 'Analista PMO';
+
   // La pestaña activa vive en la URL (?tab=...) para que al entrar a una
   // requisición y volver con "atrás" se restaure la que estabas viendo, en vez
   // de reiniciar a "Registros".
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
+  const requestedTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
     ? (tabParam as AuditTab)
     : 'registros';
+  // Un ?tab=control escrito a mano no debe abrirle la pestaña a quien no la ve.
+  const activeTab: AuditTab =
+    requestedTab === 'control' && !canSeeControl ? 'registros' : requestedTab;
   const setActiveTab = useCallback((tab: AuditTab) => {
     const p = new URLSearchParams(searchParams);
     p.set('tab', tab);
@@ -234,6 +243,14 @@ export default function AuditoriasComprasPage() {
   const [controlAnio, setControlAnio] = useState<string>('todos');
   const [controlSoloFacturadas, setControlSoloFacturadas] = useState(false);
   const [controlBusqueda, setControlBusqueda] = useState('');
+
+  // ── Proveedores state ──
+  const [supplierData, setSupplierData] = useState<SupplierPurchasesResponse | null>(null);
+  const [supplierLoading, setSupplierLoading] = useState(false);
+  const [supplierId, setSupplierId] = useState<string>('todos');
+  const [supplierAnio, setSupplierAnio] = useState<string>('todos');
+  const [supplierBusqueda, setSupplierBusqueda] = useState('');
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
 
   // ── Matriz state ──
   const [matrixData, setMatrixData] = useState<MatrixResponse | null>(null);
@@ -454,6 +471,78 @@ export default function AuditoriasComprasPage() {
     () => controlRows.reduce((suma, f) => suma + f.quantity, 0),
     [controlRows]
   );
+
+  // ── Proveedores: carga (filtro proveedor/año va al backend) ──
+  const loadSupplierPurchases = useCallback(async () => {
+    try {
+      setSupplierLoading(true);
+      const data = await auditService.getSupplierPurchases({
+        supplierId: supplierId !== 'todos' ? Number(supplierId) : undefined,
+        year: supplierAnio !== 'todos' ? Number(supplierAnio) : undefined,
+      });
+      setSupplierData(data);
+    } catch {
+      /* sin interrumpir el resto del tab */
+    } finally {
+      setSupplierLoading(false);
+    }
+  }, [supplierId, supplierAnio]);
+
+  useEffect(() => {
+    if (activeTab === 'proveedores') loadSupplierPurchases();
+  }, [activeTab, loadSupplierPurchases]);
+
+  // Filtro de texto en el cliente (proveedor, material, orden, municipio).
+  const supplierRows = useMemo(() => {
+    if (!supplierData) return [];
+    const texto = supplierBusqueda.trim().toLowerCase();
+    if (!texto) return supplierData.data;
+    return supplierData.data.filter((f) => {
+      const municipio = f.projectName
+        ? getMunicipioName(f.projectName)
+        : f.companyName && getMunicipioName(f.companyName) !== f.companyName
+          ? getMunicipioName(f.companyName)
+          : '';
+      return [
+        f.supplierName, f.supplierNit, f.materialCode,
+        f.materialDescription, f.purchaseOrderNumber, municipio,
+      ].some((v) => (v ?? '').toLowerCase().includes(texto));
+    });
+  }, [supplierData, supplierBusqueda]);
+
+  const supplierTotalValor = useMemo(
+    () => supplierRows.reduce((suma, f) => suma + f.totalAmount, 0),
+    [supplierRows],
+  );
+
+  // Agrupa las compras por proveedor conservando el orden del backend (por
+  // nombre). Cada grupo lleva su total de valor y de cantidad.
+  const supplierGroups = useMemo(() => {
+    const map = new Map<
+      number,
+      { supplierId: number; supplierName: string; supplierNit: string;
+        items: typeof supplierRows; total: number; qty: number }
+    >();
+    for (const f of supplierRows) {
+      let g = map.get(f.supplierId);
+      if (!g) {
+        g = { supplierId: f.supplierId, supplierName: f.supplierName,
+          supplierNit: f.supplierNit, items: [], total: 0, qty: 0 };
+        map.set(f.supplierId, g);
+      }
+      g.items.push(f);
+      g.total += f.totalAmount;
+      g.qty += f.quantity;
+    }
+    return [...map.values()];
+  }, [supplierRows]);
+
+  const toggleSupplier = (id: number) =>
+    setExpandedSuppliers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const monthlyChartData = useMemo(() => {
     if (!matrixData) return [];
@@ -762,13 +851,23 @@ export default function AuditoriasComprasPage() {
             <BarChart2 className="w-4 h-4 mr-2" />
             Gráficos
           </Button>
+          {canSeeControl && (
+            <Button
+              variant={activeTab === 'control' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('control')}
+              className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+            >
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Control de Compras
+            </Button>
+          )}
           <Button
-            variant={activeTab === 'control' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('control')}
-            className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+            variant={activeTab === 'proveedores' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('proveedores')}
+            className={activeTab === 'proveedores' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
           >
-            <Lightbulb className="w-4 h-4 mr-2" />
-            Control de Compras
+            <Truck className="w-4 h-4 mr-2" />
+            Proveedores
           </Button>
         </div>
 
@@ -1748,6 +1847,182 @@ export default function AuditoriasComprasPage() {
                   </span>
                   <span className="font-semibold">
                     Total: {controlTotalCantidad.toLocaleString('es-CO')} unidades
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'proveedores' && (
+          <div>
+            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                Compras por proveedor: qué materiales se le han comprado a cada proveedor,
+                con la cantidad, el valor y la fecha de la orden de compra. Solo lectura.
+              </p>
+            </div>
+
+            {/* Filtros */}
+            <div className="mb-4 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] p-4">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
+                  <Input
+                    placeholder="Proveedor, NIT, material, orden, municipio…"
+                    value={supplierBusqueda}
+                    onChange={(e) => setSupplierBusqueda(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger className="w-[280px]">
+                    <SelectValue placeholder="Proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los proveedores</SelectItem>
+                    {(supplierData?.suppliers ?? []).map((s) => (
+                      <SelectItem key={s.supplierId} value={String(s.supplierId)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={supplierAnio} onValueChange={setSupplierAnio}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Año" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los años</SelectItem>
+                    {(supplierData?.years ?? []).map((a) => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {(supplierBusqueda || supplierId !== 'todos' || supplierAnio !== 'todos') && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSupplierBusqueda('');
+                      setSupplierId('todos');
+                      setSupplierAnio('todos');
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Limpiar
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Tabla */}
+            <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
+                      <TableHead>Material</TableHead>
+                      <TableHead>Grupo</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Orden de Compra</TableHead>
+                      <TableHead>Fecha Orden</TableHead>
+                      <TableHead>Municipio</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {supplierLoading && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                          Cargando…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!supplierLoading && supplierGroups.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                          No hay compras que coincidan con el filtro.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!supplierLoading && supplierGroups.map((g) => {
+                      // Con un solo proveedor visible se abre solo, para no obligar a un clic.
+                      const open = expandedSuppliers.has(g.supplierId) || supplierGroups.length === 1;
+                      return (
+                        <Fragment key={g.supplierId}>
+                          {/* Cabecera del proveedor (colapsable) */}
+                          <TableRow
+                            className="bg-[hsl(var(--canalco-neutral-100))] hover:bg-[hsl(var(--canalco-neutral-200))] cursor-pointer"
+                            onClick={() => toggleSupplier(g.supplierId)}
+                          >
+                            <TableCell colSpan={7} className="py-2">
+                              <div className="flex items-center gap-2">
+                                {open
+                                  ? <ChevronDown className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))] flex-shrink-0" />
+                                  : <ChevronRight className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))] flex-shrink-0" />}
+                                <span className="font-semibold">{g.supplierName}</span>
+                                <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">{g.supplierNit}</span>
+                                <span className="ml-auto text-sm text-[hsl(var(--canalco-neutral-600))]">
+                                  {g.items.length} {g.items.length === 1 ? 'ítem' : 'ítems'} ·{' '}
+                                  <span className="font-semibold text-[hsl(var(--canalco-neutral-800))]">
+                                    ${Math.round(g.total).toLocaleString('es-CO')}
+                                  </span>
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {/* Materiales del proveedor */}
+                          {open && g.items.map((f) => {
+                            const municipio = f.projectName
+                              ? getMunicipioName(f.projectName)
+                              : f.companyName && getMunicipioName(f.companyName) !== f.companyName
+                                ? getMunicipioName(f.companyName)
+                                : '';
+                            return (
+                              <TableRow key={f.poItemId} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
+                                <TableCell className="pl-8">
+                                  <div>{f.materialDescription}</div>
+                                  <div className="font-mono text-xs text-[hsl(var(--canalco-neutral-500))]">{f.materialCode}</div>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm">{f.groupName}</TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {f.quantity.toLocaleString('es-CO')}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">
+                                  ${Math.round(f.totalAmount).toLocaleString('es-CO')}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">{f.purchaseOrderNumber}</TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                  {f.orderDate ? formatDateShort(f.orderDate) : (
+                                    <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-medium">
+                                  {municipio || <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {!supplierLoading && supplierGroups.length > 0 && (
+                <div className="flex justify-between items-center px-4 py-3 border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] text-sm">
+                  <span className="text-[hsl(var(--canalco-neutral-600))]">
+                    {supplierGroups.length} {supplierGroups.length === 1 ? 'proveedor' : 'proveedores'} ·{' '}
+                    {supplierRows.length} {supplierRows.length === 1 ? 'ítem' : 'ítems'}
+                  </span>
+                  <span className="font-semibold">
+                    Total: ${Math.round(supplierTotalValor).toLocaleString('es-CO')}
                   </span>
                 </div>
               )}
