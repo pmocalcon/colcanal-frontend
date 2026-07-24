@@ -197,12 +197,14 @@ const ACTION_COLORS: Record<string, string> = {
 
 type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control' | 'proveedores';
 const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control', 'proveedores'];
+// "Control de Compras" cruza órdenes con facturas y "Proveedores" expone los
+// precios por proveedor: ambas quedan reservadas al Analista PMO.
+const PMO_ONLY_TABS: AuditTab[] = ['control', 'proveedores'];
 
 export default function AuditoriasComprasPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  // "Control de Compras" cruza órdenes de compra con facturas: solo lo ve el Analista PMO.
-  const canSeeControl = user?.nombreRol === 'Analista PMO';
+  const isAnalistaPMO = user?.nombreRol === 'Analista PMO';
 
   // La pestaña activa vive en la URL (?tab=...) para que al entrar a una
   // requisición y volver con "atrás" se restaure la que estabas viendo, en vez
@@ -212,9 +214,9 @@ export default function AuditoriasComprasPage() {
   const requestedTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
     ? (tabParam as AuditTab)
     : 'registros';
-  // Un ?tab=control escrito a mano no debe abrirle la pestaña a quien no la ve.
+  // Un ?tab=... escrito a mano no debe abrirle una pestaña a quien no la ve.
   const activeTab: AuditTab =
-    requestedTab === 'control' && !canSeeControl ? 'registros' : requestedTab;
+    PMO_ONLY_TABS.includes(requestedTab) && !isAnalistaPMO ? 'registros' : requestedTab;
   const setActiveTab = useCallback((tab: AuditTab) => {
     const p = new URLSearchParams(searchParams);
     p.set('tab', tab);
@@ -851,7 +853,7 @@ export default function AuditoriasComprasPage() {
             <BarChart2 className="w-4 h-4 mr-2" />
             Gráficos
           </Button>
-          {canSeeControl && (
+          {isAnalistaPMO && (
             <Button
               variant={activeTab === 'control' ? 'default' : 'outline'}
               onClick={() => setActiveTab('control')}
@@ -861,14 +863,16 @@ export default function AuditoriasComprasPage() {
               Control de Compras
             </Button>
           )}
-          <Button
-            variant={activeTab === 'proveedores' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('proveedores')}
-            className={activeTab === 'proveedores' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
-          >
-            <Truck className="w-4 h-4 mr-2" />
-            Proveedores
-          </Button>
+          {isAnalistaPMO && (
+            <Button
+              variant={activeTab === 'proveedores' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('proveedores')}
+              className={activeTab === 'proveedores' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+            >
+              <Truck className="w-4 h-4 mr-2" />
+              Proveedores
+            </Button>
+          )}
         </div>
 
         {/* ── REGISTROS TAB ── */}
