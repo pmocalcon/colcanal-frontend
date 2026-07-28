@@ -43,13 +43,21 @@ const monthLongLabel = (ym: string) => {
 const fmtNum = (n: number | null, dec = 2) =>
   n == null ? '—' : n.toLocaleString('es-CO', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
-/** Meses del año en curso hacia atrás, para elegir periodo sin depender del censo. */
+/**
+ * Meses desde el mes actual hacia atrás (más reciente primero) hasta un piso
+ * fijo, para elegir periodo sin depender del censo. El piso se fija en enero de
+ * 2018 para poder capturar periodos históricos (antes la lista era una ventana
+ * de 36 meses, así que no dejaba retroceder más allá de ~3 años).
+ */
+const PERIODO_MIN = { y: 2018, m: 1 };
 const monthOptions = (): string[] => {
   const out: string[] = [];
   const now = new Date();
-  for (let i = 0; i < 36; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  let y = now.getFullYear();
+  let m = now.getMonth() + 1; // 1..12
+  while (y > PERIODO_MIN.y || (y === PERIODO_MIN.y && m >= PERIODO_MIN.m)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m--; if (m < 1) { m = 12; y--; }
   }
   return out;
 };
@@ -118,7 +126,7 @@ export default function CregIddOffPage() {
         setMeses(res.data?.meses ?? {});
         setSumaMediaNoche(res.data?.sumaMediaNoche ?? false);
       })
-      .catch(() => setError('Error al cargar el IDD OFF'))
+      .catch(() => setError('Error al cargar el ID OFF'))
       .finally(() => setLoading(false));
   }, [ready, selectedCompanyId, selectedProjectId]);
 
@@ -204,7 +212,7 @@ export default function CregIddOffPage() {
     try {
       setSaving(true);
       await cregService.saveIddOff(selectedCompanyId, { meses, sumaMediaNoche }, selectedProjectId);
-      toast.success('IDD OFF guardado');
+      toast.success('ID OFF guardado');
     } catch {
       toast.error('No se pudo guardar');
     } finally {
@@ -224,7 +232,7 @@ export default function CregIddOffPage() {
           </Button>
           <div className="flex-1">
             <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-2">
-              <PowerOff className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> IDD OFF
+              <PowerOff className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> ID OFF
             </h1>
             <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
               Índice de disponibilidad de las apagadas de la infraestructura en el periodo

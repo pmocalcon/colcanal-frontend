@@ -47,13 +47,21 @@ const fmtNum = (n: number | null, dec = 2) =>
 const fmtPesos = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 });
 
-/** Meses del año en curso hacia atrás, para elegir periodo sin depender del censo. */
+/**
+ * Meses desde el mes actual hacia atrás (más reciente primero) hasta un piso
+ * fijo, para elegir periodo sin depender del censo. El piso se fija en enero de
+ * 2018 para poder capturar periodos históricos (antes la lista era una ventana
+ * de 36 meses, así que no dejaba retroceder más allá de ~3 años).
+ */
+const PERIODO_MIN = { y: 2018, m: 1 };
 const monthOptions = (): string[] => {
   const out: string[] = [];
   const now = new Date();
-  for (let i = 0; i < 36; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  let y = now.getFullYear();
+  let m = now.getMonth() + 1; // 1..12
+  while (y > PERIODO_MIN.y || (y === PERIODO_MIN.y && m >= PERIODO_MIN.m)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m--; if (m < 1) { m = 12; y--; }
   }
   return out;
 };
