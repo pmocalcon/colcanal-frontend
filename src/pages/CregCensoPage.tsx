@@ -351,6 +351,17 @@ export default function CregCensoPage() {
     });
   };
 
+  // Subtotal de cantidades de un conjunto de filas en un mes, desglosado por
+  // categoría (inv / mun / con) + total instalado. Base para los subtotales por grupo.
+  const groupQty = (rows: CensoRow[], ym: string): CellQty & { total: number } => {
+    let inv = 0, mun = 0, con = 0;
+    for (const row of rows) {
+      const c = getCell(row.key, ym);
+      inv += c.inv; mun += c.mun; con += c.con;
+    }
+    return { inv, mun, con, total: inv + mun + con };
+  };
+
   // Totales por mes
   const totalsByYm = useMemo(() => {
     const qty: Record<string, number> = {};
@@ -610,16 +621,31 @@ export default function CregCensoPage() {
                       </td>
                     </tr>
                   ) : (
-                    groupedUcaps.map((g) => (
+                    groupedUcaps.map((g) => {
+                      const gRows = g.items.flatMap(rowsForUcap);
+                      return (
                       <Fragment key={g.grupo}>
-                        <tr className="bg-[hsl(var(--canalco-primary))]/10">
-                          <td colSpan={cols.length * 4 + 2} className="p-0 border border-[hsl(var(--canalco-neutral-200))]">
-                            <div className="sticky left-0 inline-block px-2 py-1.5 font-semibold text-[hsl(var(--canalco-neutral-800))] uppercase text-[11px] tracking-wide">
-                              {g.grupo}
-                            </div>
+                        <tr className="bg-[hsl(var(--canalco-primary))]/10 font-semibold">
+                          <td colSpan={2} className="sticky left-0 z-10 bg-[hsl(var(--canalco-primary))]/10 px-2 py-1.5 text-[hsl(var(--canalco-neutral-800))] uppercase text-[11px] tracking-wide border border-[hsl(var(--canalco-neutral-200))] whitespace-nowrap">
+                            {g.grupo}
                           </td>
+                          {cols.map((col) => {
+                            const sub = groupQty(gRows, col.ym);
+                            return (
+                              <Fragment key={col.ym}>
+                                {BUCKETS.map((b) => (
+                                  <td key={`${col.ym}-${b.key}`} className="px-2 py-1.5 text-center tabular-nums border border-[hsl(var(--canalco-neutral-200))]">
+                                    {sub[b.key] ? fmtQty(sub[b.key]) : ''}
+                                  </td>
+                                ))}
+                                <td className="px-2 py-1.5 text-center tabular-nums border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-primary))]/[0.06]">
+                                  {sub.total ? fmtQty(sub.total) : ''}
+                                </td>
+                              </Fragment>
+                            );
+                          })}
                         </tr>
-                        {g.items.flatMap(rowsForUcap).map((row) => (
+                        {gRows.map((row) => (
                           <tr key={row.key} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
                             <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium border border-[hsl(var(--canalco-neutral-200))] whitespace-nowrap">{row.ucap.code}</td>
                             <td className="sticky left-[80px] z-10 bg-white px-2 py-1 border border-[hsl(var(--canalco-neutral-200))] whitespace-nowrap">{rowLabel(row)}</td>
@@ -642,7 +668,8 @@ export default function CregCensoPage() {
                           </tr>
                         ))}
                       </Fragment>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
                 {ucaps.length > 0 && (
@@ -760,11 +787,33 @@ export default function CregCensoPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {groupedUcaps.map((g) => (
+                        {groupedUcaps.map((g) => {
+                          const gRows = g.items.flatMap(rowsForUcap);
+                          const gPrev = prevCol ? groupQty(gRows, prevCol.ym) : null;
+                          const gSel = groupQty(gRows, selCol.ym);
+                          return (
                           <Fragment key={g.grupo}>
-                            <tr className="bg-[hsl(var(--canalco-primary))]/10">
-                              <td colSpan={11} className="px-2 py-1.5 font-semibold text-[hsl(var(--canalco-neutral-800))] uppercase text-[11px] tracking-wide border border-[hsl(var(--canalco-neutral-200))]">
+                            <tr className="bg-[hsl(var(--canalco-primary))]/10 font-semibold">
+                              <td colSpan={3} className="sticky left-0 z-10 bg-[hsl(var(--canalco-primary))]/10 px-2 py-1.5 text-[hsl(var(--canalco-neutral-800))] uppercase text-[11px] tracking-wide border border-[hsl(var(--canalco-neutral-200))]">
                                 {g.grupo}
+                              </td>
+                              {/* Subtotal del grupo — mes anterior */}
+                              {BUCKETS.map((b) => (
+                                <td key={`ghp-${b.key}`} className="px-2 py-1.5 text-center tabular-nums text-[hsl(var(--canalco-neutral-500))] border border-[hsl(var(--canalco-neutral-200))]">
+                                  {gPrev && gPrev[b.key] ? fmtQty(gPrev[b.key]) : ''}
+                                </td>
+                              ))}
+                              <td className="px-2 py-1.5 text-center tabular-nums text-[hsl(var(--canalco-neutral-600))] border border-[hsl(var(--canalco-neutral-200))]">
+                                {gPrev && gPrev.total ? fmtQty(gPrev.total) : ''}
+                              </td>
+                              {/* Subtotal del grupo — mes seleccionado */}
+                              {BUCKETS.map((b) => (
+                                <td key={`ghs-${b.key}`} className="px-2 py-1.5 text-center tabular-nums border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-primary))]/[0.06]">
+                                  {gSel[b.key] ? fmtQty(gSel[b.key]) : ''}
+                                </td>
+                              ))}
+                              <td className="px-2 py-1.5 text-center tabular-nums border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-primary))]/10">
+                                {gSel.total ? fmtQty(gSel.total) : ''}
                               </td>
                             </tr>
                             {g.items.map((u) => {
@@ -867,7 +916,8 @@ export default function CregCensoPage() {
                               );
                             })}
                           </Fragment>
-                        ))}
+                          );
+                        })}
                       </tbody>
                       <tfoot className="sticky bottom-0 z-10">
                         <tr className="bg-[hsl(var(--canalco-neutral-100))] font-semibold">
