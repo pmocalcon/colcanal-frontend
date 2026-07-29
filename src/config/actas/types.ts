@@ -77,7 +77,7 @@ export interface ActaConfig {
   partesIntroTemplate?: string;
   preAcuerdanText?: string;
   insertTablesAfterClauseTitle?: string;
-  consideracionNumeracion?: 'roman' | 'decimalDash' | 'alpha';
+  consideracionNumeracion?: 'roman' | 'decimalDash' | 'decimal' | 'alpha';
   logoUrl?: string;
   hideMunicipioBanner?: boolean;
   showGarantiaRceExtraParagraphs?: boolean;

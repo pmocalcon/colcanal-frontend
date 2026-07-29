@@ -290,7 +290,7 @@ export default function ResumenActaPage() {
   );
   const [tituloLineas, setTituloLineas] = useState<string[] | undefined>(() => getActaConfig().tituloLineas);
   const [encabezadoTabla, setEncabezadoTabla] = useState<EncabezadoTablaRow[] | undefined>(() => getActaConfig().encabezadoTabla);
-  const [consideracionNumeracion, setConsideracionNumeracion] = useState<'roman' | 'decimalDash' | 'alpha'>(
+  const [consideracionNumeracion, setConsideracionNumeracion] = useState<'roman' | 'decimalDash' | 'decimal' | 'alpha'>(
     () => getActaConfig().consideracionNumeracion ?? 'roman'
   );
   const updateEncabezadoRow = (index: number, field: keyof EncabezadoTablaRow, value: string) => {
@@ -305,6 +305,7 @@ export default function ResumenActaPage() {
     );
   const getConsideracionPrefix = (index: number) => {
     if (consideracionNumeracion === 'decimalDash') return `${index + 1}.-`;
+    if (consideracionNumeracion === 'decimal') return `${index + 1}.`;
     if (consideracionNumeracion === 'alpha') return `${String.fromCharCode(65 + index)}.`;
     return `${ROMAN_NUM[index]}.`;
   };
@@ -372,6 +373,7 @@ export default function ResumenActaPage() {
     if (
       draft.consideracionNumeracion === 'roman' ||
       draft.consideracionNumeracion === 'decimalDash' ||
+      draft.consideracionNumeracion === 'decimal' ||
       draft.consideracionNumeracion === 'alpha'
     ) {
       setConsideracionNumeracion(draft.consideracionNumeracion);
