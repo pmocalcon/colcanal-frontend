@@ -274,8 +274,12 @@ const EditarRequisicionPage: React.FC = () => {
       const updateData = {
         companyId: selectedCompanyId!,
         projectId: selectedProjectId || undefined,
-        obra: obra || undefined,
-        codigoObra: codigoObra || undefined,
+        // Se envían siempre, incluso vacíos: "Sin especificar" es la cadena vacía y
+        // hay que mandarla para poder limpiar el campo. Con `undefined` el backend
+        // ignora la propiedad (`if (dto.obra !== undefined)`) y conserva el valor
+        // anterior, así que la obra nunca se podía quitar.
+        obra,
+        codigoObra,
         priority,
         items: itemsDto,
       };
