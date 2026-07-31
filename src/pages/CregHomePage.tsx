@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Boxes, ClipboardList, Power, PowerOff, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardList, LineChart, Power, PowerOff, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 
@@ -52,6 +52,13 @@ const SUBMODULES = [
     nombre: 'Liquidación',
     description: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
     Icon: Receipt,
+    permission: 'creg:liquidacion',
+  },
+  {
+    slug: 'flujo-caja',
+    nombre: 'Flujo de Caja',
+    description: 'Proyección mes a mes del contrato: CAOM, CINV, energía, FCM y flujo anual',
+    Icon: LineChart,
     permission: 'creg:liquidacion',
   },
 ];

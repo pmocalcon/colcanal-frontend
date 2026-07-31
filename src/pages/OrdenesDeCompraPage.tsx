@@ -192,7 +192,10 @@ export default function OrdenesDeCompraPage() {
     () =>
       filteredRequisitions.filter((req) => {
         const statusCode = req.status?.code || '';
-        if (['en_orden_compra', 'pendiente_recepcion'].includes(statusCode)) {
+        // Una OC ya generada sigue siéndolo aunque haya avanzado a recepción o esté
+        // completada; el subtítulo promete "generadas y completadas". Antes se excluían
+        // en_recepcion/recepcion_completa y esas OC (p. ej. las ya recibidas) desaparecían.
+        if (['en_orden_compra', 'pendiente_recepcion', 'en_recepcion', 'recepcion_completa'].includes(statusCode)) {
           return true;
         }
         return statusCode === 'cotizada' && (req.purchaseOrders?.length || 0) > 0;

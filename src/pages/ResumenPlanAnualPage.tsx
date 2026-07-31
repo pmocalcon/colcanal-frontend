@@ -220,6 +220,8 @@ export default function ResumenPlanAnualPage() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
 
+  // Espejo de ROLES_REVISION_PLAN_ANUAL en surveys.controller.ts, que es quien manda.
+  // Esto solo decide si se pintan los botones; el backend valida rol y permiso.
   const canReviewAnnualPlan = ['Gerencia de Proyectos', 'Analista PMO'].includes(user?.nombreRol ?? '');
 
   const departments = useMemo(() => {
@@ -736,8 +738,10 @@ export default function ResumenPlanAnualPage() {
       setRejectDialogOpen(false);
       setRejectComment('');
       toast.success(decision === 'aprobado' ? 'Resumen aprobado correctamente' : 'Resumen rechazado correctamente');
-    } catch {
-      toast.error('No se pudo guardar la revisión del resumen');
+    } catch (e: any) {
+      // El backend distingue «no tienes el permiso» de «no tienes el rol». Sin este
+      // mensaje, ambos casos se veían igual y no había forma de saber qué pedir.
+      toast.error(e?.response?.data?.message || 'No se pudo guardar la revisión del resumen');
     } finally {
       setReviewSaving(false);
     }

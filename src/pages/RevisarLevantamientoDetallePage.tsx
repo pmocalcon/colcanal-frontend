@@ -98,6 +98,9 @@ export default function RevisarLevantamientoDetallePage() {
 
   // Survey-level approve/reject
   const [surveyApproveModal, setSurveyApproveModal] = useState(false);
+  // El mismo diálogo del IPP sirve a los dos botones que aprueban todo: la revisión
+  // general y «Aprobar Todo». Ninguno de los dos puede aprobar sin IPP.
+  const [approveMode, setApproveMode] = useState<'general' | 'todo'>('general');
   const [surveyApproveIpp, setSurveyApproveIpp] = useState('');
   const [surveyRejectModal, setSurveyRejectModal] = useState(false);
   const [surveyRejectComments, setSurveyRejectComments] = useState('');
@@ -160,11 +163,21 @@ export default function RevisarLevantamientoDetallePage() {
     }
   };
 
-  const handleApproveAll = async () => {
+  const handleApproveAll = async (previousMonthIpp?: number) => {
+    // Sin IPP guardado hay que pedirlo: el backend lo exige, y de ese factor sale el
+    // valor de la obra.
+    if (previousMonthIpp == null && !survey?.previousMonthIpp) {
+      setApproveMode('todo');
+      setSurveyApproveIpp('');
+      setSurveyApproveModal(true);
+      return;
+    }
     try {
       setApprovingAll(true);
-      const updated = await surveysService.approveAll(Number(surveyId));
+      const updated = await surveysService.approveAll(Number(surveyId), previousMonthIpp);
       setSurvey(updated);
+      setSurveyApproveModal(false);
+      setSurveyApproveIpp('');
     } catch (err: any) {
       console.error('Error approving all:', err);
       setError(err.response?.data?.message || 'Error al aprobar todo');
@@ -176,6 +189,10 @@ export default function RevisarLevantamientoDetallePage() {
   const handleSurveyApprove = async () => {
     const ipp = parseFloat(surveyApproveIpp);
     if (!ipp || isNaN(ipp)) return;
+    if (approveMode === 'todo') {
+      await handleApproveAll(ipp);
+      return;
+    }
     try {
       setReviewingSurvey(true);
       const updated = await surveysService.reviewSurvey(Number(surveyId), {
@@ -386,7 +403,7 @@ export default function RevisarLevantamientoDetallePage() {
                 )}
                 {!allBlocksApproved && anyBlockPending && (
                   <Button
-                    onClick={handleApproveAll}
+                    onClick={() => handleApproveAll()}
                     disabled={approvingAll}
                     className="bg-green-600 hover:bg-green-700 text-white"
                   >
@@ -605,6 +622,7 @@ export default function RevisarLevantamientoDetallePage() {
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-white"
                   onClick={() => {
+                    setApproveMode('general');
                     setSurveyApproveIpp(survey.previousMonthIpp?.toString() ?? '');
                     setSurveyApproveModal(true);
                   }}
@@ -820,7 +838,7 @@ export default function RevisarLevantamientoDetallePage() {
               Aprobar Levantamiento
             </DialogTitle>
             <DialogDescription>
-              Confirma el IPP del mes anterior para aprobar el levantamiento.
+              Confirma el IPP del mes anterior. Se aprueban los cuatro bloques.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -845,9 +863,9 @@ export default function RevisarLevantamientoDetallePage() {
             <Button
               className="bg-green-600 hover:bg-green-700 text-white"
               onClick={handleSurveyApprove}
-              disabled={reviewingSurvey || !surveyApproveIpp.trim()}
+              disabled={reviewingSurvey || approvingAll || !surveyApproveIpp.trim()}
             >
-              {reviewingSurvey ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {reviewingSurvey || approvingAll ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               Aprobar
             </Button>
           </DialogFooter>

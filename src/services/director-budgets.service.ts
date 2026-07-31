@@ -17,6 +17,11 @@ export type BudgetStatus = 'draft' | 'en_revision' | 'final';
 
 export interface CreateDirectorBudgetDto {
   workId?: number | null;
+  // Acta de origen. Al aprobar el presupuesto, Gerencia cierra el presupuesto de esta
+  // acta; el número solo no basta porque se repite entre municipios.
+  actaCompanyId?: number | null;
+  actaProjectId?: number | null;
+  actaNumber?: string | null;
   departmentName?: string;
   workName?: string;
   companyName?: string;
@@ -66,6 +71,9 @@ export interface DirectorBudgetItem {
 export interface DirectorBudget {
   budgetId: number;
   workId: number | null;
+  actaCompanyId: number | null;
+  actaProjectId: number | null;
+  actaNumber: string | null;
   departmentName: string | null;
   workName: string | null;
   companyName: string | null;

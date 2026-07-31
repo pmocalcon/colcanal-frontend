@@ -55,9 +55,22 @@ import CregResumenPage from './pages/CregResumenPage'
 import CregParametrosPage from './pages/CregParametrosPage'
 import CregCensoPage from './pages/CregCensoPage'
 import CregLiquidacionPage from './pages/CregLiquidacionPage'
+import CregFlujoCajaPage from './pages/CregFlujoCajaPage'
 import CregIddOffPage from './pages/CregIddOffPage'
 import CregIddOnPage from './pages/CregIddOnPage'
 import CregUnitFormPage from './pages/CregUnitFormPage'
+import GestionConocimientoPage from './pages/GestionConocimientoPage'
+import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
+import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
+import ChecklistContratoPage from './pages/ChecklistContratoPage'
+import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
+import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
+import ActaInicioPage from './pages/ActaInicioPage'
+import ContratoPage from './pages/ContratoPage'
+import MatrizContratosPage from './pages/MatrizContratosPage'
+import SolicitudesContableListPage from './pages/SolicitudesContableListPage'
+import SolicitudAnticipoPage from './pages/SolicitudAnticipoPage'
+import LegalizacionAnticipoPage from './pages/LegalizacionAnticipoPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
@@ -200,6 +213,14 @@ export default function App() {
             }
           />
           <Route
+            path="/dashboard/creg/flujo-caja"
+            element={
+              <ProtectedRoute permission="creg:liquidacion">
+                <CregFlujoCajaPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/creg/idd-off"
             element={
               <ProtectedRoute permission="creg:iddoff">
@@ -223,6 +244,22 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* Gestión del conocimiento */}
+          <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica" element={<SolicitudesJuridicaListPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/nueva" element={<SolicitudPrestacionServiciosPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id" element={<SolicitudPrestacionServiciosPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/chequeo" element={<ChecklistContratoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/verificacion-garantias" element={<VerificacionGarantiasPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/designacion-supervisor" element={<DesignacionSupervisorPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/contrato" element={<ContratoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/acta-inicio" element={<ActaInicioPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/matriz" element={<MatrizContratosPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable" element={<SolicitudesContableListPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/anticipo/nueva" element={<SolicitudAnticipoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/anticipo/:id" element={<SolicitudAnticipoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/legalizacion/nueva" element={<LegalizacionAnticipoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/legalizacion/:id" element={<LegalizacionAnticipoPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

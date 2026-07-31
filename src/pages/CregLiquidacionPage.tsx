@@ -14,7 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { buildXlsxBlob, downloadBlob } from '@/utils/xlsxWriter';
-import type { XlsxRow, XlsxImage } from '@/utils/xlsxWriter';
+import type { XlsxRow, XlsxCell, XlsxImage } from '@/utils/xlsxWriter';
 
 const EXCLUDED_COMPANY_NAMES = [
   'Inversiones Garcés Escalante',
@@ -557,6 +557,31 @@ export default function CregLiquidacionPage() {
         ] : []),
       ];
 
+      // ── Fórmulas del Excel ──
+      // Las celdas calculadas llevan la fórmula real (recalcula al abrir) con el
+      // valor ya calculado como caché. Las constantes de parámetro van "quemadas"
+      // con punto decimal (OOXML usa en-US) y coma como separador de argumentos.
+      const CL = (i: number) => String.fromCharCode(65 + i); // 0→A … 12→M
+      const nfe = (n: number | null | undefined) =>
+        n != null && Number.isFinite(n) ? String(n) : '0';
+      const RATE = P.r != null ? P.r / 100 : null; // r (WACC) como fracción
+      const NE = P.ne != null ? P.ne / 100 : 0;     // Fracción Activos NE
+      const IDAP = idApagadas ?? 1;
+      const IDEN = idEncendidas ?? 1;
+      const FACT = factorAom ?? 0;                  // FAOM(+FAOMS) o FAOML(+FAOMS)
+      const IND = indice ?? 1;
+
+      // Grupos visibles en la tabla y cuántas filas ocupa el cuerpo (para saber
+      // en qué fila cae el TOTAL y poder referenciarlo desde el resumen).
+      const visibleGroups = grupos.map((g) => {
+        const groupRows = g.items.flatMap(rowsForUcap)
+          .map((r) => filaPorKey.get(r.key))
+          .filter((ff): ff is NonNullable<typeof ff> => !!ff);
+        const visibles = mostrarSinCantidad ? groupRows : groupRows.filter((ff) => ff.total > 0);
+        return { grupo: g.grupo, groupRows, visibles };
+      }).filter((gr) => gr.visibles.length > 0);
+      const bodyRows = visibleGroups.reduce((a, gr) => a + 1 + gr.visibles.length, 0);
+
       // ── Cuadrícula del encabezado en 3 tarjetas ──
       // La tarjeta izquierda reserva las primeras filas para el logo; el título
       // (municipio) y sus datos van debajo. Las tarjetas central y derecha
@@ -569,6 +594,9 @@ export default function CregLiquidacionPage() {
         1 + rightCard.length,
         leftFirstItem + leftCard.length,
       );
+      // Fila Excel del TOTAL de la tabla. Estructura tras el encabezado: blank,
+      // barra verde, blank, título, cabecera, cuerpo (bodyRows) y luego el total.
+      const totalExcelRow = headerHeight + 6 + bodyRows;
       const grid: XlsxRow[] = Array.from({ length: headerHeight }, () => blank());
       const XLR = (i: number) => i + 1; // fila Excel del índice de grid (bloque desde la fila 1)
 
@@ -595,7 +623,11 @@ export default function CregLiquidacionPage() {
         grid[gi][8] = { v: it.label, s: 'cardLabel' };
         grid[gi][9] = { v: '', s: 'cardLabel' };
         grid[gi][10] = { v: '', s: 'cardLabel' };
-        grid[gi][11] = { v: it.value, s: vStyle };
+        // Valor a pagar AOM/INV = (AOM|Inv) mes del total × índice de actualización.
+        let f: string | undefined;
+        if (it.label === 'Valor a pagar AOM') f = `J${totalExcelRow}*${nfe(IND)}`;
+        else if (it.label === 'Valor a pagar INV') f = `M${totalExcelRow}*${nfe(IND)}`;
+        grid[gi][11] = f ? { v: it.value, s: vStyle, f } : { v: it.value, s: vStyle };
         grid[gi][12] = { v: '', s: vStyle };
         merges.push(`I${XLR(gi)}:K${XLR(gi)}`, `L${XLR(gi)}:M${XLR(gi)}`);
       });
@@ -622,7 +654,20 @@ export default function CregLiquidacionPage() {
       for (let c = 0; c <= 7; c++) bar[c] = { v: '', s: 'greenBarText' };
       bar[0] = { v: `VALOR A PAGAR ${mesLabel.toUpperCase()}`, s: 'greenBarText' };
       for (let c = 8; c <= 12; c++) bar[c] = { v: '', s: 'greenBarMoney' };
-      bar[8] = { v: Math.round(valorAPagar), s: 'greenBarMoney' };
+      // Total a pagar = suma de las celdas del resumen (columna L de cada renglón).
+      const cellOfSummary = (label: string) => {
+        const i = rightCard.findIndex((it) => it.label === label);
+        return i >= 0 ? `L${i + 2}` : null; // fila Excel = (1+i)+1
+      };
+      const barTerms = es101
+        ? ['Valor a pagar AOM', 'Valor a pagar INV', 'Costos ambientales mensuales',
+          'Ajuste AOM', 'Ajuste inversión', 'Ajuste costos ambientales',
+          'Valor a pagar c/hura (inversión)']
+        : ['Valor a pagar AOM', 'Valor a pagar INV', 'Ajuste AOM', 'Ajuste inversión'];
+      const barCells = barTerms.map(cellOfSummary).filter((x): x is string => !!x);
+      bar[8] = barCells.length
+        ? { v: Math.round(valorAPagar), s: 'greenBarMoney', f: barCells.join('+') }
+        : { v: Math.round(valorAPagar), s: 'greenBarMoney' };
       rows.push(bar);
       merges.push(`A${gR}:H${gR}`, `I${gR}:M${gR}`);
       // Los valores de tarjeta van con formato de pantalla (texto): silenciamos
@@ -636,59 +681,81 @@ export default function CregLiquidacionPage() {
         'Total', 'Activo', 'AOM anual', 'AOM mes', 'Inversión', 'Inv. anual', 'Inv. mes'];
       rows.push(header.map((h) => ({ v: h, s: 'header' as const })));
 
-      for (const g of grupos) {
-        const groupRows = g.items.flatMap(rowsForUcap)
-          .map((r) => filaPorKey.get(r.key))
-          .filter((f): f is NonNullable<typeof f> => !!f);
-        const visibles = mostrarSinCantidad ? groupRows : groupRows.filter((f) => f.total > 0);
-        if (visibles.length === 0) continue;
-        const st = sumar(groupRows);
-        // Subtotal del grupo (encabeza el bloque, como en pantalla).
+      const subtotalRows: number[] = []; // filas Excel de cada subtotal (para el total)
+      for (const gr of visibleGroups) {
+        const st = sumar(gr.groupRows);
+        const S = rows.length + 1;                 // fila Excel del subtotal
+        const first = S + 1;
+        const last = S + gr.visibles.length;
+        subtotalRows.push(S);
+        // Subtotal = SUM del rango de ítems del grupo, por columna.
+        const sub = (col: number, val: number, s: XlsxCell['s']): XlsxCell =>
+          ({ v: val, s, f: `SUM(${CL(col)}${first}:${CL(col)}${last})` });
         rows.push([
-          { v: g.grupo, s: 'groupText' },
+          { v: gr.grupo, s: 'groupText' },
           { v: '', s: 'groupText' }, { v: '', s: 'groupText' }, { v: '', s: 'groupText' },
-          { v: st.cantA, s: 'groupQty' },
-          { v: st.cantB, s: 'groupQty' },
-          { v: st.total, s: 'groupQty' },
-          { v: Math.round(st.activo), s: 'groupMoney' },
-          { v: Math.round(st.aomAnual), s: 'groupMoney' },
-          { v: Math.round(st.aomMes), s: 'groupMoney' },
-          { v: Math.round(st.inversion), s: 'groupMoney' },
-          { v: Math.round(st.invAnual), s: 'groupMoney' },
-          { v: Math.round(st.invMes), s: 'groupMoney' },
+          sub(4, st.cantA, 'groupQty'),
+          sub(5, st.cantB, 'groupQty'),
+          sub(6, st.total, 'groupQty'),
+          sub(7, Math.round(st.activo), 'groupMoney'),
+          sub(8, Math.round(st.aomAnual), 'groupMoney'),
+          sub(9, Math.round(st.aomMes), 'groupMoney'),
+          sub(10, Math.round(st.inversion), 'groupMoney'),
+          sub(11, Math.round(st.invAnual), 'groupMoney'),
+          sub(12, Math.round(st.invMes), 'groupMoney'),
         ]);
-        for (const f of visibles) {
+        for (const f of gr.visibles) {
+          const R = rows.length + 1;               // fila Excel de este ítem
+          const vu = f.ucap.value || 0;
+          const tieneVU = f.vidaUtil != null && f.vidaUtil > 0;
+          // Inversión: 123 = V/Unit × Inv inicial. En 101 no se puede expresar con
+          // las columnas (necesita eficacia y concesionario aislado) → va como valor.
+          const invCell: XlsxCell = es101
+            ? { v: f.inversion ? Math.round(f.inversion) : '', s: 'money' }
+            : { v: Math.round(f.inversion), s: 'money', f: `D${R}*E${R}` };
+          // Inv. anual: anualidad CINV con PMT; requiere vida útil (nper).
+          const invAnualCell: XlsxCell = tieneVU
+            ? { v: Math.round(f.invAnual), s: 'money',
+                f: `(PMT(${nfe(RATE)},C${R},-K${R})+PMT(${nfe(RATE)},C${R},-H${R})*${nfe(NE)})*${nfe(IDAP)}` }
+            : { v: f.invAnual ? Math.round(f.invAnual) : '', s: 'money' };
+          const invMesCell: XlsxCell = tieneVU
+            ? { v: Math.round(f.invMes), s: 'money', f: `L${R}/12` }
+            : { v: f.invMes ? Math.round(f.invMes) : '', s: 'money' };
           rows.push([
             { v: rowLabel(f), s: 'text' },
             { v: 'Un.', s: 'text' },
-            { v: f.vidaUtil ?? '', s: 'qty' },
-            { v: Math.round(f.ucap.value || 0), s: 'money' },
-            { v: f.cantA || '', s: 'qty' },
-            { v: f.cantB || '', s: 'qty' },
-            { v: f.total || '', s: 'qty' },
-            { v: f.activo ? Math.round(f.activo) : '', s: 'money' },
-            { v: f.aomAnual ? Math.round(f.aomAnual) : '', s: 'money' },
-            { v: f.aomMes ? Math.round(f.aomMes) : '', s: 'money' },
-            { v: f.inversion ? Math.round(f.inversion) : '', s: 'money' },
-            { v: f.invAnual ? Math.round(f.invAnual) : '', s: 'money' },
-            { v: f.invMes ? Math.round(f.invMes) : '', s: 'money' },
+            { v: f.vidaUtil ?? '', s: 'qty' },       // C (vida útil)
+            { v: vu, s: 'money' },                   // D (valor unit)
+            { v: f.cantA || '', s: 'qty' },          // E (inv inicial)
+            { v: f.cantB || '', s: 'qty' },          // F (mun/conc)
+            { v: f.total, s: 'qty', f: `E${R}+F${R}` },                              // G total
+            { v: Math.round(f.activo), s: 'money', f: `D${R}*G${R}` },               // H activo
+            { v: Math.round(f.aomAnual), s: 'money', f: `H${R}*${nfe(FACT)}*${nfe(IDEN)}` }, // I
+            { v: Math.round(f.aomMes), s: 'money', f: `I${R}/12` },                  // J
+            invCell,                                                                 // K
+            invAnualCell,                                                            // L
+            invMesCell,                                                              // M
           ]);
         }
       }
 
-      // ---- Total general ----
+      // ---- Total general = SUM de los subtotales ----
+      const tot = (col: number, val: number, s: XlsxCell['s']): XlsxCell =>
+        subtotalRows.length
+          ? { v: val, s, f: `SUM(${subtotalRows.map((r) => `${CL(col)}${r}`).join(',')})` }
+          : { v: val, s };
       rows.push([
         { v: `Total Costo (Pesos Diciembre 2015) Resolución CREG ${es101 ? '101' : '123'}`, s: 'totalText' },
         { v: '', s: 'totalText' }, { v: '', s: 'totalText' }, { v: '', s: 'totalText' },
-        { v: totalGeneral.cantA, s: 'totalQty' },
-        { v: totalGeneral.cantB, s: 'totalQty' },
-        { v: totalGeneral.total, s: 'totalQty' },
-        { v: Math.round(totalGeneral.activo), s: 'totalMoney' },
-        { v: Math.round(totalGeneral.aomAnual), s: 'totalMoney' },
-        { v: Math.round(totalGeneral.aomMes), s: 'totalMoney' },
-        { v: Math.round(totalGeneral.inversion), s: 'totalMoney' },
-        { v: Math.round(totalGeneral.invAnual), s: 'totalMoney' },
-        { v: Math.round(totalGeneral.invMes), s: 'totalMoney' },
+        tot(4, totalGeneral.cantA, 'totalQty'),
+        tot(5, totalGeneral.cantB, 'totalQty'),
+        tot(6, totalGeneral.total, 'totalQty'),
+        tot(7, Math.round(totalGeneral.activo), 'totalMoney'),
+        tot(8, Math.round(totalGeneral.aomAnual), 'totalMoney'),
+        tot(9, Math.round(totalGeneral.aomMes), 'totalMoney'),
+        tot(10, Math.round(totalGeneral.inversion), 'totalMoney'),
+        tot(11, Math.round(totalGeneral.invAnual), 'totalMoney'),
+        tot(12, Math.round(totalGeneral.invMes), 'totalMoney'),
       ]);
 
       const colWidths = [44, 8, 10, 15, 13, 13, 12, 17, 16, 15, 17, 16, 15];

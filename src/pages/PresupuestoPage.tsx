@@ -313,7 +313,10 @@ export default function PresupuestoPage() {
 
   const isAnalistaPMO = user?.nombreRol === 'Analista PMO';
   const canEditBudget = hasPermission('levantamientos:crear') || isAnalistaPMO;
-  const canReview = hasPermission('levantamientos:revisar') || hasPermission('levantamientos:autorizar') || isAnalistaPMO;
+  // Enviar a autorización lo hace quien elabora el presupuesto. Es una restricción por
+  // ROL, igual que en el backend: con permisos no alcanzaba, porque `levantamientos:revisar`
+  // lo tiene también el Director Técnico, que no participa en esta cadena.
+  const canReview = user?.nombreRol === 'Director Financiero y Administrativo' || isAnalistaPMO;
   const canApprove = hasPermission('levantamientos:aprobar') || isAnalistaPMO;
   const isGerenciaReview = budgetStatus === 'en_revision';
   const isReadOnly = !canEditBudget || (!isAnalistaPMO && budgetStatus !== 'draft');
@@ -625,8 +628,17 @@ export default function PresupuestoPage() {
           ? undefined
           : selectedWork?.company?.name ??
             (selectedDept?.companies?.length === 1 ? selectedDept.companies[0].name : undefined));
+      // Acta de origen, tomada de las obras reales (no del ?acta= de la URL). Es lo que
+      // le permite a Gerencia cerrar el presupuesto del acta al aprobar: sin empresa y
+      // proyecto el número es ambiguo, porque se repite entre municipios.
+      const obraDelActa = obrasDelPresupuesto[0];
+      const actaNumber =
+        workSelectionMode === 'agrupado' ? selectedActa : selectedWork?.recordNumber ?? null;
       const dto = {
         workId: workSelectionMode === 'individual' ? selectedWorkId : null,
+        actaNumber: actaNumber || null,
+        actaCompanyId: actaNumber ? obraDelActa?.companyId ?? null : null,
+        actaProjectId: actaNumber ? obraDelActa?.projectId ?? null : null,
         departmentName: selectedDept?.name,
         companyName,
         workName:
@@ -697,17 +709,33 @@ export default function PresupuestoPage() {
       toast.error('Debe diligenciar Fuente de Financiación, Valor Mínimo de los Excedentes y Valor Actual de Excedentes antes de enviar a revisión.');
       return;
     }
+    // El acta es obligatoria para salir a autorización: Gerencia no debe autorizar un
+    // presupuesto sin origen, y es el acta la que se cierra al aprobar. El backend valida
+    // además que esté esperando presupuesto; aquí solo se atrapa el caso evidente.
+    const actaDelPresupuesto =
+      workSelectionMode === 'agrupado'
+        ? selectedActa
+        : works.find((w) => w.workId === selectedWorkId)?.recordNumber;
+    if (!actaDelPresupuesto) {
+      toast.error('El presupuesto debe estar asociado a un acta antes de enviarlo a autorización.');
+      return;
+    }
     try {
       setTransitioning(true);
       await directorBudgetsService.submitForReview(budgetId);
       setBudgetStatus('en_revision');
       toast.success('Presupuesto enviado a revisión');
-    } catch {
-      toast.error('Error al enviar a revisión');
+    } catch (e: any) {
+      // El backend explica por qué (acta sin enviar a presupuesto, rechazada, no
+      // identificable). Perder ese mensaje deja al usuario sin saber qué corregir.
+      toast.error(e?.response?.data?.message || 'Error al enviar a revisión');
     } finally {
       setTransitioning(false);
     }
-  }, [budgetId, fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes]);
+  }, [
+    budgetId, fuenteFinanciacion, valorMinimoExcedentes, valorActualExcedentes,
+    workSelectionMode, selectedActa, selectedWorkId, works,
+  ]);
 
   const handleApprove = useCallback(async () => {
     if (!budgetId) return;
@@ -735,17 +763,26 @@ export default function PresupuestoPage() {
 
   const handleReject = useCallback(async () => {
     if (!budgetId) return;
+    // Devolver desde 'final' deshace una autorización y devuelve el acta a revisión:
+    // no es lo mismo que rechazar algo que todavía se está revisando.
+    if (budgetStatus === 'final') {
+      const ok = window.confirm(
+        'Este presupuesto ya está autorizado. Al devolverlo vuelve a borrador y el ' +
+          'presupuesto del acta regresa a revisión. ¿Continuar?',
+      );
+      if (!ok) return;
+    }
     try {
       setTransitioning(true);
       await directorBudgetsService.reject(budgetId);
       setBudgetStatus('draft');
       toast.success('Presupuesto devuelto a borrador');
-    } catch {
-      toast.error('Error al rechazar el presupuesto');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Error al devolver el presupuesto');
     } finally {
       setTransitioning(false);
     }
-  }, [budgetId]);
+  }, [budgetId, budgetStatus]);
 
   // Load materials catalog
   useEffect(() => {

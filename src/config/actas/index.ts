@@ -8,6 +8,7 @@ import { ciudadBolivarConfig } from './ciudadbolivar';
 import { pueblorricoConfig } from './pueblorrico';
 import { tarsoConfig } from './tarso';
 import { santabarbaraConfig } from './santabarbara';
+import { puertoasisConfig } from './puertoasis';
 
 // Clave compuesta "companyId:projectId" — usar cuando un companyId se comparte entre proyectos.
 // Clave simple "companyId:" — para UTAPs con companyId único por municipio.
@@ -21,6 +22,7 @@ const registry = new Map<string, ActaConfig>([
   ['2:',   cerritoConfig],
   ['7:',   quimbayaConfig],
   ['8:',   santabarbaraConfig], // UT Alumbrado Público Santa Bárbara
+  ['6:',   puertoasisConfig],   // UT Alumbrado Público Puerto Asís (contratante EAAAP E.S.P.)
 ]);
 
 export function getActaConfig(companyId?: number, projectId?: number): ActaConfig {

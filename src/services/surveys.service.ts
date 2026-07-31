@@ -509,8 +509,10 @@ export const surveysService = {
     return response.data;
   },
 
-  async approveAll(surveyId: number): Promise<Survey> {
-    const response = await api.patch(`/surveys/${surveyId}/approve-all`);
+  // El IPP va aquí porque aprobar sin él dejaría el levantamiento aprobado con el factor
+  // en blanco. Si el levantamiento ya lo tiene guardado, se puede omitir.
+  async approveAll(surveyId: number, previousMonthIpp?: number): Promise<Survey> {
+    const response = await api.patch(`/surveys/${surveyId}/approve-all`, { previousMonthIpp });
     return response.data;
   },
 

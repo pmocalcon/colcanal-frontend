@@ -206,6 +206,14 @@ export default function DashboardPage() {
               onClick={() => handleModuleClick(module)}
             />
           ))}
+          {/* Gestión del conocimiento: tarjeta fija en el frontend (no viene de la tabla gestion). */}
+          <ModuleCard
+            nombre="Gestión del conocimiento"
+            slug="gestion-conocimiento"
+            icono="BookOpen"
+            hasAccess={true}
+            onClick={() => navigate('/dashboard/gestion-conocimiento')}
+          />
         </div>
 
         {/* Footer Info */}

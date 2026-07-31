@@ -59,6 +59,13 @@ const STYLE_INDEX: Record<XlsxStyle, number> = {
 export interface XlsxCell {
   v: string | number | null;
   s?: XlsxStyle;
+  /**
+   * Fórmula de Excel SIN el `=` inicial (p. ej. "D28*G28"). Se guarda en `<f>`
+   * junto al valor calculado en `<v>` como caché; Excel la recalcula al abrir.
+   * Las funciones van en inglés (PMT, SUM) y los argumentos separados por coma,
+   * como exige OOXML, sin importar el idioma de Excel.
+   */
+  f?: string;
 }
 /** Una celda puede ser un valor pelado (sin estilo) o {v, s}. */
 export type XlsxCellInput = XlsxCell | string | number | null;
@@ -182,6 +189,12 @@ const buildWorkbookXml = (sheetName: string) =>
 
 const buildCellXml = (cell: XlsxCell, ref: string): string => {
   const s = cell.s ? ` s="${STYLE_INDEX[cell.s]}"` : '';
+  // Celda con fórmula: <f> + <v> de caché (el valor calculado, para que se vea
+  // correcto antes de que Excel recalcule).
+  if (cell.f) {
+    const cached = typeof cell.v === 'number' && Number.isFinite(cell.v) ? cell.v : 0;
+    return `<c r="${ref}"${s}><f>${escapeXml(cell.f)}</f><v>${cached}</v></c>`;
+  }
   if (cell.v == null || cell.v === '') return `<c r="${ref}"${s}/>`;
   if (typeof cell.v === 'number' && Number.isFinite(cell.v)) {
     return `<c r="${ref}"${s}><v>${cell.v}</v></c>`;

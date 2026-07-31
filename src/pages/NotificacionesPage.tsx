@@ -1,9 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck, FileText, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck, FileText, ClipboardList, Compass, Trash2, RotateCcw, Wallet, CalendarClock } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 
+// Refleja los métodos notify* del backend (notifications.service.ts). Cada tarjeta
+// = una notificación real que el sistema despacha por correo.
 const NOTIFICATION_TYPES = [
+  // ── Requisiciones (compras) ──
   {
     icon: ClipboardCheck,
     color: 'text-blue-600',
@@ -11,6 +14,30 @@ const NOTIFICATION_TYPES = [
     title: 'Nueva requisición para revisión',
     description: 'Se envía al revisor asignado cuando se crea una nueva requisición pendiente de revisión.',
     trigger: 'Al crear una requisición',
+  },
+  {
+    icon: Compass,
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
+    title: 'Requisición pendiente de validación',
+    description: 'Se envía al Director de Proyecto para validar una obra especial antes de que pase a revisión.',
+    trigger: 'Al enviar a validación',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
+    title: 'Requisición validada',
+    description: 'Se envía al solicitante cuando el Director de Proyecto valida la requisición y pasa a revisión.',
+    trigger: 'Al validar',
+  },
+  {
+    icon: XCircle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    title: 'Requisición rechazada en validación',
+    description: 'Se envía al solicitante cuando el Director de Proyecto la rechaza en la etapa de validación.',
+    trigger: 'Al rechazar en validación',
   },
   {
     icon: CheckCircle2,
@@ -53,6 +80,30 @@ const NOTIFICATION_TYPES = [
     trigger: 'Al iniciar cotización',
   },
   {
+    icon: Trash2,
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
+    title: 'Solicitud de anulación',
+    description: 'Se envía a la Directora Financiera cuando Compras solicita anular una requisición.',
+    trigger: 'Al solicitar anulación',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Anulación aprobada',
+    description: 'Se envía al solicitante cuando la Directora Financiera aprueba la anulación y la requisición queda anulada.',
+    trigger: 'Al aprobar anulación',
+  },
+  {
+    icon: XCircle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    title: 'Anulación rechazada',
+    description: 'Se envía al solicitante cuando la Directora Financiera rechaza la solicitud de anulación.',
+    trigger: 'Al rechazar anulación',
+  },
+  {
     icon: Package,
     color: 'text-teal-600',
     bg: 'bg-teal-50',
@@ -60,6 +111,8 @@ const NOTIFICATION_TYPES = [
     description: 'Se notifica al solicitante cuando se genera una orden de compra para su requisición.',
     trigger: 'Al generar orden de compra',
   },
+
+  // ── Levantamientos (obras) ──
   {
     icon: ClipboardList,
     color: 'text-amber-600',
@@ -72,10 +125,28 @@ const NOTIFICATION_TYPES = [
     icon: CheckCircle2,
     color: 'text-green-600',
     bg: 'bg-green-50',
+    title: 'Levantamiento revisado',
+    description: 'Se notifica al creador cuando su levantamiento es aprobado o rechazado.',
+    trigger: 'Al revisar el levantamiento',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
     title: 'Bloque de levantamiento revisado',
     description: 'Se notifica al creador cuando presupuesto, inversión, materiales o viajes son aprobados o rechazados.',
     trigger: 'Al revisar un bloque',
   },
+  {
+    icon: RotateCcw,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: 'Levantamiento reabierto',
+    description: 'Se notifica al creador cuando su levantamiento se reabre para edición.',
+    trigger: 'Al reabrir un levantamiento',
+  },
+
+  // ── Actas ──
   {
     icon: FileText,
     color: 'text-blue-600',
@@ -83,6 +154,14 @@ const NOTIFICATION_TYPES = [
     title: 'Acta pendiente de revisión técnica',
     description: 'Se envía a Director Técnico y PMO cuando un acta es enviada a revisión.',
     trigger: 'Al enviar acta a revisión',
+  },
+  {
+    icon: FileText,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: 'Acta revisada o devuelta',
+    description: 'Se notifica al creador cuando el acta pasa la revisión técnica (a aprobación) o se devuelve a borrador.',
+    trigger: 'Al revisar técnicamente el acta',
   },
   {
     icon: Bell,
@@ -99,6 +178,82 @@ const NOTIFICATION_TYPES = [
     title: 'Acta aprobada',
     description: 'Se notifica al creador y al revisor cuando Gerencia de Proyectos aprueba el acta.',
     trigger: 'Al aprobar acta',
+  },
+  {
+    icon: Wallet,
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
+    title: 'Acta enviada a presupuesto',
+    description: 'Se notifica a quien revisa el presupuesto cuando un acta se envía a presupuesto.',
+    trigger: 'Al enviar acta a presupuesto',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Presupuesto del acta aprobado',
+    description: 'Se notifica al Director Técnico cuando el presupuesto del acta queda aprobado, al autorizar Gerencia el Presupuesto del Director.',
+    trigger: 'Al autorizar el Presupuesto del Director',
+  },
+  {
+    icon: XCircle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    title: 'Presupuesto del acta rechazado',
+    description: 'Se notifica al Director Técnico cuando se rechaza el presupuesto del acta.',
+    trigger: 'Al rechazar presupuesto del acta',
+  },
+
+  // ── Presupuesto del Director ──
+  {
+    icon: Wallet,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: 'Presupuesto pendiente de autorización',
+    description: 'Se envía a Gerencia cuando un Presupuesto del Director sale a autorización.',
+    trigger: 'Al enviar el presupuesto a autorización',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Presupuesto autorizado',
+    description: 'Se notifica a quien elaboró el presupuesto cuando Gerencia lo autoriza.',
+    trigger: 'Al autorizar el presupuesto',
+  },
+  {
+    icon: XCircle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    title: 'Presupuesto devuelto',
+    description: 'Se notifica a quien elaboró el presupuesto cuando Gerencia lo devuelve a borrador.',
+    trigger: 'Al devolver el presupuesto',
+  },
+
+  // ── Cronograma ──
+  {
+    icon: CalendarClock,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: 'Cronograma pendiente de revisión',
+    description: 'Se envía al Director Técnico cuando se envía el plan del cronograma a revisión.',
+    trigger: 'Al enviar cronograma a revisión',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
+    title: 'Cronograma aprobado',
+    description: 'Se notifica al creador cuando el Director Técnico aprueba el plan del cronograma.',
+    trigger: 'Al aprobar cronograma',
+  },
+  {
+    icon: XCircle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    title: 'Cronograma devuelto',
+    description: 'Se notifica al creador cuando el Director Técnico devuelve el cronograma para corrección.',
+    trigger: 'Al devolver cronograma',
   },
 ];
 
@@ -176,10 +331,15 @@ export default function NotificacionesPage() {
         {/* Config note */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
           <p className="text-sm text-amber-800">
-            <strong>Configuración SMTP:</strong> Para que las notificaciones se envíen correctamente, el administrador del sistema
-            debe configurar las variables de entorno <code className="bg-amber-100 px-1 rounded">SMTP_HOST</code>,{' '}
-            <code className="bg-amber-100 px-1 rounded">SMTP_USER</code> y{' '}
-            <code className="bg-amber-100 px-1 rounded">SMTP_PASS</code> en el servidor backend.
+            <strong>Configuración del correo:</strong> En producción las notificaciones se envían por{' '}
+            <strong>Microsoft Graph</strong> (OAuth2). El administrador debe configurar{' '}
+            <code className="bg-amber-100 px-1 rounded">GRAPH_TENANT_ID</code>,{' '}
+            <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_ID</code>,{' '}
+            <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_SECRET</code> y{' '}
+            <code className="bg-amber-100 px-1 rounded">GRAPH_SENDER</code> en el servidor backend.
+            El envío por SMTP (<code className="bg-amber-100 px-1 rounded">SMTP_HOST</code>/
+            <code className="bg-amber-100 px-1 rounded">SMTP_USER</code>/
+            <code className="bg-amber-100 px-1 rounded">SMTP_PASS</code>) queda solo como respaldo.
           </p>
         </div>
       </main>
