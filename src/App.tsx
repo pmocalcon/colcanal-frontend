@@ -53,6 +53,7 @@ import CregHomePage from './pages/CregHomePage'
 import CregPage from './pages/CregPage'
 import CregResumenPage from './pages/CregResumenPage'
 import CregParametrosPage from './pages/CregParametrosPage'
+import CregIppPage from './pages/CregIppPage'
 import CregCensoPage from './pages/CregCensoPage'
 import CregLiquidacionPage from './pages/CregLiquidacionPage'
 import CregFlujoCajaPage from './pages/CregFlujoCajaPage'
@@ -68,6 +69,8 @@ import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
 import ActaInicioPage from './pages/ActaInicioPage'
 import ContratoPage from './pages/ContratoPage'
 import MatrizContratosPage from './pages/MatrizContratosPage'
+import ContableHomePage from './pages/ContableHomePage'
+import CuentasCompaniasPage from './pages/CuentasCompaniasPage'
 import SolicitudesContableListPage from './pages/SolicitudesContableListPage'
 import SolicitudAnticipoPage from './pages/SolicitudAnticipoPage'
 import LegalizacionAnticipoPage from './pages/LegalizacionAnticipoPage'
@@ -197,6 +200,14 @@ export default function App() {
             }
           />
           <Route
+            path="/dashboard/creg/ipp"
+            element={
+              <ProtectedRoute permission="creg:parametros">
+                <CregIppPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/creg/censo"
             element={
               <ProtectedRoute permission="creg:censo">
@@ -255,11 +266,16 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/contrato" element={<ContratoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/acta-inicio" element={<ActaInicioPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/matriz" element={<MatrizContratosPage />} />
-          <Route path="/dashboard/gestion-conocimiento/contable" element={<SolicitudesContableListPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable" element={<ContableHomePage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/anticipos" element={<SolicitudesContableListPage tipo="anticipos" />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/legalizaciones" element={<SolicitudesContableListPage tipo="legalizaciones" />} />
           <Route path="/dashboard/gestion-conocimiento/contable/anticipo/nueva" element={<SolicitudAnticipoPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/anticipo/:id" element={<SolicitudAnticipoPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/legalizacion/nueva" element={<LegalizacionAnticipoPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/legalizacion/:id" element={<LegalizacionAnticipoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias" element={<SolicitudesContableListPage tipo="cuentas-companias" />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/nueva" element={<CuentasCompaniasPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/:id" element={<CuentasCompaniasPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

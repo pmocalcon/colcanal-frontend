@@ -130,7 +130,7 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-[#0a2a52] shadow-md">
+          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
             {/* Encabezado */}
             <div className="grid grid-cols-[130px_1fr_130px] border-b border-[#0a2a52]">
               <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">

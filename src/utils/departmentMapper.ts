@@ -98,6 +98,15 @@ export interface Department {
  */
 const HIDDEN_MUNICIPALITY_NAMES = new Set(['canales & contactos']);
 
+/**
+ * ¿Es la empresa matriz? Sus obras pertenecen a un municipio, pero el municipio
+ * está en el PROYECTO: agrupar por su nombre mezcla Tarso, Pueblorico, Jericó y
+ * Ciudad Bolívar en una sola fila que no es ningún municipio.
+ */
+export function esEmpresaMatriz(name: string): boolean {
+  return HIDDEN_MUNICIPALITY_NAMES.has(normalizeMunicipalityName(name));
+}
+
 export function visibleMunicipalitiesOf(munis: Municipality[] = []): Municipality[] {
   return munis.filter(
     (m) => !(m.type === 'company' && HIDDEN_MUNICIPALITY_NAMES.has(normalizeMunicipalityName(m.name))),

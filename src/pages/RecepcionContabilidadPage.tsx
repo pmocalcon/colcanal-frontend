@@ -11,6 +11,8 @@ import {
   Building,
   Package,
   X,
+  XCircle,
+  MessageSquare,
   Search,
 } from 'lucide-react';
 import { StatusDashboard, type StatusCount } from '@/components/ui/status-dashboard';
@@ -38,6 +40,7 @@ import {
   getAccountingPendingInvoices,
   getAccountingReceivedInvoices,
   markInvoicesAsReceived,
+  rejectInvoicesByAccounting,
   type PurchaseOrderForInvoicing,
   type Invoice,
 } from '@/services/invoices.service';
@@ -74,6 +77,10 @@ const RecepcionContabilidadPage: React.FC = () => {
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
   const [markingReceived, setMarkingReceived] = useState(false);
+  // Observación de contabilidad: opcional al recibir, obligatoria al rechazar.
+  const [observations, setObservations] = useState('');
+  // El rechazo va en dos toques: el primero arma y muestra el aviso, el segundo confirma.
+  const [rejecting, setRejecting] = useState(false);
 
   // Check if user has Contabilidad role
   const isContabilidad = user?.nombreRol === 'Contabilidad';
@@ -113,7 +120,16 @@ const RecepcionContabilidadPage: React.FC = () => {
   const handleOpenReceiveModal = (po: PurchaseOrderForInvoicing) => {
     setSelectedPO(po);
     setReceivedDate(new Date().toISOString().split('T')[0]);
+    setObservations('');
+    setRejecting(false);
     setShowReceiveModal(true);
+  };
+
+  const cerrarReceiveModal = () => {
+    setShowReceiveModal(false);
+    setSelectedPO(null);
+    setObservations('');
+    setRejecting(false);
   };
 
   const handleMarkAsReceived = async () => {
@@ -123,14 +139,46 @@ const RecepcionContabilidadPage: React.FC = () => {
       setMarkingReceived(true);
       await markInvoicesAsReceived(selectedPO.purchaseOrderId, {
         receivedDate,
+        observations: observations.trim() || undefined,
       });
       await loadAllData();
-      setShowReceiveModal(false);
-      setSelectedPO(null);
+      cerrarReceiveModal();
       alert('Facturas marcadas como recibidas exitosamente');
     } catch (err: any) {
       console.error('Error marking as received:', err);
       alert(err.response?.data?.message || 'Error al marcar como recibidas');
+    } finally {
+      setMarkingReceived(false);
+    }
+  };
+
+  /**
+   * Rechazar devuelve las facturas a Compras. El primer clic arma la acción y
+   * muestra el aviso; el segundo la confirma, ya con el motivo escrito.
+   */
+  const handleReject = async () => {
+    if (!selectedPO) return;
+
+    if (!rejecting) {
+      setRejecting(true);
+      return;
+    }
+    if (!observations.trim()) {
+      alert('Indica el motivo del rechazo: es lo que verá Compras para corregir.');
+      return;
+    }
+
+    try {
+      setMarkingReceived(true);
+      await rejectInvoicesByAccounting(selectedPO.purchaseOrderId, {
+        observations: observations.trim(),
+      });
+      await loadAllData();
+      cerrarReceiveModal();
+      alert('Facturas devueltas a Compras');
+    } catch (err: any) {
+      console.error('Error rejecting invoices:', err);
+      alert(err.response?.data?.message || 'Error al rechazar las facturas');
     } finally {
       setMarkingReceived(false);
     }
@@ -798,8 +846,8 @@ const RecepcionContabilidadPage: React.FC = () => {
         {/* Mark as Received Modal */}
         {showReceiveModal && selectedPO && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md p-6">
-              <h2 className="text-lg font-bold mb-4">Confirmar Recepción de Facturas</h2>
+            <Card className="w-full max-w-lg p-6">
+              <h2 className="text-lg font-bold mb-4">Recepción de Facturas</h2>
 
               <div className="mb-4 p-4 bg-[hsl(var(--canalco-neutral-50))] rounded-lg">
                 <p className="text-sm">
@@ -824,7 +872,7 @@ const RecepcionContabilidadPage: React.FC = () => {
               </div>
 
               <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mb-4">
-                Las facturas de esta orden de compra serán marcadas como recibidas por contabilidad.
+                Recíbelas para cerrar el proceso, o devuélvelas a Compras indicando qué hay que corregir.
               </p>
 
               <div className="mb-4">
@@ -842,34 +890,82 @@ const RecepcionContabilidadPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="mb-4">
+                <Label htmlFor="accountingObservations" className="text-sm font-medium flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Observaciones
+                  <span className="font-normal text-[hsl(var(--canalco-neutral-500))]">
+                    {rejecting ? '(obligatorias para rechazar)' : '(opcional)'}
+                  </span>
+                </Label>
+                <textarea
+                  id="accountingObservations"
+                  value={observations}
+                  onChange={(e) => setObservations(e.target.value)}
+                  rows={3}
+                  placeholder="Qué se observa de estas facturas. Si las rechazas, esto es lo que verá Compras."
+                  className="mt-1 w-full rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 py-2 text-sm outline-none focus:border-[hsl(var(--canalco-primary))] resize-y"
+                />
+              </div>
+
+              {/* Rechazar devuelve la orden a Compras: se avisa antes de hacerlo. */}
+              {rejecting && (
+                <div className="mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
+                  <span>
+                    Las facturas vuelven a Compras para que las corrija y las reenvíe. Escribe el motivo
+                    arriba y confirma el rechazo.
+                  </span>
+                </div>
+              )}
+
+              {/* Cancelar aparte; las dos decisiones juntas a la derecha. */}
+              <div className="flex items-center justify-between gap-2 border-t border-[hsl(var(--canalco-neutral-200))] pt-4">
                 <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowReceiveModal(false);
-                    setSelectedPO(null);
-                  }}
+                  variant="ghost"
+                  onClick={cerrarReceiveModal}
                   disabled={markingReceived}
+                  className="text-[hsl(var(--canalco-neutral-600))]"
                 >
                   Cancelar
                 </Button>
-                <Button
-                  onClick={handleMarkAsReceived}
-                  disabled={markingReceived}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {markingReceived ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Confirmar Recepción
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleReject}
+                    disabled={markingReceived}
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                  >
+                    {markingReceived && rejecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Devolviendo...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-4 h-4 mr-2" />
+                        {rejecting ? 'Confirmar rechazo' : 'Rechazar'}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleMarkAsReceived}
+                    disabled={markingReceived}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {markingReceived && !rejecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Recibir
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </Card>
           </div>

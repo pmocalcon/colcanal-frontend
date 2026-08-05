@@ -216,7 +216,7 @@ export default function VerificacionGarantiasPage() {
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-            <div className="doc bg-white border border-[#0a2a52] text-[12px] text-[#0a2a52] shadow-md p-5 space-y-6">
+            <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md p-5 space-y-6">
 
               {/* ── Lista de verificación ─────────────────────────── */}
               <section>

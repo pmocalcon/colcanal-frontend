@@ -273,6 +273,58 @@ export const filtrarPorPersona = (items: string[], persona?: string): string[] =
   });
 };
 
+/**
+ * Compara ítems del formato ignorando tildes, mayúsculas, puntuación y espacios. Los
+ * ítems son texto suelto del GA-25-F y la misma cosa aparece escrita distinto entre
+ * tipos de contrato: «(ARL,EPS,AFP,CCF).» y «(ARL, EPS, AFP, CCF)» son el mismo
+ * documento.
+ */
+const claveDeItem = (s: string): string =>
+  // NFD separa la tilde de la letra y el filtro final se la lleva junto con la
+  // puntuación y los espacios: 'Cédula' y 'CEDULA.' quedan iguales.
+  s.normalize('NFD').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Qué ítem del GA-25-F cubre cada habilitante.
+ *
+ * Manda el tipo de contrato: cuando su lista ya pide el documento, el habilitante no
+ * se repite. Si no, quien revisa marcaría dos veces el mismo papel en dos filas que
+ * pueden terminar contradiciéndose —una en «Sí» y otra en «No»—.
+ */
+const CUBRE_HABILITANTE: Record<string, string[]> = {
+  identificacion: ['Cédula'],
+  'existencia-representacion': ['Certificado de existencia y representación (cuando aplique)'],
+  rut: ['Rut (actualizado)'],
+  // La sección de antecedentes desglosa las consultas; el concepto es su cierre.
+  antecedentes: ['Concepto de verificación de antecedentes.'],
+  'seguridad-social': ['Afiliación al sistema de seguridad social (ARL,EPS,AFP,CCF).'],
+  'experiencia-capacidad': ['Contratos ejecutados por el contratista, relacionados con el objeto a contratar'],
+  'cuenta-bancaria': ['Certificado bancario'],
+  polizas: ['Pólizas'],
+};
+
+/**
+ * Los habilitantes que el tipo de contrato **no** pide ya. Son el complemento: lo que
+ * la política exige como mínimo y el formato no cubre.
+ *
+ * Sin tipo de contrato devuelve todos, que es el mínimo transversal.
+ */
+export const habilitantesNoCubiertos = (
+  persona?: string,
+  tipo?: TipoContrato,
+): HabilitanteResuelto[] => {
+  const base = habilitantesPara(persona);
+  if (!tipo) return base;
+  const pedidos = new Set(
+    Object.values(tipo.secciones)
+      .flatMap((items) => filtrarPorPersona(items, persona))
+      .map(claveDeItem),
+  );
+  return base.filter(
+    (h) => !(CUBRE_HABILITANTE[h.key] ?? []).some((t) => pedidos.has(claveDeItem(t))),
+  );
+};
+
 // ============================================================================
 // GARANTÍAS (política de contratación, secciones 10 y 11)
 // ============================================================================
@@ -334,8 +386,8 @@ export interface FilaGarantias {
  *
  * ⚠️ Sus categorías **no son** las de `TIPOS_CONTRATO`: aquélla clasifica por vínculo
  * laboral (término fijo, obra labor, pasantías) y ésta por naturaleza del objeto
- * (suministro, obra/EPC, arrendamiento). Por eso la matriz se muestra completa y las
- * filas que coinciden con la solicitud solo se **resaltan** — ver `garantiasSugeridas`.
+ * (suministro, obra/EPC, arrendamiento). No hay correspondencia automática entre las
+ * dos, así que la matriz se muestra completa y es Jurídica quien elige la fila.
  */
 export const MATRIZ_GARANTIAS: FilaGarantias[] = [
   {
@@ -369,33 +421,3 @@ export const MATRIZ_GARANTIAS: FilaGarantias[] = [
     amparos: { cumplimiento: SI, salarios: SI_APLICA, anticipo: SI_APLICA, calidad: SI, estabilidad: NO, rce: SEGUN_RIESGO },
   },
 ];
-
-/** Lo que la solicitud marca en «Prestación de servicios / Alquiler / Suministro / Obra». */
-export interface NaturalezaSolicitud {
-  prestacion?: boolean;
-  alquiler?: boolean;
-  suministro?: boolean;
-  obra?: boolean;
-  /** Clave de `TIPOS_CONTRATO`, para desempatar entre servicios profesionales y operativos. */
-  tipoContrato?: string;
-}
-
-/**
- * Filas de la matriz que corresponden a lo marcado en la solicitud. Es una **sugerencia**:
- * la política clasifica por naturaleza del objeto y el formato solo tiene cuatro casillas.
- *
- * «Prestación de servicios» no basta para saber si son profesionales u operativos, así
- * que solo se resuelve cuando el tipo de contrato lo dice; si no, se sugieren las dos y
- * que Jurídica elija. «Tecnología/licenciamiento» no tiene casilla en el formato.
- */
-export const garantiasSugeridas = (n: NaturalezaSolicitud): string[] => {
-  const keys: string[] = [];
-  if (n.prestacion) {
-    if (n.tipoContrato === 'prestacion-de-servicios-profesionales') keys.push('servicios-profesionales');
-    else keys.push('servicios-profesionales', 'servicios-operativos');
-  }
-  if (n.suministro) keys.push('suministro');
-  if (n.obra) keys.push('obra-epc');
-  if (n.alquiler) keys.push('arrendamiento');
-  return keys;
-};

@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  deriveParams, computeMes, monthsBetween, computeFcm, rollupAnual, emptySupuestos,
+  deriveParams, computeMes, monthsBetween, computeFcm, rollupAnual, emptySupuestos, ippDelMes,
   type CellQty, type MesResultado, type FlujoMonthCol, type FlujoSupuestos, type FcmMes, type FcmAnual,
 } from '@/utils/cregCalc';
 
@@ -91,10 +91,13 @@ export default function CregFlujoCajaPage() {
       cregService.getLiquidacion(companyId, projectId),
       cregService.getIddOff(companyId, projectId),
       cregService.getIddOn(companyId, projectId),
+      // El IPP no va por municipio: es una sola serie, su propio sub-módulo.
+      cregService.getIppMensual().catch(() => ({} as Record<string, number>)),
     ])
-      .then(([ucapsRes, param, censo, liq, idd, iddOn]) => {
+      .then(([ucapsRes, param, censo, liq, idd, iddOn, ippMeses]) => {
         setUcaps(ucapsRes.ucaps);
-        setParams(param.data ?? {});
+        // La serie global entra como `ippMeses` para que `ippDelMes` la encuentre.
+        setParams({ ...(param.data ?? {}), ippMeses });
         setSupuestos({ ...emptySupuestos(), ...(param.data?.flujoSupuestos ?? {}) });
         setQuantities(censo.data?.quantities ?? {});
         setLiqMeses(liq.data?.meses ?? {});
@@ -127,10 +130,10 @@ export default function CregFlujoCajaPage() {
       const idApagadas = (off ? indiceDisponibilidad(off.fallas ?? [], off.wt, off.t) : null) ?? P.idApagadas;
       const idEncendidas = (on ? indiceDisponibilidadOn(on.fallas ?? [], on.wt, on.t) : null)
         ?? P.idEncendidasParam ?? 1;
-      const ippMes = liqMeses[col.ym]?.ippMes ?? P.ippFinal;
+      const ippMes = liqMeses[col.ym]?.ippMes ?? ippDelMes(params, col.ym);
       return computeMes(ucaps, quantities, P, col.ym, { idApagadas, idEncendidas, ippMes });
     });
-  }, [cols, ucaps, quantities, P, iddMeses, iddOnMeses, liqMeses]);
+  }, [cols, ucaps, quantities, P, params, iddMeses, iddOnMeses, liqMeses]);
 
   const fcm = useMemo<FcmMes[]>(() => computeFcm(cols, resultados, supuestos), [cols, resultados, supuestos]);
   const anual = useMemo<FcmAnual[]>(() => rollupAnual(fcm), [fcm]);
@@ -152,9 +155,13 @@ export default function CregFlujoCajaPage() {
     if (!selectedCompanyId) return;
     setSaving(true);
     try {
+      // `ippMeses` es la serie global inyectada al cargar: no debe quedar copiada
+      // dentro de la parametrización de este municipio.
+      const { ippMeses: _global, ...delMunicipio } = params;
+      void _global;
       await cregService.saveParametrizacion(
         selectedCompanyId,
-        { ...params, flujoSupuestos: supuestos },
+        { ...delMunicipio, flujoSupuestos: supuestos },
         selectedProjectId,
       );
       setParams((p) => ({ ...p, flujoSupuestos: supuestos }));

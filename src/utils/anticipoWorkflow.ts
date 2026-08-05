@@ -10,8 +10,11 @@
  * Excepción: si quien solicita es un **Director de Área**, ese paso lo aprueba la
  * **Gerencia** (Dra. Gloria), porque su jefe inmediato es ella. Lo resuelve el backend
  * (`puedeAprobarComoJefe`); aquí el botón ya le aparece por no ser la creadora.
+ *
+ * @see rolesPmo — el PMO (Analista y Director) puede ejecutar cualquier paso.
  */
 import { sumarDiasHabiles } from './juridicaWorkflow';
+import { esRolPmo } from './rolesPmo';
 
 export type AnticipoEstado =
   | 'borrador'
@@ -39,7 +42,6 @@ export const ANTICIPO_ESTADOS: Record<AnticipoEstado, EstadoMeta> = {
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // Lorena
 const ROLES_GERENCIA = ['Gerencia']; // Dra. Gloria
 const ROLES_TESORERIA = ['Coordinador Financiero']; // Aurora
-const ROL_PMO = 'Analista PMO';
 
 export interface AnticipoTransicion {
   accion: string;
@@ -74,7 +76,7 @@ export function accionesDisponibles(
   esCreador: boolean,
 ): AnticipoTransicion[] {
   const rol = nombreRol ?? '';
-  const esPmo = rol === ROL_PMO;
+  const esPmo = esRolPmo(rol);
   return ANTICIPO_TRANSICIONES.filter((t) => {
     if (t.from !== estado) return false;
     if (esPmo) return true;

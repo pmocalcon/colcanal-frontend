@@ -104,6 +104,23 @@ export const deriveParams = (params: Record<string, any>): CregParamsDerived => 
   params,
 });
 
+/**
+ * IPP(m-1) que le corresponde a un mes.
+ *
+ * Manda la tabla "IPP por mes" de Parámetros, donde el municipio lleva el índice
+ * mes a mes; si ese mes no tiene valor, cae al "IPP final", que es el respaldo
+ * único para todo el contrato. Recibe los parámetros crudos para poder llamarse
+ * tanto desde la Liquidación como desde el Flujo de Caja.
+ */
+export const ippDelMes = (params: Record<string, any>, ym: string): number | null => {
+  const tabla = params?.ippMeses;
+  if (ym && tabla && typeof tabla === 'object') {
+    const v = toNum(tabla[ym]);
+    if (v != null) return v;
+  }
+  return toNum(params?.ippFinal);
+};
+
 /** FAOML del año (101-013); en la 123 no aplica. */
 export const faomlDelAnio = (P: CregParamsDerived, ym: string): number | null => {
   if (!P.es101 || !ym) return null;

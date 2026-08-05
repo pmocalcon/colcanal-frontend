@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Plus, Loader2, Pencil, Trash2, AlertCircle, Zap, Search, X, CheckCircle2,
+  ArrowLeft, Plus, Loader2, Pencil, Trash2, AlertCircle, Zap, Search, X,
+  Lock, LockOpen, Eye,
 } from 'lucide-react';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -48,6 +49,9 @@ export default function CregPage() {
   const [ucaps, setUcaps] = useState<Ucap[]>([]);
   // ucapId -> valor final de su hoja de costos (si tiene)
   const [costSheets, setCostSheets] = useState<Map<number, number>>(new Map());
+  // UCAPs cerradas: tienen hoja y nadie las reabrió. Se listan aparte de
+  // costSheets porque una reabierta SIGUE teniendo hoja pero ya es editable.
+  const [bloqueadas, setBloqueadas] = useState<Set<number>>(new Set());
 
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadingUcaps, setLoadingUcaps] = useState(false);
@@ -97,6 +101,7 @@ export default function CregPage() {
       .then(([ucapsRes, units]) => {
         setUcaps(ucapsRes.ucaps);
         setCostSheets(new Map(units.map((u) => [u.ucapId, u.totals.finalValue])));
+        setBloqueadas(new Set(units.filter((u) => u.bloqueada).map((u) => u.ucapId)));
         setLoadingUcaps(false);
       })
       .catch(() => { setError('Error al cargar UCAPs'); setLoadingUcaps(false); });
@@ -104,8 +109,8 @@ export default function CregPage() {
 
   useEffect(() => {
     if (loadingCompanies) return;
-    if (!selectedCompanyId) { setUcaps([]); setCostSheets(new Map()); return; }
-    if (isCanalesContactos && !selectedProjectId) { setUcaps([]); setCostSheets(new Map()); return; }
+    if (!selectedCompanyId) { setUcaps([]); setCostSheets(new Map()); setBloqueadas(new Set()); return; }
+    if (isCanalesContactos && !selectedProjectId) { setUcaps([]); setCostSheets(new Map()); setBloqueadas(new Set()); return; }
     load(selectedCompanyId, selectedProjectId);
   }, [selectedCompanyId, selectedProjectId, isCanalesContactos, loadingCompanies, load]);
 
@@ -253,6 +258,7 @@ export default function CregPage() {
                     ) : (
                       filteredUcaps.map((u) => {
                         const hasSheet = costSheets.has(u.ucapId);
+                        const cerrada = bloqueadas.has(u.ucapId);
                         return (
                           <TableRow key={u.ucapId} className="hover:bg-[hsl(var(--canalco-neutral-100))]">
                             <TableCell>
@@ -265,8 +271,10 @@ export default function CregPage() {
                             </TableCell>
                             <TableCell className="text-center">
                               {hasSheet ? (
-                                <span className="inline-flex items-center gap-1 text-xs text-green-700">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Sí
+                                <span className={`inline-flex items-center gap-1 text-xs ${cerrada ? 'text-[hsl(var(--canalco-neutral-600))]' : 'text-green-700'}`}
+                                  title={cerrada ? 'Cerrada: la hoja no se puede editar' : 'Reabierta por el Director Técnico: se puede editar'}>
+                                  {cerrada ? <Lock className="w-3.5 h-3.5" /> : <LockOpen className="w-3.5 h-3.5 text-amber-600" />}
+                                  {cerrada ? 'Cerrada' : 'Abierta'}
                                 </span>
                               ) : (
                                 <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">—</span>
@@ -274,12 +282,18 @@ export default function CregPage() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-end gap-1">
-                                <Button variant="outline" size="sm" title="Editar la UCAP y su hoja de costos"
+                                {/* Cerrada: se puede consultar, no editar. */}
+                                <Button variant="outline" size="sm"
+                                  title={cerrada ? 'Ver la hoja de costos (cerrada)' : 'Editar la UCAP y su hoja de costos'}
                                   className="h-7 gap-1 text-xs" onClick={() => openUcap(u)}>
-                                  <Pencil className="w-3.5 h-3.5" /> Editar
+                                  {cerrada
+                                    ? <><Eye className="w-3.5 h-3.5" /> Ver</>
+                                    : <><Pencil className="w-3.5 h-3.5" /> Editar</>}
                                 </Button>
-                                <Button variant="ghost" size="icon" title="Eliminar la UCAP"
-                                  className="h-7 w-7 text-[hsl(var(--canalco-neutral-500))] hover:text-red-600"
+                                <Button variant="ghost" size="icon"
+                                  title={cerrada ? 'Cerrada: reábrela para poder eliminarla' : 'Eliminar la UCAP'}
+                                  disabled={cerrada}
+                                  className="h-7 w-7 text-[hsl(var(--canalco-neutral-500))] hover:text-red-600 disabled:opacity-30"
                                   onClick={() => setDeleteTarget(u)}>
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>

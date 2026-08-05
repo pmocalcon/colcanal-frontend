@@ -9,7 +9,11 @@
  *
  * Excepción (igual que en el anticipo): si el creador es un **Director de Área**, ese
  * paso lo aprueba la **Gerencia** (Dra. Gloria).
+ *
+ * @see rolesPmo — el PMO (Analista y Director) puede ejecutar cualquier paso.
  */
+
+import { esRolPmo } from './rolesPmo';
 import { sumarDiasHabiles } from './juridicaWorkflow';
 
 export type LegalizacionEstado =
@@ -36,7 +40,6 @@ export const LEGALIZACION_ESTADOS: Record<LegalizacionEstado, EstadoMeta> = {
 };
 
 const ROLES_CONTABILIDAD = ['Contabilidad'];
-const ROL_PMO = 'Analista PMO';
 
 /** Plazo máximo para legalizar: 3 días calendario tras finalizar la actividad. */
 export const LEGALIZACION_PLAZO_DIAS = 3;
@@ -72,7 +75,7 @@ export function accionesDisponibles(
   esCreador: boolean,
 ): LegalizacionTransicion[] {
   const rol = nombreRol ?? '';
-  const esPmo = rol === ROL_PMO;
+  const esPmo = esRolPmo(rol);
   return LEGALIZACION_TRANSICIONES.filter((t) => {
     if (t.from !== estado) return false;
     if (esPmo) return true;

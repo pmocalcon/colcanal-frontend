@@ -10,8 +10,9 @@ import type { Company } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  ArrowLeft, Plus, Trash2, Loader2, Save, Search, X, Package,
+  ArrowLeft, Plus, Trash2, Loader2, Save, Search, X, Package, Lock, LockOpen,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -57,6 +58,9 @@ export default function CregUnitFormPage() {
   const [searchParams] = useSearchParams();
   const isEdit = !!id && id !== 'nueva';
 
+  const { user } = useAuth();
+  const esDirectorTecnico = user?.nombreRol === 'Director Técnico';
+
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [companyName, setCompanyName] = useState('');
@@ -64,6 +68,13 @@ export default function CregUnitFormPage() {
   const [code, setCode] = useState('');
   const [grupo, setGrupo] = useState<string | null>(null);
   const [hasCostSheet, setHasCostSheet] = useState(false);
+  /**
+   * UCAP cerrada: tiene hoja de costos y nadie la reabrió. La hoja alimenta el
+   * censo, los presupuestos y la liquidación, así que la pantalla queda en solo
+   * lectura. El backend valida lo mismo; esto evita ofrecer lo que va a rechazar.
+   */
+  const [bloqueada, setBloqueada] = useState(false);
+  const [reabriendo, setReabriendo] = useState(false);
   const [items, setItems] = useState<FormItem[]>([]);
   const [pct, setPct] = useState({
     transport: 0, engineering: 15, administration: 2, inspection: 7, interventoria: 7,
@@ -106,6 +117,7 @@ export default function CregUnitFormPage() {
           setCode(unit.code ?? '');
           setGrupo(unit.grupo ?? null);
           setHasCostSheet(unit.hasCostSheet);
+          setBloqueada(!!unit.bloqueada);
           setManualValue(unit.value);
           setInitialIpp(unit.initialIpp ?? cfg.companyIppBase);
           setPct({
@@ -293,6 +305,21 @@ export default function CregUnitFormPage() {
     }
   };
 
+  /** Reabrir para editar. Al guardar, el backend la vuelve a cerrar. */
+  const handleReabrir = async () => {
+    if (!isEdit) return;
+    setReabriendo(true);
+    try {
+      const u = await cregService.reabrirUnit(Number(id));
+      setBloqueada(!!u.bloqueada);
+      toast.success(`UCAP ${u.code} abierta para editar. Al guardar se cierra de nuevo.`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo reabrir la UCAP');
+    } finally {
+      setReabriendo(false);
+    }
+  };
+
   const setPctField = useCallback((k: keyof typeof pct, v: number) => setPct((p) => ({ ...p, [k]: v })), []);
 
   if (loading) {
@@ -321,6 +348,28 @@ export default function CregUnitFormPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        {bloqueada && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+            <Lock className="w-5 h-5 text-amber-700 flex-shrink-0" />
+            <p className="flex-1 min-w-[16rem] text-sm text-amber-900">
+              <strong>UCAP cerrada.</strong> Su hoja de costos ya alimenta el censo,
+              los presupuestos y la liquidación, así que no se puede editar. El
+              Director Técnico puede reabrirla; al guardar se cierra de nuevo.
+            </p>
+            {esDirectorTecnico && (
+              <Button variant="outline" onClick={handleReabrir} disabled={reabriendo}
+                className="gap-2 border-amber-600 text-amber-800 hover:bg-amber-100">
+                {reabriendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <LockOpen className="w-4 h-4" />}
+                Reabrir para editar
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Un solo candado para todo el formulario: `disabled` en el fieldset
+            deshabilita nativamente cada input, select y botón que tenga dentro,
+            así ningún campo nuevo se queda editable por olvido. */}
+        <fieldset disabled={bloqueada} className="m-0 p-0 border-0 space-y-6 disabled:opacity-75">
         {/* Datos de la UCAP */}
         <section className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-5">
           <h2 className="text-sm font-semibold text-[hsl(var(--canalco-neutral-900))] mb-4">Unidad constructiva</h2>
@@ -555,6 +604,7 @@ export default function CregUnitFormPage() {
             Factor IPP = IPP actual / IPP base = <strong>{totals.ippFactor.toLocaleString('es-CO', { maximumFractionDigits: 5 })}</strong>
           </p>
         </section>
+        </fieldset>
       </main>
 
       {/* Barra fija de totales + guardar */}
@@ -566,8 +616,11 @@ export default function CregUnitFormPage() {
             <span className="text-[hsl(var(--canalco-neutral-600))]">Precio actualizado (IPP): <strong className="text-[hsl(var(--canalco-neutral-900))]">{fmtCOP(totals.finalValue)}</strong></span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => navigate(listUrl)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}
+            <Button variant="outline" onClick={() => navigate(listUrl)} disabled={saving}>
+              {bloqueada ? 'Volver' : 'Cancelar'}
+            </Button>
+            <Button onClick={handleSave} disabled={saving || bloqueada}
+              title={bloqueada ? 'La UCAP está cerrada: reábrela para poder editarla.' : undefined}
               className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isEdit ? 'Guardar cambios' : 'Crear UCAP'}

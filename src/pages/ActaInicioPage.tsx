@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { getTipo } from '@/config/juridicaContratos';
+import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 
 /**
  * Formato GJ-006-F · "Acta de inicio para contrato por prestación de servicios,
  * alquiler o suministro" (fase 2 de G. jurídica). La diligencia Jurídica.
- * Reutiliza datos del contrato (solicitud) y de la designación de supervisor.
- * Ruta: `.../juridica/:id/acta-inicio`. Se guarda en data.actaInicio.
+ * Reutiliza datos del contrato (solicitud) y de la designación de supervisor, y el texto
+ * se puede reescribir. Ruta: `.../juridica/:id/acta-inicio`. Se guarda en data.actaInicio.
  */
 
 interface ActaState {
@@ -30,8 +31,8 @@ interface ActaState {
   supervisorNombre: string; supervisorCc: string;
   // Fechas
   fechaInicio: string; plazoCorto: string; fechaFinal: string;
-  // Pie
-  elaboro: string; proyectoReviso: string;
+  /** Texto del acta que Jurídica reescribió, por clave. Vacío = plantilla. */
+  textos: Record<string, string>;
 }
 
 const EMPTY: ActaState = {
@@ -46,7 +47,7 @@ const EMPTY: ActaState = {
   ciudadReunion: '',
   supervisorNombre: '', supervisorCc: '',
   fechaInicio: '', plazoCorto: '', fechaFinal: '',
-  elaboro: '', proyectoReviso: '',
+  textos: {},
 };
 
 const puedeEditar = (rol?: string) => {
@@ -70,6 +71,7 @@ export default function ActaInicioPage() {
   const editable = puedeEditar(user?.nombreRol);
   const habilitada = !!sol && HABILITADO.includes(sol.estado);
   const set = <K extends keyof ActaState>(k: K, v: ActaState[K]) => setF((p) => ({ ...p, [k]: v }));
+  const textosCtx = useTextosDocumento(f.textos, setF);
 
   useEffect(() => {
     if (solicitudId === null) { setLoading(false); return; }
@@ -101,8 +103,7 @@ export default function ActaInicioPage() {
           supervisorNombre: saved.supervisorNombre || des.supervisorNombre || '',
           aprobacionGarantias: saved.aprobacionGarantias || des.aprobacionGarantias || '',
           ciudadReunion: saved.ciudadReunion || des.supervisorCiudad || '',
-          elaboro: saved.elaboro || des.elaboro || '',
-          proyectoReviso: saved.proyectoReviso || des.proyectoReviso || '',
+          textos: saved.textos ?? {},
         });
       } catch {
         if (!cancelled) toast.error('No se pudo cargar el acta de inicio');
@@ -180,7 +181,8 @@ export default function ActaInicioPage() {
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-[#0a2a52] shadow-md">
+          <TextosDocumento value={textosCtx}>
+          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
             {/* Encabezado */}
             <div className="grid grid-cols-[150px_1fr_190px] border-b border-[#0a2a52]">
               <div className="flex flex-col items-center justify-center p-2 border-r border-[#0a2a52]">
@@ -197,11 +199,17 @@ export default function ActaInicioPage() {
               </div>
             </div>
 
-            {/* Título del acta */}
-            <div className="text-center font-bold px-6 py-4 leading-snug border-b border-[#0a2a52]">
-              <div>ACTA DE INICIO</div>
-              <div>CONTRATO {(f.tipologia || 'prestación de servicios').toUpperCase()}</div>
-              <div>SUSCRITO ENTRE {(f.contratante || '…').toUpperCase()} y {(f.contratista || '…').toUpperCase()}</div>
+            {/* Título del acta. Se arma con la tabla de abajo mientras nadie lo toque. */}
+            <div className="text-center font-bold px-6 py-4 leading-snug border-b border-[#0a2a52] text-[12px]">
+              <TextoEd
+                k="titulo"
+                plantilla={
+                  'ACTA DE INICIO\n' +
+                  `CONTRATO ${(f.tipologia || 'prestación de servicios').toUpperCase()}\n` +
+                  `SUSCRITO ENTRE ${(f.contratante || '…').toUpperCase()} y ${(f.contratista || '…').toUpperCase()}`
+                }
+                className="text-center"
+              />
             </div>
 
             {/* Tabla de datos del contrato */}
@@ -227,15 +235,10 @@ export default function ActaInicioPage() {
 
             {/* Reunión de inicio */}
             <div className="px-6 py-4 leading-relaxed text-[12.5px] border-t border-[#0a2a52]">
-              <p>
-                En la ciudad de <Inline value={f.ciudadReunion} onChange={(v) => set('ciudadReunion', v)} placeholder="Ciudad - Departamento" />,
-                {' '}se reunió el señor <Inline value={f.supervisorNombre} onChange={(v) => set('supervisorNombre', v)} placeholder="NOMBRE DEL SUPERVISOR" bold />,
-                {' '}identificado con número de cédula No. <Inline value={f.supervisorCc} onChange={(v) => set('supervisorCc', v)} placeholder="00.000.000" />,
-                {' '}en calidad de SUPERVISOR por parte de EL CONTRATANTE y el señor{' '}
-                <Inline value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre del contratista" />
-                {' '}identificado con número de cédula No. <Inline value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="0.000.000 expedida en ..." />,
-                {' '}en calidad de CONTRATISTA, con el propósito de iniciar la ejecución del contrato.
-              </p>
+              <TextoEd
+                k="reunion"
+                plantilla={`En la ciudad de ${tx(f.ciudadReunion)}, se reunió el señor ${tx(f.supervisorNombre)}, identificado con número de cédula No. ${tx(f.supervisorCc)}, en calidad de SUPERVISOR por parte de EL CONTRATANTE y el señor ${tx(f.contratista)} identificado con número de cédula No. ${tx(f.contratistaCc)}, en calidad de CONTRATISTA, con el propósito de iniciar la ejecución del contrato.`}
+              />
             </div>
 
             {/* Fechas */}
@@ -279,18 +282,8 @@ export default function ActaInicioPage() {
               </Firma>
             </div>
 
-            {/* Pie: elaboró / revisó */}
-            <div className="px-6 pb-6 text-[11px] space-y-1">
-              <div className="flex gap-2">
-                <span className="font-semibold whitespace-nowrap">Elaboró:</span>
-                <Inline value={f.elaboro} onChange={(v) => set('elaboro', v)} placeholder="Nombre - Cargo" />
-              </div>
-              <div className="flex gap-2">
-                <span className="font-semibold whitespace-nowrap">Proyectó y revisó:</span>
-                <Inline value={f.proyectoReviso} onChange={(v) => set('proyectoReviso', v)} placeholder="Nombre - Cargo" />
-              </div>
-            </div>
           </div>
+          </TextosDocumento>
           </fieldset>
         )}
 
@@ -346,17 +339,8 @@ function Sub({ label, value, onChange }: { label: string; value: string; onChang
   );
 }
 
-function Inline({ value, onChange, placeholder, bold }: { value: string; onChange: (v: string) => void; placeholder?: string; bold?: boolean }) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      size={Math.max((value || placeholder || '').length, 6)}
-      className={'bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12.5px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] ' + (bold ? 'font-bold' : '')}
-    />
-  );
-}
+/** Marca de dato faltante en el texto: mejor un vacío visible que un hueco. */
+const tx = (v: string) => (v?.trim() ? v : '…');
 
 function Firma({ children }: { children: React.ReactNode }) {
   return (

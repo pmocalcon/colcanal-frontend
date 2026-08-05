@@ -46,6 +46,11 @@ export interface PurchaseOrderForInvoicing {
   totalInvoicedQuantity: number;
   invoiceStatus: string;
   receptionStatus: string;
+  /** Observación de la última acción de Contabilidad (recepción o rechazo). */
+  accountingObservations?: string | null;
+  /** Con fecha, la orden viene devuelta por Contabilidad y hay que reenviarla. */
+  accountingRejectedAt?: string | null;
+  accountingRejectedBy?: number | null;
   approvalStatus?: {
     statusId: number;
     code: string;
@@ -130,6 +135,12 @@ export interface SendToAccountingDto {
 
 export interface MarkAsReceivedDto {
   receivedDate: string; // YYYY-MM-DD
+  observations?: string;
+}
+
+/** Rechazo por contabilidad: el motivo es obligatorio, es lo que ve Compras. */
+export interface RejectByAccountingDto {
+  observations: string;
 }
 
 // ============================================
@@ -239,6 +250,21 @@ export const markInvoicesAsReceived = async (
 ) => {
   const response = await api.post(
     `/invoices/accounting/mark-received/${purchaseOrderId}`,
+    data,
+  );
+  return response.data;
+};
+
+/**
+ * Rechazar las facturas y devolverlas a Compras. La orden vuelve a
+ * `factura_completa` para que Compras corrija y las reenvíe.
+ */
+export const rejectInvoicesByAccounting = async (
+  purchaseOrderId: number,
+  data: RejectByAccountingDto,
+) => {
+  const response = await api.post(
+    `/invoices/accounting/reject/${purchaseOrderId}`,
     data,
   );
   return response.data;

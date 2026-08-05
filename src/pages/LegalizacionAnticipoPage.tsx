@@ -241,7 +241,7 @@ export default function LegalizacionAnticipoPage() {
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
             <Home className="w-5 h-5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/contable')} title="Volver a G. contable">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/contable/legalizaciones')} title="Volver a Legalizaciones">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow min-w-0">
@@ -302,7 +302,7 @@ export default function LegalizacionAnticipoPage() {
         )}
 
         {linked && (
-        <div className="doc bg-white border border-[#0a2a52] mx-auto text-[13px] text-[#0a2a52] shadow-md">
+        <div className="doc bg-white border border-[#0a2a52] mx-auto text-[13px] text-black shadow-md">
           {/* Encabezado con logos y código (estilo hoja "LEGALIZACIÓN DE ANTICIPOS") */}
           <table className="w-full border-collapse border-b border-[#0a2a52]">
             <tbody>
@@ -500,14 +500,14 @@ function MontoRow({ label, value, onChange, editable, strong, last }: {
 function InfoCell({ label, value, last, mono }: { label: string; value: string; last?: boolean; mono?: boolean }) {
   return (
     <div className={last ? '' : 'border-r border-[#0a2a52]'}>
-      <div className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[#0a2a52] px-2 py-0.5 font-semibold text-[10px] text-[#7a1f1f]">{label}</div>
+      <div className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[#0a2a52] px-2 py-0.5 font-semibold text-[10px] text-black">{label}</div>
       <div className={'px-2 py-1 text-[12px] min-h-[1.6rem] ' + (mono ? 'font-mono font-semibold' : '')}>{value || ' '}</div>
     </div>
   );
 }
 
 function SecBand({ children }: { children: React.ReactNode }) {
-  return <div style={{ backgroundColor: '#0a2a52', color: '#ffffff' }} className="font-bold text-[12px] px-3 py-1.5 border-b border-[#0a2a52]">{children}</div>;
+  return <div className="bg-[hsl(var(--canalco-neutral-200))] text-black font-bold text-[12px] px-3 py-1.5 border-b border-[#0a2a52]">{children}</div>;
 }
 
 function Th({ children, w }: { children?: React.ReactNode; w?: string }) {
@@ -515,7 +515,7 @@ function Th({ children, w }: { children?: React.ReactNode; w?: string }) {
 }
 
 function LabelCell({ children }: { children: React.ReactNode }) {
-  return <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-3 py-2 font-semibold text-[12px] flex items-center text-[#7a1f1f]">{children}</div>;
+  return <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-3 py-2 font-semibold text-[12px] flex items-center text-black">{children}</div>;
 }
 
 function ConcRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
@@ -528,7 +528,7 @@ function ConcRow({ label, value, last }: { label: string; value: string; last?: 
 }
 
 function SignTh({ children }: { children: React.ReactNode }) {
-  return <th style={{ backgroundColor: '#0a2a52', color: '#ffffff' }} className="font-bold text-[11px] py-1.5 px-1 border border-[#0a2a52]">{children}</th>;
+  return <th className="bg-[hsl(var(--canalco-neutral-200))] text-black font-bold text-[11px] py-1.5 px-1 border border-[#0a2a52]">{children}</th>;
 }
 
 function SignTd({ children }: { children: React.ReactNode }) {

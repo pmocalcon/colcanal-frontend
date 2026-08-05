@@ -495,6 +495,24 @@ const FacturasOrdenCompraPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Devuelta por Contabilidad: el motivo es lo que hay que corregir antes de reenviar */}
+            {purchaseOrder.accountingRejectedAt && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-red-600" />
+                <div className="text-sm text-red-800">
+                  <p className="font-semibold">
+                    Contabilidad devolvió estas facturas el {formatDate(purchaseOrder.accountingRejectedAt)}
+                  </p>
+                  {purchaseOrder.accountingObservations && (
+                    <p className="mt-0.5 whitespace-pre-wrap">{purchaseOrder.accountingObservations}</p>
+                  )}
+                  <p className="mt-1 text-xs text-red-700">
+                    Corrige lo observado y vuelve a enviarlas a contabilidad.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Progress Bars */}
             <div className="mt-3 space-y-2">
               <div>

@@ -9,11 +9,18 @@ import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, Save, Receipt, AlertCircle, Download } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Receipt, AlertCircle, Download, Lock } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { CierreMes } from '@/components/creg/CierreMes';
+import { CompararCenso } from '@/components/creg/CompararCenso';
+import { tipoSgeDe, fusionarTipoSge } from '@/utils/censoCompare';
+import type { TipoSge } from '@/utils/censoCompare';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { ippDelMes } from '@/utils/cregCalc';
 import { buildXlsxBlob, downloadBlob } from '@/utils/xlsxWriter';
+import { agregarFirmas } from '@/utils/cregFirmasXlsx';
 import type { XlsxRow, XlsxCell, XlsxImage } from '@/utils/xlsxWriter';
 
 const EXCLUDED_COMPANY_NAMES = [
@@ -203,10 +210,13 @@ export default function CregLiquidacionPage() {
       cregService.getLiquidacion(companyId, projectId),
       cregService.getIddOff(companyId, projectId),
       cregService.getIddOn(companyId, projectId),
+      // El IPP no va por municipio: es una sola serie, su propio sub-módulo.
+      cregService.getIppMensual().catch(() => ({} as Record<string, number>)),
     ])
-      .then(([ucapsRes, param, censo, liq, idd, iddOn]) => {
+      .then(([ucapsRes, param, censo, liq, idd, iddOn, ippMeses]) => {
         setUcaps(ucapsRes.ucaps);
-        setParams(param.data ?? {});
+        // La serie global entra como `ippMeses` para que `ippDelMes` la encuentre.
+        setParams({ ...(param.data ?? {}), ippMeses });
         setQuantities(censo.data?.quantities ?? {});
         setMeses(liq.data?.meses ?? {});
         setIddMeses(idd.data?.meses ?? {});
@@ -313,7 +323,20 @@ export default function CregLiquidacionPage() {
   );
 
   const mesActual: LiquidacionMes = (selYm && meses[selYm]) || {};
-  const ippMes = mesActual.ippMes ?? P.ippFinal;
+
+  /**
+   * El IPP(m-1) es potestad del Director Técnico: el Director de Proyecto ve el
+   * mes pero no mueve el índice con el que se liquida. Lo mismo valida el
+   * backend, esto solo evita que el campo invite a escribir.
+   */
+  const { user } = useAuth();
+  const esDirectorTecnico = user?.nombreRol === 'Director Técnico';
+  /** Un mes aprobado queda cerrado para todos, incluido quien lo aprobó. */
+  const mesAprobado = !!mesActual.aprobado;
+  // El IPP del mes sale de la tabla "IPP por mes" de Parámetros; lo que se escriba
+  // aquí lo pisa solo para este mes.
+  const ippDeParametros = ippDelMes(params, selYm ?? '');
+  const ippMes = mesActual.ippMes ?? ippDeParametros;
   const ajusteAom = mesActual.ajusteAom ?? 0;
   const ajusteInv = mesActual.ajusteInv ?? 0;
 
@@ -335,9 +358,13 @@ export default function CregLiquidacionPage() {
     setParams({ ...previos, resolucionVigente: valor });
     setGuardandoResolucion(true);
     try {
+      // `ippMeses` es la serie global inyectada al cargar: no debe quedar copiada
+      // dentro de la parametrización de este municipio.
+      const { ippMeses: _global, ...delMunicipio } = previos;
+      void _global;
       await cregService.saveParametrizacion(
         selectedCompanyId,
-        { ...previos, resolucionVigente: valor },
+        { ...delMunicipio, resolucionVigente: valor },
         selectedProjectId,
       );
       toast.success(`Resolución vigente: ${valor}`);
@@ -467,6 +494,32 @@ export default function CregLiquidacionPage() {
 
   const totalGeneral = useMemo(() => sumar(filas), [filas]);
 
+  /**
+   * El censo del mes visto por tipo, para comparar contra un inventario de campo.
+   *
+   * Solo el grupo LUMINARIAS: el archivo de campo censa luminarias, así que
+   * arrastrar fotocontroles, postes y redes solo llenaría el cruce de filas
+   * "solo en el SGE" que no dicen nada.
+   *
+   * Se suma por UCAP y no por fila: los apellidos ("Acta 001-2024", "Otrosí
+   * No. 6") dicen de dónde salió la luminaria, no qué es, y el inventario de
+   * campo no los distingue.
+   */
+  const censoPorTipo = useMemo<TipoSge[]>(() => {
+    const acc = new Map<string, TipoSge>();
+    for (const f of filas) {
+      if (f.total <= 0) continue;
+      if ((f.ucap.grupo ?? '').trim().toUpperCase() !== 'LUMINARIAS') continue;
+      const desc = (f.ucap.description ?? '').trim();
+      if (!desc) continue;
+      const t = tipoSgeDe(desc, f.total, f.ucap.code, f.ucap.grupo);
+      const prev = acc.get(t.clave);
+      if (prev) fusionarTipoSge(prev, t);
+      else acc.set(t.clave, t);
+    }
+    return [...acc.values()];
+  }, [filas]);
+
   // ---- Bloque de resultados ----
   // AOM e INV van SIN los ajustes; el valor a pagar los suma aparte.
   //   123      → AOM + INV + ajuste AOM + ajuste inversión.
@@ -490,11 +543,19 @@ export default function CregLiquidacionPage() {
     try {
       await cregService.saveLiquidacion(selectedCompanyId, { meses }, selectedProjectId);
       toast.success('Liquidación guardada');
-    } catch {
-      toast.error('Error al guardar la liquidación');
+    } catch (err: any) {
+      // El backend rechaza el IPP a quien no sea Director Técnico: ese motivo
+      // hay que mostrarlo, no taparlo con un "error al guardar".
+      toast.error(err?.response?.data?.message || 'Error al guardar la liquidación');
     } finally {
       setSaving(false);
     }
+  };
+
+  /** Persiste lo que está en pantalla antes de cerrar el mes. */
+  const guardarParaCierre = async () => {
+    if (!selectedCompanyId) return;
+    await cregService.saveLiquidacion(selectedCompanyId, { meses }, selectedProjectId);
   };
 
   /**
@@ -758,6 +819,13 @@ export default function CregLiquidacionPage() {
         tot(12, Math.round(totalGeneral.invMes), 'totalMoney'),
       ]);
 
+      agregarFirmas(rows, merges, {
+        columnas: 13,
+        interventoria: params.firmaInterventoria,
+        representanteLegal: params.firmaRepresentanteLegal,
+        empresa: selectedCompany?.name,
+      });
+
       const colWidths = [44, 8, 10, 15, 13, 13, 12, 17, 16, 15, 17, 16, 15];
       // Conserva letras con tilde; solo quita lo que Windows prohíbe en nombres
       // de archivo (\ / : * ? " < > |) y colapsa espacios en guion bajo.
@@ -824,13 +892,34 @@ export default function CregLiquidacionPage() {
           </div>
           {ready && (
             <>
+              <CierreMes
+                hoja="liquidacion"
+                companyId={selectedCompanyId}
+                projectId={selectedProjectId}
+                ym={selYm}
+                mesLabel={selYm ? monthLongLabel(selYm) : 'el mes'}
+                municipio={P.municipio ?? selectedCompany?.name ?? ''}
+                mes={mesActual}
+                resumen={fmtCOP(valorAPagar)}
+                queSeBloquea="el IPP(m-1) y los ajustes"
+                onGuardar={guardarParaCierre}
+                onActualizado={(m) => setMeses(m)}
+                disabled={saving || loading || ucaps.length === 0}
+              />
+              <CompararCenso
+                sge={censoPorTipo}
+                mesLabel={selYm ? monthLongLabel(selYm) : ''}
+                municipio={P.municipio ?? selectedCompany?.name ?? ''}
+                disabled={loading || ucaps.length === 0}
+              />
               <Button variant="outline" onClick={handleExportExcel}
                 disabled={exporting || loading || ucaps.length === 0}
                 className="gap-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50">
                 {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Excel
               </Button>
-              <Button onClick={handleSave} disabled={saving || loading}
+              <Button onClick={handleSave} disabled={saving || loading || mesAprobado}
+                title={mesAprobado ? 'El mes está aprobado: no admite cambios.' : undefined}
                 className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Guardar
@@ -959,15 +1048,22 @@ export default function CregLiquidacionPage() {
                     </Select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">IPP(m-1) del mes liquidado</label>
+                    <label className="flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">
+                      IPP(m-1) del mes liquidado
+                      {!esDirectorTecnico && <Lock className="w-3 h-3 text-[hsl(var(--canalco-neutral-400))]" />}
+                    </label>
                     <Input
-                      type="number" step="0.01" placeholder={P.ippFinal != null ? String(P.ippFinal) : '—'}
+                      type="number" step="0.01" placeholder={ippDeParametros != null ? String(ippDeParametros) : '—'}
                       value={mesActual.ippMes ?? ''}
                       onChange={(e) => setMesField('ippMes', e.target.value === '' ? null : parseFloat(e.target.value))}
-                      className="h-8 text-sm"
+                      disabled={!esDirectorTecnico || mesAprobado}
+                      title={!esDirectorTecnico ? 'Solo el Director Técnico puede modificar el IPP(m-1).' : undefined}
+                      className="h-8 text-sm disabled:bg-[hsl(var(--canalco-neutral-100))] disabled:cursor-not-allowed"
                     />
                     <p className="text-[10px] text-[hsl(var(--canalco-neutral-400))] mt-0.5">
-                      Vacío = IPP final de Parámetros ({fmtNum(P.ippFinal)}).
+                      {!esDirectorTecnico
+                        ? `Lo define el Director Técnico. Actual: ${fmtNum(ippMes)}.`
+                        : `Vacío = IPP de Parámetros (${fmtNum(ippDeParametros)}).`}
                     </p>
                   </div>
                 </div>
@@ -1007,15 +1103,15 @@ export default function CregLiquidacionPage() {
                       </>
                     )}
                     <div className="pt-1.5 mt-1.5 border-t border-[hsl(var(--canalco-neutral-200))] space-y-1.5">
-                      <InputRow label="Ajuste AOM" value={mesActual.ajusteAom}
+                      <InputRow label="Ajuste AOM" value={mesActual.ajusteAom} disabled={mesAprobado}
                         onChange={(v) => setMesField('ajusteAom', v)} />
-                      <InputRow label="Ajuste inversión" value={mesActual.ajusteInv}
+                      <InputRow label="Ajuste inversión" value={mesActual.ajusteInv} disabled={mesAprobado}
                         onChange={(v) => setMesField('ajusteInv', v)} />
                       {es101 && (
                         <>
-                          <InputRow label="Ajuste costos ambientales" value={mesActual.ajusteAmb}
+                          <InputRow label="Ajuste costos ambientales" value={mesActual.ajusteAmb} disabled={mesAprobado}
                             onChange={(v) => setMesField('ajusteAmb', v)} />
-                          <InputRow label="Valor a pagar c/hura (inversión)" value={mesActual.valorChura}
+                          <InputRow label="Valor a pagar c/hura (inversión)" value={mesActual.valorChura} disabled={mesAprobado}
                             onChange={(v) => setMesField('valorChura', v)} />
                         </>
                       )}
@@ -1159,6 +1255,7 @@ export default function CregLiquidacionPage() {
           </>
         )}
       </main>
+
     </div>
   );
 }
@@ -1167,8 +1264,9 @@ const Dash = () => <span className="text-[hsl(var(--canalco-neutral-300))]">–<
 
 /** Fila con la etiqueta a la izquierda y un input numérico a la derecha (como los
  *  "AJUSTE AOM = 0" del Excel). */
-function InputRow({ label, value, onChange }: {
+function InputRow({ label, value, onChange, disabled }: {
   label: string; value: number | null | undefined; onChange: (v: number | null) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -1176,7 +1274,9 @@ function InputRow({ label, value, onChange }: {
       <Input
         type="number" placeholder="0" value={value ?? ''}
         onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-        className="h-7 w-28 text-sm text-right"
+        disabled={disabled}
+        title={disabled ? 'El mes está aprobado: no admite cambios.' : undefined}
+        className="h-7 w-28 text-sm text-right disabled:bg-[hsl(var(--canalco-neutral-100))] disabled:cursor-not-allowed"
       />
     </div>
   );

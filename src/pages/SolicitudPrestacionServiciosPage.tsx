@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Home, ArrowLeft, Printer, Eraser, Save, Loader2, Clock, AlertTriangle, History, ClipboardCheck, UserCheck, FileSignature, FileText, ShieldCheck } from 'lucide-react';
@@ -10,11 +10,12 @@ import {
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
 import {
-  TIPOS_CONTRATO, getTipo, filtrarPorPersona, habilitantesPara,
-  AMPAROS, MATRIZ_GARANTIAS, REGIMEN_GARANTIAS, garantiasSugeridas,
+  TIPOS_CONTRATO, habilitantesPara,
+  AMPAROS, MATRIZ_GARANTIAS, REGIMEN_GARANTIAS,
   type ExigenciaClase,
 } from '@/config/juridicaContratos';
 import { EMPRESAS, getEmpresa } from '@/config/empresasCentroCosto';
+import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
 
 /**
  * Formato GTH-002-F · "Solicitud de prestación de servicios, alquiler, obra y/o suministro"
@@ -34,7 +35,6 @@ interface FormState {
   contratista: string;
   tipoPersona: string; // 'natural' | 'juridica'
   centroCosto: string;
-  tipoPrestacion: boolean; tipoAlquiler: boolean; tipoSuministro: boolean; tipoObra: boolean;
   objetoProyecto: string;
   alcanceServicio: string;
   actividades: string;
@@ -43,7 +43,7 @@ interface FormState {
   experiencia: string;
   perfil: string;
   duracion: string; fechaInicio: string; fechaTerminacion: string;
-  honorarios: string; formaPago: string;
+  honorarios: string; honorariosLetras: string; formaPago: string;
   herrComputador: boolean; herrCorreo: boolean; herrPuesto: boolean; accesos: string;
   sugNombre: string; sugTelefono: string; sugCorreo: string;
   modContrato: boolean; modOrdenServicio: boolean;
@@ -59,11 +59,10 @@ const EMPTY: FormState = {
   contratista: '',
   tipoPersona: '',
   centroCosto: '',
-  tipoPrestacion: false, tipoAlquiler: false, tipoSuministro: false, tipoObra: false,
   objetoProyecto: '', alcanceServicio: '', actividades: '', productos: '', garantias: '',
   experiencia: '', perfil: '',
   duracion: '', fechaInicio: '', fechaTerminacion: '',
-  honorarios: '', formaPago: '',
+  honorarios: '', honorariosLetras: '', formaPago: '',
   herrComputador: false, herrCorreo: false, herrPuesto: false, accesos: '',
   sugNombre: '', sugTelefono: '', sugCorreo: '',
   modContrato: false, modOrdenServicio: false,
@@ -109,9 +108,17 @@ export default function SolicitudPrestacionServiciosPage() {
   const actaHabilitada = (['en_acta_inicio', 'finalizado'] as JuridicaEstado[])
     .includes(estado as JuridicaEstado);
 
-  // El contrato se genera desde la etapa de revisión del contrato en adelante.
+  // La lista de chequeo se firma dos veces: Administrativa al verificar los documentos
+  // y Jurídica al revisarlos. Es el requisito para redactar el contrato.
+  const chequeo = sol?.data?.checklist as { revAdminNombre?: string; revJurNombre?: string } | undefined;
+  const chequeoCompleto = !!chequeo?.revAdminNombre && !!chequeo?.revJurNombre;
+
+  // El contrato se genera desde la etapa de revisión del contrato en adelante, pero en
+  // esa etapa exige además la lista de chequeo revisada por las dos direcciones. Más
+  // adelante ya no se pide: el contrato existe y bloquearlo no protegería nada.
   const contratoHabilitado = (['contrato_en_elaboracion', 'pendiente_firma_contrato', 'contrato_firmado', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado'] as JuridicaEstado[])
-    .includes(estado as JuridicaEstado);
+    .includes(estado as JuridicaEstado)
+    && (estado !== 'contrato_en_elaboracion' || chequeoCompleto);
 
   // Empresa seleccionada → centro de costo. Si solo tiene un centro, se autocompleta;
   // Canales & Contactos tiene varios (uno por proyecto) y se elige aparte.
@@ -125,6 +132,36 @@ export default function SolicitudPrestacionServiciosPage() {
     }));
   };
 
+  // La duración sale de las fechas, pero no pisa lo que se escriba a mano: solo llena el
+  // campo vacío o reemplaza el valor que puso el propio cálculo.
+  const duracionAuto = useRef('');
+  useEffect(() => {
+    if (locked) return;
+    const calculada = duracionEntre(f.fechaInicio, f.fechaTerminacion);
+    if (!calculada) return;
+    // El valor anterior se lee ANTES de setF: el updater corre después, y para entonces
+    // el ref ya tendría el valor nuevo, con lo que la comparación nunca daría verdadera
+    // y el campo se quedaría congelado en el primer cálculo.
+    const previo = duracionAuto.current;
+    setF((p) => (p.duracion.trim() === '' || p.duracion === previo
+      ? { ...p, duracion: calculada }
+      : p));
+    duracionAuto.current = calculada;
+  }, [f.fechaInicio, f.fechaTerminacion, locked]);
+
+  // Mismo trato para el valor en letras: se deriva del número y cede ante lo escrito.
+  const letrasAuto = useRef('');
+  useEffect(() => {
+    if (locked) return;
+    const calculado = valorEnLetras(f.honorarios);
+    if (!calculado) return;
+    const previo = letrasAuto.current;
+    setF((p) => (p.honorariosLetras.trim() === '' || p.honorariosLetras === previo
+      ? { ...p, honorariosLetras: calculado }
+      : p));
+    letrasAuto.current = calculado;
+  }, [f.honorarios, locked]);
+
   // Carga la solicitud existente al editar.
   useEffect(() => {
     if (solicitudId === null) return;
@@ -134,7 +171,9 @@ export default function SolicitudPrestacionServiciosPage() {
         const data = await gestionConocimientoService.get(solicitudId);
         if (!cancelled) {
           setSol(data);
-          setF({ ...EMPTY, ...(data.data as Partial<FormState> | null) });
+          const guardado = { ...EMPTY, ...(data.data as Partial<FormState> | null) };
+          // Las solicitudes anteriores al punto de miles traen el valor sin agrupar.
+          setF({ ...guardado, honorarios: formatearMiles(guardado.honorarios) });
         }
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
@@ -218,7 +257,27 @@ export default function SolicitudPrestacionServiciosPage() {
         @media print {
           @page { size: Letter portrait; margin: 10mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          body { background: #fff !important; }
+          html, body { background: #fff !important; }
+
+          /* Se imprime el formato y nada más. En vez de ir marcando con
+             \`no-print\` lo que sobra —donde cualquier bloque nuevo se cuela por
+             olvido, y lo que se monta fuera de esta página, como los toasts, no
+             se puede marcar—, se oculta todo salvo el formato, sus ancestros y
+             su contenido. */
+          body :not(:has(.doc)):not(.doc):not(.doc *) { display: none !important; }
+
+          /* Los ancestros siguen visibles porque contienen el formato, pero no
+             deben aportar caja propia: el ancho máximo, el relleno del main y el
+             alto mínimo de pantalla desplazarían el documento o agregarían una
+             página en blanco al final. */
+          body :has(.doc) {
+            display: block !important;
+            margin: 0 !important; padding: 0 !important; border: 0 !important;
+            max-width: none !important; width: auto !important;
+            min-height: 0 !important; background: transparent !important;
+            box-shadow: none !important;
+          }
+
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; margin: 0 !important; max-width: none !important; border: none !important; }
         }
@@ -280,7 +339,11 @@ export default function SolicitudPrestacionServiciosPage() {
                 variant="outline" size="sm" disabled={!contratoHabilitado}
                 onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/contrato`)}
                 className="gap-2"
-                title={contratoHabilitado ? 'Contrato (GJ-001-F)' : 'Se habilita en la etapa de revisión del contrato (Jurídica)'}
+                title={contratoHabilitado
+                  ? 'Contrato (GJ-001-F)'
+                  : estado === 'contrato_en_elaboracion'
+                    ? 'Falta que la lista de chequeo la revisen la Dirección Administrativa y la Jurídica'
+                    : 'Se habilita en la etapa de revisión del contrato (Jurídica)'}
               >
                 <FileText className="w-4 h-4" /> Contrato
               </Button>
@@ -330,27 +393,19 @@ export default function SolicitudPrestacionServiciosPage() {
             también cuando la solicitud ya está bloqueada, y con `no-print`, para que no
             se cuelen en el PDF del formato. */}
         <div className="mb-6 space-y-4">
-          <DocumentosCuadro tipoContrato={f.tipoContrato} tipoPersona={f.tipoPersona} />
-          <GarantiasCuadro
-            sugeridas={garantiasSugeridas({
-              prestacion: f.tipoPrestacion,
-              alquiler: f.tipoAlquiler,
-              suministro: f.tipoSuministro,
-              obra: f.tipoObra,
-              tipoContrato: f.tipoContrato,
-            })}
-          />
+          <DocumentosCuadro tipoPersona={f.tipoPersona} />
+          <GarantiasCuadro />
         </div>
 
         <fieldset disabled={locked} className="border-0 m-0 p-0 min-w-0">
-        <div className="doc bg-white border border-[#0a2a52] mx-auto text-[13px] text-[#0a2a52] shadow-md">
+        <div className="doc bg-white border border-[#0a2a52] mx-auto text-[13px] text-black shadow-md">
 
           {/* Encabezado con logos y código */}
           <div className="grid grid-cols-[130px_1fr_130px] border-b border-[#0a2a52]">
             <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
               <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-16 object-contain" />
             </div>
-            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[15px] text-[#0a2a52] border-r border-[#0a2a52]">
+            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[15px] text-black border-r border-[#0a2a52]">
               SOLICITUD DE PRESTACIÓN DE SERVICIOS, ALQUILER, OBRA Y/O SUMINISTRO
             </div>
             <div className="grid grid-rows-[auto_1fr] min-w-0">
@@ -446,22 +501,6 @@ export default function SolicitudPrestacionServiciosPage() {
             </div>
           </div>
 
-          {/* Instrucciones */}
-          <div className="border-b border-[#0a2a52]">
-            <BandTitle>INSTRUCCIONES</BandTitle>
-            <p className="px-3 py-2 text-[12px] leading-snug">
-              Recuerde realizar su solicitud con mínimo 8 días calendario de anticipación a la fecha de
-              inicio de labores dicha, de manera que el área de gestión humana pueda realizar el
-              procedimiento de selección y anexar los documentos correspondientes.
-            </p>
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 px-3 pb-3">
-              <CheckField label="Prestación de servicios" checked={f.tipoPrestacion} onChange={(v) => set('tipoPrestacion', v)} />
-              <CheckField label="Alquiler" checked={f.tipoAlquiler} onChange={(v) => set('tipoAlquiler', v)} />
-              <CheckField label="Suministro" checked={f.tipoSuministro} onChange={(v) => set('tipoSuministro', v)} />
-              <CheckField label="Obra" checked={f.tipoObra} onChange={(v) => set('tipoObra', v)} />
-            </div>
-          </div>
-
           {/* Tipo de contrato: define los documentos requeridos y la lista de chequeo. */}
           <div className="grid grid-cols-[220px_1fr] border-b border-[#0a2a52]">
             <LabelCell>Tipo de contrato</LabelCell>
@@ -518,8 +557,10 @@ export default function SolicitudPrestacionServiciosPage() {
           <div className="grid grid-cols-[220px_1fr] border-b border-[#0a2a52]">
             <LabelCell>Honorarios y/o valor a pagar</LabelCell>
             <div className="grid grid-cols-2">
+              {/* El número arriba; debajo, el valor en letras que se deriva de él. */}
               <div className="border-r border-[#0a2a52] px-2 py-1">
-                <FieldInput value={f.honorarios} onChange={(v) => set('honorarios', v)} placeholder="VALOR EN LETRAS" />
+                <MoneyInput value={f.honorarios} onChange={(v) => set('honorarios', v)} placeholder="$ 0" />
+                <FieldInput value={f.honorariosLetras} onChange={(v) => set('honorariosLetras', v)} placeholder="VALOR EN LETRAS" />
               </div>
               <div className="px-2 py-1">
                 <div className="text-[11px] font-semibold mb-0.5">Forma de pago</div>
@@ -585,6 +626,58 @@ export default function SolicitudPrestacionServiciosPage() {
   );
 }
 
+/**
+ * Fecha escrita a mano. Acepta DD/MM/AAAA (lo que pide el formato) y AAAA-MM-DD, que es
+ * lo que sale de un selector de fecha. Devuelve null si no es una fecha real: el
+ * constructor de Date corre el 31/02 a marzo en vez de fallar.
+ */
+function parseFecha(v: string): Date | null {
+  const s = (v ?? '').trim();
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const ymd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  let d: number, m: number, a: number;
+  if (dmy) { d = +dmy[1]; m = +dmy[2]; a = +dmy[3]; }
+  else if (ymd) { a = +ymd[1]; m = +ymd[2]; d = +ymd[3]; }
+  else return null;
+  const fecha = new Date(a, m - 1, d);
+  if (fecha.getFullYear() !== a || fecha.getMonth() !== m - 1 || fecha.getDate() !== d) return null;
+  return fecha;
+}
+
+/**
+ * Duración entre dos fechas, en años, meses y días de calendario —no en meses de 30
+ * días—: del 1 al 31 de julio es «1 mes», y de enero a diciembre «1 año».
+ *
+ * Cuenta ambos extremos, que es como se lee un plazo de ejecución: del 1 al 15 son
+ * quince días de trabajo, no catorce. Por eso el cálculo va hasta el día siguiente a la
+ * terminación.
+ */
+function duracionEntre(desde: string, hasta: string): string {
+  const ini = parseFecha(desde);
+  const fin = parseFecha(hasta);
+  if (!ini || !fin) return '';
+  const limite = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() + 1);
+  if (limite <= ini) return '';
+
+  let anios = limite.getFullYear() - ini.getFullYear();
+  let meses = limite.getMonth() - ini.getMonth();
+  let dias = limite.getDate() - ini.getDate();
+  if (dias < 0) {
+    meses -= 1;
+    // Día 0 del mes del límite = último día del mes anterior, con bisiestos incluidos.
+    dias += new Date(limite.getFullYear(), limite.getMonth(), 0).getDate();
+  }
+  if (meses < 0) { anios -= 1; meses += 12; }
+
+  const partes: string[] = [];
+  if (anios) partes.push(`${anios} ${anios === 1 ? 'año' : 'años'}`);
+  if (meses) partes.push(`${meses} ${meses === 1 ? 'mes' : 'meses'}`);
+  if (dias) partes.push(`${dias} ${dias === 1 ? 'día' : 'días'}`);
+  if (partes.length === 0) return '';
+  if (partes.length === 1) return partes[0];
+  return `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`;
+}
+
 /** Colores de la matriz: se exige, no se exige, o depende de algo que define Jurídica. */
 const EXIGENCIA_CLASS: Record<ExigenciaClase, string> = {
   si: 'text-emerald-700 font-semibold',
@@ -593,11 +686,12 @@ const EXIGENCIA_CLASS: Record<ExigenciaClase, string> = {
 };
 
 /**
- * Matriz general de garantías (política, secciones 10 y 11). Se muestra completa porque
- * sus categorías no son las del catálogo de tipos de contrato; las filas que encajan con
- * lo marcado en la solicitud se resaltan, a modo de sugerencia.
+ * Matriz general de garantías (política, secciones 10 y 11). Se muestra completa: sus
+ * categorías clasifican por naturaleza del objeto (suministro, obra/EPC, arrendamiento)
+ * y no coinciden con el catálogo de tipos de contrato, así que el sistema no señala
+ * ninguna fila —la clasificación la hace Jurídica al leerla—.
  */
-function GarantiasCuadro({ sugeridas }: { sugeridas: string[] }) {
+function GarantiasCuadro() {
   return (
     <CuadroConsulta
       icono={<ShieldCheck className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />}
@@ -620,24 +714,21 @@ function GarantiasCuadro({ sugeridas }: { sugeridas: string[] }) {
               </tr>
             </thead>
             <tbody>
-              {MATRIZ_GARANTIAS.map((fila) => {
-                const resaltada = sugeridas.includes(fila.key);
-                return (
-                  <tr key={fila.key} className={resaltada ? 'bg-[hsl(var(--canalco-primary))]/[0.07]' : undefined}>
-                    <td className={'border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 ' + (resaltada ? 'font-semibold text-[#0a2a52]' : '')}>
-                      {fila.contrato}
-                    </td>
-                    {AMPAROS.map((a) => {
-                      const e = fila.amparos[a.key];
-                      return (
-                        <td key={a.key} className={'border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 text-center ' + EXIGENCIA_CLASS[e.clase]}>
-                          {e.texto}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+              {MATRIZ_GARANTIAS.map((fila) => (
+                <tr key={fila.key}>
+                  <td className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1">
+                    {fila.contrato}
+                  </td>
+                  {AMPAROS.map((a) => {
+                    const e = fila.amparos[a.key];
+                    return (
+                      <td key={a.key} className={'border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 text-center ' + EXIGENCIA_CLASS[e.clase]}>
+                        {e.texto}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -649,33 +740,22 @@ function GarantiasCuadro({ sugeridas }: { sugeridas: string[] }) {
             la Dirección Jurídica ·{' '}
             <span className="text-[hsl(var(--canalco-neutral-400))]">No</span> no se exige.
           </p>
-          {sugeridas.length > 0 ? (
-            <p className="italic">
-              Resaltadas: las filas que corresponden a lo marcado en la solicitud. Es una
-              orientación; la clasificación final es de Jurídica.
-            </p>
-          ) : (
-            <p className="italic">
-              Marca la naturaleza en la solicitud (prestación de servicios, alquiler,
-              suministro u obra) para resaltar la fila que corresponde.
-            </p>
-          )}
+          <p className="italic">
+            La fila que aplica la determina Jurídica según la naturaleza del objeto
+            contratado.
+          </p>
         </div>
     </CuadroConsulta>
   );
 }
 
 /**
- * Qué documentos hay que reunir para esta solicitud. Dos listas de origen distinto:
- * los del **tipo de contrato** (formato GA-25-F) y los **habilitantes**, que son el
- * mínimo de la política y dependen de la naturaleza del contratista.
+ * Los documentos habilitantes: el mínimo de la política, que depende de la naturaleza
+ * del contratista. Los propios del tipo de contrato no se listan aquí —viven en la
+ * Lista de chequeo (GA-25-F), que es donde se verifican— para no pedir dos veces el
+ * mismo papel en dos pantallas que pueden desincronizarse.
  */
-function DocumentosCuadro({ tipoContrato, tipoPersona }: {
-  tipoContrato: string;
-  tipoPersona: string;
-}) {
-  const t = getTipo(tipoContrato);
-  const docs = filtrarPorPersona(t?.secciones.documentos ?? [], tipoPersona);
+function DocumentosCuadro({ tipoPersona }: { tipoPersona: string }) {
   const habilitantes = habilitantesPara(tipoPersona);
   const personaLabel = tipoPersona === 'natural' ? 'Persona natural'
     : tipoPersona === 'juridica' ? 'Persona jurídica' : null;
@@ -684,7 +764,7 @@ function DocumentosCuadro({ tipoContrato, tipoPersona }: {
     <CuadroConsulta
       icono={<FileText className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />}
       titulo="Documentos necesarios"
-      subtitulo={`${t ? t.nombre : 'Sin tipo de contrato'}${personaLabel ? ` · ${personaLabel}` : ' · sin tipo de persona'}`}
+      subtitulo={personaLabel ?? 'Sin tipo de persona'}
     >
         {!personaLabel && (
           <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2">
@@ -694,7 +774,7 @@ function DocumentosCuadro({ tipoContrato, tipoPersona }: {
         )}
 
         <section>
-          <h3 className="font-semibold text-sm text-[#0a2a52] mb-2">
+          <h3 className="font-semibold text-sm text-black mb-2">
             Documentos habilitantes <span className="font-normal text-[hsl(var(--canalco-neutral-500))]">· mínimo exigible</span>
           </h3>
           <div className="overflow-x-auto">
@@ -723,22 +803,6 @@ function DocumentosCuadro({ tipoContrato, tipoPersona }: {
           </p>
         </section>
 
-        {t && docs.length > 0 && (
-          <section className="mt-4">
-            <h3 className="font-semibold text-sm text-[#0a2a52] mb-2">
-              Del contrato <span className="font-normal text-[hsl(var(--canalco-neutral-500))]">· «{t.nombre}»</span>
-            </h3>
-            <ul className="list-disc pl-5 space-y-0.5 text-[12px]">
-              {docs.map((d) => <li key={d}>{d}</li>)}
-            </ul>
-          </section>
-        )}
-
-        {!t && (
-          <p className="mt-4 text-xs text-[hsl(var(--canalco-neutral-500))]">
-            Elige el tipo de contrato para ver también los documentos propios de ese tipo.
-          </p>
-        )}
     </CuadroConsulta>
   );
 }
@@ -756,7 +820,7 @@ function CuadroConsulta({ icono, titulo, subtitulo, children }: {
   return (
     <section className="no-print bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl shadow-sm p-4">
       <header className="mb-3">
-        <h2 className="flex items-center gap-2 font-semibold text-[#0a2a52]">
+        <h2 className="flex items-center gap-2 font-semibold text-black">
           {icono}
           {titulo}
         </h2>
@@ -780,7 +844,7 @@ function CodeCell({ label, value, last }: { label: string; value: string; last?:
 
 function BandTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[hsl(var(--canalco-neutral-200))] text-center font-bold text-[12px] py-1 border-b border-[#0a2a52] text-[#0a2a52]">
+    <div className="bg-[hsl(var(--canalco-neutral-200))] text-center font-bold text-[12px] py-1 border-b border-[#0a2a52] text-black">
       {children}
     </div>
   );
@@ -788,7 +852,7 @@ function BandTitle({ children }: { children: React.ReactNode }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[hsl(var(--canalco-neutral-200))] font-bold text-[12px] px-3 py-1.5 border-b border-[#0a2a52] text-[#0a2a52]">
+    <div className="bg-[hsl(var(--canalco-neutral-200))] font-bold text-[12px] px-3 py-1.5 border-b border-[#0a2a52] text-black">
       {children}
     </div>
   );
@@ -796,7 +860,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function LabelCell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-3 py-2 font-semibold text-[12px] flex items-center text-[#7a1f1f]">
+    <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-3 py-2 font-semibold text-[12px] flex items-center text-black">
       {children}
     </div>
   );
@@ -804,7 +868,7 @@ function LabelCell({ children }: { children: React.ReactNode }) {
 
 function MiniLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-2 py-1.5 font-bold text-[11px] flex items-center text-[#0a2a52] uppercase tracking-wide">
+    <div className="bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] px-2 py-1.5 font-bold text-[11px] flex items-center text-black uppercase tracking-wide">
       {children}
     </div>
   );
@@ -884,6 +948,56 @@ function FieldInput({ value, onChange, placeholder, center }: {
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 placeholder:text-[hsl(var(--canalco-neutral-400))] placeholder:italic ' + (center ? 'text-center' : '')}
+    />
+  );
+}
+
+/**
+ * Campo de dinero: agrupa los miles con punto mientras se escribe.
+ *
+ * Reformatear en cada tecla reescribe todo el valor, y un input controlado manda el
+ * cursor al final: escribir al final se siente igual, pero corregir un dígito en la
+ * mitad daría un salto. Por eso se cuentan los dígitos a la izquierda del cursor y se
+ * lo devuelve a la misma posición lógica sobre el texto ya formateado.
+ */
+function MoneyInput({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const cursor = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (cursor.current !== null && ref.current) {
+      ref.current.setSelectionRange(cursor.current, cursor.current);
+      cursor.current = null;
+    }
+  });
+
+  const manejar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const bruto = e.target.value;
+    const pos = e.target.selectionStart ?? bruto.length;
+    const digitosAntes = bruto.slice(0, pos).replace(/[^\d,]/g, '').length;
+    const formateado = formatearMiles(bruto);
+
+    let vistos = 0;
+    let nueva = digitosAntes === 0 ? 0 : formateado.length;
+    for (let i = 0; i < formateado.length && digitosAntes > 0; i++) {
+      if (/[\d,]/.test(formateado[i])) vistos++;
+      if (vistos === digitosAntes) { nueva = i + 1; break; }
+    }
+    cursor.current = nueva;
+    onChange(formateado);
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={manejar}
+      placeholder={placeholder}
+      className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 placeholder:text-[hsl(var(--canalco-neutral-400))] placeholder:italic"
     />
   );
 }

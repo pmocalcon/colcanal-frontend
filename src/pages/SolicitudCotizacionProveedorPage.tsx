@@ -305,7 +305,7 @@ export default function SolicitudCotizacionProveedorPage() {
                         </TableCell>
                         <TableCell>
                           <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
-                            {item.material?.description || item.description || 'Sin descripción'}
+                            {item.material?.description || 'Sin descripción'}
                           </p>
                           {item.observation && (
                             <p className="text-xs text-[hsl(var(--canalco-neutral-600))] mt-1">

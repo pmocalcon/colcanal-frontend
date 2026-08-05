@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Boxes, ClipboardList, LineChart, Power, PowerOff, Receipt, SlidersHorizontal, Table2, Zap } from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardList, LineChart, Power, PowerOff, Receipt, SlidersHorizontal, Table2, TrendingUp, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 
@@ -24,6 +24,13 @@ const SUBMODULES = [
     nombre: 'Parámetros',
     description: 'Hoja de parametrización por municipio: costos, impuestos, vida útil y factores FAOML/FAOMn',
     Icon: SlidersHorizontal,
+    permission: 'creg:parametros',
+  },
+  {
+    slug: 'ipp',
+    nombre: 'IPP por mes',
+    description: 'Índice de precios al productor mes a mes: una sola serie para todos los municipios',
+    Icon: TrendingUp,
     permission: 'creg:parametros',
   },
   {

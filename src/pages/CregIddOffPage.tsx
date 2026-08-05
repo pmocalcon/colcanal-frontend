@@ -14,7 +14,11 @@ import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, Save, PowerOff, AlertCircle, Plus, Trash2, Info, Upload } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, PowerOff, AlertCircle, Plus, Trash2, Info, Upload, Download } from 'lucide-react';
+import { buildXlsxBlob, downloadBlob } from '@/utils/xlsxWriter';
+import type { XlsxRow, XlsxStyle } from '@/utils/xlsxWriter';
+import { agregarFirmas } from '@/utils/cregFirmasXlsx';
+import { CierreMes } from '@/components/creg/CierreMes';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -130,12 +134,24 @@ export default function CregIddOffPage() {
       .finally(() => setLoading(false));
   }, [ready, selectedCompanyId, selectedProjectId]);
 
+  // Solo para el pie de firmas del Excel: los nombres viven en Parámetros.
+  const [firmas, setFirmas] = useState<Record<string, any>>({});
+  useEffect(() => {
+    if (!ready || !selectedCompanyId) { setFirmas({}); return; }
+    cregService.getParametrizacion(selectedCompanyId, selectedProjectId)
+      .then((res) => setFirmas(res.data ?? {}))
+      .catch(() => setFirmas({}));
+  }, [ready, selectedCompanyId, selectedProjectId]);
+
   const mes: IddOffMes = meses[selYm] ?? emptyMes(selYm);
   const fallas = mes.fallas ?? [];
 
+  // Un mes aprobado no se toca. Se corta aquí, en los dos setters, y no solo
+  // deshabilitando controles: así ninguna ruta de edición se escapa.
   const setMes = useCallback((patch: Partial<IddOffMes>) => {
     setMeses((prev) => {
       const base = prev[selYm] ?? emptyMes(selYm);
+      if (base.aprobado) return prev;
       return { ...prev, [selYm]: { ...base, ...patch } };
     });
   }, [selYm]);
@@ -143,6 +159,7 @@ export default function CregIddOffPage() {
   const setFalla = useCallback((id: string, patch: Partial<IddOffFalla>) => {
     setMeses((prev) => {
       const base = prev[selYm] ?? emptyMes(selYm);
+      if (base.aprobado) return prev;
       return {
         ...prev,
         [selYm]: { ...base, fallas: (base.fallas ?? []).map((f) => (f.id === id ? { ...f, ...patch } : f)) },
@@ -207,16 +224,113 @@ export default function CregIddOffPage() {
   const totalWiHssi = useMemo(() => fallas.reduce((a, f) => a + wiHssi(f, sumaMediaNoche), 0), [fallas, sumaMediaNoche]);
   const id = useMemo(() => indiceDisponibilidad(fallas, mes.wt, mes.t, sumaMediaNoche), [fallas, mes.wt, mes.t, sumaMediaNoche]);
 
+  /** Un mes aprobado queda cerrado: no se edita ni se guarda encima. */
+  const mesAprobado = !!mes.aprobado;
+
+  const guardar = () =>
+    cregService.saveIddOff(selectedCompanyId!, { meses, sumaMediaNoche }, selectedProjectId);
+
   const handleSave = async () => {
     if (!selectedCompanyId) return;
     try {
       setSaving(true);
-      await cregService.saveIddOff(selectedCompanyId, { meses, sumaMediaNoche }, selectedProjectId);
+      await guardar();
       toast.success('ID OFF guardado');
-    } catch {
-      toast.error('No se pudo guardar');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * Excel de la hoja tal como se ve: encabezado con los cuatro indicadores, la
+   * tabla de fallas con su total y el pie de firmas.
+   */
+  const [exportando, setExportando] = useState(false);
+  const handleExcel = async () => {
+    setExportando(true);
+    try {
+      const COLS = 11;
+      const rows: XlsxRow[] = [];
+      const merges: string[] = [];
+      const blank = (): XlsxRow => Array.from({ length: COLS }, () => ({ v: '' as string }));
+      const proyecto = projects.find((p) => p.projectId === selectedProjectId)?.name;
+      const municipio = [selectedCompany?.name, proyecto].filter(Boolean).join(' — ');
+
+      const fTitulo = rows.length + 1;
+      rows.push([{ v: `CÁLCULO DE ÍNDICE DE DISPONIBILIDAD APAGADAS — ${monthLongLabel(selYm).toUpperCase()}`, s: 'title' }]);
+      merges.push(`A${fTitulo}:K${fTitulo}`);
+      const fMuni = rows.length + 1;
+      rows.push([{ v: municipio, s: 'labelBold' }]);
+      merges.push(`A${fMuni}:K${fMuni}`);
+      rows.push(blank());
+
+      // Indicadores, en pares etiqueta/valor. La etiqueta ocupa A:D y el valor
+      // E:G — en una sola columna la etiqueta se cortaba contra el valor.
+      const par = (label: string, valor: string | number, s: XlsxStyle): XlsxRow => {
+        const r = blank();
+        r[0] = { v: label, s: 'cardLabel' };
+        r[4] = { v: valor, s };
+        return r;
+      };
+      const fIni = rows.length + 1;
+      rows.push(par('WT — potencia total instalada (kW)', mes.wt ?? '', 'value2'));
+      rows.push(par('T — horas del periodo', mes.t ?? '', 'valueInt'));
+      rows.push(par('Total horas fuera de servicio', totalHoras, 'valueInt'));
+      rows.push(par('Σ (Wi × HSSi)', totalWiHssi, 'value2'));
+      rows.push(par('ID — índice de disponibilidad', id ?? '', 'value8'));
+      for (let f = fIni; f < fIni + 5; f++) merges.push(`A${f}:D${f}`, `E${f}:G${f}`);
+      rows.push(blank());
+
+      const header = ['Ítem', 'Código', 'Potencia', 'Potencia+XL', 'Tecnología', 'Localización',
+        'Barrio', 'Fecha inicial', 'Fecha final', 'Horas', 'Wi × HSSi'];
+      rows.push(header.map((h) => ({ v: h, s: 'header' as const })));
+
+      fallas.forEach((f, i) => {
+        rows.push([
+          { v: i + 1, s: 'qty' },
+          { v: f.codigo ?? '', s: 'text' },
+          { v: f.potencia ?? '', s: 'qty' },
+          { v: f.potenciaXl ?? '', s: 'qty' },
+          { v: f.tecnologia ?? '', s: 'text' },
+          { v: f.localizacion ?? '', s: 'text' },
+          { v: f.barrio ?? '', s: 'text' },
+          { v: f.fechaInicial ?? '', s: 'text' },
+          { v: f.fechaFinal ?? '', s: 'text' },
+          { v: horasFuera(f, sumaMediaNoche), s: 'qty' },
+          { v: Number(wiHssi(f, sumaMediaNoche).toFixed(4)), s: 'num2' },
+        ]);
+      });
+
+      rows.push([
+        { v: 'TOTAL HORAS FUERA DE SERVICIO', s: 'totalText' },
+        ...Array.from({ length: 8 }, () => ({ v: '', s: 'totalText' as const })),
+        { v: totalHoras, s: 'totalQty' },
+        { v: Number(totalWiHssi.toFixed(4)), s: 'totalNum2' },
+      ]);
+      const fTot = rows.length;
+      merges.push(`A${fTot}:I${fTot}`);
+
+      agregarFirmas(rows, merges, {
+        columnas: COLS,
+        interventoria: firmas.firmaInterventoria,
+        representanteLegal: firmas.firmaRepresentanteLegal,
+        empresa: selectedCompany?.name,
+      });
+
+      const fileMuni = (selectedCompany?.name || 'idd-off')
+        .replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_');
+      const blob = await buildXlsxBlob(
+        `ID OFF ${selYm}`, rows,
+        [7, 16, 11, 12, 14, 26, 18, 13, 13, 9, 12],
+        merges, [], undefined,
+      );
+      downloadBlob(blob, `ID_OFF_${fileMuni}_${selYm}.xlsx`);
+    } catch {
+      toast.error('No se pudo generar el Excel');
+    } finally {
+      setExportando(false);
     }
   };
 
@@ -239,10 +353,32 @@ export default function CregIddOffPage() {
             </p>
           </div>
           {ready && (
-            <Button onClick={handleSave} disabled={saving} className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90">
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-              Guardar
-            </Button>
+            <div className="flex items-center gap-2">
+              <CierreMes
+                hoja="idd-off"
+                companyId={selectedCompanyId}
+                projectId={selectedProjectId}
+                ym={selYm}
+                mesLabel={monthLongLabel(selYm)}
+                municipio={[selectedCompany?.name, projects.find((p) => p.projectId === selectedProjectId)?.name].filter(Boolean).join(' — ')}
+                mes={mes}
+                resumen={id != null ? `ID ${fmtNum(id, 8)}` : undefined}
+                queSeBloquea="la potencia instalada (WT), las horas del periodo (T) y las fallas"
+                onGuardar={async () => { await guardar(); }}
+                onActualizado={(m) => setMeses(m)}
+                disabled={saving}
+              />
+              <Button variant="outline" onClick={handleExcel} disabled={exportando} className="border-green-600 text-green-700 hover:bg-green-50">
+                {exportando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                Excel
+              </Button>
+              <Button onClick={handleSave} disabled={saving || mesAprobado}
+                title={mesAprobado ? 'El mes está aprobado: no admite cambios.' : undefined}
+                className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90">
+                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Guardar
+              </Button>
+            </div>
           )}
         </div>
       </header>
@@ -341,7 +477,7 @@ export default function CregIddOffPage() {
                 </label>
                 <Input type="number" step="0.001" placeholder="189,011" value={mes.wt ?? ''}
                   onChange={(e) => setMes({ wt: e.target.value === '' ? null : parseFloat(e.target.value) })}
-                  className="h-9" />
+                  disabled={mesAprobado} className="h-9 disabled:bg-[hsl(var(--canalco-neutral-100))]" />
               </div>
               <div className="bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-4">
                 <label className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-700))] mb-1">
@@ -349,7 +485,7 @@ export default function CregIddOffPage() {
                 </label>
                 <Input type="number" value={mes.t ?? ''}
                   onChange={(e) => setMes({ t: e.target.value === '' ? null : parseFloat(e.target.value) })}
-                  className="h-9" />
+                  disabled={mesAprobado} className="h-9 disabled:bg-[hsl(var(--canalco-neutral-100))]" />
                 <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))] mt-1">
                   Sugerido: {horasDelMes(selYm)} h ({new Date(Number(selYm.split('-')[0]), Number(selYm.split('-')[1]), 0).getDate()} días × 12 h)
                 </p>
@@ -375,12 +511,18 @@ export default function CregIddOffPage() {
                   Cálculo de índice de disponibilidad apagadas — {monthLongLabel(selYm)}
                 </h2>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} className="h-7 text-xs">
-                    <Upload className="w-3.5 h-3.5 mr-1" /> Importar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={addFalla} className="h-7 text-xs">
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Agregar falla
-                  </Button>
+                  {mesAprobado ? (
+                    <span className="text-[11px] font-semibold text-emerald-700">Mes aprobado · solo lectura</span>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} className="h-7 text-xs">
+                        <Upload className="w-3.5 h-3.5 mr-1" /> Importar
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={addFalla} className="h-7 text-xs">
+                        <Plus className="w-3.5 h-3.5 mr-1" /> Agregar falla
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
 

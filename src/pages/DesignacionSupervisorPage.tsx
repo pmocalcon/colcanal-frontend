@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { getTipo } from '@/config/juridicaContratos';
+import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 
 /**
  * Formato GJ-003-F · "Designación de Supervisor" (fase 2 de G. jurídica).
- * Es una carta: parte del texto es fijo y las variables se diligencian. Varios campos
- * se prellenan con la información de la solicitud/contrato. La diligencia Jurídica.
+ * Es una carta: las variables se prellenan con la información de la solicitud/contrato y
+ * el texto se puede reescribir. La diligencia Jurídica.
  * Ruta: `.../juridica/:id/designacion-supervisor`. Se guarda en data.designacionSupervisor.
  */
 
@@ -29,7 +30,8 @@ interface DesignacionState {
   aprobacionGarantias: string;
   // Firmas
   funcionarioNombre: string; funcionarioCargo: string; funcionarioEmpresa: string; funcionarioNit: string;
-  elaboro: string; proyectoReviso: string;
+  /** Texto de la carta que Jurídica reescribió, por clave. Vacío = plantilla. */
+  textos: Record<string, string>;
 }
 
 const EMPTY: DesignacionState = {
@@ -44,7 +46,7 @@ const EMPTY: DesignacionState = {
   plazo: '',
   aprobacionGarantias: '',
   funcionarioNombre: '', funcionarioCargo: 'Representante Legal', funcionarioEmpresa: '', funcionarioNit: '',
-  elaboro: '', proyectoReviso: '',
+  textos: {},
 };
 
 const puedeEditar = (rol?: string) => {
@@ -69,6 +71,7 @@ export default function DesignacionSupervisorPage() {
   const editable = puedeEditar(user?.nombreRol);
   const habilitada = !!sol && HABILITADO.includes(sol.estado);
   const set = <K extends keyof DesignacionState>(k: K, v: DesignacionState[K]) => setF((p) => ({ ...p, [k]: v }));
+  const textosCtx = useTextosDocumento(f.textos, setF);
 
   useEffect(() => {
     if (solicitudId === null) { setLoading(false); return; }
@@ -92,6 +95,7 @@ export default function DesignacionSupervisorPage() {
           formaPago: saved.formaPago || d.formaPago || '',
           plazo: saved.plazo || d.duracion || '',
           funcionarioEmpresa: saved.funcionarioEmpresa || d.empresa || '',
+          textos: saved.textos ?? {},
         });
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la designación');
@@ -169,7 +173,8 @@ export default function DesignacionSupervisorPage() {
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-[#0a2a52] shadow-md">
+          <TextosDocumento value={textosCtx}>
+          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
             {/* Encabezado */}
             <div className="grid grid-cols-[130px_1fr_150px] border-b border-[#0a2a52]">
               <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
@@ -195,26 +200,30 @@ export default function DesignacionSupervisorPage() {
               <Line value={f.lugarFecha} onChange={(v) => set('lugarFecha', v)} placeholder="Ciudad - Departamento, 00 de mes de 0000." />
 
               <div>
-                <p>Señor(a)</p>
+                <TextoEd k="saludo" plantilla="Señor(a)" />
                 <Line value={f.supervisorNombre} onChange={(v) => set('supervisorNombre', v)} placeholder="NOMBRE DEL SUPERVISOR" bold />
                 <Line value={f.supervisorCargo} onChange={(v) => set('supervisorCargo', v)} placeholder="Cargo" />
                 <Line value={f.supervisorCiudad} onChange={(v) => set('supervisorCiudad', v)} placeholder="Ciudad - Departamento" />
               </div>
 
+              {/* Los bloques que citan datos se arman con la tabla de abajo mientras nadie
+                  los toque; al editarlos quedan como los dejó Jurídica. */}
               <FieldRow label="Referencia:">
-                Contrato de {textOrDash(f.tipologia)} suscrito entre {textOrDash(f.contratante)} y {textOrDash(f.contratista)}.
+                <TextoEd
+                  k="referencia"
+                  plantilla={`Contrato de ${textOrDash(f.tipologia)} suscrito entre ${textOrDash(f.contratante)} y ${textOrDash(f.contratista)}.`}
+                />
               </FieldRow>
               <FieldRow label="Asunto:">
-                Designación de supervisor del contrato en referencia.
+                <TextoEd k="asunto" plantilla="Designación de supervisor del contrato en referencia." />
               </FieldRow>
 
-              <p>
-                De conformidad con el contrato de {lower(f.tipologia) || 'prestación de servicios'} suscrito el{' '}
-                <Inline value={f.fechaSuscripcion} onChange={(v) => set('fechaSuscripcion', v)} placeholder="00 de mes de 0000" />,
-                {' '}le informo que ha sido designado como supervisor del mencionado contrato.
-              </p>
+              <TextoEd
+                k="designacion"
+                plantilla={`De conformidad con el contrato de ${lower(f.tipologia) || 'prestación de servicios'} suscrito el ${textOrDash(f.fechaSuscripcion)}, le informo que ha sido designado como supervisor del mencionado contrato.`}
+              />
 
-              <p>A continuación, se relaciona la información del Contrato:</p>
+              <TextoEd k="preTabla" plantilla="A continuación, se relaciona la información del Contrato:" />
 
               {/* Tabla de información del contrato */}
               <table className="w-full border-collapse text-[12px] my-2">
@@ -233,30 +242,12 @@ export default function DesignacionSupervisorPage() {
                 </tbody>
               </table>
 
-              <p>
-                Con el fin de proteger la moralidad administrativa, de prevenir la ocurrencia de actos de corrupción
-                y de tutelar la transparencia de la actividad contractual, le informo que ha sido designado como
-                supervisor del contrato referenciado.
-              </p>
-              <p>
-                La supervisión consistirá en el seguimiento técnico sobre el cumplimiento del objeto del contrato.
-              </p>
-              <p>
-                <b>Facultades y deberes de los supervisores.</b> La supervisión contractual implica el seguimiento
-                al ejercicio del cumplimiento obligacional por la entidad contratante sobre las obligaciones a cargo
-                del contratista.
-              </p>
-              <p>
-                Los supervisores están facultados para solicitar informes, aclaraciones y explicaciones sobre el
-                desarrollo de la ejecución contractual, y serán responsables por mantener informada a la entidad
-                contratante a través de su representante legal, de los hechos o circunstancias que puedan constituir
-                actos de corrupción tipificados como conductas punibles, o que puedan poner o pongan en riesgo el
-                cumplimiento del contrato, o cuando tal incumplimiento se presente.
-              </p>
-              <p>
-                Adjunto al presente comunicado, copia del contrato objeto de esta designación de supervisor.
-              </p>
-              <p>Atentamente,</p>
+              <TextoEd k="moralidad" plantilla="Con el fin de proteger la moralidad administrativa, de prevenir la ocurrencia de actos de corrupción y de tutelar la transparencia de la actividad contractual, le informo que ha sido designado como supervisor del contrato referenciado." />
+              <TextoEd k="alcance" plantilla="La supervisión consistirá en el seguimiento técnico sobre el cumplimiento del objeto del contrato." />
+              <TextoEd k="facultades" plantilla="Facultades y deberes de los supervisores. La supervisión contractual implica el seguimiento al ejercicio del cumplimiento obligacional por la entidad contratante sobre las obligaciones a cargo del contratista." />
+              <TextoEd k="informes" plantilla="Los supervisores están facultados para solicitar informes, aclaraciones y explicaciones sobre el desarrollo de la ejecución contractual, y serán responsables por mantener informada a la entidad contratante a través de su representante legal, de los hechos o circunstancias que puedan constituir actos de corrupción tipificados como conductas punibles, o que puedan poner o pongan en riesgo el cumplimiento del contrato, o cuando tal incumplimiento se presente." />
+              <TextoEd k="adjunto" plantilla="Adjunto al presente comunicado, copia del contrato objeto de esta designación de supervisor." />
+              <TextoEd k="despedida" plantilla="Atentamente," />
 
               {/* Firmas */}
               <div className="grid grid-cols-2 gap-8 pt-10">
@@ -272,19 +263,9 @@ export default function DesignacionSupervisorPage() {
                 </Firma>
               </div>
 
-              {/* Pie: elaboró / revisó */}
-              <div className="pt-8 text-[11px] space-y-1">
-                <div className="flex gap-2">
-                  <span className="font-semibold whitespace-nowrap">Elaboró:</span>
-                  <Inline value={f.elaboro} onChange={(v) => set('elaboro', v)} placeholder="Nombre - Cargo" />
-                </div>
-                <div className="flex gap-2">
-                  <span className="font-semibold whitespace-nowrap">Proyectó y revisó:</span>
-                  <Inline value={f.proyectoReviso} onChange={(v) => set('proyectoReviso', v)} placeholder="Nombre - Cargo" />
-                </div>
-              </div>
             </div>
           </div>
+          </TextosDocumento>
           </fieldset>
         )}
 
@@ -328,25 +309,12 @@ function Line({ value, onChange, placeholder, bold }: {
   );
 }
 
-/** Campo editable en línea (dentro de un párrafo). */
-function Inline({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      size={Math.max((value || placeholder || '').length, 6)}
-      className="bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12.5px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
-    />
-  );
-}
-
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <p className="flex gap-2">
+    <div className="flex gap-2">
       <span className="font-bold whitespace-nowrap">{label}</span>
-      <span>{children}</span>
-    </p>
+      <span className="flex-grow min-w-0">{children}</span>
+    </div>
   );
 }
 

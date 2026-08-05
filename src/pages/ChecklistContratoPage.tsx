@@ -5,7 +5,8 @@ import { Home, ArrowLeft, Printer, Save, Loader2, ClipboardCheck, Link as LinkIc
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
-import { SECCIONES, getTipo, filtrarPorPersona, habilitantesPara, type SeccionKey } from '@/config/juridicaContratos';
+import { SECCIONES, getTipo, filtrarPorPersona, habilitantesNoCubiertos, type SeccionKey } from '@/config/juridicaContratos';
+import { esRolPmo } from '@/utils/rolesPmo';
 
 const PERSONA_LABEL: Record<string, string> = { natural: 'Natural', juridica: 'Jurídica' };
 
@@ -36,9 +37,27 @@ const EMPTY_CL: ChecklistState = {
   revJurNombre: '', revJurCargo: '', revJurFecha: '',
 };
 
-const puedeEditar = (rol?: string) => {
+/**
+ * La lista es secuencial: Administrativa verifica que los documentos estén (etapa
+ * previa) y solo después Jurídica los revisa (etapa contractual). Cada lado se abre
+ * en su etapa del flujo y se cierra al pasar a la siguiente, así que nadie reescribe
+ * lo que el otro ya firmó. Espeja `ladoChecklist` del backend, que es quien manda.
+ */
+type LadoChecklist = 'admin' | 'juridica' | null;
+
+const ladoDeLaEtapa = (estado?: string): LadoChecklist => {
+  if (estado === 'en_tramite_administrativa') return 'admin';
+  if (estado === 'contrato_en_elaboracion') return 'juridica';
+  return null;
+};
+
+/** A qué lado pertenece el usuario. El PMO es comodín y puede diligenciar ambos. */
+const ladoDelRol = (rol?: string): LadoChecklist | 'pmo' => {
   const r = (rol ?? '').toLowerCase();
-  return r === 'analista pmo' || r.includes('juríd') || r.includes('jurid') || r.includes('administrativ');
+  if (esRolPmo(rol)) return 'pmo';
+  if (r.includes('juríd') || r.includes('jurid')) return 'juridica';
+  if (r.includes('administrativ')) return 'admin';
+  return null;
 };
 
 export default function ChecklistContratoPage() {
@@ -52,11 +71,20 @@ export default function ChecklistContratoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const editable = puedeEditar(user?.nombreRol);
   const tipo = useMemo(() => getTipo(sol?.data?.tipoContrato), [sol]);
   const persona = (sol?.data?.tipoPersona ?? '') as string;
   // La lista se habilita cuando la solicitud llega a Administrativa (o más adelante).
   const habilitada = !!sol && sol.estado !== 'borrador' && sol.estado !== 'pendiente_autorizacion_gp' && sol.estado !== 'pendiente_firma_gerencia';
+
+  // Qué columnas puede tocar este usuario ahora mismo: cruce entre la etapa abierta y
+  // el área a la que pertenece. Fuera de las dos etapas la lista queda de solo lectura.
+  const lado = ladoDeLaEtapa(sol?.estado);
+  const miLado = ladoDelRol(user?.nombreRol);
+  const adminEditable = lado === 'admin' && (miLado === 'admin' || miLado === 'pmo');
+  const jurEditable = lado === 'juridica' && (miLado === 'juridica' || miLado === 'pmo');
+  const editable = adminEditable || jurEditable;
+  const firmadaAdmin = !!cl.revAdminNombre;
+  const firmadaJur = !!cl.revJurNombre;
 
   useEffect(() => {
     if (solicitudId === null) { setLoading(false); return; }
@@ -105,20 +133,6 @@ export default function ChecklistContratoPage() {
     }
   };
 
-  // Los habilitantes son el mínimo transversal de la política: van primero y no dependen
-  // del tipo de contrato, solo de la naturaleza del contratista.
-  const seccionHabilitantes = {
-    key: 'habilitantes',
-    label: 'Documentos habilitantes (mínimo · según naturaleza del contratista)',
-    administrativo: true,
-    items: habilitantesPara(persona).map((d) => ({
-      // Clave estable: cambiar el tipo de persona reetiqueta la fila, no la pierde.
-      key: `habilitantes::${d.key}`,
-      label: d.tipo,
-      nota: `${d.requisito} · ${d.observaciones}`,
-    })),
-  };
-
   // Secciones con al menos un ítem para este tipo de contrato y tipo de persona.
   const seccionesDelTipo = SECCIONES
     .map((s) => ({
@@ -129,7 +143,23 @@ export default function ChecklistContratoPage() {
     }))
     .filter((s) => s.items.length > 0);
 
-  const seccionesConItems = [seccionHabilitantes, ...seccionesDelTipo];
+  // Manda el tipo de contrato: los habilitantes que el GA-25-F ya pide no se repiten.
+  // Lo que queda es el complemento —el mínimo de la política que el formato no cubre—,
+  // así que va al final y desaparece cuando el tipo de contrato los pide todos.
+  const seccionHabilitantes = {
+    key: 'habilitantes',
+    label: 'Documentos habilitantes adicionales (mínimo de la política · según naturaleza del contratista)',
+    administrativo: true,
+    items: habilitantesNoCubiertos(persona, tipo).map((d) => ({
+      // Clave estable: cambiar el tipo de persona reetiqueta la fila, no la pierde.
+      key: `habilitantes::${d.key}`,
+      label: d.tipo,
+      nota: `${d.requisito} · ${d.observaciones}`,
+    })),
+  };
+
+  const seccionesConItems = [...seccionesDelTipo, seccionHabilitantes]
+    .filter((s) => s.items.length > 0);
 
   if (loading) {
     return (
@@ -197,8 +227,37 @@ export default function ChecklistContratoPage() {
             </Button>
           </div>
         ) : (
+          <>
+          {/* De quién es el turno. Sin esto, ver media tabla bloqueada parece un error. */}
+          <div className={'no-print mb-4 rounded-lg border px-4 py-3 text-sm ' + (editable
+            ? 'bg-[hsl(var(--canalco-primary))]/5 border-[hsl(var(--canalco-primary))]/30 text-black'
+            : 'bg-[hsl(var(--canalco-neutral-100))] border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))]')}>
+            {lado === 'admin' && (
+              <p>
+                <b>Turno de la Dirección Administrativa.</b> Se diligencia la <b>Etapa previa</b>:
+                marcar qué documentos presentó el contratista. La <b>Etapa contractual</b> se abre
+                cuando la solicitud pase a Jurídica.
+              </p>
+            )}
+            {lado === 'juridica' && (
+              <p>
+                <b>Turno de la Dirección Jurídica.</b> La Etapa previa ya está cerrada
+                {firmadaAdmin ? <> y firmada por <b>{cl.revAdminNombre}</b></> : null}; aquí solo se
+                diligencia la <b>Etapa contractual</b>. Al guardar se firma esta revisión y con eso
+                se habilita el <b>Contrato</b>.
+              </p>
+            )}
+            {lado === null && (
+              <p>
+                {firmadaAdmin && firmadaJur
+                  ? <>Lista <b>cerrada</b>: revisada por las dos direcciones. Queda como registro del trámite.</>
+                  : <>La lista no se diligencia en esta etapa. Se abre en trámite (Administrativa) y luego en revisión del contrato (Jurídica).</>}
+              </p>
+            )}
+          </div>
+
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-[#0a2a52] shadow-md">
+          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
             {/* Encabezado */}
             <div className="grid grid-cols-[130px_1fr_130px] border-b border-[#0a2a52]">
               <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
@@ -229,17 +288,20 @@ export default function ChecklistContratoPage() {
               </HeaderRow>
               <HeaderRow label="CONTRATISTA">
                 <input value={cl.contratista} onChange={(e) => set('contratista', e.target.value)}
-                  className="w-full bg-transparent outline-none text-[12px] py-0.5" />
+                  disabled={!adminEditable}
+                  className="w-full bg-transparent outline-none text-[12px] py-0.5 disabled:opacity-100" />
               </HeaderRow>
               <HeaderRow label="SUPERVISOR">
                 <input value={cl.supervisor} onChange={(e) => set('supervisor', e.target.value)}
-                  className="w-full bg-transparent outline-none text-[12px] py-0.5" />
+                  disabled={!adminEditable}
+                  className="w-full bg-transparent outline-none text-[12px] py-0.5 disabled:opacity-100" />
               </HeaderRow>
               <HeaderRow label="URL DE DOCUMENTOS" last>
                 <div className="flex items-center gap-2">
                   <input value={cl.docsUrl} onChange={(e) => set('docsUrl', e.target.value)}
+                    disabled={!adminEditable}
                     placeholder="Enlace a la carpeta (Drive, OneDrive, SharePoint…)"
-                    className="w-full bg-transparent outline-none text-[12px] py-0.5 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
+                    className="w-full bg-transparent outline-none text-[12px] py-0.5 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] disabled:opacity-100" />
                   {cl.docsUrl.trim() && (
                     <a href={cl.docsUrl} target="_blank" rel="noreferrer"
                       className="no-print text-[hsl(var(--canalco-primary))] flex-none" title="Abrir carpeta de documentos">
@@ -278,7 +340,8 @@ export default function ChecklistContratoPage() {
                 <tbody>
                   {seccionesConItems.map((sec) => (
                     <SectionRows key={sec.key} label={sec.label} administrativo={sec.administrativo}
-                      items={sec.items} item={item} setItem={setItem} />
+                      items={sec.items} item={item} setItem={setItem}
+                      adminEditable={adminEditable} jurEditable={jurEditable} />
                   ))}
                 </tbody>
               </table>
@@ -295,11 +358,12 @@ export default function ChecklistContratoPage() {
             </div>
           </div>
           </fieldset>
+          </>
         )}
 
-        {tipo && !editable && (
+        {tipo && habilitada && !editable && (
           <p className="no-print text-center text-xs text-[hsl(var(--canalco-neutral-500))] mt-4">
-            Solo Jurídica o Administrativa pueden diligenciar esta lista. Puedes consultarla e imprimirla.
+            Puedes consultarla e imprimirla.
           </p>
         )}
       </main>
@@ -333,9 +397,13 @@ function HeaderRow({ label, children, last }: { label: string; children: React.R
  */
 interface FilaChecklist { key: string; label: string; nota?: string }
 
-function SectionRows({ label, administrativo, items, item, setItem }: {
+function SectionRows({ label, administrativo, items, item, setItem, adminEditable, jurEditable }: {
   label: string; administrativo: boolean; items: FilaChecklist[];
   item: (k: string) => ItemState; setItem: (k: string, p: Partial<ItemState>) => void;
+  /** Columnas de la etapa previa: solo Administrativa, y solo en su etapa. */
+  adminEditable: boolean;
+  /** Columnas de la etapa contractual: solo Jurídica, y solo en la suya. */
+  jurEditable: boolean;
 }) {
   return (
     <>
@@ -354,19 +422,19 @@ function SectionRows({ label, administrativo, items, item, setItem }: {
             </td>
             {administrativo ? (
               <>
-                <Cbx checked={st.presentaSi} onChange={(v) => setItem(key, { presentaSi: v })} />
-                <Cbx checked={st.presentaNo} onChange={(v) => setItem(key, { presentaNo: v })} />
+                <Cbx checked={st.presentaSi} disabled={!adminEditable} onChange={(v) => setItem(key, { presentaSi: v })} />
+                <Cbx checked={st.presentaNo} disabled={!adminEditable} onChange={(v) => setItem(key, { presentaNo: v })} />
                 <td className="border border-[#0a2a52] px-1 py-0.5">
-                  <input value={st.obsAdm} onChange={(e) => setItem(key, { obsAdm: e.target.value })} className="w-full bg-transparent outline-none text-[11px]" />
+                  <input value={st.obsAdm} disabled={!adminEditable} onChange={(e) => setItem(key, { obsAdm: e.target.value })} className="w-full bg-transparent outline-none text-[11px] disabled:opacity-100" />
                 </td>
               </>
             ) : (
               <td colSpan={3} className="border border-[#0a2a52] bg-[hsl(var(--canalco-neutral-100))]"></td>
             )}
-            <Cbx checked={st.revSi} onChange={(v) => setItem(key, { revSi: v })} />
-            <Cbx checked={st.revNo} onChange={(v) => setItem(key, { revNo: v })} />
+            <Cbx checked={st.revSi} disabled={!jurEditable} onChange={(v) => setItem(key, { revSi: v })} />
+            <Cbx checked={st.revNo} disabled={!jurEditable} onChange={(v) => setItem(key, { revNo: v })} />
             <td className="border border-[#0a2a52] px-1 py-0.5">
-              <input value={st.obsJur} onChange={(e) => setItem(key, { obsJur: e.target.value })} className="w-full bg-transparent outline-none text-[11px]" />
+              <input value={st.obsJur} disabled={!jurEditable} onChange={(e) => setItem(key, { obsJur: e.target.value })} className="w-full bg-transparent outline-none text-[11px] disabled:opacity-100" />
             </td>
           </tr>
         );
@@ -375,11 +443,12 @@ function SectionRows({ label, administrativo, items, item, setItem }: {
   );
 }
 
-function Cbx({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Cbx({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <td className="border border-[#0a2a52] text-center px-1 py-0.5">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
-        className="w-3.5 h-3.5 accent-[hsl(var(--canalco-primary))] cursor-pointer" />
+      {/* Bloqueada se ve igual de nítida: es un registro que hay que poder leer. */}
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
+        className={'w-3.5 h-3.5 accent-[hsl(var(--canalco-primary))] ' + (disabled ? 'cursor-default' : 'cursor-pointer')} />
     </td>
   );
 }

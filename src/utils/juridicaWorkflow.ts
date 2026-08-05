@@ -4,6 +4,8 @@
  * festivos de Colombia. Espeja la máquina de estados del backend.
  */
 
+import { esRolPmo } from './rolesPmo';
+
 export type JuridicaEstado =
   | 'borrador'
   | 'pendiente_autorizacion_gp'
@@ -51,7 +53,6 @@ const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo', 'Analista 
 const ROLES_JURIDICA = ['Director Jurídico', 'Coordinador Jurídico', 'Analista Jurídico'];
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // autoriza la solicitud ("Autorizado por")
 const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por" · Dra. Gloria)
-const ROL_PMO = 'Analista PMO';
 
 export interface Transicion {
   accion: string;
@@ -95,7 +96,7 @@ export function accionesDisponibles(
   esCreador: boolean,
 ): Transicion[] {
   const rol = nombreRol ?? '';
-  const esPmo = rol === ROL_PMO;
+  const esPmo = esRolPmo(rol);
   return TRANSICIONES.filter((t) => {
     if (t.from !== estado) return false;
     if (esPmo) return true;

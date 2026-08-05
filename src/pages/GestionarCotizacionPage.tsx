@@ -886,7 +886,7 @@ export default function GestionarCotizacionPage() {
                           {item.material?.code || 'N/A'}
                         </p>
                         <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-                          {item.material?.description || item.description}
+                          {item.material?.description || 'Sin descripción'}
                         </p>
                         {item.observation && (
                           <p className="text-xs text-amber-600 mt-1">

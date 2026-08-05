@@ -130,6 +130,13 @@ export interface CregUnit {
   efficiencyLmW: number | null;
   ippFactor: number;
   hasCostSheet: boolean;
+  /**
+   * Cerrada para edición: tiene hoja de costos y nadie la ha reabierto. La hoja
+   * alimenta censo, presupuestos y liquidación, así que solo el Director Técnico
+   * puede reabrirla, y al guardar se vuelve a cerrar.
+   */
+  bloqueada?: boolean;
+  reabiertaEn?: string | null;
   items: CregUnitItem[];
   totals: CregUnitTotals;
   createdAt?: string;
@@ -187,8 +194,29 @@ export interface CregCenso {
   exists: boolean;
 }
 
+/**
+ * Cierre mensual: lo comparten la Liquidación, ID OFF e ID ON. El Director
+ * Técnico aprueba un mes y ese mes queda congelado en la base; puede reabrirlo,
+ * y cada reapertura deja rastro.
+ */
+export type CregHojaMensual = 'liquidacion' | 'idd-off' | 'idd-on';
+
+export interface CregMesCerrable {
+  aprobado?: boolean;
+  aprobadoEn?: string;
+  aprobadoPor?: number;
+  aprobadoPorNombre?: string | null;
+  reaperturas?: {
+    aprobadoEn?: string;
+    aprobadoPorNombre?: string | null;
+    reabiertoEn: string;
+    reabiertoPorNombre?: string | null;
+    motivo?: string | null;
+  }[];
+}
+
 /** Datos propios de un mes liquidado (lo demás se calcula del censo + parámetros). */
-export interface LiquidacionMes {
+export interface LiquidacionMes extends CregMesCerrable {
   /** IPP(m-1) usado en el mes. Si no se define, se toma el de Parámetros. */
   ippMes?: number | null;
   ajusteAom?: number | null;
@@ -247,7 +275,7 @@ export const horasFuera = (f: IddOffFalla, sumaMediaNoche = false): number => {
   return (dias + (sumaMediaNoche ? 1 : 0)) * HORAS_OPERACION_DIA;
 };
 
-export interface IddOffMes {
+export interface IddOffMes extends CregMesCerrable {
   /** WT: potencia total instalada del periodo [kW]. */
   wt?: number | null;
   /** T: horas del periodo (p. ej. 30 días × 12 h = 360). */
@@ -325,7 +353,7 @@ const horaEnHoras = (hhmm?: string): number => {
   return h + (Number.isFinite(m) ? m : 0) / 60 + (Number.isFinite(s) ? s : 0) / 3600;
 };
 
-export interface IddOnMes {
+export interface IddOnMes extends CregMesCerrable {
   /** WT: potencia total instalada del periodo [kW]. */
   wt?: number | null;
   /** T: horas del periodo (p. ej. 30 días × 12 h = 360). */
@@ -455,6 +483,15 @@ export const cregService = {
     return data;
   },
 
+  /**
+   * Reabre una UCAP cerrada para poder editarla. Solo el Director Técnico; al
+   * guardar la hoja se vuelve a cerrar sola.
+   */
+  async reabrirUnit(ucapId: number): Promise<CregUnit> {
+    const { data } = await api.post<CregUnit>(`${BASE}/units/${ucapId}/reabrir`, {});
+    return data;
+  },
+
   // ---- Apellidos/variantes de una UCAP ----
 
   async getApellidos(ucapId: number): Promise<UcapApellido[]> {
@@ -512,6 +549,24 @@ export const cregService = {
     return data;
   },
 
+  /**
+   * Serie del IPP mes a mes. No lleva municipio: el índice lo publica el DANE y
+   * es el mismo para todos los contratos.
+   */
+  async getIppMensual(): Promise<Record<string, number>> {
+    const { data } = await api.get<{ valores: Record<string, number> }>(`${BASE}/ipp-mensual`);
+    return data?.valores ?? {};
+  },
+
+  /** Reemplaza la serie completa: un mes ausente se borra. */
+  async saveIppMensual(valores: Record<string, number>): Promise<Record<string, number>> {
+    const { data } = await api.put<{ valores: Record<string, number> }>(
+      `${BASE}/ipp-mensual`,
+      { valores },
+    );
+    return data?.valores ?? {};
+  },
+
   async getSummary(): Promise<CregSummary> {
     const { data } = await api.get<CregSummary>(`${BASE}/summary`);
     return data;
@@ -554,6 +609,41 @@ export const cregService = {
     const { data } = await api.put<CregLiquidacion>(
       `${BASE}/liquidacion/${companyId}`,
       { data: payload },
+      { params: projectId != null ? { projectId } : undefined },
+    );
+    return data;
+  },
+
+  /**
+   * Aprueba y cierra un mes de cualquiera de las tres hojas mensuales. Solo el
+   * Director Técnico; el backend notifica por correo al Director de Proyecto del
+   * municipio y devuelve a quiénes alcanzó a avisar.
+   */
+  async aprobarMes(
+    hoja: CregHojaMensual,
+    companyId: number,
+    ym: string,
+    projectId?: number | null,
+  ): Promise<{ data: { meses?: Record<string, any> } | null; notificados: string[] }> {
+    const { data } = await api.post(
+      `${BASE}/${hoja}/${companyId}/aprobar`,
+      { ym },
+      { params: projectId != null ? { projectId } : undefined },
+    );
+    return data;
+  },
+
+  /** Reabre un mes cerrado (solo Director Técnico). Queda en el historial. */
+  async reabrirMes(
+    hoja: CregHojaMensual,
+    companyId: number,
+    ym: string,
+    projectId?: number | null,
+    motivo?: string,
+  ): Promise<{ data: { meses?: Record<string, any> } | null }> {
+    const { data } = await api.post(
+      `${BASE}/${hoja}/${companyId}/reabrir`,
+      { ym, motivo },
       { params: projectId != null ? { projectId } : undefined },
     );
     return data;

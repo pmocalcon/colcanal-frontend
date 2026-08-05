@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { surveysService, type Work, type WorkActa } from '@/services/surveys.service';
 import { requisitionsService } from '@/services/requisitions.service';
 import { getPendingPurchaseOrdersForApproval } from '@/services/purchase-orders.service';
-import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
+import { mapCompaniesToDepartments, getMunicipioName, esEmpresaMatriz } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import {
   Home, ArrowLeft, Loader2, HardHat, DollarSign, ShoppingCart,
@@ -103,6 +103,29 @@ export default function DashboardModulePage() {
     () => (access?.companies || []).map((c) => c.companyId),
     [access],
   );
+
+  const projectIdToName = useMemo(() => {
+    const map = new Map<number, string>();
+    (access?.projects || []).forEach((p) => map.set(p.projectId, p.name));
+    return map;
+  }, [access]);
+
+  /**
+   * Municipio de una obra. Donde la UT es propia (Santa Bárbara, Quimbaya, Puerto
+   * Asís...) el municipio ES la empresa; en Antioquia las obras son de "Canales &
+   * Contactos" y el municipio sale del PROYECTO (Tarso, Pueblorico, Jericó...).
+   *
+   * Devuelve '' cuando no se puede saber. Es a propósito: caer al nombre de la
+   * empresa juntaría cuatro municipios bajo la matriz, que no es ninguno.
+   */
+  const municipioDeObra = useCallback((w: Work): string => {
+    if (w.projectId != null) {
+      const nombre = projectIdToName.get(w.projectId);
+      return nombre ? getMunicipioName(nombre) : '';
+    }
+    const empresa = w.company?.name ?? '';
+    return esEmpresaMatriz(empresa) ? '' : getMunicipioName(empresa);
+  }, [projectIdToName]);
 
   const companyIdToDept = useMemo(() => {
     const map = new Map<number, string>();
@@ -271,7 +294,7 @@ export default function DashboardModulePage() {
     // Por municipio (valor)
     const byMuniMap = new Map<string, { value: number; count: number }>();
     fw.forEach((w) => {
-      const m = getMunicipioName(w.company?.name || '') || '—';
+      const m = municipioDeObra(w) || 'Sin municipio';
       const e = byMuniMap.get(m) ?? { value: 0, count: 0 };
       e.value += valOf(w); e.count += 1;
       byMuniMap.set(m, e);
@@ -283,10 +306,14 @@ export default function DashboardModulePage() {
 
     // Embudo de actas en $ (suma del valor de las obras de cada acta, agrupado por estado)
     const actaVal = new Map<string, number>();
+    // Municipio de cada acta. El número se repite —Tarso y Pueblorico tienen cada
+    // uno su "01-2026"—, así que sin el municipio las barras son indistinguibles.
+    const actaMuni = new Map<string, string>();
     fw.forEach((w) => {
       if (!w.recordNumber) return;
       const k = actaKey(w.companyId, w.projectId ?? null, w.recordNumber);
       actaVal.set(k, (actaVal.get(k) ?? 0) + valOf(w));
+      if (!actaMuni.has(k)) actaMuni.set(k, municipioDeObra(w));
     });
     const funnelMap = new Map<string, { value: number; count: number }>();
     actaVal.forEach((v, k) => {
@@ -303,7 +330,7 @@ export default function DashboardModulePage() {
     }));
     const pendiente = funnelMap.get('en_aprobacion') ?? { value: 0, count: 0 };
 
-    const municipios = new Set(fw.map((w) => getMunicipioName(w.company?.name || '')).filter(Boolean));
+    const municipios = new Set(fw.map(municipioDeObra).filter(Boolean));
 
     // Top obras por valor.
     const topObras = fw
@@ -316,7 +343,10 @@ export default function DashboardModulePage() {
     const topActas = [...actaVal.entries()]
       .map(([k, value]) => {
         const num = actaStatusMap.get(k)?.actaNumber ?? k.split(':')[2] ?? '—';
-        return { name: `Acta ${num}`, value };
+        const muni = actaMuni.get(k);
+        // El título de la tarjeta ya dice "actas", así que la etiqueta gasta el
+        // espacio en el municipio, que es lo que desempata.
+        return { name: muni ? `${muni} · ${num}` : `Acta ${num}`, value };
       })
       .filter((a) => a.value > 0)
       .sort((a, b) => b.value - a.value)
@@ -357,7 +387,7 @@ export default function DashboardModulePage() {
       avgPerActa,
       yoy,
     };
-  }, [works, values, ippByWork, actaStatusMap, companyIdToDept, filterYear, filterDept]);
+  }, [works, values, ippByWork, actaStatusMap, companyIdToDept, municipioDeObra, filterYear, filterDept]);
 
   const busy = accessLoading || loading;
 
@@ -500,7 +530,7 @@ export default function DashboardModulePage() {
                   {compras?.available ? (
                     <MiniPanel label="Ejecución presupuestal"
                       value={`${obrasView.valorTotal > 0 ? Math.round((compras.poValue / obrasView.valorTotal) * 100) : 0}%`}
-                      hint={`Comprometido ${fmtCOP(compras.poValue)} · Planeado ${fmtCOP(obrasView.valorTotal)}`}
+                      hint={`Ejecutado ${fmtCOP(compras.poValue)} · Planeado ${fmtCOP(obrasView.valorTotal)}`}
                       progress={obrasView.valorTotal > 0 ? compras.poValue / obrasView.valorTotal : 0} />
                   ) : (
                     <MiniPanel label="Ejecución presupuestal" value="—" hint="Sin acceso a compras" />
@@ -575,7 +605,7 @@ export default function DashboardModulePage() {
                         <BarChart data={obrasView.topActas} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
                           <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v: number) => fmtCOP(v)} />
-                          <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                          <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }} />
                           <RTooltip formatter={(v: number) => [fmtCOP(v), 'Valor']} />
                           <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22}>
                             {obrasView.topActas.map((_, i) => (<Cell key={i} fill={PALETTE[i % PALETTE.length]} />))}

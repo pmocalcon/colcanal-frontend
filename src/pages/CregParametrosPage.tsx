@@ -36,6 +36,9 @@ const SECTIONS: SectionDef[] = [
       // Rango del censo físico: define los meses de esa matriz.
       { key: 'fechaInicio', label: 'Fecha inicio', type: 'month' },
       { key: 'fechaFinal', label: 'Fecha final', type: 'month' },
+      // Quiénes firman el Excel de la Liquidación, al pie de la hoja.
+      { key: 'firmaInterventoria', label: 'Firma · Interventoría (nombre)', type: 'text' },
+      { key: 'firmaRepresentanteLegal', label: 'Firma · Representante legal (nombre)', type: 'text' },
     ],
   },
   {
@@ -211,7 +214,10 @@ export default function CregParametrosPage() {
       .then((res) => {
         if (res.data) {
           // Hay datos guardados para este municipio: mostrarlos.
-          const { faomRows: savedRows, ...scalar } = res.data;
+          // `ippMeses` se descarta: el IPP dejó de ir por municipio y ahora vive
+          // en su propio sub-módulo, en una sola serie para todos.
+          const { faomRows: savedRows, ippMeses: _ippViejo, ...scalar } = res.data;
+          void _ippViejo;
           setData(scalar);
           setFaomRows(Array.isArray(savedRows) && savedRows.length ? savedRows : defaultFaomRows());
         } else {
