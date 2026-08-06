@@ -51,6 +51,18 @@ export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
   finalizado: { label: 'Contrato en ejecución', sla: null, tone: 'green' },
 };
 
+/**
+ * Los estados en el orden en que ocurren. `ESTADOS` se declara siguiendo el flujo, así
+ * que de ahí sale sin repetir la lista. Espejo de `ORDEN_ESTADOS` del backend.
+ */
+export const ORDEN_ESTADOS = Object.keys(ESTADOS) as JuridicaEstado[];
+
+/** ¿El trámite ya pasó por `desde` (o está en él)? Falso si el estado no existe. */
+export const estadoAlcanzo = (estado: string | undefined | null, desde: JuridicaEstado): boolean => {
+  const i = ORDEN_ESTADOS.indexOf(estado as JuridicaEstado);
+  return i >= 0 && i >= ORDEN_ESTADOS.indexOf(desde);
+};
+
 export const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo', 'Analista Administrativo'];
 export const ROLES_JURIDICA = ['Director Jurídico', 'Coordinador Jurídico', 'Analista Jurídico'];
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // autoriza la solicitud ("Autorizado por")

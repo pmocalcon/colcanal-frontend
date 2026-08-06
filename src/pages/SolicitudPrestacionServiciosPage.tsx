@@ -16,11 +16,15 @@ import {
 import { esRolPmo } from '@/utils/rolesPmo';
 import {
   TIPOS_CONTRATO, habilitantesPara,
+  TIPOS_REQUISICION, tipoRequisicionDe, getTipoRequisicion,
   AMPAROS, MATRIZ_GARANTIAS, REGIMEN_GARANTIAS,
   vencimientoDe, DIAS_ALERTA_VENCIMIENTO, ESTADOS_CONTRATO_VIGENTE,
   type ExigenciaClase,
 } from '@/config/juridicaContratos';
 import { EMPRESAS, getEmpresa } from '@/config/empresasCentroCosto';
+import {
+  RequisicionPersonalCuerpo, prellenarRequisicion, type RequisicionState,
+} from '@/components/juridica/requisicionPersonalDoc';
 import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
 
 /**
@@ -54,6 +58,14 @@ interface FormState {
   sugNombre: string; sugTelefono: string; sugCorreo: string;
   modContrato: boolean; modOrdenServicio: boolean;
   tipoContrato: string;
+  /** Cuál de los dos formatos de requisición rige (ver `tipoRequisicionDe`). */
+  tipoRequisicion: string;
+  /**
+   * Cuerpo del GTH-001-F cuando el trámite va por requisición de personal. `null`
+   * mientras nadie lo toque: así se sigue derivando de la solicitud —fechas,
+   * remuneración, herramientas— en vez de congelar un prellenado que quedó viejo.
+   */
+  requisicionPersonal: RequisicionState | null;
   solicitadoNombre: string; solicitadoCargo: string;
   autorizadoNombre: string; autorizadoCargo: string;
   aprobadoNombre: string; aprobadoCargo: string;
@@ -73,6 +85,8 @@ const EMPTY: FormState = {
   sugNombre: '', sugTelefono: '', sugCorreo: '',
   modContrato: false, modOrdenServicio: false,
   tipoContrato: '',
+  tipoRequisicion: '',
+  requisicionPersonal: null,
   solicitadoNombre: '', solicitadoCargo: '',
   autorizadoNombre: '', autorizadoCargo: '',
   aprobadoNombre: '', aprobadoCargo: '',
@@ -96,6 +110,14 @@ export default function SolicitudPrestacionServiciosPage() {
   // El formato solo se edita en borrador (o cuando es nuevo).
   const estado = sol?.estado ?? 'borrador';
   const locked = solicitudId !== null && estado !== 'borrador';
+
+  // Con qué formato arranca este trámite. Lo elige quien lo abre; mientras no elija,
+  // lo propone el tipo de contrato. No depende de la etapa: la requisición va antes
+  // que todo lo demás —pide 15 días de anticipación— y se abre desde el borrador.
+  const tipoReq = tipoRequisicionDe(f.tipoRequisicion, f.tipoContrato);
+  // Mientras nadie escriba en el GTH-001-F se deriva de lo que ya tiene la solicitud;
+  // al primer cambio pasa a mandar lo escrito.
+  const requisicion = f.requisicionPersonal ?? prellenarRequisicion(f);
 
   // La lista de chequeo (GA-25-F) la diligencia Administrativa: se habilita al remitir
   // la solicitud a Administrativa y de ahí en adelante (todos los estados salvo los previos).
@@ -323,9 +345,14 @@ export default function SolicitudPrestacionServiciosPage() {
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-grow min-w-0">
-              <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))] truncate">Solicitud de prestación de servicios</h1>
+              <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))] truncate">
+                {tipoReq === 'personal' ? 'Requisición de personal' : 'Solicitud de prestación de servicios'}
+              </h1>
               <div className="text-xs text-[hsl(var(--canalco-neutral-600))] flex items-center gap-2 flex-wrap">
-                <span>G. jurídica · Formato GTH-002-F{solicitudId !== null ? ` · N.º ${solicitudId}` : ' · Nueva'}</span>
+                <span>
+                  G. jurídica · Formato {getTipoRequisicion(tipoReq).formato}
+                  {solicitudId !== null ? ` · N.º ${solicitudId}` : ' · Nueva'}
+                </span>
                 {solicitudId !== null && (
                   <span className={`inline-block text-[11px] font-medium rounded px-2 py-0.5 ${estadoBadgeClass(estado)}`}>
                     {estadoLabel(estado)}
@@ -350,11 +377,37 @@ export default function SolicitudPrestacionServiciosPage() {
             </div>
           </div>
 
-          {/* Fila 2: documentos del contrato. Solo con la solicitud guardada: todos
+          {/* Fila 2: con qué formato arranca el trámite. Va arriba de los documentos
+              porque es lo que decide cuál de los dos se diligencia. */}
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))] flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mr-1">
+              Tipo de requisición
+            </span>
+            <select
+              value={tipoReq}
+              disabled={locked}
+              onChange={(e) => set('tipoRequisicion', e.target.value)}
+              className="text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1.5 bg-white min-w-[22rem] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {TIPOS_REQUISICION.map((t) => (
+                <option key={t.key} value={t.key}>{t.nombre} ({t.formato})</option>
+              ))}
+            </select>
+            {!f.tipoRequisicion && (
+              <span className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+                propuesto por el tipo de contrato; queda fijo al guardar
+              </span>
+            )}
+          </div>
+
+          {/* Fila 3: documentos del contrato. Solo con la solicitud guardada: todos
               navegan a subdocumentos suyos. */}
           {solicitudId !== null && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))] flex-wrap">
               <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mr-1">Documentos</span>
+              {/* La requisición de personal no va acá: no es un documento aparte del
+                  trámite sino el cuerpo del formato, y se diligencia en esta misma
+                  página cuando el tipo de requisición es «personal». */}
               <Button
                 variant="outline" size="sm" disabled={!checklistHabilitado}
                 onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/chequeo`)}
@@ -440,17 +493,21 @@ export default function SolicitudPrestacionServiciosPage() {
             <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
               <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-16 object-contain" />
             </div>
+            {/* El título y el código son los del formato que se esté diligenciando: un
+                GTH-001-F impreso bajo el encabezado del GTH-002-F sería otro documento. */}
             <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[15px] text-black border-r border-[#0a2a52]">
-              SOLICITUD DE PRESTACIÓN DE SERVICIOS, ALQUILER, OBRA Y/O SUMINISTRO
+              {tipoReq === 'personal'
+                ? 'SOLICITUD DE REQUISICIÓN DE PERSONAL'
+                : 'SOLICITUD DE PRESTACIÓN DE SERVICIOS, ALQUILER, OBRA Y/O SUMINISTRO'}
             </div>
             <div className="grid grid-rows-[auto_1fr] min-w-0">
               <div className="flex items-center justify-center p-1 border-b border-[#0a2a52]">
                 <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-12 object-contain" />
               </div>
               <div className="grid grid-cols-[auto_1fr] text-[11px]">
-                <CodeCell label="Código" value="GTH-002-F" />
-                <CodeCell label="Fecha" value="25/07/2023" />
-                <CodeCell label="Versión" value="2" last />
+                <CodeCell label="Código" value={tipoReq === 'personal' ? 'GTH-001-F' : 'GTH-002-F'} />
+                <CodeCell label="Fecha" value={tipoReq === 'personal' ? '19/04/2023' : '25/07/2023'} />
+                <CodeCell label="Versión" value={tipoReq === 'personal' ? '1' : '2'} last />
               </div>
             </div>
           </div>
@@ -556,6 +613,19 @@ export default function SolicitudPrestacionServiciosPage() {
             </div>
           </div>
 
+          {/* De aquí abajo cambia el formato. Lo de arriba —fecha, centro de costo,
+              contratante, contratista, tipo de persona y tipo de contrato— es común a
+              los dos y lo necesita el resto del trámite (lista de chequeo, contrato,
+              consecutivo), así que no se reemplaza. */}
+          {tipoReq === 'personal' && (
+            <RequisicionPersonalCuerpo
+              value={requisicion}
+              onChange={(v) => set('requisicionPersonal', v)}
+            />
+          )}
+
+          {tipoReq === 'servicios' && (
+          <>
           {/* 1. Alcance del servicio a contratar */}
           <SectionTitle>1. ALCANCE DEL SERVICIO A CONTRATAR</SectionTitle>
           <RowField label="Objeto del proyecto" value={f.objetoProyecto} onChange={(v) => set('objetoProyecto', v)} placeholder="Aclarar la empresa por la cual se va a contratar" />
@@ -648,6 +718,8 @@ export default function SolicitudPrestacionServiciosPage() {
               hint="Gerencia (Dra. Gloria), al firmar la solicitud" last />
           </div>
           <div className="px-3 py-4 text-[12px] border-t border-[#0a2a52]">Vo. Bo. Dirección administrativa</div>
+          </>
+          )}
         </div>
         </fieldset>
 

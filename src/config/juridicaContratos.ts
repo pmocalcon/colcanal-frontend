@@ -135,6 +135,74 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
 export const getTipo = (key: string | undefined | null): TipoContrato | undefined =>
   TIPOS_CONTRATO.find((t) => t.key === key);
 
+/**
+ * Tipos de contrato que exigen la Solicitud de Requisición de Personal (GTH-001-F).
+ *
+ * Son los que implican **seleccionar a una persona**: hay una vacante, un cargo y un
+ * proceso de selección de Gestión Humana detrás. No es un adorno del trámite — la
+ * Lista de Chequeo de estos cuatro tipos pide «Requisición» como documento requerido,
+ * y este formato es esa requisición.
+ *
+ * Quedan fuera `prestacion-de-servicios` (se contrata a un proveedor por su propuesta,
+ * no se selecciona a un empleado) y `pasantias` (llega por convenio con la institución).
+ */
+export const TIPOS_CON_REQUISICION_PERSONAL = new Set([
+  'termino-indefinido',
+  'termino-fijo',
+  'obra-labor',
+  'prestacion-de-servicios-profesionales',
+]);
+
+export const requiereRequisicionPersonal = (tipo: string | undefined | null): boolean =>
+  TIPOS_CON_REQUISICION_PERSONAL.has(String(tipo ?? ''));
+
+/**
+ * Qué requisición es la solicitud: los dos formatos con que arranca un trámite de
+ * contratación. Uno pide una **persona** para un cargo (y detrás va un proceso de
+ * selección de Gestión Humana); el otro pide un **servicio, un alquiler, una obra o un
+ * suministro** a un tercero. Son documentos distintos y no se llenan los dos.
+ */
+export type TipoRequisicion = 'personal' | 'servicios';
+
+export const TIPOS_REQUISICION: { key: TipoRequisicion; nombre: string; formato: string }[] = [
+  { key: 'personal', nombre: 'Requisición de personal', formato: 'GTH-001-F' },
+  {
+    key: 'servicios',
+    nombre: 'Solicitud de prestación de servicios, alquiler, obra y/o suministro',
+    formato: 'GTH-002-F',
+  },
+];
+
+export const getTipoRequisicion = (key: TipoRequisicion) =>
+  TIPOS_REQUISICION.find((t) => t.key === key)!;
+
+/**
+ * Cuál de las dos rige esta solicitud.
+ *
+ * Manda lo que se haya elegido a mano. Mientras nadie elija, se deduce del tipo de
+ * contrato —los cuatro que seleccionan a una persona apuntan a la requisición de
+ * personal— para que las solicitudes que ya existen no queden sin clasificar y para
+ * que el selector nunca se muestre en blanco.
+ */
+export const tipoRequisicionDe = (
+  tipoRequisicion: string | undefined | null,
+  tipoContrato: string | undefined | null,
+): TipoRequisicion => {
+  if (tipoRequisicion === 'personal' || tipoRequisicion === 'servicios') return tipoRequisicion;
+  return requiereRequisicionPersonal(tipoContrato) ? 'personal' : 'servicios';
+};
+
+/**
+ * Cómo se marca la casilla «Tipo de Contrato» del GTH-001-F a partir del tipo elegido
+ * en la solicitud. El formato solo tiene tres casillas y un «Otro»: la prestación de
+ * servicios profesionales no es ninguna de las tres y cae en Otro, con su nombre.
+ */
+export const CASILLA_CONTRATO_REQUISICION: Record<string, 'fijo' | 'indefinido' | 'obraLabor'> = {
+  'termino-fijo': 'fijo',
+  'termino-indefinido': 'indefinido',
+  'obra-labor': 'obraLabor',
+};
+
 // ============================================================================
 // CONSECUTIVO Y VENCIMIENTO
 // (espejo de juridica-contratos.ts en el backend, que es quien los emite)

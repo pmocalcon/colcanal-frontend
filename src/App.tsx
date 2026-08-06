@@ -66,6 +66,7 @@ import RecursoEconomicoPage from './pages/RecursoEconomicoPage'
 import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
 import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
 import ChecklistContratoPage from './pages/ChecklistContratoPage'
+import RequisicionPersonalPage from './pages/RequisicionPersonalPage'
 import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
 import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
 import ActaInicioPage from './pages/ActaInicioPage'
@@ -270,6 +271,7 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica" element={<SolicitudesJuridicaListPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/nueva" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id" element={<SolicitudPrestacionServiciosPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/requisicion-personal" element={<RequisicionPersonalPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/chequeo" element={<ChecklistContratoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/verificacion-garantias" element={<VerificacionGarantiasPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/designacion-supervisor" element={<DesignacionSupervisorPage />} />

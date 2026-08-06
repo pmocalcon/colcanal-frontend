@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { SECCIONES, getTipo, filtrarPorPersona, habilitantesNoCubiertos, type SeccionKey } from '@/config/juridicaContratos';
 import { esRolPmo } from '@/utils/rolesPmo';
+import { estadoAlcanzo } from '@/utils/juridicaWorkflow';
 
 const PERSONA_LABEL: Record<string, string> = { natural: 'Natural', juridica: 'Jurídica' };
 
@@ -76,15 +77,28 @@ export default function ChecklistContratoPage() {
   // La lista se habilita cuando la solicitud llega a Administrativa (o más adelante).
   const habilitada = !!sol && sol.estado !== 'borrador' && sol.estado !== 'pendiente_autorizacion_gp' && sol.estado !== 'pendiente_firma_gerencia';
 
-  // Qué columnas puede tocar este usuario ahora mismo: cruce entre la etapa abierta y
-  // el área a la que pertenece. Fuera de las dos etapas la lista queda de solo lectura.
-  const lado = ladoDeLaEtapa(sol?.estado);
-  const miLado = ladoDelRol(user?.nombreRol);
-  const adminEditable = lado === 'admin' && (miLado === 'admin' || miLado === 'pmo');
-  const jurEditable = lado === 'juridica' && (miLado === 'juridica' || miLado === 'pmo');
-  const editable = adminEditable || jurEditable;
   const firmadaAdmin = !!cl.revAdminNombre;
   const firmadaJur = !!cl.revJurNombre;
+
+  /*
+   * Qué columnas puede tocar este usuario. Espeja `saveChecklist` del backend, que es
+   * quien manda:
+   *   · el lado que escribe lo da el **rol**, no la etapa (el PMO, comodín, escribe
+   *     la etapa abierta);
+   *   · la lista sigue siendo secuencial —cada lado se abre en su etapa— pero se
+   *     cierra **al firmar**, no al avanzar. Así, la solicitud que pasó a Jurídica con
+   *     la Etapa previa a medias no queda sin salida: el contrato exige las dos firmas.
+   */
+  const lado = ladoDeLaEtapa(sol?.estado);
+  const miLado = ladoDelRol(user?.nombreRol);
+  const escribo = miLado === 'pmo' ? lado : miLado;
+  const adminEditable = escribo === 'admin'
+    && estadoAlcanzo(sol?.estado, 'en_tramite_administrativa')
+    && (lado === 'admin' || !firmadaAdmin);
+  const jurEditable = escribo === 'juridica'
+    && estadoAlcanzo(sol?.estado, 'contrato_en_elaboracion')
+    && (lado === 'juridica' || !firmadaJur);
+  const editable = adminEditable || jurEditable;
 
   useEffect(() => {
     if (solicitudId === null) { setLoading(false); return; }
@@ -232,26 +246,37 @@ export default function ChecklistContratoPage() {
           <div className={'no-print mb-4 rounded-lg border px-4 py-3 text-sm ' + (editable
             ? 'bg-[hsl(var(--canalco-primary))]/5 border-[hsl(var(--canalco-primary))]/30 text-black'
             : 'bg-[hsl(var(--canalco-neutral-100))] border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))]')}>
-            {lado === 'admin' && (
+            {/* Se habla del lado de QUIEN MIRA, no de la etapa: a la Directora
+                Administrativa no le sirve leer que es turno de Jurídica; lo que
+                necesita saber es si su Etapa previa sigue abierta. */}
+            {adminEditable && (
               <p>
-                <b>Turno de la Dirección Administrativa.</b> Se diligencia la <b>Etapa previa</b>:
-                marcar qué documentos presentó el contratista. La <b>Etapa contractual</b> se abre
-                cuando la solicitud pase a Jurídica.
+                <b>Te toca la Etapa previa.</b> Marca qué documentos presentó el contratista
+                y completa la cabecera (contratista, supervisor y la carpeta de documentos).
+                {lado === 'admin'
+                  ? <> La <b>Etapa contractual</b> se abre cuando la solicitud pase a Jurídica.</>
+                  : <> El trámite ya avanzó a Jurídica, pero tu etapa sigue abierta porque
+                    todavía no la has firmado.</>}
+                {' '}Al guardar se firma y queda cerrada.
               </p>
             )}
-            {lado === 'juridica' && (
+            {jurEditable && (
               <p>
-                <b>Turno de la Dirección Jurídica.</b> La Etapa previa ya está cerrada
-                {firmadaAdmin ? <> y firmada por <b>{cl.revAdminNombre}</b></> : null}; aquí solo se
-                diligencia la <b>Etapa contractual</b>. Al guardar se firma esta revisión y con eso
-                se habilita el <b>Contrato</b>.
+                <b>Te toca la Etapa contractual.</b> La Etapa previa
+                {firmadaAdmin
+                  ? <> ya está firmada por <b>{cl.revAdminNombre}</b></>
+                  : <> todavía no la ha firmado la Dirección Administrativa —el contrato
+                    necesita las dos firmas—</>}
+                . Al guardar se firma esta revisión y con eso se habilita el <b>Contrato</b>.
               </p>
             )}
-            {lado === null && (
+            {!editable && (
               <p>
                 {firmadaAdmin && firmadaJur
                   ? <>Lista <b>cerrada</b>: revisada por las dos direcciones. Queda como registro del trámite.</>
-                  : <>La lista no se diligencia en esta etapa. Se abre en trámite (Administrativa) y luego en revisión del contrato (Jurídica).</>}
+                  : miLado === null
+                    ? <>La lista la diligencian la Dirección Administrativa y la Jurídica. Puedes consultarla e imprimirla.</>
+                    : <>Tu parte de la lista ya está <b>firmada</b>: queda como registro del trámite, no como borrador.</>}
               </p>
             )}
           </div>
