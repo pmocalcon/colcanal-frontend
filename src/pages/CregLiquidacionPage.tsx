@@ -497,19 +497,20 @@ export default function CregLiquidacionPage() {
   /**
    * El censo del mes visto por tipo, para comparar contra un inventario de campo.
    *
-   * Solo el grupo LUMINARIAS: el archivo de campo censa luminarias, así que
-   * arrastrar fotocontroles, postes y redes solo llenaría el cruce de filas
-   * "solo en el SGE" que no dicen nada.
+   * Van TODOS los grupos —luminarias, elementos de soporte, postes, redes…— y es
+   * la comparación la que decide qué puede cruzar con el archivo: el censo de
+   * campo cuenta luminarias y de paso su brazo y su apoyo, pero no mide la red.
+   * Listar el grupo aunque no se pueda contar es el punto: deja ver qué tiene el
+   * SGE que el censo no confirma.
    *
    * Se suma por UCAP y no por fila: los apellidos ("Acta 001-2024", "Otrosí
-   * No. 6") dicen de dónde salió la luminaria, no qué es, y el inventario de
-   * campo no los distingue.
+   * No. 6") dicen de dónde salió la unidad, no qué es, y el inventario de campo
+   * no los distingue.
    */
   const censoPorTipo = useMemo<TipoSge[]>(() => {
     const acc = new Map<string, TipoSge>();
     for (const f of filas) {
       if (f.total <= 0) continue;
-      if ((f.ucap.grupo ?? '').trim().toUpperCase() !== 'LUMINARIAS') continue;
       const desc = (f.ucap.description ?? '').trim();
       if (!desc) continue;
       const t = tipoSgeDe(desc, f.total, f.ucap.code, f.ucap.grupo);

@@ -355,6 +355,14 @@ export interface Ucap {
   initialIpp: number;
   /** Eficiencia luminosa [Lm/W]: distingue sodio (130) de LED (160) dentro de un grupo. */
   efficiencyLmW?: number | null;
+  /**
+   * Potencia de la luminaria [W]. El consumo de energía del flujo se calcula con
+   * nominal + pérdidas (sodio 70 W ⇒ 81 W por el balasto; en LED no hay pérdidas).
+   * `powerWithLosses` solo lo manda el endpoint de CREG, ya sumado.
+   */
+  powerNominal?: number | null;
+  powerLosses?: number | null;
+  powerWithLosses?: number | null;
 }
 
 export interface CreateUcapPayload {
@@ -415,6 +423,16 @@ export interface WorkBudget {
 // ============================================
 // SERVICE
 // ============================================
+/**
+ * Número de la API o null. TypeORM devuelve los `numeric` como texto y los
+ * enteros como número; null se conserva porque "sin dato" no es cero.
+ */
+const numOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+};
+
 export const surveysService = {
   // ---- WORKS (Obras) ----
 
@@ -573,6 +591,11 @@ export const surveysService = {
       })),
       value: parseFloat(ucap.roundedValue ?? ucap.value ?? 0) || 0,
       initialIpp: parseFloat(ucap.initialIpp ?? 0) || 0,
+      // La potencia y la eficiencia venían en la respuesta pero se perdían aquí:
+      // el flujo las necesita para el consumo de energía y para el CINV de la 101.
+      powerNominal: numOrNull(ucap.powerNominal),
+      powerLosses: numOrNull(ucap.powerLosses),
+      efficiencyLmW: numOrNull(ucap.efficiencyLmW),
     }));
 
     return { ippConfig, ucaps };

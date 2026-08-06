@@ -40,6 +40,8 @@ export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
   contrato_firmado: { label: 'Contrato firmado', sla: null, tone: 'green' },
   // ── Pólizas ──
   en_solicitud_polizas: { label: 'Solicitud de pólizas (Administrativa)', sla: 1, tone: 'amber' },
+  // Heredado: ya no se entra aquí (Jurídica no aprueba pólizas). Se conserva para
+  // las solicitudes que quedaron en este estado y para leer su historial.
   en_aprobacion_polizas: { label: 'Aprobación de pólizas (Jurídica)', sla: 1, tone: 'violet' },
   en_pago_polizas: { label: 'Pago de pólizas (Administrativa)', sla: 1, tone: 'blue' },
   en_verificacion_garantias: { label: 'Verificación de garantías (Jurídica)', sla: 2, tone: 'violet' },
@@ -49,8 +51,8 @@ export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
   finalizado: { label: 'Contrato en ejecución', sla: null, tone: 'green' },
 };
 
-const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo', 'Analista Administrativo'];
-const ROLES_JURIDICA = ['Director Jurídico', 'Coordinador Jurídico', 'Analista Jurídico'];
+export const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo', 'Analista Administrativo'];
+export const ROLES_JURIDICA = ['Director Jurídico', 'Coordinador Jurídico', 'Analista Jurídico'];
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // autoriza la solicitud ("Autorizado por")
 const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por" · Dra. Gloria)
 
@@ -78,9 +80,11 @@ export const TRANSICIONES: Transicion[] = [
   { accion: 'rechazar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_en_elaboracion', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Devolver el contrato a Jurídica', tone: 'danger' },
   // ── Pólizas (tras la firma del contrato) ──
   { accion: 'solicitar_polizas', from: 'contrato_firmado', to: 'en_solicitud_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Iniciar solicitud de pólizas', tone: 'primary' },
-  { accion: 'polizas_solicitadas', from: 'en_solicitud_polizas', to: 'en_aprobacion_polizas', roles: ROLES_ADMINISTRATIVA, label: 'Pólizas solicitadas · enviar a aprobación (Jurídica)', tone: 'primary' },
-  { accion: 'aprobar_polizas', from: 'en_aprobacion_polizas', to: 'en_pago_polizas', roles: ROLES_JURIDICA, label: 'Aprobar pólizas · enviar a pago', tone: 'primary' },
-  { accion: 'rechazar_polizas', from: 'en_aprobacion_polizas', to: 'en_solicitud_polizas', roles: ROLES_JURIDICA, requiereMotivo: true, label: 'Devolver pólizas (rechazar)', tone: 'danger' },
+  // Jurídica no aprueba pólizas: de la solicitud se pasa al pago. Lo que Jurídica
+  // revisa es la garantía recibida, en "Verificación de garantías".
+  { accion: 'polizas_solicitadas', from: 'en_solicitud_polizas', to: 'en_pago_polizas', roles: ROLES_ADMINISTRATIVA, label: 'Póliza expedida · pasar a pago', tone: 'primary' },
+  // Heredado: salida para las solicitudes que quedaron en aprobación de Jurídica.
+  { accion: 'aprobar_polizas', from: 'en_aprobacion_polizas', to: 'en_pago_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Continuar · registrar el pago', tone: 'primary' },
   { accion: 'pagar_polizas', from: 'en_pago_polizas', to: 'en_verificacion_garantias', roles: ROLES_ADMINISTRATIVA, label: 'Póliza pagada · verificar garantías', tone: 'primary' },
   { accion: 'garantias_verificadas', from: 'en_verificacion_garantias', to: 'en_designacion_supervisor', roles: ROLES_JURIDICA, label: 'Garantías verificadas · designar supervisor', tone: 'primary' },
   { accion: 'devolver_garantias', from: 'en_verificacion_garantias', to: 'en_solicitud_polizas', roles: ROLES_JURIDICA, requiereMotivo: true, label: 'Devolver (la garantía no cumple)', tone: 'danger' },

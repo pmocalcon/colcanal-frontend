@@ -275,6 +275,111 @@ export const horasFuera = (f: IddOffFalla, sumaMediaNoche = false): number => {
   return (dias + (sumaMediaNoche ? 1 : 0)) * HORAS_OPERACION_DIA;
 };
 
+/* ── Factura de energía del comercializador ────── */
+
+/**
+ * Componentes del costo unitario ($/kWh), tal como los desglosa la factura.
+ * Son los seis de la tarifa regulada: CU = G + T + D + Cv + PR + R.
+ */
+export interface ComponentesCostoKwh {
+  generacion?: number | null;
+  transmision?: number | null;
+  distribucion?: number | null;
+  comercializacion?: number | null;
+  perdidas?: number | null;
+  restricciones?: number | null;
+}
+
+export const COMPONENTES_KWH: { key: keyof ComponentesCostoKwh; label: string }[] = [
+  { key: 'generacion', label: 'Generación' },
+  { key: 'transmision', label: 'Transmisión' },
+  { key: 'distribucion', label: 'Distribución' },
+  { key: 'comercializacion', label: 'Comercialización' },
+  { key: 'perdidas', label: 'Pérdidas' },
+  { key: 'restricciones', label: 'Restricciones' },
+];
+
+/** Suma de los componentes cargados. null si no hay ninguno. */
+export const sumaComponentes = (c?: ComponentesCostoKwh): number | null => {
+  if (!c) return null;
+  const partes = COMPONENTES_KWH
+    .map(({ key }) => c[key])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!partes.length) return null;
+  return Math.round(partes.reduce((a, v) => a + v, 0) * 100) / 100;
+};
+
+/**
+ * Una factura de energía del mes.
+ *
+ * Copia la estructura del documento del comercializador: identificación, periodo
+ * de consumo, lo facturado y el desglose del costo unitario. El total a pagar se
+ * guarda aparte del calculado porque la factura redondea al peso ("ajuste al
+ * peso") y ese redondeo es el que se gira.
+ */
+export interface FacturaEnergia {
+  /** Documento equivalente electrónico (DEE) o número de factura. */
+  documento?: string;
+  /** Contrato / cuenta del comercializador. */
+  contrato?: string;
+  /** Comercializador que factura (EPM, EMSA…). */
+  operador?: string;
+  /** NIU: número único de identificación del servicio. */
+  niu?: string;
+  /** Referente de pago impreso en la factura. */
+  referentePago?: string;
+  /** Categoría tarifaria: oficial, comercial… */
+  categoria?: string;
+  /** Nivel de tensión en voltios. */
+  tension?: number | null;
+  /** Periodo de consumo que cubre la factura. */
+  desde?: string;
+  hasta?: string;
+  /** Días de consumo facturados. */
+  dias?: number | null;
+  /** Vencimiento del pago. */
+  vence?: string;
+  /** kWh facturados en el periodo. */
+  consumoKwh?: number | null;
+  /** Costo unitario facturado ($/kWh). */
+  costoUnitario?: number | null;
+  /** Valor de la energía = consumo × costo unitario. */
+  valorEnergia?: number | null;
+  /**
+   * Compensación por calidad del servicio. Va en negativo cuando el
+   * comercializador devuelve: así aparece en la factura y así resta del total.
+   */
+  compensacion?: number | null;
+  /** Otros conceptos del documento (alumbrado, aseo, reconexiones…). */
+  otros?: number | null;
+  /** Total a pagar, ya redondeado al peso por el comercializador. */
+  totalPagar?: number | null;
+  componentes?: ComponentesCostoKwh;
+  /** Notas del que la capturó. */
+  observaciones?: string;
+}
+
+/**
+ * La cifra de la factura que se gira, que es la que ve el flujo de caja.
+ *
+ * Manda el total a pagar: es lo que sale de la fiducia, ya con la compensación
+ * y los otros conceptos y ya redondeado al peso por el comercializador. Si la
+ * factura se cargó a medias y solo tiene el valor de la energía, se usa ese —es
+ * el grueso del documento— y quien lo lea verá que falta el resto.
+ */
+export const totalFacturado = (f?: FacturaEnergia): number | null => {
+  const n = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v !== 0 ? v : null;
+  return n(f?.totalPagar) ?? n(f?.valorEnergia);
+};
+
+export interface CregFacturaEnergiaHoja {
+  companyId: number;
+  projectId: number | null;
+  data: { meses?: Record<string, FacturaEnergia> } | null;
+  exists: boolean;
+}
+
 export interface IddOffMes extends CregMesCerrable {
   /** WT: potencia total instalada del periodo [kW]. */
   wt?: number | null;
@@ -650,6 +755,29 @@ export const cregService = {
   },
 
   // ---- IDD OFF ----
+
+  async getFacturaEnergia(
+    companyId: number, projectId?: number | null,
+  ): Promise<CregFacturaEnergiaHoja> {
+    const { data } = await api.get<CregFacturaEnergiaHoja>(
+      `${BASE}/factura-energia/${companyId}`,
+      { params: projectId != null ? { projectId } : undefined },
+    );
+    return data;
+  },
+
+  async saveFacturaEnergia(
+    companyId: number,
+    payload: { meses: Record<string, FacturaEnergia> },
+    projectId?: number | null,
+  ): Promise<CregFacturaEnergiaHoja> {
+    const { data } = await api.put<CregFacturaEnergiaHoja>(
+      `${BASE}/factura-energia/${companyId}`,
+      { data: payload },
+      { params: projectId != null ? { projectId } : undefined },
+    );
+    return data;
+  },
 
   async getIddOff(companyId: number, projectId?: number | null): Promise<CregIddOff> {
     const { data } = await api.get<CregIddOff>(`${BASE}/idd-off/${companyId}`, {

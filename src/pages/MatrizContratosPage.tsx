@@ -10,7 +10,7 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import {
   ESTADOS, estadoLabel, estadoBadgeClass, calcularSla, type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
-import { getTipo } from '@/config/juridicaContratos';
+import { getTipo, vencimientoDe, DIAS_ALERTA_VENCIMIENTO } from '@/config/juridicaContratos';
 
 /**
  * Matriz de contratos jurídicos: vista consolidada de todas las solicitudes del formato
@@ -45,6 +45,8 @@ export default function MatrizContratosPage() {
     const des = (d.designacionSupervisor ?? {}) as Record<string, string>;
     const checklist = d.checklist as Record<string, any> | undefined;
     return {
+      consecutivo: (d.consecutivoContrato || '').toString().trim(),
+      vence: vencimientoDe(s.estado, d),
       contratante: (d.empresa || '').toString(),
       contratista: (d.contratista || acta.contratista || '').toString(),
       tipo: getTipo(d.tipoContrato)?.nombre || '',
@@ -74,15 +76,17 @@ export default function MatrizContratosPage() {
   const resumen = useMemo(() => {
     const enProceso = new Set<JuridicaEstado>(['borrador', 'pendiente_firma_gerencia', 'en_tramite_administrativa', 'contrato_en_elaboracion', 'pendiente_firma_contrato']);
     const enEjecucion = new Set<JuridicaEstado>(['contrato_firmado', 'en_solicitud_polizas', 'en_aprobacion_polizas', 'en_pago_polizas', 'en_verificacion_garantias', 'en_designacion_supervisor', 'en_acta_inicio']);
-    let proceso = 0, ejecucion = 0, finalizados = 0, vencidos = 0;
+    let proceso = 0, ejecucion = 0, finalizados = 0, vencidos = 0, porVencer = 0;
     rows.forEach((s) => {
       const e = s.estado as JuridicaEstado;
       if (e === 'finalizado') finalizados++;
       else if (enEjecucion.has(e)) ejecucion++;
       else if (enProceso.has(e)) proceso++;
       if (calcularSla(e, s.estadoDesde)?.vencida) vencidos++;
+      // "Por vencer" incluye los ya vencidos: siguen necesitando una decisión.
+      if (vencimientoDe(s.estado, s.data)?.enVentana) porVencer++;
     });
-    return { total: rows.length, proceso, ejecucion, finalizados, vencidos };
+    return { total: rows.length, proceso, ejecucion, finalizados, vencidos, porVencer };
   }, [rows]);
 
   const irA = (id: number, sub = '') => navigate(`/dashboard/gestion-conocimiento/juridica/${id}${sub}`);
@@ -125,12 +129,15 @@ export default function MatrizContratosPage() {
         ) : (
           <>
             {/* Resumen */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
               <ResumenCard label="Total" value={resumen.total} />
               <ResumenCard label="En proceso" value={resumen.proceso} tone="amber" />
               <ResumenCard label="En ejecución" value={resumen.ejecucion} tone="blue" />
               <ResumenCard label="Finalizados" value={resumen.finalizados} tone="green" />
               <ResumenCard label="SLA vencido" value={resumen.vencidos} tone="red" />
+              {/* Contratos por vencer: es lo que dispara el aviso a la Dirección
+                  Administrativa, y aquí se ve sin esperar el correo. */}
+              <ResumenCard label={`Vencen (≤${DIAS_ALERTA_VENCIMIENTO} d)`} value={resumen.porVencer} tone="amber" />
             </div>
 
             {/* Controles */}
@@ -173,6 +180,7 @@ export default function MatrizContratosPage() {
                       <th className="px-3 py-3 font-semibold">Valor</th>
                       <th className="px-3 py-3 font-semibold">Estado</th>
                       <th className="px-3 py-3 font-semibold">SLA</th>
+                      <th className="px-3 py-3 font-semibold">Vencimiento</th>
                       <th className="px-3 py-3 font-semibold">Inicio → Fin</th>
                       <th className="px-3 py-3 font-semibold">Supervisor</th>
                       <th className="px-3 py-3 font-semibold text-center">Documentos</th>
@@ -188,7 +196,16 @@ export default function MatrizContratosPage() {
                           onClick={() => irA(s.solicitudId)}
                           className="border-t border-[hsl(var(--canalco-neutral-200))] hover:bg-[hsl(var(--canalco-neutral-100))] cursor-pointer align-top"
                         >
-                          <td className="px-3 py-3 font-mono text-[hsl(var(--canalco-neutral-700))]">{s.solicitudId}</td>
+                          {/* El consecutivo manda cuando existe: es el número por el
+                              que se busca el contrato fuera del sistema. */}
+                          <td className="px-3 py-3 font-mono text-[hsl(var(--canalco-neutral-700))] whitespace-nowrap">
+                            {d.consecutivo || s.solicitudId}
+                            {d.consecutivo && (
+                              <span className="block text-[10px] text-[hsl(var(--canalco-neutral-400))]">
+                                sol. {s.solicitudId}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-3 max-w-[180px] truncate" title={d.contratante}>{d.contratante || '—'}</td>
                           <td className="px-3 py-3 max-w-[150px] truncate" title={d.contratista}>{d.contratista || '—'}</td>
                           <td className="px-3 py-3 max-w-[140px] truncate" title={d.tipo}>{d.tipo || '—'}</td>
@@ -205,6 +222,30 @@ export default function MatrizContratosPage() {
                                 {sla.vencida ? 'Vencida' : 'A tiempo'}
                               </span>
                             ) : <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">—</span>}
+                          </td>
+                          {/* El vencimiento del contrato, que no es el SLA del trámite:
+                              aquél mide si alguien se demoró, éste si el contrato se
+                              queda sin vigencia. */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {!d.vence ? (
+                              <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">—</span>
+                            ) : d.vence.ilegible ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded px-2 py-0.5 bg-amber-100 text-amber-800"
+                                title={`No se entiende la fecha "${d.vence.texto}": sin aviso automático.`}>
+                                <AlertTriangle className="w-3 h-3" /> fecha ilegible
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded px-2 py-0.5 ${
+                                d.vence.dias! < 0 ? 'bg-red-100 text-red-700'
+                                  : d.vence.enVentana ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]'
+                              }`} title={`Terminación pactada: ${d.vence.texto}`}>
+                                {d.vence.enVentana ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                                {d.vence.dias! < 0
+                                  ? `vencido hace ${Math.abs(d.vence.dias!)} d`
+                                  : `${d.vence.dias} d`}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap text-[hsl(var(--canalco-neutral-700))]">
                             {d.inicio || d.fin ? `${d.inicio || '…'} → ${d.fin || '…'}` : '—'}

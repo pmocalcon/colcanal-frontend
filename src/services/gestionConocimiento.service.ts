@@ -4,9 +4,24 @@ export interface GcHistorialEntry {
   estado: string;
   accion: string;
   fecha: string;
-  userId: number;
+  /** null en las entradas que no las escribe una persona (avisos automáticos). */
+  userId: number | null;
   userName: string | null;
   motivo?: string;
+  // ── Solo en las alertas de vencimiento (accion: 'alerta_vencimiento') ──
+  /** Fecha de terminación que disparó el aviso, tal como está en el contrato. */
+  vence?: string;
+  /** Días que faltaban ese día; negativo si el contrato ya se había vencido. */
+  diasRestantes?: number;
+  /** Correos a los que se avisó, para poder auditar que salió. */
+  notificados?: string[];
+  /** Número de la RQ creada a pedido (accion: 'solicitud_rq_poliza'). */
+  requisicion?: string;
+  /**
+   * A quién no se le pudo avisar y por qué (accion: 'notificacion_inicio_contrato').
+   * Un supervisor sin usuario o un contratista sin correo: hay que avisarle a mano.
+   */
+  pendientes?: string[];
 }
 
 export interface GcSolicitud {
@@ -82,6 +97,15 @@ export const gestionConocimientoService = {
   /** Guarda un documento de fase 2 (key: 'designacionSupervisor' | 'actaInicio'). */
   async saveDocumento(id: number, key: string, doc: Record<string, any>): Promise<GcSolicitud> {
     const { data } = await api.patch<GcSolicitud>(`${BASE}/${id}/documento`, { key, data: doc });
+    return data;
+  },
+
+  /**
+   * Crea la requisición de la póliza a pedido, sin mover el flujo. Para los
+   * contratos ya firmados que pasaron de "Contrato firmado" sin RQ.
+   */
+  async solicitarRequisicionPoliza(id: number): Promise<GcSolicitud> {
+    const { data } = await api.post<GcSolicitud>(`${BASE}/${id}/requisicion-poliza`);
     return data;
   },
 

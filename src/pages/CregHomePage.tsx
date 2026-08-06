@@ -41,6 +41,13 @@ const SUBMODULES = [
     permission: 'creg:censo',
   },
   {
+    slug: 'factura-energia',
+    nombre: 'Factura de energía',
+    description: 'Factura del comercializador mes a mes, con el desglose del costo del kWh',
+    Icon: Receipt,
+    permission: 'creg:liquidacion',
+  },
+  {
     slug: 'idd-off',
     nombre: 'ID OFF',
     description: 'Índice de disponibilidad de las apagadas: horas fuera de servicio del periodo',

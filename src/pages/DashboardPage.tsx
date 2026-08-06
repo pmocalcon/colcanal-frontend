@@ -9,6 +9,7 @@ import { LogOut, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
+import { esRolPmo } from '@/utils/rolesPmo';
 
 // Módulos que se muestran dentro de Compras (no en el dashboard principal)
 const MODULES_INSIDE_COMPRAS = ['proveedores', 'materiales', 'inventarios', 'auditorias'];
@@ -214,6 +215,18 @@ export default function DashboardPage() {
             hasAccess={true}
             onClick={() => navigate('/dashboard/gestion-conocimiento')}
           />
+          {/* Recurso Económico: también fija, pero solo para el PMO. A quien no lo
+              sea no se le pinta: la tarjeta con candado invitaría a pedir un
+              permiso que no existe. */}
+          {esRolPmo(user?.nombreRol) && (
+            <ModuleCard
+              nombre="Recurso Económico"
+              slug="recurso-economico"
+              icono="Wallet"
+              hasAccess={true}
+              onClick={() => navigate('/dashboard/recurso-economico')}
+            />
+          )}
         </div>
 
         {/* Footer Info */}

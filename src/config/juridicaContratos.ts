@@ -135,6 +135,121 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
 export const getTipo = (key: string | undefined | null): TipoContrato | undefined =>
   TIPOS_CONTRATO.find((t) => t.key === key);
 
+// ============================================================================
+// CONSECUTIVO Y VENCIMIENTO
+// (espejo de juridica-contratos.ts en el backend, que es quien los emite)
+// ============================================================================
+
+/** Sigla del consecutivo por tipo de contrato: "PS - 0001". */
+export const SIGLA_CONTRATO: Record<string, string> = {
+  'prestacion-de-servicios-profesionales': 'PP',
+  'prestacion-de-servicios': 'PS',
+  'termino-fijo': 'TF',
+  'termino-indefinido': 'TI',
+  'obra-labor': 'OL',
+  pasantias: 'PA',
+};
+
+/** Sigla de respaldo cuando la solicitud no tiene tipo de contrato. */
+export const SIGLA_SIN_TIPO = 'CT';
+
+/** Días de anticipación con que se avisa el vencimiento. */
+export const DIAS_ALERTA_VENCIMIENTO = 15;
+
+/** Tipos que no vencen: no tienen terminación pactada. */
+export const TIPOS_SIN_VENCIMIENTO = new Set(['termino-indefinido']);
+
+/** Estados en los que el contrato ya existe y corre. Antes no hay nada que venza. */
+export const ESTADOS_CONTRATO_VIGENTE = new Set([
+  'contrato_firmado', 'en_solicitud_polizas', 'en_aprobacion_polizas',
+  'en_pago_polizas', 'en_verificacion_garantias', 'en_designacion_supervisor',
+  'en_acta_inicio', 'finalizado',
+]);
+
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+const armar = (anio: number, mes: number, dia: number): Date | null => {
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
+  const d = new Date(anio, mes - 1, dia);
+  return d.getFullYear() === anio && d.getMonth() === mes - 1 && d.getDate() === dia
+    ? d : null;
+};
+
+/**
+ * Fecha escrita a mano → Date. null si no se entiende.
+ *
+ * Las fechas del formato son texto libre (el placeholder dice "dd/mm/aaaa"), así que
+ * se acepta lo que la gente escribe: 31/12/2026, 31-12-2026, 2026-12-31 y
+ * "31 de diciembre de 2026". El día va primero salvo en ISO, que es la convención
+ * del país: 05/03/2026 es 5 de marzo.
+ */
+export const parsearFecha = (valor: unknown): Date | null => {
+  const s = String(valor ?? '').trim();
+  if (!s) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (iso) return armar(+iso[1], +iso[2], +iso[3]);
+  const dmy = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(s);
+  if (dmy) {
+    const anio = +dmy[3];
+    return armar(anio < 100 ? 2000 + anio : anio, +dmy[2], +dmy[1]);
+  }
+  const t = /^(\d{1,2})\s+de\s+([a-zñáéíóú]+)\s+de\s+(\d{4})$/i
+    .exec(s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase());
+  if (t) {
+    const mes = MESES.indexOf(t[2]);
+    if (mes >= 0) return armar(+t[3], mes + 1, +t[1]);
+  }
+  return null;
+};
+
+/** Días calendario de hoy a la fecha. Negativo = ya pasó. */
+export const diasHasta = (fecha: Date, hoy = new Date()): number => {
+  const a = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+  const b = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return Math.round((a.getTime() - b.getTime()) / 86400000);
+};
+
+export interface Vencimiento {
+  /** La terminación tal como la escribió Jurídica. */
+  texto: string;
+  fecha: Date | null;
+  dias: number | null;
+  /** Entró en la ventana de aviso o ya se pasó. */
+  enVentana: boolean;
+  /** La fecha está escrita pero no se puede leer: no habrá alerta automática. */
+  ilegible: boolean;
+}
+
+/**
+ * Vencimiento del contrato de una solicitud, o null si no aplica: término
+ * indefinido, contrato aún sin firmar, o terminación en blanco.
+ *
+ * Manda la cláusula del contrato, no la fecha del acta de inicio: el acta puede no
+ * existir y, cuando existe, quien fija el plazo es el contrato.
+ */
+export const vencimientoDe = (
+  estado: string | undefined | null,
+  data: Record<string, any> | null | undefined,
+  hoy = new Date(),
+): Vencimiento | null => {
+  if (!ESTADOS_CONTRATO_VIGENTE.has(estado ?? '')) return null;
+  if (TIPOS_SIN_VENCIMIENTO.has(String(data?.tipoContrato ?? ''))) return null;
+  const texto = String(data?.contrato?.terminacion ?? '').trim();
+  if (!texto) return null;
+  const fecha = parsearFecha(texto);
+  const dias = fecha ? diasHasta(fecha, hoy) : null;
+  return {
+    texto,
+    fecha,
+    dias,
+    enVentana: dias !== null && dias <= DIAS_ALERTA_VENCIMIENTO,
+    ilegible: fecha === null,
+  };
+};
+
 export type TipoPersona = 'natural' | 'juridica';
 
 // ============================================================================

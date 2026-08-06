@@ -128,14 +128,21 @@ export default function ContratoPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await gestionConocimientoService.saveDocumento(solicitudId!, 'contrato', f);
-      toast.success('Contrato guardado');
+      // El backend asigna el consecutivo la primera vez que se guarda; se toma de
+      // la respuesta para que el número aparezca en el documento sin recargar.
+      const actualizada = await gestionConocimientoService.saveDocumento(solicitudId!, 'contrato', f);
+      setSol(actualizada);
+      const nro = String(actualizada?.data?.consecutivoContrato ?? '').trim();
+      toast.success(nro ? `Contrato guardado · ${nro}` : 'Contrato guardado');
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
   };
+
+  /** Número del contrato: lo emite el backend al guardarlo, por tipología. */
+  const consecutivo = String(sol?.data?.consecutivoContrato ?? '').trim();
 
   if (loading) {
     return (
@@ -179,7 +186,10 @@ export default function ContratoPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Contrato · {tipoNombre}</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">Formato GJ-001-F · Solicitud N.º {solicitudId}</p>
+            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+              Formato GJ-001-F · Solicitud N.º {solicitudId}
+              {consecutivo && <> · Contrato <strong className="font-mono">{consecutivo}</strong></>}
+            </p>
           </div>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -231,6 +241,17 @@ export default function ContratoPage() {
                 plantilla={`CONTRATO DE PRESTACIÓN DE SERVICIOS ENTRE ${(f.contratante || '…').toUpperCase()} Y ${(f.contratista || '…').toUpperCase()}`}
                 className="text-center font-bold mb-4"
               />
+
+              {/* El consecutivo es del documento, no de la pantalla: va impreso.
+                  Lo emite el sistema al guardar y cada tipología lleva su propia
+                  numeración, así que no se edita a mano. */}
+              <p className="text-center font-bold text-[13px] -mt-3 mb-4 tracking-wide">
+                {consecutivo || (
+                  <span className="font-normal italic text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+                    El número del contrato se asigna al guardar
+                  </span>
+                )}
+              </p>
 
               {/* Tabla de datos */}
               <table className="w-full border-collapse text-[12px] mb-5">

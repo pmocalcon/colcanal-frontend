@@ -3,15 +3,21 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Home, ArrowLeft, Printer, Eraser, Save, Loader2, Clock, AlertTriangle, History, ClipboardCheck, UserCheck, FileSignature, FileText, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import {
   ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla,
+  ROLES_ADMINISTRATIVA, ROLES_JURIDICA,
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
+import { esRolPmo } from '@/utils/rolesPmo';
 import {
   TIPOS_CONTRATO, habilitantesPara,
   AMPAROS, MATRIZ_GARANTIAS, REGIMEN_GARANTIAS,
+  vencimientoDe, DIAS_ALERTA_VENCIMIENTO, ESTADOS_CONTRATO_VIGENTE,
   type ExigenciaClase,
 } from '@/config/juridicaContratos';
 import { EMPRESAS, getEmpresa } from '@/config/empresasCentroCosto';
@@ -184,12 +190,14 @@ export default function SolicitudPrestacionServiciosPage() {
     return () => { cancelled = true; };
   }, [solicitudId]);
 
+  const [pagoPolizaAbierto, setPagoPolizaAbierto] = useState(false);
+
   const reload = async () => {
     if (solicitudId === null) return;
     try { setSol(await gestionConocimientoService.get(solicitudId)); } catch { /* noop */ }
   };
 
-  const handleTransition = async (accion: string, requiereMotivo?: boolean) => {
+  const handleTransition = async (accion: string, requiereMotivo?: boolean, data?: Record<string, any>) => {
     let motivo: string | undefined;
     if (requiereMotivo) {
       const m = window.prompt('Indica el motivo:');
@@ -197,9 +205,13 @@ export default function SolicitudPrestacionServiciosPage() {
       if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
       motivo = m.trim();
     }
+    // El pago de la póliza no se confirma con un botón suelto: pide los datos de la
+    // garantía primero (ver PagoPolizaDialog).
+    if (accion === 'pagar_polizas' && !data) { setPagoPolizaAbierto(true); return; }
     try {
-      await gestionConocimientoService.transition(solicitudId!, { accion, motivo });
+      await gestionConocimientoService.transition(solicitudId!, { accion, motivo, data });
       toast.success('Acción registrada');
+      setPagoPolizaAbierto(false);
       await reload();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo ejecutar la acción');
@@ -220,6 +232,22 @@ export default function SolicitudPrestacionServiciosPage() {
       await reload();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo resolver la póliza');
+    }
+  };
+
+  /**
+   * Pide la RQ de la póliza cuando el flujo ya pasó de "Contrato firmado". No mueve
+   * el estado: solo crea la requisición en Compras y la deja enlazada.
+   */
+  const handleSolicitarPoliza = async () => {
+    if (!window.confirm('Se creará la requisición de la póliza en Gestión de Compras. ¿Continuar?')) return;
+    try {
+      const actualizada = await gestionConocimientoService.solicitarRequisicionPoliza(solicitudId!);
+      const nro = actualizada?.data?.requisicionPoliza?.requisitionNumber;
+      toast.success(nro ? `Requisición de póliza creada · ${nro}` : 'Requisición de póliza creada');
+      await reload();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo crear la requisición de la póliza');
     }
   };
 
@@ -385,8 +413,15 @@ export default function SolicitudPrestacionServiciosPage() {
             esCreador={sol.createdBy === user?.userId}
             onAccion={handleTransition}
             onResolverPoliza={handleResolverPoliza}
+            onSolicitarPoliza={handleSolicitarPoliza}
           />
         )}
+
+        <PagoPolizaDialog
+          abierto={pagoPolizaAbierto}
+          onCerrar={() => setPagoPolizaAbierto(false)}
+          onConfirmar={(data) => void handleTransition('pagar_polizas', false, data)}
+        />
         {/* Cuadros de referencia: van entre el historial y el formato porque no son
             documentos de la solicitud —no se generan ni se firman—, sino la política
             que se consulta mientras se diligencia. Fuera del fieldset, así se leen
@@ -1028,35 +1063,134 @@ function CheckField({ label, checked, onChange }: { label: string; checked: bool
   );
 }
 
+/**
+ * Datos de la póliza al registrar el pago.
+ *
+ * Marcarla como pagada sin dejar número ni vigencias dejaba a la verificación de
+ * garantías —el paso siguiente— sin nada contra qué cotejar. El número y la fecha
+ * de pago son obligatorios; el backend los exige también, así que no se puede
+ * saltar por la API.
+ */
+function PagoPolizaDialog({ abierto, onCerrar, onConfirmar }: {
+  abierto: boolean;
+  onCerrar: () => void;
+  onConfirmar: (data: Record<string, string>) => void;
+}) {
+  const [f, setF] = useState({
+    polizaNumero: '', polizaVigenciaDesde: '', polizaVigenciaHasta: '',
+    pagoFecha: '', pagoValor: '',
+  });
+  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const falta = !f.polizaNumero.trim() || !f.pagoFecha.trim();
+
+  return (
+    <Dialog open={abierto} onOpenChange={(o) => { if (!o) onCerrar(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Registrar el pago de la póliza</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-[hsl(var(--canalco-neutral-600))] -mt-2">
+          Queda en la solicitud para poder verificar la garantía en el paso siguiente.
+        </p>
+        <div className="space-y-3">
+          <CampoPago label="N.º de la póliza" requerido value={f.polizaNumero}
+            onChange={(v) => set('polizaNumero', v)} placeholder="Ej.: 21-45-101012345" />
+          <div className="grid grid-cols-2 gap-3">
+            <CampoPago label="Vigencia desde" value={f.polizaVigenciaDesde}
+              onChange={(v) => set('polizaVigenciaDesde', v)} placeholder="dd/mm/aaaa" />
+            <CampoPago label="Vigencia hasta" value={f.polizaVigenciaHasta}
+              onChange={(v) => set('polizaVigenciaHasta', v)} placeholder="dd/mm/aaaa" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <CampoPago label="Fecha de pago" requerido value={f.pagoFecha}
+              onChange={(v) => set('pagoFecha', v)} placeholder="dd/mm/aaaa" />
+            <CampoPago label="Valor pagado" value={f.pagoValor}
+              onChange={(v) => set('pagoValor', v)} placeholder="$" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onCerrar}>Cancelar</Button>
+          <Button
+            disabled={falta}
+            onClick={() => onConfirmar(f)}
+            className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white"
+          >
+            Registrar pago y verificar garantías
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CampoPago({ label, value, onChange, placeholder, requerido }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; requerido?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">
+        {label}{requerido && <span className="text-red-600"> *</span>}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-[hsl(var(--canalco-neutral-300))] px-2 py-1.5 text-xs outline-none focus:border-[hsl(var(--canalco-primary))] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+      />
+    </label>
+  );
+}
+
 const fmtFecha = (d: Date) =>
   d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtFechaHora = (iso: string) =>
   new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }: {
+function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, onSolicitarPoliza }: {
   sol: GcSolicitud;
   nombreRol?: string;
   esCreador: boolean;
   onAccion: (accion: string, requiereMotivo?: boolean) => void;
   onResolverPoliza: (decision: 'aprobar' | 'rechazar') => void;
+  onSolicitarPoliza: () => void;
 }) {
   const estado = sol.estado as JuridicaEstado;
   const acciones = accionesDisponibles(estado, nombreRol, esCreador);
   const sla = calcularSla(estado, sol.estadoDesde);
   const terminal = estado === 'finalizado';
+  const consecutivo = String((sol.data as Record<string, any> | null)?.consecutivoContrato ?? '').trim();
+  // Vencimiento del contrato firmado: null mientras no haya contrato, en término
+  // indefinido, o si la terminación quedó en blanco.
+  const vence = vencimientoDe(estado, sol.data as Record<string, any> | null);
+  /** Datos de la garantía que se capturan al registrar el pago. */
+  const poliza = (sol.data as Record<string, any> | null)?.poliza as
+    | { numero?: string; vigenciaDesde?: string; vigenciaHasta?: string;
+        pagoFecha?: string; pagoValor?: string; registradoPor?: string }
+    | undefined;
   const reqPoliza = (sol.data as Record<string, any> | null)?.requisicionPoliza as
     | { requisitionNumber?: string | null; requisitionId?: number | null; error?: string; fecha?: string;
-        estado?: 'aprobada' | 'rechazada'; resueltaPor?: string | null; motivo?: string }
+        estado?: 'aprobada' | 'rechazada' | 'en_cotizacion'; resueltaPor?: string | null; motivo?: string }
     | undefined;
   const enPolizas = (['en_solicitud_polizas', 'en_aprobacion_polizas', 'en_pago_polizas'] as JuridicaEstado[])
     .includes(estado);
+  // Desde la firma en adelante el contrato existe: es cuando tiene sentido pedirle
+  // la póliza, aunque el flujo ya haya pasado de la rama de pólizas.
+  const contratoVigente = ESTADOS_CONTRATO_VIGENTE.has(estado);
+  const puedePedirPoliza =
+    contratoVigente
+    && !reqPoliza?.requisitionId
+    && (esRolPmo(nombreRol) || [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA].includes((nombreRol ?? '').trim()));
   // Solo la Dirección Administrativa y Financiera (Daniela) resuelve la requisición
   // de la póliza; Gerencia no participa (regla exclusiva de este proceso).
   const esDirAdminFinanciera = (nombreRol ?? '').trim() === 'Director Financiero y Administrativo';
   const polizaPendiente = !!reqPoliza?.requisitionId && !reqPoliza?.error && !reqPoliza?.estado;
   const puedeResolverPoliza = esDirAdminFinanciera && enPolizas && polizaPendiente;
-  // Mientras la póliza esté pendiente, el avance a "Aprobación (Jurídica)" ocurre al
-  // aprobar la requisición (Daniela), no con el botón manual "Pólizas solicitadas".
+  // Las requisiciones de póliza nuevas nacen en cotización, así que no quedan
+  // "pendientes" y el avance a "Aprobación (Jurídica)" vuelve a ser el botón manual
+  // "Pólizas solicitadas". Solo las creadas con el flujo anterior —las que todavía
+  // esperan a Daniela— siguen ocultando ese botón, porque en ésas el avance ocurre
+  // al aprobar la requisición.
   const accionesVisibles = polizaPendiente
     ? acciones.filter((a) => a.accion !== 'polizas_solicitadas')
     : acciones;
@@ -1074,6 +1208,36 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }
         )}
         {ESTADOS[estado]?.sla == null && !terminal && (
           <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">sin plazo</span>
+        )}
+        {/* El consecutivo del contrato: lo emite el sistema al guardarlo y es el
+            número con el que el contrato sale a firma y a archivo. */}
+        {consecutivo && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold rounded px-2 py-1 bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] font-mono">
+            {consecutivo}
+          </span>
+        )}
+        {/* El SLA es del trámite; esto es del contrato ya firmado. Son dos relojes
+            distintos y por eso van en insignias distintas. */}
+        {vence && (
+          <span
+            title={vence.ilegible
+              ? `El aviso automático necesita una fecha legible: dd/mm/aaaa, aaaa-mm-dd o "31 de diciembre de 2026".`
+              : `La Dirección Administrativa recibe el aviso ${DIAS_ALERTA_VENCIMIENTO} días antes de esta fecha.`}
+            className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 cursor-help ${
+            vence.ilegible ? 'bg-amber-100 text-amber-800'
+              : vence.dias! < 0 ? 'bg-red-100 text-red-700'
+                : vence.enVentana ? 'bg-amber-100 text-amber-800'
+                  : 'bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-600))]'
+          }`}>
+            {vence.enVentana || vence.ilegible
+              ? <AlertTriangle className="w-3.5 h-3.5" />
+              : <Clock className="w-3.5 h-3.5" />}
+            {vence.ilegible
+              ? `Terminación "${vence.texto}": no se entiende la fecha, no habrá aviso automático`
+              : vence.dias! < 0
+                ? `Contrato vencido el ${vence.texto} (hace ${Math.abs(vence.dias!)} día${Math.abs(vence.dias!) !== 1 ? 's' : ''})`
+                : `Contrato vence ${vence.texto} · ${vence.dias} día${vence.dias !== 1 ? 's' : ''}`}
+          </span>
         )}
       </div>
 
@@ -1098,8 +1262,10 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }
       )}
       {terminal && <p className="text-xs font-medium text-green-700">✓ Contrato en ejecución. Flujo finalizado.</p>}
 
-      {/* Requisición de la póliza creada automáticamente en Gestión de Compras. */}
-      {enPolizas && reqPoliza && (
+      {/* La RQ de la póliza puede pedirse fuera de la rama de pólizas, así que su
+          recuadro se muestra en cualquier estado con contrato firmado; solo la
+          aprobación sigue atada a los estados de pólizas. */}
+      {contratoVigente && reqPoliza && (
         <div className="space-y-2 rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] p-3">
           {reqPoliza.error ? (
             <p className="flex items-start gap-1.5 text-xs font-medium text-amber-700">
@@ -1109,7 +1275,14 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }
           ) : (
             <p className="text-xs font-medium text-green-700">
               ✓ Requisición de la póliza creada en Gestión de Compras
-              {reqPoliza.requisitionNumber ? <> · N.º <span className="font-mono">{reqPoliza.requisitionNumber}</span></> : null}.
+              {reqPoliza.requisitionNumber ? <> · N.º <span className="font-mono">{reqPoliza.requisitionNumber}</span></> : null}
+              {reqPoliza.estado === 'en_cotizacion' ? ' · en cotización por Compras.' : '.'}
+            </p>
+          )}
+          {/* No pasa por aprobación: la decisión ya se tomó al firmar el contrato. */}
+          {reqPoliza.estado === 'en_cotizacion' && (
+            <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+              Va directo a la bandeja de Compras para cotización, sin aprobación previa.
             </p>
           )}
 
@@ -1148,6 +1321,42 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }
               Como Dirección Administrativa y Financiera, tú apruebas esta requisición de póliza.
             </p>
           )}
+
+          {/* La garantía ya pagada: es lo que se coteja en la verificación. */}
+          {poliza?.numero && (
+            <div className="pt-2 border-t border-[hsl(var(--canalco-neutral-200))] text-[11px] text-[hsl(var(--canalco-neutral-600))] space-y-0.5">
+              <p>
+                Póliza <span className="font-mono font-semibold">{poliza.numero}</span>
+                {poliza.vigenciaDesde || poliza.vigenciaHasta
+                  ? <> · vigencia {poliza.vigenciaDesde || '…'} → {poliza.vigenciaHasta || '…'}</>
+                  : null}
+              </p>
+              <p>
+                Pagada el {poliza.pagoFecha}
+                {poliza.pagoValor ? <> · {poliza.pagoValor}</> : null}
+                {poliza.registradoPor ? <> · registró {poliza.registradoPor}</> : null}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Contrato firmado sin RQ de póliza: la transición "Iniciar solicitud de
+          pólizas" solo existe desde "Contrato firmado", así que los contratos que
+          ya pasaron de ahí —o los firmados antes de que la rama existiera— se
+          quedaban sin forma de pedirla. El botón la crea sin mover el flujo. */}
+      {puedePedirPoliza && (
+        <div className="space-y-2 rounded-lg border border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] p-3">
+          <p className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))]">
+            Este contrato no tiene requisición de póliza.
+          </p>
+          <Button variant="outline" onClick={onSolicitarPoliza} className="gap-2">
+            Solicitar RQ de póliza
+          </Button>
+          <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+            Crea la requisición con el ítem POLIZA en Gestión de Compras y la enlaza
+            aquí. No cambia el estado del flujo.
+          </p>
         </div>
       )}
 
@@ -1157,14 +1366,71 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza }
             <History className="w-3.5 h-3.5" /> Historial
           </p>
           <ul className="space-y-1.5">
-            {[...sol.historial].reverse().map((h, i) => (
-              <li key={i} className="text-xs text-[hsl(var(--canalco-neutral-700))] flex flex-wrap gap-x-2">
-                <span className="text-[hsl(var(--canalco-neutral-400))] font-mono">{fmtFechaHora(h.fecha)}</span>
-                <span className="font-medium">{estadoLabel(h.estado)}</span>
-                {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
-                {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
-              </li>
-            ))}
+            {[...sol.historial].reverse().map((h, i) => {
+              // Los avisos de vencimiento comparten bitácora con las transiciones,
+              // pero no son un cambio de estado: si se pintaran igual, la fila diría
+              // "Contrato en ejecución" y parecería que el flujo se movió. Van con su
+              // propia etiqueta y con a quién se le avisó, que es lo que se audita.
+              const esAlerta = h.accion === 'alerta_vencimiento';
+              const esRqPoliza = h.accion === 'solicitud_rq_poliza';
+              const esInicio = h.accion === 'notificacion_inicio_contrato';
+              return (
+                <li key={i} className="text-xs text-[hsl(var(--canalco-neutral-700))] flex flex-wrap gap-x-2">
+                  <span className="text-[hsl(var(--canalco-neutral-400))] font-mono">{fmtFechaHora(h.fecha)}</span>
+                  {esAlerta ? (
+                    <>
+                      <span className="inline-flex items-center gap-1 font-medium text-amber-700">
+                        <AlertTriangle className="w-3 h-3" /> Alerta de vencimiento
+                      </span>
+                      <span className="text-[hsl(var(--canalco-neutral-500))]">
+                        · vence {h.vence}
+                        {typeof h.diasRestantes === 'number' && (
+                          h.diasRestantes >= 0
+                            ? ` · faltaban ${h.diasRestantes} día${h.diasRestantes !== 1 ? 's' : ''}`
+                            : ` · ya habían pasado ${Math.abs(h.diasRestantes)} día${Math.abs(h.diasRestantes) !== 1 ? 's' : ''}`
+                        )}
+                      </span>
+                      <span className="text-[hsl(var(--canalco-neutral-500))]">
+                        · {Array.isArray(h.notificados) && h.notificados.length > 0
+                          ? `avisada la Dir. Administrativa (${h.notificados.length})`
+                          : 'sin destinatarios activos'}
+                      </span>
+                    </>
+                  ) : esInicio ? (
+                    // Se listan los destinatarios y, sobre todo, a quién NO se le
+                    // pudo avisar: un supervisor sin usuario o un contratista sin
+                    // correo es justo lo que hay que corregir a mano.
+                    <>
+                      <span className="font-medium text-green-700">Aviso de inicio del contrato</span>
+                      <span className="text-[hsl(var(--canalco-neutral-500))]">
+                        · {Array.isArray(h.notificados) && h.notificados.length > 0
+                          ? `${h.notificados.length} destinatario${h.notificados.length !== 1 ? 's' : ''}`
+                          : 'sin destinatarios'}
+                      </span>
+                      {Array.isArray(h.pendientes) && h.pendientes.length > 0 && (
+                        <span className="italic text-amber-700">— falta avisar: {h.pendientes.join('; ')}</span>
+                      )}
+                    </>
+                  ) : esRqPoliza ? (
+                    // Tampoco es un cambio de estado: es una requisición emitida
+                    // sobre un contrato que siguió su curso.
+                    <>
+                      <span className="font-medium text-sky-700">RQ de póliza solicitada</span>
+                      {h.requisicion && (
+                        <span className="font-mono text-[hsl(var(--canalco-neutral-600))]">· {h.requisicion}</span>
+                      )}
+                      {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">{estadoLabel(h.estado)}</span>
+                      {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
+                      {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

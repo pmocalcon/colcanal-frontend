@@ -60,7 +60,9 @@ import CregFlujoCajaPage from './pages/CregFlujoCajaPage'
 import CregIddOffPage from './pages/CregIddOffPage'
 import CregIddOnPage from './pages/CregIddOnPage'
 import CregUnitFormPage from './pages/CregUnitFormPage'
+import CregFacturaEnergiaPage from './pages/CregFacturaEnergiaPage'
 import GestionConocimientoPage from './pages/GestionConocimientoPage'
+import RecursoEconomicoPage from './pages/RecursoEconomicoPage'
 import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
 import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
 import ChecklistContratoPage from './pages/ChecklistContratoPage'
@@ -232,6 +234,14 @@ export default function App() {
             }
           />
           <Route
+            path="/dashboard/creg/factura-energia"
+            element={
+              <ProtectedRoute permission="creg:liquidacion">
+                <CregFacturaEnergiaPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/creg/idd-off"
             element={
               <ProtectedRoute permission="creg:iddoff">
@@ -276,6 +286,9 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias" element={<SolicitudesContableListPage tipo="cuentas-companias" />} />
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/nueva" element={<CuentasCompaniasPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/:id" element={<CuentasCompaniasPage />} />
+          {/* Recurso Económico: solo PMO. La página repite la verificación de rol
+              y el backend la cierra con RolesGuard. */}
+          <Route path="/dashboard/recurso-economico" element={<RecursoEconomicoPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
