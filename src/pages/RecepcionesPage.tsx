@@ -5,7 +5,7 @@ import { getMyPendingReceipts } from '@/services/receipts.service';
 import type { RequisitionWithReceipts, FilterReceiptsParams } from '@/services/receipts.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Menu, Edit, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Menu, Edit, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -148,16 +148,6 @@ export default function RecepcionesPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Home, ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Edit, AlertCircle, Hash, X, Layers, FileText, Check, Send, ThumbsUp, ThumbsDown, BadgeCheck, Clock, AlertTriangle, ClipboardList } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PermissionGuard } from '@/components/PermissionGuard';
@@ -525,15 +525,6 @@ export default function ObrasListPage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowLeftRight, Calculator, Home, Loader2, Receipt, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Calculator, Loader2, Receipt, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -66,9 +66,6 @@ export default function ContableHomePage() {
           <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
             <img src="/assets/images/logo-canalco.png" alt="Canales Contactos" className="w-full h-full object-contain" />
           </div>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Ir al inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Volver a Gestión del conocimiento">
             <ArrowLeft className="w-5 h-5" />
           </Button>

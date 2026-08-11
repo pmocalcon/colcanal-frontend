@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Home, Menu, Save, Plus, Trash2, CheckCircle, ArrowLeft, Loader2, FileText } from 'lucide-react';
+import { Menu, Save, Plus, Trash2, CheckCircle, ArrowLeft, Loader2, FileText } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
@@ -536,16 +536,6 @@ export default function CrearRequisicionPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

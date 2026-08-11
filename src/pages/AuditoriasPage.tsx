@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Home, Menu, ArrowLeft, ShoppingCart, ChevronRight } from 'lucide-react';
+import { Menu, ArrowLeft, ShoppingCart, ChevronRight } from 'lucide-react';
 
 // Módulos de gestión disponibles
 const GESTION_MODULES = [
@@ -42,16 +42,6 @@ export default function AuditoriasPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

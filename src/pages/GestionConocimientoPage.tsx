@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import {
-  Home, ArrowLeft, ChevronRight, BookOpen, Lock,
+  ArrowLeft, ChevronRight, BookOpen, Lock,
   Compass, LineChart, Building2, Users, MonitorSmartphone, FolderArchive,
   Wallet, Calculator, ShoppingCart, Scale, Handshake, HardHat, Wrench, ShieldCheck,
 } from 'lucide-react';
@@ -52,9 +52,6 @@ export default function GestionConocimientoPage() {
           <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
             <img src="/assets/images/logo-canalco.png" alt="Canales Contactos" className="w-full h-full object-contain" />
           </div>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Ir al inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Volver al Dashboard">
             <ArrowLeft className="w-5 h-5" />
           </Button>

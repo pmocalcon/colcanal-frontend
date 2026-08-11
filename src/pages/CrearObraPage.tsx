@@ -10,7 +10,7 @@ import { DocumentLinksSection, createInitialDocumentLinks, type DocumentLinksDat
 import { MaterialsSection, createInitialMaterialItems, type MaterialItemData } from '@/components/surveys/MaterialsSection';
 import { TravelExpensesSection, createInitialTravelExpenses, FIXED_EXPENSE_TYPES, type TravelExpenseItemData } from '@/components/surveys/TravelExpensesSection';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, Save, CheckCircle, X, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, X, Loader2, Lock } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 
@@ -606,16 +606,6 @@ export default function CrearObraPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Back Button */}
               <Button

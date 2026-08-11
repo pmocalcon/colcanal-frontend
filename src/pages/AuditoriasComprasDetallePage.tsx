@@ -4,7 +4,7 @@ import { auditService, type RequisitionDetailResponse } from '@/services/audit.s
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Home, Menu, AlertCircle, ArrowLeft, Clock, User, Package, FileText, TrendingUp } from 'lucide-react';
+import { Menu, AlertCircle, ArrowLeft, Clock, User, Package, FileText, TrendingUp } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -142,16 +142,6 @@ export default function AuditoriasComprasDetallePage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

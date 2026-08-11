@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Home, Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb, Truck, ChevronRight, ChevronDown } from 'lucide-react';
+import { Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb, Truck, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -750,15 +750,6 @@ export default function AuditoriasComprasPage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

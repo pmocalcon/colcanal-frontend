@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Home, Save, AlertCircle, Edit2, Package, ArrowLeft } from 'lucide-react';
+import { Save, AlertCircle, Edit2, Package, ArrowLeft } from 'lucide-react';
 import { formatDate, formatDateShort } from '@/utils/dateUtils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {

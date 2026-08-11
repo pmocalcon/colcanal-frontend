@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, CalendarDays, CheckCircle2, FileText, Home, XCircle } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle2, FileText, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -910,9 +910,6 @@ export default function ResumenPlanAnualPage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Ir al inicio">
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

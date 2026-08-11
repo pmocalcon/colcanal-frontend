@@ -19,7 +19,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Home,
   ArrowLeft,
   CheckCircle,
   XCircle,
@@ -360,15 +359,6 @@ export default function RevisarLevantamientoDetallePage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

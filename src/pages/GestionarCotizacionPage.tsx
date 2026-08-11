@@ -13,7 +13,7 @@ import { companyContactsService, type CompanyContact } from '@/services/company-
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Home, Save, X, Search, ArrowLeft, Copy, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, X, Search, ArrowLeft, Copy, AlertCircle, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,

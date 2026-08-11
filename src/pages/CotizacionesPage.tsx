@@ -5,7 +5,7 @@ import { getRequisitionsForQuotation } from '@/services/quotation.service';
 import type { Requisition } from '@/services/requisitions.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Menu, Eye, Edit, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
+import { Menu, Eye, Edit, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -229,16 +229,6 @@ export default function CotizacionesPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

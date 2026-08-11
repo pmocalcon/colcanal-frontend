@@ -9,7 +9,7 @@ import type { Requisition, FilterRequisitionsParams, PendingVoidRequest } from '
 import type { ModulePermissions } from '@/services/modules.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle, Ban, XCircle, Clock } from 'lucide-react';
+import { Menu, Eye, Edit, AlertCircle, Plus, Lock, ArrowLeft, CheckCircle, Ban, XCircle, Clock } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -365,16 +365,6 @@ export default function RequisicionesPage() {
                 />
               </div>
 
-              {/* Home Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
 
               {/* Sidebar Toggle */}
               <Button

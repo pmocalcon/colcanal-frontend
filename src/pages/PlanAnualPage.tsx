@@ -32,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Home, ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent, FileText, MapPin, Building2, Map as MapIcon } from 'lucide-react';
+import { ArrowLeft, Save, Search, AlertCircle, CalendarDays, CheckSquare, Square, Layers, X, ChevronRight, Percent, FileText, MapPin, Building2, Map as MapIcon } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -813,15 +813,6 @@ export default function PlanAnualPage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

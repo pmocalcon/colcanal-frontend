@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Home,
   ArrowLeft,
   Search,
   Eye,
@@ -449,15 +448,6 @@ export default function LevantamientosListPage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

@@ -7,7 +7,7 @@ import { usersService, type User } from '@/services/users.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Package, Home, Calendar } from 'lucide-react';
+import { ArrowLeft, Package, Calendar } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -144,17 +144,8 @@ export default function DetalleRequisicionPage() {
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4">
-            {/* Left: Logo 1 + Home */}
+            {/* Izquierda: el logo */}
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-                className="hover:bg-[hsl(var(--canalco-neutral-200))]"
-                title="Ir al inicio"
-              >
-                <Home className="w-5 h-5" />
-              </Button>
               <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
                 <img
                   src="/assets/images/logo-canalco.png"
