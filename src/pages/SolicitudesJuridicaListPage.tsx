@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Plus, FileText, Trash2, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, Trash2, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { ESTADOS, estadoLabel, estadoBadgeClass, calcularSla, type JuridicaEstado } from '@/utils/juridicaWorkflow';
+import { getTipo } from '@/config/juridicaContratos';
 
 /** Le toca actuar al usuario: el backend ya resolvió rol y jerarquía. */
 const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
@@ -57,10 +58,35 @@ export default function SolicitudesJuridicaListPage() {
     }
   };
 
-  // Un resumen legible para la fila (el objeto del proyecto, si se diligenció).
-  const resumen = (s: GcSolicitud): string => {
+  /**
+   * Con qué se contrata, que es lo que distingue una solicitud de otra en la lista.
+   *
+   * Antes iba el objeto del proyecto, pero es texto largo que se corta a media frase y
+   * las requisiciones de personal ni siquiera lo tienen —ese campo es del GTH-002-F—,
+   * así que salían todas como «Sin objeto diligenciado».
+   */
+  const resumen = (s: GcSolicitud): string =>
+    getTipo(s.data?.tipoContrato)?.nombre || 'Sin tipo de contrato';
+
+  /** El objeto, que pasa al tooltip de la fila. Vacío en las requisiciones de personal. */
+  const objeto = (s: GcSolicitud): string => {
     const d = s.data || {};
-    return (d.objetoProyecto || d.alcanceServicio || '').toString().trim() || 'Sin objeto diligenciado';
+    const texto = (d.objetoProyecto || d.alcanceServicio || '').toString().trim();
+    return texto || 'Sin objeto diligenciado';
+  };
+
+  /**
+   * Con quién se contrata. Antes de que se defina hay una persona o empresa sugerida,
+   * que es lo mejor que se puede mostrar: dejar la celda vacía haría parecer que la
+   * solicitud no tiene destinatario cuando sí lo tiene, solo que todavía sin cerrar.
+   */
+  const contratista = (s: GcSolicitud): { texto: string; sugerido: boolean } => {
+    const d = s.data || {};
+    const firme = (d.contratista || '').toString().trim();
+    if (firme) return { texto: firme, sugerido: false };
+    const sug = (d.sugNombre || '').toString().trim();
+    if (sug) return { texto: sug, sugerido: true };
+    return { texto: '—', sugerido: false };
   };
 
   const fecha = (iso: string) =>
@@ -82,9 +108,6 @@ export default function SolicitudesJuridicaListPage() {
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento')} title="Volver a Gestión del conocimiento">
             <ArrowLeft className="w-5 h-5" />
           </Button>
@@ -171,7 +194,8 @@ export default function SolicitudesJuridicaListPage() {
               <thead>
                 <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left text-xs uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">
                   <th className="px-4 py-3 font-semibold">N.º</th>
-                  <th className="px-4 py-3 font-semibold">Objeto</th>
+                  <th className="px-4 py-3 font-semibold">Tipo de contrato</th>
+                  <th className="px-4 py-3 font-semibold">Contratista</th>
                   <th className="px-4 py-3 font-semibold">Estado</th>
                   <th className="px-4 py-3 font-semibold">SLA</th>
                   <th className="px-4 py-3 font-semibold">Actualizada</th>
@@ -189,7 +213,24 @@ export default function SolicitudesJuridicaListPage() {
                       {meToca(s) && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 align-middle" title="Espera una acción tuya" />}
                       {s.solicitudId}
                     </td>
-                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-900))] max-w-xs truncate">{resumen(s)}</td>
+                    {/* El objeto no desaparece: pasa al tooltip, que es donde sirve
+                        para distinguir dos contratos del mismo tipo. */}
+                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-900))]" title={objeto(s)}>
+                      {resumen(s)}
+                    </td>
+                    {(() => {
+                      const c = contratista(s);
+                      return (
+                        <td
+                          className={'px-4 py-3 max-w-xs truncate ' + (c.sugerido
+                            ? 'italic text-[hsl(var(--canalco-neutral-500))]'
+                            : 'text-[hsl(var(--canalco-neutral-900))]')}
+                          title={c.sugerido ? `${c.texto} · sugerido, aún sin definir` : c.texto}
+                        >
+                          {c.texto}
+                        </td>
+                      );
+                    })()}
                     <td className="px-4 py-3">
                       <span className={`inline-block text-xs font-medium rounded px-2 py-0.5 ${estadoBadgeClass(s.estado)}`}>
                         {estadoLabel(s.estado)}

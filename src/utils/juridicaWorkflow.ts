@@ -68,6 +68,24 @@ export const ROLES_JURIDICA = ['Director Jurídico', 'Coordinador Jurídico', 'A
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // autoriza la solicitud ("Autorizado por")
 const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por" · Dra. Gloria)
 
+/**
+ * Los seis documentos del trámite. Son también las pestañas de la cabecera
+ * (`TabsDocumentos`), que toma de aquí su tipo: la lista es una sola.
+ */
+export type DocumentoJuridica =
+  | 'solicitud' | 'chequeo' | 'contrato'
+  | 'verificacion-garantias' | 'designacion-supervisor' | 'acta-inicio';
+
+/** Cómo se llama cada documento cuando hay que mandar al usuario a él. */
+export const DOCUMENTO_LABEL: Record<DocumentoJuridica, string> = {
+  solicitud: 'Solicitud',
+  chequeo: 'Lista de chequeo',
+  contrato: 'Contrato',
+  'verificacion-garantias': 'Verificación de garantías',
+  'designacion-supervisor': 'Designación supervisor',
+  'acta-inicio': 'Acta de inicio',
+};
+
 export interface Transicion {
   accion: string;
   from: JuridicaEstado;
@@ -77,32 +95,43 @@ export interface Transicion {
   requiereMotivo?: boolean;
   label: string;
   tone: 'primary' | 'danger';
+  /**
+   * En qué documento se ejecuta la acción: el que se acaba de diligenciar y que
+   * justifica el paso. "Trámite validado" se decide leyendo la lista de chequeo, no
+   * la solicitud, así que el botón vive allá. Las que no tienen documento propio
+   * —enviar a autorización, las firmas, el ciclo de pólizas— se quedan en la
+   * solicitud, que es donde se ve el flujo completo.
+   */
+  documento: DocumentoJuridica;
 }
 
 export const TRANSICIONES: Transicion[] = [
-  { accion: 'enviar', from: 'borrador', to: 'pendiente_autorizacion_gp', roles: [], soloCreador: true, label: 'Enviar a autorización', tone: 'primary' },
-  { accion: 'autorizar_gp', from: 'pendiente_autorizacion_gp', to: 'pendiente_firma_gerencia', roles: ROLES_GERENCIA_PROYECTOS, label: 'Autorizar y enviar a firma de Gerencia', tone: 'primary' },
-  { accion: 'rechazar_gp', from: 'pendiente_autorizacion_gp', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger' },
-  { accion: 'aprobar_gerencia', from: 'pendiente_firma_gerencia', to: 'en_tramite_administrativa', roles: ROLES_GERENCIA, label: 'Firmar y remitir a Administrativa', tone: 'primary' },
-  { accion: 'rechazar_gerencia', from: 'pendiente_firma_gerencia', to: 'borrador', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger' },
-  { accion: 'tramitar', from: 'en_tramite_administrativa', to: 'contrato_en_elaboracion', roles: ROLES_ADMINISTRATIVA, label: 'Trámite validado · remitir a Jurídica', tone: 'primary' },
-  { accion: 'devolver_tramite', from: 'en_tramite_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver (faltan documentos/campos)', tone: 'danger' },
-  { accion: 'contrato_listo', from: 'contrato_en_elaboracion', to: 'pendiente_firma_contrato', roles: ROLES_JURIDICA, label: 'Contrato listo · enviar a firma', tone: 'primary' },
-  { accion: 'firmar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_firmado', roles: ROLES_GERENCIA, label: 'Firmar el contrato', tone: 'primary' },
-  { accion: 'rechazar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_en_elaboracion', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Devolver el contrato a Jurídica', tone: 'danger' },
+  { accion: 'enviar', from: 'borrador', to: 'pendiente_autorizacion_gp', roles: [], soloCreador: true, label: 'Enviar a autorización', tone: 'primary', documento: 'solicitud' },
+  { accion: 'autorizar_gp', from: 'pendiente_autorizacion_gp', to: 'pendiente_firma_gerencia', roles: ROLES_GERENCIA_PROYECTOS, label: 'Autorizar y enviar a firma de Gerencia', tone: 'primary', documento: 'solicitud' },
+  { accion: 'rechazar_gp', from: 'pendiente_autorizacion_gp', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger', documento: 'solicitud' },
+  { accion: 'aprobar_gerencia', from: 'pendiente_firma_gerencia', to: 'en_tramite_administrativa', roles: ROLES_GERENCIA, label: 'Firmar y remitir a Administrativa', tone: 'primary', documento: 'solicitud' },
+  { accion: 'rechazar_gerencia', from: 'pendiente_firma_gerencia', to: 'borrador', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger', documento: 'solicitud' },
+  // Administrativa valida el trámite leyendo la lista de chequeo: el botón va allá.
+  { accion: 'tramitar', from: 'en_tramite_administrativa', to: 'contrato_en_elaboracion', roles: ROLES_ADMINISTRATIVA, label: 'Trámite validado · remitir a Jurídica', tone: 'primary', documento: 'chequeo' },
+  { accion: 'devolver_tramite', from: 'en_tramite_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver (faltan documentos/campos)', tone: 'danger', documento: 'chequeo' },
+  { accion: 'contrato_listo', from: 'contrato_en_elaboracion', to: 'pendiente_firma_contrato', roles: ROLES_JURIDICA, label: 'Contrato listo · enviar a firma', tone: 'primary', documento: 'contrato' },
+  { accion: 'firmar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_firmado', roles: ROLES_GERENCIA, label: 'Firmar el contrato', tone: 'primary', documento: 'contrato' },
+  { accion: 'rechazar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_en_elaboracion', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Devolver el contrato a Jurídica', tone: 'danger', documento: 'contrato' },
   // ── Pólizas (tras la firma del contrato) ──
-  { accion: 'solicitar_polizas', from: 'contrato_firmado', to: 'en_solicitud_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Iniciar solicitud de pólizas', tone: 'primary' },
+  // No tienen documento propio en el sistema: la póliza la expide la aseguradora y lo
+  // que se registra es el pago. Se quedan en la solicitud.
+  { accion: 'solicitar_polizas', from: 'contrato_firmado', to: 'en_solicitud_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Iniciar solicitud de pólizas', tone: 'primary', documento: 'solicitud' },
   // Jurídica no aprueba pólizas: de la solicitud se pasa al pago. Lo que Jurídica
   // revisa es la garantía recibida, en "Verificación de garantías".
-  { accion: 'polizas_solicitadas', from: 'en_solicitud_polizas', to: 'en_pago_polizas', roles: ROLES_ADMINISTRATIVA, label: 'Póliza expedida · pasar a pago', tone: 'primary' },
+  { accion: 'polizas_solicitadas', from: 'en_solicitud_polizas', to: 'en_pago_polizas', roles: ROLES_ADMINISTRATIVA, label: 'Póliza expedida · pasar a pago', tone: 'primary', documento: 'solicitud' },
   // Heredado: salida para las solicitudes que quedaron en aprobación de Jurídica.
-  { accion: 'aprobar_polizas', from: 'en_aprobacion_polizas', to: 'en_pago_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Continuar · registrar el pago', tone: 'primary' },
-  { accion: 'pagar_polizas', from: 'en_pago_polizas', to: 'en_verificacion_garantias', roles: ROLES_ADMINISTRATIVA, label: 'Póliza pagada · verificar garantías', tone: 'primary' },
-  { accion: 'garantias_verificadas', from: 'en_verificacion_garantias', to: 'en_designacion_supervisor', roles: ROLES_JURIDICA, label: 'Garantías verificadas · designar supervisor', tone: 'primary' },
-  { accion: 'devolver_garantias', from: 'en_verificacion_garantias', to: 'en_solicitud_polizas', roles: ROLES_JURIDICA, requiereMotivo: true, label: 'Devolver (la garantía no cumple)', tone: 'danger' },
+  { accion: 'aprobar_polizas', from: 'en_aprobacion_polizas', to: 'en_pago_polizas', roles: [...ROLES_ADMINISTRATIVA, ...ROLES_JURIDICA], label: 'Continuar · registrar el pago', tone: 'primary', documento: 'solicitud' },
+  { accion: 'pagar_polizas', from: 'en_pago_polizas', to: 'en_verificacion_garantias', roles: ROLES_ADMINISTRATIVA, label: 'Póliza pagada · verificar garantías', tone: 'primary', documento: 'solicitud' },
+  { accion: 'garantias_verificadas', from: 'en_verificacion_garantias', to: 'en_designacion_supervisor', roles: ROLES_JURIDICA, label: 'Garantías verificadas · designar supervisor', tone: 'primary', documento: 'verificacion-garantias' },
+  { accion: 'devolver_garantias', from: 'en_verificacion_garantias', to: 'en_solicitud_polizas', roles: ROLES_JURIDICA, requiereMotivo: true, label: 'Devolver (la garantía no cumple)', tone: 'danger', documento: 'verificacion-garantias' },
   // ── Fase 2 ──
-  { accion: 'designar_supervisor', from: 'en_designacion_supervisor', to: 'en_acta_inicio', roles: ROLES_JURIDICA, label: 'Supervisor designado · elaborar acta de inicio', tone: 'primary' },
-  { accion: 'acta_inicio_lista', from: 'en_acta_inicio', to: 'finalizado', roles: ROLES_JURIDICA, label: 'Acta de inicio firmada · finalizar', tone: 'primary' },
+  { accion: 'designar_supervisor', from: 'en_designacion_supervisor', to: 'en_acta_inicio', roles: ROLES_JURIDICA, label: 'Supervisor designado · elaborar acta de inicio', tone: 'primary', documento: 'designacion-supervisor' },
+  { accion: 'acta_inicio_lista', from: 'en_acta_inicio', to: 'finalizado', roles: ROLES_JURIDICA, label: 'Acta de inicio firmada · finalizar', tone: 'primary', documento: 'acta-inicio' },
 ];
 
 /** Acciones que el usuario (por su rol) puede ejecutar sobre una solicitud en cierto estado. */
@@ -120,6 +149,23 @@ export function accionesDisponibles(
     if (t.soloCreador && esCreador) return true;
     return false;
   });
+}
+
+/**
+ * Documentos, distintos del actual, donde hay una acción esperando a este usuario.
+ * Con esto la solicitud puede decir "esto se hace en la Lista de chequeo" en vez de
+ * dejar la etapa sin botón y sin explicación.
+ */
+export function documentosConAccion(
+  estado: JuridicaEstado,
+  nombreRol: string | undefined,
+  esCreador: boolean,
+  salvo: DocumentoJuridica,
+): DocumentoJuridica[] {
+  const docs = accionesDisponibles(estado, nombreRol, esCreador)
+    .map((a) => a.documento)
+    .filter((d) => d !== salvo);
+  return [...new Set(docs)];
 }
 
 // ── Festivos de Colombia (Ley Emiliani + Semana Santa) ──────────────────
@@ -227,12 +273,22 @@ export function calcularSla(estado: JuridicaEstado, estadoDesde: string | null):
   return { vence, vencida: new Date() > vence, diasHabiles: sla };
 }
 
+/**
+ * Los estados en la paleta de la sección: tinta sobre neutro, y el amarillo reservado
+ * para lo que espera a una persona —una autorización, una firma, una póliza—, que es
+ * lo que hay que mirar al abrir la lista.
+ *
+ * `blue` y `violet` distinguían Administrativa de Jurídica y ahora comparten el mismo
+ * neutro: la etiqueta ya dice de quién es la etapa y el color no añadía nada.
+ * El verde se conserva: un contrato en ejecución pintado del mismo gris que un
+ * borrador se leería como un trámite sin empezar.
+ */
 const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {
-  gray: 'bg-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-700))]',
-  amber: 'bg-amber-100 text-amber-800',
-  blue: 'bg-blue-100 text-blue-800',
-  violet: 'bg-violet-100 text-violet-800',
-  green: 'bg-green-100 text-green-800',
+  gray: 'bg-[#eeeef5] text-[#4a4a63]',
+  amber: 'bg-[#fff8b0] text-[#16162b] border border-[#e0cc00]',
+  blue: 'bg-[#eeeef5] text-[#16162b]',
+  violet: 'bg-[#eeeef5] text-[#16162b]',
+  green: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
 };
 
 export const estadoLabel = (estado: string) => ESTADOS[estado as JuridicaEstado]?.label ?? estado;

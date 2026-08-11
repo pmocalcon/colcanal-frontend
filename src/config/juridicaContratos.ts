@@ -69,7 +69,7 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
     key: 'termino-fijo',
     nombre: 'Término Fijo',
     secciones: {
-      documentos: ['Requisición', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
+      documentos: ['Requisición', 'Manual de funciones', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
       antecedentes: ['Procuraduría', 'Contraloría', 'Policía Nacional', 'Medidas Correctivas-Policía Nacional.', 'Procesos Judiciales-Rama Judicial.', 'Consulta Registro Unico Tributario (RUES)', 'Estado de la cédula-Registraduría Nacional del estado civil', 'Concepto de Verificación de Antecedentes.'],
       tecnicos: ['Certificaciones trabajo en alturas', 'Certificaciones trabajo con alta tensión', 'Otras Certificaciones', 'Tener definida la situación militar', 'Licencia de conducción', 'Tarjeta Profesional-Certificado de vigencia y consulta de antecedentes, disciplinarios.', 'Requisición', 'Afiliación al sistema de seguridad social (ARL, EPS, AFP, CCF)'],
       contractual: ['Contrato firmado.'],
@@ -82,7 +82,7 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
     key: 'termino-indefinido',
     nombre: 'Término indefinido',
     secciones: {
-      documentos: ['Requisición', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
+      documentos: ['Requisición', 'Manual de funciones', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
       antecedentes: ['Procuraduría', 'Contraloría', 'Policía Nacional', 'Medidas Correctivas-Policía Nacional.', 'Procesos Judiciales-Rama Judicial.', 'Consulta Registro Unico Tributario (RUES)', 'Estado de la cédula-Registraduría Nacional del estado civil', 'Concepto de Verificación de Antecedentes.'],
       tecnicos: ['Certificaciones trabajo en alturas', 'Certificaciones trabajo con alta tensión', 'Otras Certificaciones', 'Tener definida la situación militar', 'Licencia de conducción', 'Tarjeta Profesional-Certificado de vigencia y consulta de antecedentes, disciplinarios.', 'Requisición', 'Afiliación al sistema de seguridad social (ARL, EPS, AFP, CCF)'],
       contractual: ['Contrato firmado.'],
@@ -95,7 +95,10 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
     key: 'obra-labor',
     nombre: 'Obra labor',
     secciones: {
-      documentos: ['Requisición', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
+      // «Manual de funciones» solo en los tres contratos laborales (fijo, indefinido y
+      // obra labor): es el documento que define el cargo. Pasantías comparte el resto
+      // de la lista pero no lo lleva.
+      documentos: ['Requisición', 'Manual de funciones', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
       antecedentes: ['Procuraduría', 'Contraloría', 'Policía Nacional', 'Medidas Correctivas-Policía Nacional.', 'Procesos Judiciales-Rama Judicial.', 'Consulta Registro Unico Tributario (RUES)', 'Estado de la cédula-Registraduría Nacional del estado civil', 'Concepto de Verificación de Antecedentes.'],
       tecnicos: ['Certificaciones trabajo en alturas', 'Certificaciones trabajo con alta tensión', 'Otras Certificaciones', 'Tener definida la situación militar', 'Licencia de conducción', 'Tarjeta Profesional-Certificado de vigencia y consulta de antecedentes, disciplinarios.', 'Requisición', 'Afiliación al sistema de seguridad social (ARL, EPS, AFP, CCF)'],
       contractual: ['Contrato firmado.'],

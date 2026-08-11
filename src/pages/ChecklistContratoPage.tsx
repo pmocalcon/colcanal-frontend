@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Save, Loader2, ClipboardCheck, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Printer, Save, Loader2, ClipboardCheck, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { SECCIONES, getTipo, filtrarPorPersona, habilitantesNoCubiertos, type SeccionKey } from '@/config/juridicaContratos';
 import { esRolPmo } from '@/utils/rolesPmo';
-import { estadoAlcanzo } from '@/utils/juridicaWorkflow';
+import { estadoAlcanzo, estadoLabel } from '@/utils/juridicaWorkflow';
+import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
+import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 
 const PERSONA_LABEL: Record<string, string> = { natural: 'Natural', juridica: 'Jurídica' };
 
@@ -100,6 +102,19 @@ export default function ChecklistContratoPage() {
     && (lado === 'juridica' || !firmadaJur);
   const editable = adminEditable || jurEditable;
 
+  // Lo que hay que contarle a quien mira cuando su lado está cerrado: cuál es su etapa,
+  // si ya llegó y quién la firmó. Sin lado (rol ajeno, o PMO fuera de las dos etapas)
+  // no aplica y el aviso toma otro camino.
+  const esLadoAdmin = escribo === 'admin';
+  const miEtapaLabel = esLadoAdmin ? 'Etapa previa' : 'Etapa contractual';
+  const miEtapaAlcanzada = esLadoAdmin
+    ? estadoAlcanzo(sol?.estado, 'en_tramite_administrativa')
+    : estadoAlcanzo(sol?.estado, 'contrato_en_elaboracion');
+  const miFirmante = esLadoAdmin ? cl.revAdminNombre : cl.revJurNombre;
+  const miApertura = esLadoAdmin
+    ? 'se abre cuando la solicitud llega a trámite (Administrativa)'
+    : 'se abre cuando la solicitud pasa a revisión del contrato (Jurídica)';
+
   useEffect(() => {
     if (solicitudId === null) { setLoading(false); return; }
     let cancelled = false;
@@ -132,7 +147,8 @@ export default function ChecklistContratoPage() {
   const setItem = (key: string, patch: Partial<ItemState>) =>
     setCl((p) => ({ ...p, items: { ...p.items, [key]: { ...(p.items[key] ?? EMPTY_ITEM), ...patch } } }));
 
-  const handleSave = async () => {
+  /** Devuelve si logró guardar: la acción de la etapa guarda antes de avanzar. */
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true);
     try {
       const actualizada = await gestionConocimientoService.saveChecklist(solicitudId!, cl);
@@ -140,8 +156,10 @@ export default function ChecklistContratoPage() {
       const saved = (actualizada.data?.checklist ?? {}) as Partial<ChecklistState>;
       setCl((prev) => ({ ...prev, ...saved, items: saved.items ?? prev.items }));
       toast.success('Lista de chequeo guardada');
+      return true;
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -177,14 +195,14 @@ export default function ChecklistContratoPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-100))]">
-        <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-[#16162b]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))]">
+    <div className="min-h-screen bg-white">
       <style>{`
         @media print {
           @page { size: Letter portrait; margin: 8mm; }
@@ -196,32 +214,44 @@ export default function ChecklistContratoPage() {
       `}</style>
 
       {/* Barra de acciones */}
-      <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
+      <header className="no-print bg-white border-b border-[#e6e6f0] shadow-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-6 pt-4 pb-2 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}`)} title="Volver a la solicitud">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
-            <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Lista de Chequeo de Documentos</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+            <h1 className="text-lg font-bold text-[#16162b]">Lista de Chequeo de Documentos</h1>
+            <p className="text-xs text-[#4a4a63]">
               Formato GA-25-F · Solicitud N.º {solicitudId}{tipo ? ` · ${tipo.nombre}` : ''}
             </p>
           </div>
-          <Button variant="outline" onClick={() => window.print()} className="gap-2">
+          <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
           {editable && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
         </div>
+        {/* Los documentos del trámite: se navega entre ellos sin volver a la solicitud. */}
+        {solicitudId !== null && (
+          <div className="max-w-6xl mx-auto px-6">
+            <TabsDocumentos solicitudId={solicitudId} sol={sol} activo="chequeo" />
+          </div>
+        )}
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* La acción de la etapa va donde se decide: Administrativa valida el trámite
+            —o lo devuelve— leyendo esta lista, no la solicitud. */}
+        <AccionesFlujo
+          sol={sol} documento="chequeo" onCambio={setSol}
+          // Guarda la lista antes de validar el trámite. Sin esto se podría marcar
+          // todo, pulsar «Trámite validado» y remitir a Jurídica una lista en blanco:
+          // al avanzar, la etapa se cierra y lo tecleado ya no se puede guardar.
+          onAntes={editable ? handleSave : undefined}
+        />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
             <ClipboardCheck className="w-10 h-10 text-[hsl(var(--canalco-neutral-400))] mx-auto mb-3" />
@@ -270,13 +300,36 @@ export default function ChecklistContratoPage() {
                 . Al guardar se firma esta revisión y con eso se habilita el <b>Contrato</b>.
               </p>
             )}
+            {/*
+              Cerrada: hay que decir POR CUÁL de las dos razones, que son opuestas y
+              piden cosas distintas. «Ya firmaste» cuando en realidad la etapa no ha
+              llegado manda a buscar un error donde no lo hay: lo que falta es que el
+              trámite avance, y eso lo hace otro.
+            */}
             {!editable && (
               <p>
-                {firmadaAdmin && firmadaJur
-                  ? <>Lista <b>cerrada</b>: revisada por las dos direcciones. Queda como registro del trámite.</>
-                  : miLado === null
-                    ? <>La lista la diligencian la Dirección Administrativa y la Jurídica. Puedes consultarla e imprimirla.</>
-                    : <>Tu parte de la lista ya está <b>firmada</b>: queda como registro del trámite, no como borrador.</>}
+                {escribo === null ? (
+                  miLado === 'pmo'
+                    ? <>La lista no se diligencia en esta etapa. Se abre en trámite
+                      (Administrativa) y luego en revisión del contrato (Jurídica).</>
+                    : <>La lista la diligencian la Dirección Administrativa y la Jurídica.
+                      Puedes consultarla e imprimirla.</>
+                ) : !miEtapaAlcanzada ? (
+                  <>
+                    Tu <b>{miEtapaLabel}</b> todavía no se abre: {miApertura}. La solicitud
+                    va en <b>{estadoLabel(sol?.estado ?? '')}</b>
+                    {escribo === 'juridica' && lado === 'admin'
+                      ? <>, y pasa a Jurídica cuando la Dirección Administrativa la remita
+                        con «Trámite validado · remitir a Jurídica».</>
+                      : '.'}
+                  </>
+                ) : (
+                  <>
+                    Tu <b>{miEtapaLabel}</b> ya está <b>firmada</b>
+                    {miFirmante ? <> por <b>{miFirmante}</b></> : null}: queda como registro
+                    del trámite, no como borrador.
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -316,7 +369,7 @@ export default function ChecklistContratoPage() {
                   disabled={!adminEditable}
                   className="w-full bg-transparent outline-none text-[12px] py-0.5 disabled:opacity-100" />
               </HeaderRow>
-              <HeaderRow label="SUPERVISOR">
+              <HeaderRow label="LIDER O SUPERVISOR">
                 <input value={cl.supervisor} onChange={(e) => set('supervisor', e.target.value)}
                   disabled={!adminEditable}
                   className="w-full bg-transparent outline-none text-[12px] py-0.5 disabled:opacity-100" />
@@ -471,9 +524,26 @@ function SectionRows({ label, administrativo, items, item, setItem, adminEditabl
 function Cbx({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <td className="border border-[#0a2a52] text-center px-1 py-0.5">
-      {/* Bloqueada se ve igual de nítida: es un registro que hay que poder leer. */}
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
-        className={'w-3.5 h-3.5 accent-[hsl(var(--canalco-primary))] ' + (disabled ? 'cursor-default' : 'cursor-pointer')} />
+      {/* Bloqueada se ve igual de nítida: es un registro que hay que poder leer, y la
+          mitad de la lista se lee siempre bloqueada —cada dirección solo abre la suya—.
+          Por eso el cuadro se dibuja y no se deja la casilla nativa a la vista: el
+          navegador apaga a gris lo marcado en cuanto la deshabilitas. Dibujado también
+          se imprime, que `accent-color` no llega al papel. */}
+      <label className="inline-flex">
+        <span
+          className={'relative w-3.5 h-3.5 border border-[#0a2a52] flex items-center justify-center '
+            + (checked ? 'bg-[#ffe81a]' : 'bg-white')}
+        >
+          <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
+            className={'absolute inset-0 w-full h-full opacity-0 ' + (disabled ? 'cursor-default' : 'cursor-pointer')} />
+          {checked && (
+            <svg viewBox="0 0 16 16" className="w-3 h-3 text-[#16162b] pointer-events-none" aria-hidden="true">
+              <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </span>
+      </label>
     </td>
   );
 }

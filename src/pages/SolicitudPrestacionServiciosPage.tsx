@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Eraser, Save, Loader2, Clock, AlertTriangle, History, ClipboardCheck, UserCheck, FileSignature, FileText, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Printer, Eraser, Save, Loader2, Clock, AlertTriangle, History, FileText, ShieldCheck, GitBranch, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import {
   ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla,
+  documentosConAccion, DOCUMENTO_LABEL,
   ROLES_ADMINISTRATIVA, ROLES_JURIDICA,
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
@@ -25,6 +26,7 @@ import { EMPRESAS, getEmpresa } from '@/config/empresasCentroCosto';
 import {
   RequisicionPersonalCuerpo, prellenarRequisicion, type RequisicionState,
 } from '@/components/juridica/requisicionPersonalDoc';
+import { TabsDocumentos, rutaDocumento } from '@/components/juridica/TabsDocumentos';
 import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
 
 /**
@@ -119,34 +121,8 @@ export default function SolicitudPrestacionServiciosPage() {
   // al primer cambio pasa a mandar lo escrito.
   const requisicion = f.requisicionPersonal ?? prellenarRequisicion(f);
 
-  // La lista de chequeo (GA-25-F) la diligencia Administrativa: se habilita al remitir
-  // la solicitud a Administrativa y de ahí en adelante (todos los estados salvo los previos).
-  const checklistHabilitado = estado !== 'borrador' && estado !== 'pendiente_autorizacion_gp' && estado !== 'pendiente_firma_gerencia';
-
-  // La verificación de garantías va entre el pago de la póliza y la designación: antes
-  // no tiene sentido revisar la prima ni la autenticidad de una póliza que no existe.
-  const verificacionHabilitada = (['en_verificacion_garantias', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado'] as JuridicaEstado[])
-    .includes(estado as JuridicaEstado);
-
-  // La designación de supervisor se habilita al llegar a esa etapa (o más adelante).
-  const designacionHabilitada = (['en_designacion_supervisor', 'en_acta_inicio', 'finalizado'] as JuridicaEstado[])
-    .includes(estado as JuridicaEstado);
-
-  // El acta de inicio se habilita en su etapa (o al finalizar).
-  const actaHabilitada = (['en_acta_inicio', 'finalizado'] as JuridicaEstado[])
-    .includes(estado as JuridicaEstado);
-
-  // La lista de chequeo se firma dos veces: Administrativa al verificar los documentos
-  // y Jurídica al revisarlos. Es el requisito para redactar el contrato.
-  const chequeo = sol?.data?.checklist as { revAdminNombre?: string; revJurNombre?: string } | undefined;
-  const chequeoCompleto = !!chequeo?.revAdminNombre && !!chequeo?.revJurNombre;
-
-  // El contrato se genera desde la etapa de revisión del contrato en adelante, pero en
-  // esa etapa exige además la lista de chequeo revisada por las dos direcciones. Más
-  // adelante ya no se pide: el contrato existe y bloquearlo no protegería nada.
-  const contratoHabilitado = (['contrato_en_elaboracion', 'pendiente_firma_contrato', 'contrato_firmado', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado'] as JuridicaEstado[])
-    .includes(estado as JuridicaEstado)
-    && (estado !== 'contrato_en_elaboracion' || chequeoCompleto);
+  // Qué documento está habilitado en cada etapa se decide en `TabsDocumentos`: la misma
+  // barra se pinta en las seis pantallas del trámite y la regla tiene que ser una sola.
 
   // Empresa seleccionada → centro de costo. Si solo tiene un centro, se autocompleta;
   // Canales & Contactos tiene varios (uno por proyecto) y se elige aparte.
@@ -294,14 +270,14 @@ export default function SolicitudPrestacionServiciosPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-100))]">
-        <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-[#16162b]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))]">
+    <div className="min-h-screen bg-white">
       {/* Estilos de impresión: solo el documento, tamaño carta. */}
       <style>{`
         @media print {
@@ -334,21 +310,18 @@ export default function SolicitudPrestacionServiciosPage() {
       `}</style>
 
       {/* Barra de acciones (no se imprime) */}
-      <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
+      <header className="no-print bg-white border-b border-[#e6e6f0] shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-3">
           {/* Fila 1: navegación, título/estado y acciones principales */}
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/juridica')} title="Volver a las solicitudes">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-grow min-w-0">
-              <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))] truncate">
+              <h1 className="text-lg font-bold text-[#16162b] truncate">
                 {tipoReq === 'personal' ? 'Requisición de personal' : 'Solicitud de prestación de servicios'}
               </h1>
-              <div className="text-xs text-[hsl(var(--canalco-neutral-600))] flex items-center gap-2 flex-wrap">
+              <div className="text-xs text-[#4a4a63] flex items-center gap-2 flex-wrap">
                 <span>
                   G. jurídica · Formato {getTipoRequisicion(tipoReq).formato}
                   {solicitudId !== null ? ` · N.º ${solicitudId}` : ' · Nueva'}
@@ -366,11 +339,11 @@ export default function SolicitudPrestacionServiciosPage() {
                   <Eraser className="w-4 h-4" /> Limpiar
                 </Button>
               )}
-              <Button variant="outline" onClick={() => window.print()} className="gap-2">
+              <Button onClick={() => window.print()} className={`gap-2 ${UI.primario}`}>
                 <Printer className="w-4 h-4" /> Imprimir / PDF
               </Button>
               {!locked && (
-                <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white">
+                <Button onClick={handleSave} disabled={saving} className={`gap-2 ${UI.primario}`}>
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
                 </Button>
               )}
@@ -379,15 +352,15 @@ export default function SolicitudPrestacionServiciosPage() {
 
           {/* Fila 2: con qué formato arranca el trámite. Va arriba de los documentos
               porque es lo que decide cuál de los dos se diligencia. */}
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))] flex-wrap">
-            <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mr-1">
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#e6e6f0] flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[#4a4a63] mr-1">
               Tipo de requisición
             </span>
             <select
               value={tipoReq}
               disabled={locked}
               onChange={(e) => set('tipoRequisicion', e.target.value)}
-              className="text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1.5 bg-white min-w-[22rem] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="text-sm border border-[#c9c9dc] rounded-md px-2 py-1.5 bg-white text-[#16162b] min-w-[22rem] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {TIPOS_REQUISICION.map((t) => (
                 <option key={t.key} value={t.key}>{t.nombre} ({t.formato})</option>
@@ -400,65 +373,28 @@ export default function SolicitudPrestacionServiciosPage() {
             )}
           </div>
 
-          {/* Fila 3: documentos del contrato. Solo con la solicitud guardada: todos
-              navegan a subdocumentos suyos. */}
+          {/* Fila 3: documentos del contrato, como pestañas. Solo con la solicitud
+              guardada: todas navegan a subdocumentos suyos.
+              La requisición de personal no va acá: no es un documento aparte del
+              trámite sino el cuerpo del formato, y se diligencia en esta misma página
+              cuando el tipo de requisición es «personal».
+              El `-mb-3` come el relleno inferior de la cabecera para que el riel de las
+              pestañas caiga sobre su borde y no queden dos líneas. */}
           {solicitudId !== null && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[hsl(var(--canalco-neutral-200))] flex-wrap">
-              <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))] mr-1">Documentos</span>
-              {/* La requisición de personal no va acá: no es un documento aparte del
-                  trámite sino el cuerpo del formato, y se diligencia en esta misma
-                  página cuando el tipo de requisición es «personal». */}
-              <Button
-                variant="outline" size="sm" disabled={!checklistHabilitado}
-                onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/chequeo`)}
-                className="gap-2"
-                title={checklistHabilitado ? 'Lista de chequeo (GA-25-F)' : 'Se habilita cuando la solicitud se remite a Administrativa'}
-              >
-                <ClipboardCheck className="w-4 h-4" /> Lista de chequeo
-              </Button>
-              <Button
-                variant="outline" size="sm" disabled={!contratoHabilitado}
-                onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/contrato`)}
-                className="gap-2"
-                title={contratoHabilitado
-                  ? 'Contrato (GJ-001-F)'
-                  : estado === 'contrato_en_elaboracion'
-                    ? 'Falta que la lista de chequeo la revisen la Dirección Administrativa y la Jurídica'
-                    : 'Se habilita en la etapa de revisión del contrato (Jurídica)'}
-              >
-                <FileText className="w-4 h-4" /> Contrato
-              </Button>
-              <Button
-                variant="outline" size="sm" disabled={!verificacionHabilitada}
-                onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/verificacion-garantias`)}
-                className="gap-2"
-                title={verificacionHabilitada ? 'Lista de verificación de garantías y matriz de riesgo' : 'Se habilita cuando la póliza está pagada, antes de designar supervisor'}
-              >
-                <ShieldCheck className="w-4 h-4" /> Verificación de garantías
-              </Button>
-              <Button
-                variant="outline" size="sm" disabled={!designacionHabilitada}
-                onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/designacion-supervisor`)}
-                className="gap-2"
-                title={designacionHabilitada ? 'Designación de supervisor (GJ-003-F)' : 'Se habilita en la etapa de designación de supervisor (tras la firma del contrato)'}
-              >
-                <UserCheck className="w-4 h-4" /> Designación supervisor
-              </Button>
-              <Button
-                variant="outline" size="sm" disabled={!actaHabilitada}
-                onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}/acta-inicio`)}
-                className="gap-2"
-                title={actaHabilitada ? 'Acta de inicio (GJ-006-F)' : 'Se habilita en la etapa de acta de inicio (tras la designación de supervisor)'}
-              >
-                <FileSignature className="w-4 h-4" /> Acta de inicio
-              </Button>
+            <div className="mt-3 -mb-3">
+              <TabsDocumentos solicitudId={solicitudId} sol={sol} activo="solicitud" />
             </div>
           )}
         </div>
       </header>
 
       {/* Documento */}
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      {/* Dos anchos: el formato conserva el suyo —es una hoja carta y estirarlo lo
+          deformaría—, y lo que se consulta alrededor (el flujo y los cuadros de
+          política) va más ancho, que es lo que necesita la matriz de garantías para
+          caber sin desplazarse. */}
+      <main className="px-4 py-8">
+      <div className="max-w-6xl mx-auto">
         {sol && (
           <WorkflowPanel
             sol={sol}
@@ -480,11 +416,22 @@ export default function SolicitudPrestacionServiciosPage() {
             que se consulta mientras se diligencia. Fuera del fieldset, así se leen
             también cuando la solicitud ya está bloqueada, y con `no-print`, para que no
             se cuelen en el PDF del formato. */}
-        <div className="mb-6 space-y-4">
-          <DocumentosCuadro tipoPersona={f.tipoPersona} />
-          <GarantiasCuadro />
+        {/* Lado a lado desde `xl`: la matriz de garantías es de siete columnas y la de
+            documentos de tres, así que se reparten 3/2 en vez de mitad y mitad —a
+            mitades, la matriz viviría desplazándose en horizontal—. Por debajo de `xl`
+            no caben dos tablas y vuelven a apilarse. `items-start` para que la más
+            corta no se estire hasta el alto de la otra. */}
+        <div className="mb-6 grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
+          <div className="xl:col-span-2">
+            <DocumentosCuadro tipoPersona={f.tipoPersona} />
+          </div>
+          <div className="xl:col-span-3">
+            <GarantiasCuadro />
+          </div>
         </div>
+      </div>
 
+      <div className="max-w-5xl mx-auto">
         <fieldset disabled={locked} className="border-0 m-0 p-0 min-w-0">
         <div className="doc bg-white border border-[#0a2a52] mx-auto text-[13px] text-black shadow-md">
 
@@ -621,6 +568,10 @@ export default function SolicitudPrestacionServiciosPage() {
             <RequisicionPersonalCuerpo
               value={requisicion}
               onChange={(v) => set('requisicionPersonal', v)}
+              /* Las firmas salen de la solicitud en vivo, no de lo guardado en el
+                 formato: el flujo las estampa después de que la requisición ya está
+                 escrita, y una copia se quedaría en blanco para siempre. */
+              firmas={f}
             />
           )}
 
@@ -728,6 +679,7 @@ export default function SolicitudPrestacionServiciosPage() {
             ? 'La solicitud ya avanzó en el flujo; el formato queda en solo lectura. Usa Imprimir / PDF para exportarla.'
             : 'Usa Guardar para almacenar la solicitud, o Imprimir / PDF para exportarla.'}
         </p>
+      </div>
       </main>
     </div>
   );
@@ -786,10 +738,22 @@ function duracionEntre(desde: string, hasta: string): string {
 }
 
 /** Colores de la matriz: se exige, no se exige, o depende de algo que define Jurídica. */
+/*
+ * Tres niveles legibles: el amarillo marca lo que **se exige** —la pastilla lleva la
+ * tinta encima, porque `#ffe81a` como letra sobre blanco da 1,2:1 de contraste y no se
+ * lee—, lo condicional va en tinta plana y lo que no se exige, apagado.
+ *
+ * La pastilla es del "Sí" y no de lo condicional: "Sí" es una palabra corta y cabe en
+ * una línea, mientras que "Según riesgo" dentro de una pastilla se parte en dos y
+ * estira toda la fila.
+ *
+ * Van sobre un `<span>` dentro de la celda y no sobre la celda: un fondo en el `<td>`
+ * pintaría también su relleno y se leería como una fila resaltada, no como un valor.
+ */
 const EXIGENCIA_CLASS: Record<ExigenciaClase, string> = {
-  si: 'text-emerald-700 font-semibold',
-  no: 'text-[hsl(var(--canalco-neutral-400))]',
-  condicional: 'text-amber-700',
+  si: 'inline-block rounded px-1.5 py-0.5 bg-[#ffe81a] text-[#16162b] font-bold',
+  condicional: 'text-[#16162b]',
+  no: 'text-[#b0b0c4]',
 };
 
 /**
@@ -801,36 +765,52 @@ const EXIGENCIA_CLASS: Record<ExigenciaClase, string> = {
 function GarantiasCuadro() {
   return (
     <CuadroConsulta
-      icono={<ShieldCheck className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />}
+      icono={<ShieldCheck className="w-4 h-4" />}
       titulo="Matriz general de garantías"
       subtitulo="Qué amparos se exigen según la naturaleza del contrato."
+      nota={
+        <>
+          <p>
+            <span className={EXIGENCIA_CLASS.si}>Sí</span> se exige ·{' '}
+            <span className={EXIGENCIA_CLASS.condicional}>Si aplica / Según objeto / riesgo / bien</span>{' '}
+            lo define la Dirección Jurídica ·{' '}
+            <span className={EXIGENCIA_CLASS.no}>No</span> no se exige.
+          </p>
+          <p className="italic">
+            La fila que aplica la determina Jurídica según la naturaleza del objeto
+            contratado.
+          </p>
+        </>
+      }
     >
-        <div className="space-y-2 text-[12px] leading-snug text-[hsl(var(--canalco-neutral-700))]">
+        <div className="space-y-1.5 text-[11px] leading-snug text-[#4a4a63]">
           {REGIMEN_GARANTIAS.map((p, i) => <p key={i}>{p}</p>)}
         </div>
 
-
-        <div className="overflow-x-auto mt-2">
-          <table className="w-full text-[12px] border-collapse min-w-[560px]">
+        <div className="overflow-x-auto -mx-5 -mb-5 mt-3">
+          {/* Sin ancho mínimo: con uno, la tabla pedía más de lo que la tarjeta le da y
+              aparecía la barra de desplazamiento. Prefiere partir «Según objeto» en dos
+              líneas —que se lee igual— antes que desplazarse. */}
+          <table className={TABLA}>
             <thead>
-              <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left">
-                <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 w-[26%]">Contrato</th>
+              <tr className="bg-[#f6f6fa] border-y border-[#e6e6f0]">
+                <th className={`${TH} w-[26%] pl-5 text-left`}>Contrato</th>
                 {AMPAROS.map((a) => (
-                  <th key={a.key} className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 text-center">{a.label}</th>
+                  <th key={a.key} className={`${TH} ${DIV} text-center`}>{a.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {MATRIZ_GARANTIAS.map((fila) => (
-                <tr key={fila.key}>
-                  <td className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1">
+                <tr key={fila.key} className={TR}>
+                  <td className={`${TD} pl-5 font-semibold text-[#16162b]`}>
                     {fila.contrato}
                   </td>
                   {AMPAROS.map((a) => {
                     const e = fila.amparos[a.key];
                     return (
-                      <td key={a.key} className={'border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 text-center ' + EXIGENCIA_CLASS[e.clase]}>
-                        {e.texto}
+                      <td key={a.key} className={`${TD} ${DIV} text-center`}>
+                        <span className={EXIGENCIA_CLASS[e.clase]}>{e.texto}</span>
                       </td>
                     );
                   })}
@@ -838,19 +818,6 @@ function GarantiasCuadro() {
               ))}
             </tbody>
           </table>
-        </div>
-
-        <div className="mt-2 text-[11px] text-[hsl(var(--canalco-neutral-500))] space-y-1">
-          <p>
-            <span className="text-emerald-700 font-semibold">Sí</span> se exige ·{' '}
-            <span className="text-amber-700">Si aplica / Según objeto / riesgo / bien</span> lo define
-            la Dirección Jurídica ·{' '}
-            <span className="text-[hsl(var(--canalco-neutral-400))]">No</span> no se exige.
-          </p>
-          <p className="italic">
-            La fila que aplica la determina Jurídica según la naturaleza del objeto
-            contratado.
-          </p>
         </div>
     </CuadroConsulta>
   );
@@ -869,47 +836,51 @@ function DocumentosCuadro({ tipoPersona }: { tipoPersona: string }) {
 
   return (
     <CuadroConsulta
-      icono={<FileText className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />}
-      titulo="Documentos necesarios"
-      subtitulo={personaLabel ?? 'Sin tipo de persona'}
+      icono={<FileText className="w-4 h-4" />}
+      titulo="Documentación requerida"
+      subtitulo={
+        <>
+          {personaLabel ?? 'Sin tipo de persona'} ·{' '}
+          <span className="font-medium text-[hsl(var(--canalco-neutral-700))]">Documentos habilitantes</span>
+          {' '}· mínimo exigible
+        </>
+      }
+      nota={
+        <p className="italic">
+          Es un mínimo: la Dirección Jurídica puede pedir más según la naturaleza del
+          contratista y el nivel de riesgo.
+        </p>
+      }
     >
         {!personaLabel && (
-          <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2">
+          <p className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2">
             Elige el <b>tipo de persona</b> en el formato: los habilitantes cambian según
             sea natural o jurídica.
           </p>
         )}
 
-        <section>
-          <h3 className="font-semibold text-sm text-black mb-2">
-            Documentos habilitantes <span className="font-normal text-[hsl(var(--canalco-neutral-500))]">· mínimo exigible</span>
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px] border-collapse">
-              <thead>
-                <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left">
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 w-[30%]">Tipo de documento</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1">Qué se presenta</th>
-                  <th className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 w-[30%]">Observaciones</th>
+        {/* La tabla se pega a los bordes de la tarjeta. Arriba solo cuando no hay aviso
+            encima; con `-mt-5` fijo se comería el aviso del tipo de persona. */}
+        <div className={'overflow-x-auto -mx-5 -mb-5 ' + (personaLabel ? '-mt-5' : '')}>
+          <table className={TABLA}>
+            <thead>
+              <tr className="bg-[#f6f6fa] text-left border-y border-[#e6e6f0]">
+                <th className={`${TH} w-[28%] pl-5`}>Tipo de documento</th>
+                <th className={`${TH} ${DIV}`}>Requisito</th>
+                <th className={`${TH} ${DIV} w-[30%] pr-5`}>Observaciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {habilitantes.map((h) => (
+                <tr key={h.key} className={TR}>
+                  <td className={`${TD} pl-5 font-semibold text-[#16162b]`}>{h.tipo}</td>
+                  <td className={`${TD} ${DIV} text-[#16162b]`}>{h.requisito}</td>
+                  <td className={`${TD} ${DIV} pr-5 text-[#4a4a63]`}>{h.observaciones}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {habilitantes.map((h) => (
-                  <tr key={h.key} className="align-top">
-                    <td className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 font-medium">{h.tipo}</td>
-                    <td className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1">{h.requisito}</td>
-                    <td className="border border-[hsl(var(--canalco-neutral-300))] px-2 py-1 text-[hsl(var(--canalco-neutral-600))]">{h.observaciones}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-[11px] italic text-[hsl(var(--canalco-neutral-500))]">
-            Es un mínimo: la Dirección Jurídica puede pedir más según la naturaleza del
-            contratista y el nivel de riesgo.
-          </p>
-        </section>
-
+              ))}
+            </tbody>
+          </table>
+        </div>
     </CuadroConsulta>
   );
 }
@@ -917,26 +888,85 @@ function DocumentosCuadro({ tipoPersona }: { tipoPersona: string }) {
 /**
  * Envoltura de los cuadros de consulta que se muestran entre el historial y el formato.
  * No se imprimen: son la política de referencia, no parte del documento.
+ *
+ * La cabecera va en una banda propia y la nota al pie en otra, con el contenido entre
+ * las dos: son tres cosas distintas —de qué habla el cuadro, qué dice, y la salvedad—
+ * y separadas se distinguen sin leerlas.
  */
-function CuadroConsulta({ icono, titulo, subtitulo, children }: {
+function CuadroConsulta({ icono, titulo, subtitulo, nota, children }: {
   icono: React.ReactNode;
   titulo: string;
-  subtitulo: string;
+  subtitulo: React.ReactNode;
+  /** Salvedad al pie. Va en su banda para que no se lea como una fila más. */
+  nota?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="no-print bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl shadow-sm p-4">
-      <header className="mb-3">
-        <h2 className="flex items-center gap-2 font-semibold text-black">
+    <section className={`no-print ${UI.tarjeta}`}>
+      <header className={`${UI.banda} border-b px-5 py-3.5`}>
+        <h2 className={UI.titulo}>
           {icono}
           {titulo}
         </h2>
-        <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-0.5">{subtitulo}</p>
+        <p className={`text-xs ${UI.tenue} mt-0.5`}>{subtitulo}</p>
       </header>
-      {children}
+      <div className="p-5">{children}</div>
+      {nota && (
+        <footer className={`${UI.bandaTenue} border-t px-5 py-2.5 text-[11px] ${UI.tenue} flex items-start gap-1.5`}>
+          <Info className="w-3.5 h-3.5 mt-px flex-none" />
+          <div className="space-y-1">{nota}</div>
+        </footer>
+      )}
     </section>
   );
 }
+
+/**
+ * Paleta de la sección de G. jurídica: tinta casi negra sobre blanco, con el amarillo
+ * como único acento. Del diseño aprobado para esta pantalla.
+ *
+ *   tinta   #16162b   texto, títulos y la barra lateral
+ *   media   #4a4a63   texto secundario
+ *   borde   #e6e6f0   líneas y separadores
+ *   banda   #f6f6fa   cabeceras de tarjeta y de tabla
+ *   acento  #ffe81a   la acción principal y lo que está activo
+ *   suave   #fff8b0   insignias resaltadas
+ *
+ * El amarillo no lleva texto blanco nunca: sobre él va la tinta. Y no se usa para
+ * texto sobre blanco —no se leería—; ahí va el oro oscuro #8a6d00.
+ *
+ * Va como constantes locales y no como tokens globales a propósito: el resto de la
+ * aplicación corre sobre el naranja de `--canalco-primary`, y redefinir ese token
+ * repintaría los catorce módulos. Cada clase se escribe **literal** porque Tailwind
+ * lee el código fuente: una clase armada con plantillas (`bg-[${x}]`) no la genera.
+ */
+const UI = {
+  tarjeta: 'bg-white border border-[#e6e6f0] rounded-lg shadow-[0_4px_20px_rgba(22,22,43,0.05)] overflow-hidden',
+  banda: 'bg-[#f6f6fa] border-[#e6e6f0]',
+  bandaTenue: 'bg-[#fbfbfd] border-[#e6e6f0]',
+  titulo: 'flex items-center gap-2 font-semibold text-[#16162b] [&>svg]:text-[#d4b400]',
+  texto: 'text-[#16162b]',
+  tenue: 'text-[#4a4a63]',
+  borde: 'border-[#e6e6f0]',
+  primario: 'bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]',
+  secundario: 'bg-white text-[#4a4a63] border-[#c9c9dc] hover:bg-[#f6f6fa]',
+  /** Insignia resaltada: el reloj del trámite. */
+  chipAcento: 'bg-[#fff8b0] text-[#16162b] border border-[#e0cc00]',
+  chipNeutro: 'bg-[#eeeef5] text-[#4a4a63] border border-[#e6e6f0]',
+};
+
+/* Piezas de tabla compartidas por los cuadros de consulta: cabecera tenue, filas
+   separadas por línea y divisores verticales entre columnas. Se leen como una tabla
+   de datos, no como la cuadrícula del formato impreso.
+
+   Van compactas a propósito: son tablas de referencia que se consultan de reojo
+   mientras se diligencia el formato, y con el alto de una tabla de trabajo empujaban
+   el formato —que es lo que se viene a hacer— fuera de la pantalla. */
+const TABLA = 'w-full text-[11px] border-collapse';
+const TH = 'px-3 py-1.5 font-bold text-[#16162b]';
+const TD = 'px-3 py-1.5 align-top';
+const DIV = 'border-l border-[#e6e6f0]';
+const TR = 'border-t border-[#e6e6f0] hover:bg-[#fbfbfd] transition-colors';
 
 /* ── Subcomponentes de maquetación del formato ─────────────────────── */
 
@@ -1121,16 +1151,32 @@ function FieldArea({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+/**
+ * Casilla del formato. El cuadro se dibuja en vez de dejar la casilla nativa a la
+ * vista: bloqueado el formato —como se lee casi siempre—, el navegador apagaría a gris
+ * lo marcado. Ver la nota de `Check` en `requisicionPersonalDoc`.
+ */
 function CheckField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="inline-flex items-center gap-2 cursor-pointer select-none">
       <span className="text-[12px] font-semibold">{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 border border-[#0a2a52] accent-[hsl(var(--canalco-primary))] cursor-pointer"
-      />
+      <span
+        className={'relative w-4 h-4 flex-shrink-0 border border-[#0a2a52] flex items-center justify-center '
+          + (checked ? 'bg-[#ffe81a]' : 'bg-white')}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default"
+        />
+        {checked && (
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#16162b] pointer-events-none" aria-hidden="true">
+            <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
     </label>
   );
 }
@@ -1227,6 +1273,7 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
   onResolverPoliza: (decision: 'aprobar' | 'rechazar') => void;
   onSolicitarPoliza: () => void;
 }) {
+  const navigate = useNavigate();
   const estado = sol.estado as JuridicaEstado;
   const acciones = accionesDisponibles(estado, nombreRol, esCreador);
   const sla = calcularSla(estado, sol.estadoDesde);
@@ -1263,28 +1310,48 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
   // "Pólizas solicitadas". Solo las creadas con el flujo anterior —las que todavía
   // esperan a Daniela— siguen ocultando ese botón, porque en ésas el avance ocurre
   // al aprobar la requisición.
-  const accionesVisibles = polizaPendiente
+  // Solo las acciones que se deciden desde la solicitud. Las demás viven en el
+  // documento que las justifica —"Trámite validado" en la lista de chequeo, "Contrato
+  // listo" en el contrato— y abajo se dice a cuál ir, para que la etapa nunca se quede
+  // sin botón y sin explicación.
+  const accionesVisibles = (polizaPendiente
     ? acciones.filter((a) => a.accion !== 'polizas_solicitadas')
-    : acciones;
+    : acciones
+  ).filter((a) => a.documento === 'solicitud');
+  const enOtroDocumento = documentosConAccion(estado, nombreRol, esCreador, 'solicitud');
+  const hayHistorial = !!sol.historial && sol.historial.length > 0;
 
   return (
-    <div className="no-print mb-6 bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl shadow-sm p-4 space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))]">Estado del flujo:</span>
+    /* Estado e historial van lado a lado: son las dos preguntas que se hacen al abrir
+       la solicitud —en qué va y cómo llegó ahí— y apiladas obligaban a bajar para
+       responder la segunda. En pantalla angosta vuelven a apilarse. */
+    <div className="no-print mb-6 grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+    {/* Sin historial —una solicitud recién creada— la de estado ocupa todo el ancho:
+        dejar un tercio en blanco parecería una tarjeta que no cargó. */}
+    <section className={(hayHistorial ? 'xl:col-span-2 ' : 'xl:col-span-3 ') + UI.tarjeta}>
+      <header className={`${UI.banda} border-b px-5 py-3.5`}>
+        <h2 className={UI.titulo}>
+          <GitBranch className="w-4 h-4" /> Estado del flujo
+        </h2>
+      </header>
+      <div className="p-5 space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
         <span className={`text-sm font-medium rounded px-2.5 py-1 ${estadoBadgeClass(estado)}`}>{estadoLabel(estado)}</span>
         {sla && (
-          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 ${sla.vencida ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          /* A tiempo toma el amarillo del diseño; vencida se queda en rojo, que es una
+             alarma y no puede leerse igual que el estado normal. */
+          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded-lg px-2.5 py-1 ${sla.vencida ? 'bg-red-100 text-red-700 border border-red-200' : UI.chipAcento}`}>
             {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
             {sla.vencida ? 'Vencida' : 'A tiempo'} · vence {fmtFecha(sla.vence)} ({sla.diasHabiles} día{sla.diasHabiles !== 1 ? 's' : ''} háb.)
           </span>
         )}
         {ESTADOS[estado]?.sla == null && !terminal && (
-          <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">sin plazo</span>
+          <span className="text-xs text-[#4a4a63]">sin plazo</span>
         )}
         {/* El consecutivo del contrato: lo emite el sistema al guardarlo y es el
             número con el que el contrato sale a firma y a archivo. */}
         {consecutivo && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold rounded px-2 py-1 bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] font-mono">
+          <span className={`inline-flex items-center gap-1 text-xs font-semibold rounded-lg px-2.5 py-1 font-mono ${UI.chipNeutro}`}>
             {consecutivo}
           </span>
         )}
@@ -1312,27 +1379,6 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
           </span>
         )}
       </div>
-
-      {accionesVisibles.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {accionesVisibles.map((a) => (
-            <Button
-              key={a.accion}
-              onClick={() => onAccion(a.accion, a.requiereMotivo)}
-              variant={a.tone === 'danger' ? 'outline' : 'default'}
-              className={a.tone === 'danger'
-                ? 'border-red-300 text-red-700 hover:bg-red-50'
-                : 'bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white'}
-            >
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      )}
-      {accionesVisibles.length === 0 && !terminal && !puedeResolverPoliza && (
-        <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">No tienes acciones disponibles en este estado.</p>
-      )}
-      {terminal && <p className="text-xs font-medium text-green-700">✓ Contrato en ejecución. Flujo finalizado.</p>}
 
       {/* La RQ de la póliza puede pedirse fuera de la rama de pólizas, así que su
           recuadro se muestra en cualquier estado con contrato firmado; solo la
@@ -1431,13 +1477,53 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
           </p>
         </div>
       )}
+      </div>
 
-      {sol.historial && sol.historial.length > 0 && (
-        <div className="pt-3 border-t border-[hsl(var(--canalco-neutral-200))]">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide mb-2">
-            <History className="w-3.5 h-3.5" /> Historial
-          </p>
-          <ul className="space-y-1.5">
+      {/* Las acciones al pie, separadas por su banda: es lo que se hace, no lo que se
+          lee, y así no se confunden con el estado ni con los avisos de la póliza. */}
+      <footer className={`${UI.bandaTenue} border-t px-5 py-3.5 flex flex-wrap items-center gap-3`}>
+        {accionesVisibles.map((a) => (
+          <Button
+            key={a.accion}
+            onClick={() => onAccion(a.accion, a.requiereMotivo)}
+            variant={a.tone === 'danger' ? 'outline' : 'default'}
+            className={a.tone === 'danger' ? UI.secundario : UI.primario}
+          >
+            {a.label}
+          </Button>
+        ))}
+        {/* La acción de esta etapa está en otro documento: se dice cuál y se lleva
+            allá. Sin esto la etapa parecería trabada. */}
+        {enOtroDocumento.map((doc) => (
+          <button
+            key={doc}
+            type="button"
+            onClick={() => navigate(rutaDocumento(sol.solicitudId, doc))}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#16162b] underline decoration-[#ffe81a] decoration-2 underline-offset-4 hover:decoration-[#e0cc00]"
+          >
+            La acción de esta etapa se hace en «{DOCUMENTO_LABEL[doc]}»
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        ))}
+        {accionesVisibles.length === 0 && enOtroDocumento.length === 0 && !terminal && !puedeResolverPoliza && (
+          <p className="text-xs text-[#4a4a63]">No tienes acciones disponibles en este estado.</p>
+        )}
+        {terminal && (
+          <p className="text-xs font-medium text-emerald-700">✓ Contrato en ejecución. Flujo finalizado.</p>
+        )}
+      </footer>
+    </section>
+
+    {/* Historial: línea de tiempo, con el más reciente arriba y marcado. */}
+    {hayHistorial && (
+      <section className={UI.tarjeta}>
+        <header className={`${UI.banda} border-b px-5 py-3.5`}>
+          <h2 className={UI.titulo}>
+            <History className="w-4 h-4" /> Historial de actividad
+          </h2>
+        </header>
+        <div className="p-5">
+          <ol className="relative pl-5 space-y-4 before:absolute before:inset-y-1.5 before:left-[3px] before:w-px before:bg-[#e6e6f0]">
             {[...sol.historial].reverse().map((h, i) => {
               // Los avisos de vencimiento comparten bitácora con las transiciones,
               // pero no son un cambio de estado: si se pintaran igual, la fila diría
@@ -1447,8 +1533,15 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
               const esRqPoliza = h.accion === 'solicitud_rq_poliza';
               const esInicio = h.accion === 'notificacion_inicio_contrato';
               return (
-                <li key={i} className="text-xs text-[hsl(var(--canalco-neutral-700))] flex flex-wrap gap-x-2">
-                  <span className="text-[hsl(var(--canalco-neutral-400))] font-mono">{fmtFechaHora(h.fecha)}</span>
+                <li key={i} className="relative">
+                  {/* El punto lleno marca el movimiento más reciente, que es el que
+                      explica en qué estado está la solicitud ahora. */}
+                  <span className={'absolute -left-5 top-1.5 w-2 h-2 rounded-full ring-4 ring-white '
+                    + (i === 0 ? 'bg-[#ffe81a] ring-offset-0 outline outline-1 outline-[#e0cc00]' : 'bg-[#c9c9dc]')} />
+                  <div className="text-[11px] font-mono text-[#4a4a63]">
+                    {fmtFechaHora(h.fecha)}
+                  </div>
+                  <div className="text-xs text-[#16162b] flex flex-wrap gap-x-2">
                   {esAlerta ? (
                     <>
                       <span className="inline-flex items-center gap-1 font-medium text-amber-700">
@@ -1500,12 +1593,14 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
                       {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
                     </>
                   )}
+                  </div>
                 </li>
               );
             })}
-          </ul>
+          </ol>
         </div>
-      )}
+      </section>
+    )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Save, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Printer, Save, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -11,6 +11,8 @@ import {
   NIVELES_RIESGO_MATRIZ,
   PROBABILIDAD_IMPACTO,
 } from '@/config/juridicaGarantias';
+import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
+import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 
 /**
  * Lista de Verificación de Garantías + Matriz resumen de riesgo contractual.
@@ -136,16 +138,31 @@ export default function VerificacionGarantiasPage() {
   const quitarRiesgo = (i: number) =>
     setF((p) => ({ ...p, riesgos: p.riesgos.filter((_, idx) => idx !== i) }));
 
-  const handleSave = async () => {
+  /** Devuelve si logró guardar: la acción de la etapa guarda antes de avanzar. */
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true);
     try {
       // No se guardan las filas de riesgo en blanco: la tabla nace con una fila vacía
       // solo para que se pueda escribir sin pulsar «Agregar».
       const riesgos = f.riesgos.filter((r) => Object.values(r).some((v) => v.trim() !== ''));
-      await gestionConocimientoService.saveDocumento(solicitudId!, 'verificacionGarantias', { ...f, riesgos });
+      const actualizada = await gestionConocimientoService.saveDocumento(
+        solicitudId!, 'verificacionGarantias', { ...f, riesgos },
+      );
+      // Se relee lo guardado para ver la firma que estampó el servidor. Solo esos tres
+      // campos: el resto es lo que hay en pantalla y volver a escribirlo perdería lo
+      // que se haya tecleado mientras la petición iba en camino.
+      const guardado = (actualizada.data?.verificacionGarantias ?? {}) as Partial<VerificacionState>;
+      setF((p) => ({
+        ...p,
+        verificoNombre: guardado.verificoNombre ?? p.verificoNombre,
+        verificoCargo: guardado.verificoCargo ?? p.verificoCargo,
+        verificoFecha: guardado.verificoFecha ?? p.verificoFecha,
+      }));
       toast.success('Verificación guardada');
+      return true;
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -158,14 +175,14 @@ export default function VerificacionGarantiasPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-100))]">
-        <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-[#16162b]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))]">
+    <div className="min-h-screen bg-white">
       <style>{`
         @media print {
           @page { size: Letter portrait; margin: 10mm; }
@@ -177,33 +194,42 @@ export default function VerificacionGarantiasPage() {
       `}</style>
 
       {/* Barra de acciones */}
-      <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
+      <header className="no-print bg-white border-b border-[#e6e6f0] shadow-sm sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 pt-4 pb-2 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}`)} title="Volver a la solicitud">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
-            <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Verificación de Garantías</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+            <h1 className="text-lg font-bold text-[#16162b]">Verificación de Garantías</h1>
+            <p className="text-xs text-[#4a4a63]">
               Solicitud N.º {solicitudId}{tipo ? ` · ${tipo.nombre}` : ''}
               {habilitada && pendientes > 0 && ` · ${pendientes} ítem${pendientes === 1 ? '' : 's'} sin marcar`}
             </p>
           </div>
-          <Button variant="outline" onClick={() => window.print()} className="gap-2">
+          <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
           {editable && habilitada && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
         </div>
+        {/* Los documentos del trámite: se navega entre ellos sin volver a la solicitud. */}
+        {solicitudId !== null && (
+          <div className="max-w-4xl mx-auto px-6">
+            <TabsDocumentos solicitudId={solicitudId} sol={sol} activo="verificacion-garantias" />
+          </div>
+        )}
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* La acción de la etapa va donde se decide: la garantía se acepta o se devuelve
+            con la verificación delante. */}
+        <AccionesFlujo
+          sol={sol} documento="verificacion-garantias" onCambio={setSol}
+          onAntes={editable && habilitada ? handleSave : undefined}
+        />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
             <p className="text-[hsl(var(--canalco-neutral-700))]">La verificación de garantías aún no está <b>habilitada</b>.</p>
@@ -329,10 +355,18 @@ export default function VerificacionGarantiasPage() {
                     className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-[11px] outline-none focus:border-[hsl(var(--canalco-primary))]"
                   />
                 </div>
+                {/* La firma no se teclea: la estampa el servidor al guardar, con quien
+                    guarda y la fecha del día. Se pone una sola vez y no la pisa un
+                    guardado posterior. */}
                 <div className="space-y-2">
-                  <CampoFirma label="Verificó" value={f.verificoNombre} onChange={(v) => set('verificoNombre', v)} />
-                  <CampoFirma label="Cargo" value={f.verificoCargo} onChange={(v) => set('verificoCargo', v)} />
-                  <CampoFirma label="Fecha" value={f.verificoFecha} onChange={(v) => set('verificoFecha', v)} tipo="date" />
+                  <FirmaAuto label="Verificó" value={f.verificoNombre} />
+                  <FirmaAuto label="Cargo" value={f.verificoCargo} />
+                  <FirmaAuto label="Fecha" value={fechaLarga(f.verificoFecha)} />
+                  {!f.verificoNombre && (
+                    <p className="no-print text-[10px] italic text-[hsl(var(--canalco-neutral-400))]">
+                      Automático · se llena al guardar, con tu nombre, tu cargo y la fecha de hoy
+                    </p>
+                  )}
                 </div>
               </section>
             </div>
@@ -364,18 +398,23 @@ function SelectCelda({ value, opciones, onChange }: {
   );
 }
 
-function CampoFirma({ label, value, onChange, tipo }: {
-  label: string; value: string; onChange: (v: string) => void; tipo?: string;
-}) {
+/** Fila de firma de solo lectura: el valor lo estampa el servidor al guardar. */
+function FirmaAuto({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[70px_1fr] items-center gap-2">
+    <div className="grid grid-cols-[70px_1fr] items-baseline gap-2">
       <span className="font-bold text-[11px] uppercase tracking-wide">{label}</span>
-      <input
-        type={tipo ?? 'text'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[11px] py-0.5"
-      />
+      <span className="w-full border-b border-dotted border-[hsl(var(--canalco-neutral-300))] text-[11px] py-0.5 min-h-[1.1rem]">
+        {value || ' '}
+      </span>
     </div>
   );
+}
+
+/** 'AAAA-MM-DD' → '15 de agosto de 2026'. Devuelve el crudo si no se entiende. */
+function fechaLarga(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? '').trim());
+  if (!m) return iso ?? '';
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return `${Number(m[3])} de ${meses[Number(m[2]) - 1]} de ${m[1]}`;
 }

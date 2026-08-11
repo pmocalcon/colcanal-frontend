@@ -85,10 +85,19 @@ export interface RequisicionState {
   // 4. Competencias
   competencias: Marcas; competenciasOtras: string;
   candidato1: string; candidato2: string; candidato3: string;
-  // Autorizaciones
-  solicitadoNombre: string; solicitadoCargo: string;
-  aprobadoNombre: string; aprobadoCargo: string;
-  autorizadoNombre: string; autorizadoCargo: string;
+}
+
+/**
+ * Las tres firmas del recuadro AUTORIZACIONES. **No** son parte del formato: viven en
+ * la solicitud, donde las estampa el flujo (el creador al crearla, Gerencia de
+ * Proyectos al autorizar, Gerencia al firmar). Se pasan aparte justamente para que no
+ * se copien: copiadas se congelarían en el valor que tuvieran al guardar —vacías, si
+ * el trámite todavía no había avanzado— y nunca reflejarían las firmas reales.
+ */
+export interface FirmasSolicitud {
+  solicitadoNombre?: string; solicitadoCargo?: string;
+  aprobadoNombre?: string; aprobadoCargo?: string;
+  autorizadoNombre?: string; autorizadoCargo?: string;
 }
 
 export const EMPTY_REQUISICION: RequisicionState = {
@@ -108,9 +117,6 @@ export const EMPTY_REQUISICION: RequisicionState = {
   herrComputador: false, herrCorreo: false, herrPuesto: false, accesos: '',
   competencias: {}, competenciasOtras: '',
   candidato1: '', candidato2: '', candidato3: '',
-  solicitadoNombre: '', solicitadoCargo: '',
-  aprobadoNombre: '', aprobadoCargo: '',
-  autorizadoNombre: '', autorizadoCargo: '',
 };
 
 /** "31/12/2026" → { dia: '31', mes: '12', anio: '2026' }. Vacío si no se entiende. */
@@ -174,12 +180,6 @@ export const prellenarRequisicion = (
     herrPuesto: saved.herrPuesto ?? !!d.herrPuesto,
     accesos: saved.accesos || d.accesos || '',
     candidato1: saved.candidato1 || candidatoSugerido(d),
-    solicitadoNombre: saved.solicitadoNombre || d.solicitadoNombre || '',
-    solicitadoCargo: saved.solicitadoCargo || d.solicitadoCargo || '',
-    aprobadoNombre: saved.aprobadoNombre || d.aprobadoNombre || '',
-    aprobadoCargo: saved.aprobadoCargo || d.aprobadoCargo || '',
-    autorizadoNombre: saved.autorizadoNombre || d.autorizadoNombre || '',
-    autorizadoCargo: saved.autorizadoCargo || d.autorizadoCargo || '',
     motivos: saved.motivos ?? {},
     formacion: saved.formacion ?? {},
     experiencia: saved.experiencia ?? {},
@@ -189,9 +189,11 @@ export const prellenarRequisicion = (
 
 /* ── El cuerpo del formato ──────────────────────────────── */
 
-export function RequisicionPersonalCuerpo({ value: f, onChange }: {
+export function RequisicionPersonalCuerpo({ value: f, onChange, firmas }: {
   value: RequisicionState;
   onChange: (siguiente: RequisicionState) => void;
+  /** Las del recuadro AUTORIZACIONES: vienen de la solicitud, no del formato. */
+  firmas: FirmasSolicitud;
 }) {
   const set = <K extends keyof RequisicionState>(k: K, v: RequisicionState[K]) =>
     onChange({ ...f, [k]: v });
@@ -384,17 +386,22 @@ export function RequisicionPersonalCuerpo({ value: f, onChange }: {
         Autorizaciones. No se teclean: las estampa el flujo al pasar cada paso, igual
         que en el GTH-002-F. Una firma escribible sería una firma que cualquiera puede
         poner en nombre de otro, y estas tres son justamente el respaldo del trámite.
-        El formato las imprime en este orden —aprobado antes que autorizado—, distinto
-        al del GTH-002-F; cada una sigue viniendo de quien le corresponde.
+        Van en el orden en que ocurren —se solicita, lo autoriza Gerencia de Proyectos y
+        lo aprueba Gerencia—, que es además el del GTH-002-F. El formato impreso las
+        pone al revés en las dos últimas casillas; manda el orden del trámite, que es
+        como se leen sin confundir quién hizo qué.
       */}
       <Banda>AUTORIZACIONES</Banda>
       <div className="grid grid-cols-3">
-        <Firma titulo="Solicitado por" nombre={f.solicitadoNombre} cargo={f.solicitadoCargo}
+        <Firma titulo="Solicitado por"
+          nombre={firmas.solicitadoNombre ?? ''} cargo={firmas.solicitadoCargo ?? ''}
           pista="quien crea la solicitud" borde />
-        <Firma titulo="Aprobado por" nombre={f.aprobadoNombre} cargo={f.aprobadoCargo}
-          pista="Gerencia (Dra. Gloria), al firmar la solicitud" borde />
-        <Firma titulo="Autorizado por" nombre={f.autorizadoNombre} cargo={f.autorizadoCargo}
-          pista="Gerencia de Proyectos, al autorizar la solicitud" />
+        <Firma titulo="Autorizado por"
+          nombre={firmas.autorizadoNombre ?? ''} cargo={firmas.autorizadoCargo ?? ''}
+          pista="Gerencia de Proyectos, al autorizar la solicitud" borde />
+        <Firma titulo="Aprobado por"
+          nombre={firmas.aprobadoNombre ?? ''} cargo={firmas.aprobadoCargo ?? ''}
+          pista="Gerencia (Dra. Gloria), al firmar la solicitud" />
       </div>
     </>
   );
@@ -419,18 +426,41 @@ function SubBanda({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Casilla del formato: el cuadro y su etiqueta al lado. */
+/**
+ * Casilla del formato: el cuadro y su etiqueta al lado.
+ *
+ * El cuadro se dibuja a mano en vez de dejar la casilla nativa a la vista. Con la
+ * nativa, `accent-color` solo se ve mientras la casilla está habilitada: en cuanto el
+ * formato se bloquea —que es como se lee la mayor parte del tiempo— el navegador la
+ * apaga a gris y lo marcado deja de distinguirse de lo no marcado. Y el `<fieldset
+ * disabled>` no se puede desactivar desde dentro. Dibujado, lo marcado se ve igual
+ * bloqueado, y además se imprime: `accent-color` no llega al papel y un fondo sí.
+ *
+ * La casilla real sigue ahí, transparente encima, para que siga siendo una casilla:
+ * teclado, lectores de pantalla y el bloqueo del `fieldset`.
+ */
 function Check({ label, checked, onChange }: {
   label: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
     <label className="inline-flex items-center gap-1.5 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-3.5 h-3.5 border border-[#0a2a52] accent-[hsl(var(--canalco-primary))] flex-shrink-0"
-      />
+      <span
+        className={'relative w-3.5 h-3.5 flex-shrink-0 border border-[#0a2a52] flex items-center justify-center '
+          + (checked ? 'bg-[#ffe81a]' : 'bg-white')}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default"
+        />
+        {checked && (
+          <svg viewBox="0 0 16 16" className="w-3 h-3 text-[#16162b] pointer-events-none" aria-hidden="true">
+            <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
       <span>{label}</span>
     </label>
   );

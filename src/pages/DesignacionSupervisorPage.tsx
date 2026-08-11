@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { getTipo } from '@/config/juridicaContratos';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
+import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
+import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 
 /**
  * Formato GJ-003-F · "Designación de Supervisor" (fase 2 de G. jurídica).
@@ -106,13 +108,16 @@ export default function DesignacionSupervisorPage() {
     return () => { cancelled = true; };
   }, [solicitudId]);
 
-  const handleSave = async () => {
+  /** Devuelve si logró guardar: la acción de la etapa guarda antes de avanzar. */
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true);
     try {
       await gestionConocimientoService.saveDocumento(solicitudId!, 'designacionSupervisor', f);
       toast.success('Designación guardada');
+      return true;
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -120,14 +125,14 @@ export default function DesignacionSupervisorPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-100))]">
-        <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-[#16162b]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))]">
+    <div className="min-h-screen bg-white">
       <style>{`
         @media print {
           @page { size: Letter portrait; margin: 10mm; }
@@ -139,30 +144,38 @@ export default function DesignacionSupervisorPage() {
       `}</style>
 
       {/* Barra de acciones */}
-      <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
+      <header className="no-print bg-white border-b border-[#e6e6f0] shadow-sm sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 pt-4 pb-2 flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}`)} title="Volver a la solicitud">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
-            <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Designación de Supervisor</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">Formato GJ-003-F · Solicitud N.º {solicitudId}</p>
+            <h1 className="text-lg font-bold text-[#16162b]">Designación de Supervisor</h1>
+            <p className="text-xs text-[#4a4a63]">Formato GJ-003-F · Solicitud N.º {solicitudId}</p>
           </div>
-          <Button variant="outline" onClick={() => window.print()} className="gap-2">
+          <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
           {editable && habilitada && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
         </div>
+        {/* Los documentos del trámite: se navega entre ellos sin volver a la solicitud. */}
+        {solicitudId !== null && (
+          <div className="max-w-4xl mx-auto px-6">
+            <TabsDocumentos solicitudId={solicitudId} sol={sol} activo="designacion-supervisor" />
+          </div>
+        )}
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* La acción de la etapa va donde se decide: se designa al supervisor acá. */}
+        <AccionesFlujo
+          sol={sol} documento="designacion-supervisor" onCambio={setSol}
+          onAntes={editable && habilitada ? handleSave : undefined}
+        />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
             <p className="text-[hsl(var(--canalco-neutral-700))]">La designación de supervisor aún no está <b>habilitada</b>.</p>
