@@ -759,7 +759,7 @@ export default function CregCensoPage() {
                         <tr className="bg-[hsl(var(--canalco-neutral-100))]">
                           <th rowSpan={2} className="sticky left-0 z-20 bg-[hsl(var(--canalco-neutral-100))] px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[80px]">CÓDIGO</th>
                           <th rowSpan={2} className="sticky left-[80px] z-20 bg-[hsl(var(--canalco-neutral-100))] px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">UCAP</th>
-                          <th rowSpan={2} className="px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">Obras</th>
+                          <th rowSpan={2} className="px-2 py-2 text-left font-semibold border border-[hsl(var(--canalco-neutral-200))] min-w-[220px]">Obras/Actas/Otrosí</th>
                           <th colSpan={4} className="px-3 py-2 text-center font-semibold border border-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-500))]">
                             {prevCol
                               ? <>MES {prevCol.mes} · {prevCol.label} · anterior</>

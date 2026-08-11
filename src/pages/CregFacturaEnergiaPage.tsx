@@ -303,29 +303,21 @@ function FormularioFactura({ factura, set, setComponente }: {
 
   return (
     <div className="space-y-6">
+      {/* Identificación y periodo van juntos: son los datos de la cabecera de la
+          factura y por separado el bloque de arriba quedaba en tres campos. */}
       <Bloque titulo="Identificación">
-        <Campo label="Documento (DEE / N.º factura)" value={factura.documento ?? ''}
-          onText={(v) => set({ documento: v })} placeholder="DEE54352445" />
         <Campo label="Contrato / cuenta" value={factura.contrato ?? ''}
           onText={(v) => set({ contrato: v })} placeholder="9072204" />
         <Campo label="Comercializador" value={factura.operador ?? ''}
           onText={(v) => set({ operador: v })} placeholder="EPM" />
-        <Campo label="NIU" value={factura.niu ?? ''}
-          onText={(v) => set({ niu: v })} placeholder="190792200000000792" />
-        <Campo label="Referente de pago" value={factura.referentePago ?? ''}
-          onText={(v) => set({ referentePago: v })} placeholder="1145987650-50" />
-        <Campo label="Categoría" value={factura.categoria ?? ''}
-          onText={(v) => set({ categoria: v })} placeholder="Oficial" />
-        <CampoNum label="Nivel de tensión (V)" value={factura.tension ?? null}
-          onNum={(v) => set({ tension: v })} placeholder="13200" decimales={0} />
-      </Bloque>
-
-      <Bloque titulo="Periodo de consumo">
+        <CampoFecha label="Fecha de facturación" value={factura.fechaFacturacion ?? ''}
+          onText={(v) => set({ fechaFacturacion: v })} />
+        <CampoFecha label="Fecha de liquidación" value={factura.fechaLiquidacion ?? ''}
+          onText={(v) => set({ fechaLiquidacion: v })} />
         <CampoFecha label="Desde" value={factura.desde ?? ''} onText={(v) => set({ desde: v })} />
         <CampoFecha label="Hasta" value={factura.hasta ?? ''} onText={(v) => set({ hasta: v })} />
         <CampoNum label="Días de consumo" value={factura.dias ?? null}
           onNum={(v) => set({ dias: v })} placeholder="30" decimales={0} />
-        <CampoFecha label="Pagar antes de" value={factura.vence ?? ''} onText={(v) => set({ vence: v })} />
       </Bloque>
 
       <Bloque titulo="Valores facturados">

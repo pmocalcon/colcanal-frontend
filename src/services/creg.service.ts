@@ -318,12 +318,27 @@ export const sumaComponentes = (c?: ComponentesCostoKwh): number | null => {
  * peso") y ese redondeo es el que se gira.
  */
 export interface FacturaEnergia {
-  /** Documento equivalente electrónico (DEE) o número de factura. */
-  documento?: string;
   /** Contrato / cuenta del comercializador. */
   contrato?: string;
   /** Comercializador que factura (EPM, EMSA…). */
   operador?: string;
+  /** Fecha en que el comercializador expide la factura. */
+  fechaFacturacion?: string;
+  /** Fecha en que se liquida el periodo. */
+  fechaLiquidacion?: string;
+  /** Periodo de consumo que cubre la factura. */
+  desde?: string;
+  hasta?: string;
+  /** Días de consumo facturados. */
+  dias?: number | null;
+
+  /*
+   * Ya no se capturan en el formulario, pero siguen declarados: las facturas
+   * guardadas los traen y el jsonb se reescribe entero al guardar. Quitarlos del
+   * tipo los borraría del histórico en el primer guardado.
+   */
+  /** Documento equivalente electrónico (DEE) o número de factura. */
+  documento?: string;
   /** NIU: número único de identificación del servicio. */
   niu?: string;
   /** Referente de pago impreso en la factura. */
@@ -332,11 +347,6 @@ export interface FacturaEnergia {
   categoria?: string;
   /** Nivel de tensión en voltios. */
   tension?: number | null;
-  /** Periodo de consumo que cubre la factura. */
-  desde?: string;
-  hasta?: string;
-  /** Días de consumo facturados. */
-  dias?: number | null;
   /** Vencimiento del pago. */
   vence?: string;
   /** kWh facturados en el periodo. */
