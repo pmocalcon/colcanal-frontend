@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Home, ArrowLeft, Plus, FileText, Pencil, Clock, Eye } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, Pencil, Clock, Eye } from 'lucide-react';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { mapCompaniesToDepartments, getMunicipioName } from '@/utils/departmentMapper';
@@ -194,9 +194,6 @@ export default function PresupuestosListPage() {
             <div className="bg-white rounded-xl shadow-md p-2 w-12 h-12 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
               <img src="/assets/images/logo-canalco.png" alt="Canalco" className="w-full h-full object-contain" />
             </div>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/levantamiento-obras')} title="Volver">
               <ArrowLeft className="w-5 h-5" />
             </Button>

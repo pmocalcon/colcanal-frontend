@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, ArrowLeftRight, Plus, FileText, Trash2, Loader2, Receipt, Wallet, Inbox, Filter } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Plus, FileText, Trash2, Loader2, Receipt, Wallet, Inbox, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import {
@@ -141,9 +141,6 @@ export default function SolicitudesContableListPage({ tipo }: { tipo: TipoContab
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate(base)} title="Volver a G. contable y tributaria">
             <ArrowLeft className="w-5 h-5" />
           </Button>

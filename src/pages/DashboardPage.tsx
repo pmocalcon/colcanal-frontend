@@ -10,29 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { esRolPmo } from '@/utils/rolesPmo';
+import { prepararModulos } from '@/config/modulosSistema';
 
-// Módulos que se muestran dentro de Compras (no en el dashboard principal)
-const MODULES_INSIDE_COMPRAS = ['proveedores', 'materiales', 'inventarios', 'auditorias'];
-
-// Orden definido para el grid de módulos (3 columnas)
-const MODULE_ORDER = [
-  'compras',
-  'levantamiento-obras',
-  'usuarios',
-  'dashboard',
-  'notificaciones',
-];
-
-// Mapeo de slugs antiguos a nuevos
-const SLUG_MAPPING: Record<string, string> = {
-  'inventarios': 'materiales',
-  'reportes': 'levantamiento-obras',
-};
-
-// Sobrescribir nombres de módulos que vienen del backend
-const MODULE_NAME_OVERRIDES: Record<string, string> = {
-  'levantamiento-obras': 'Obras',
-};
+// Qué módulos se muestran, con qué nombre y en qué orden: vive en
+// `config/modulosSistema` porque la barra lateral pinta la misma lista.
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -41,27 +22,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Procesar y ordenar módulos según el orden definido
-  const sortedModules = useMemo(() => {
-    return modules
-      .map((module) => {
-        const slug = SLUG_MAPPING[module.slug] || module.slug;
-        return {
-          ...module,
-          slug,
-          nombre: MODULE_NAME_OVERRIDES[slug] || module.nombre,
-        };
-      })
-      .filter((module) => !MODULES_INSIDE_COMPRAS.includes(module.slug))
-      .sort((a, b) => {
-        const indexA = MODULE_ORDER.indexOf(a.slug);
-        const indexB = MODULE_ORDER.indexOf(b.slug);
-        // Módulos no listados van al final
-        const orderA = indexA === -1 ? MODULE_ORDER.length : indexA;
-        const orderB = indexB === -1 ? MODULE_ORDER.length : indexB;
-        return orderA - orderB;
-      });
-  }, [modules]);
+  // Qué módulos se muestran, con qué nombre y en qué orden. Sale del catálogo
+  // compartido: la barra lateral pinta esta misma lista y no pueden discrepar.
+  const sortedModules = useMemo(() => prepararModulos(modules), [modules]);
 
   useEffect(() => {
     const fetchModules = async () => {

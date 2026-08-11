@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Eraser, Save, Loader2, Plus, Trash2, Link2, Search, History, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Printer, Eraser, Save, Loader2, Plus, Trash2, Link2, Search, History, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -238,9 +238,6 @@ export default function LegalizacionAnticipoPage() {
 
       <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/contable/legalizaciones')} title="Volver a Legalizaciones">
             <ArrowLeft className="w-5 h-5" />
           </Button>

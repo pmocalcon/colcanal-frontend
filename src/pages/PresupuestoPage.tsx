@@ -19,7 +19,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Home, ArrowLeft, Plus, Trash2, Printer, Check, ChevronsUpDown, X, Layers, Send, CheckCircle, XCircle, Lock} from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Printer, Check, ChevronsUpDown, X, Layers, Send, CheckCircle, XCircle, Lock} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Save } from 'lucide-react';
 import { materialsService, type Material } from '@/services/materials.service';
@@ -1244,9 +1244,6 @@ export default function PresupuestoPage() {
             <div className="bg-white rounded-xl shadow-md p-2 w-12 h-12 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
               <img src="/assets/images/logo-canalco.png" alt="Canalco" className="w-full h-full object-contain" />
             </div>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/levantamiento-obras')} title="Volver">
               <ArrowLeft className="w-5 h-5" />
             </Button>

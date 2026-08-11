@@ -2,7 +2,7 @@
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home, ArrowLeft, FileText, Save, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
+import { ArrowLeft, FileText, Save, ChevronDown, ChevronUp, Trash2, GripVertical } from 'lucide-react';
 import { surveysService, type Work, type IppConfig } from '@/services/surveys.service';
 import {
   directorBudgetsService,
@@ -1241,9 +1241,6 @@ export default function ResumenActaPage() {
             <div className="bg-white rounded-xl shadow-md p-2 w-12 h-12 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
               <img src="/assets/images/logo-canalco.png" alt="Canalco" className="w-full h-full object-contain" />
             </div>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate(-1)} title="Volver">
               <ArrowLeft className="w-5 h-5" />
             </Button>

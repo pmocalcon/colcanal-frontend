@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { surveysService, type Work } from '@/services/surveys.service';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 
 export type TipoFiltro = 'todos' | 'ucaps' | 'materiales';
 import { toast } from 'sonner';
@@ -383,9 +383,6 @@ export default function RevisarCantidadesActaPage() {
   return (
     <div className="min-h-screen bg-[hsl(var(--canalco-neutral-50))]">
       <header className="bg-white shadow-sm border-b border-[hsl(var(--canalco-neutral-200))] px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-          <Home className="w-4 h-4" />
-        </Button>
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)} title="Volver">
           <ArrowLeft className="w-4 h-4" />
         </Button>

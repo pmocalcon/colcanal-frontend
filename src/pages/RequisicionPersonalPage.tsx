@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Home, ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -106,9 +106,6 @@ export default function RequisicionPersonalPage() {
 
       <header className="no-print bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" title="Volver a la solicitud"
             onClick={() => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}`)}>
             <ArrowLeft className="w-5 h-5" />
@@ -198,7 +195,8 @@ export default function RequisicionPersonalPage() {
                 </div>
               </div>
 
-              <RequisicionPersonalCuerpo value={f} onChange={setF} />
+              {/* Las firmas se leen de la solicitud, que es donde las estampa el flujo. */}
+              <RequisicionPersonalCuerpo value={f} onChange={setF} firmas={sol?.data ?? {}} />
             </div>
           </fieldset>
         )}

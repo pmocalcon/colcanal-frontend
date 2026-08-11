@@ -7,7 +7,7 @@ import { getPendingPurchaseOrdersForApproval } from '@/services/purchase-orders.
 import { mapCompaniesToDepartments, getMunicipioName, esEmpresaMatriz } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import {
-  Home, ArrowLeft, Loader2, HardHat, DollarSign, ShoppingCart,
+  ArrowLeft, Loader2, HardHat, DollarSign, ShoppingCart,
   TrendingUp, PackageCheck, Filter, BadgeCheck, Printer,
 } from 'lucide-react';
 import {
@@ -437,9 +437,6 @@ export default function DashboardModulePage() {
           <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
             <img src="/assets/images/logo-canalco.png" alt="Canales Contactos" className="w-full h-full object-contain" />
           </div>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Inicio">
-            <Home className="w-5 h-5" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Volver">
             <ArrowLeft className="w-5 h-5" />
           </Button>

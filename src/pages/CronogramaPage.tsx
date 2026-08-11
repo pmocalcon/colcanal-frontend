@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { materialsService, type Material } from '@/services/materials.service';
-import { Home, ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
@@ -4364,9 +4364,6 @@ export default function CronogramaPage() {
             <div className="bg-white rounded-xl shadow-md p-2 w-12 h-12 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
               <img src="/assets/images/logo-canalco.png" alt="Canalco" className="w-full h-full object-contain" />
             </div>
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} title="Inicio">
-              <Home className="w-5 h-5" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/levantamiento-obras')} title="Volver">
               <ArrowLeft className="w-5 h-5" />
             </Button>

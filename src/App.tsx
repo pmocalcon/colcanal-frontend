@@ -67,6 +67,7 @@ import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
 import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
 import ChecklistContratoPage from './pages/ChecklistContratoPage'
 import RequisicionPersonalPage from './pages/RequisicionPersonalPage'
+import { LayoutSistema } from './components/layout/LayoutSistema'
 import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
 import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
 import ActaInicioPage from './pages/ActaInicioPage'
@@ -84,6 +85,7 @@ export default function App() {
     <AuthProvider>
       <Toaster position="top-right" richColors />
       <BrowserRouter>
+        <LayoutSistema>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -294,6 +296,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </LayoutSistema>
       </BrowserRouter>
     </AuthProvider>
   )
