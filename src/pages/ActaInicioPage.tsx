@@ -9,6 +9,7 @@ import { getTipo } from '@/config/juridicaContratos';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
  * Formato GJ-006-F · "Acta de inicio para contrato por prestación de servicios,
@@ -20,17 +21,23 @@ import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 interface ActaState {
   // Encabezado / título
   contratante: string; identTributaria: string; tipologia: string; contratista: string;
-  // Tabla de datos
+  /**
+   * Representante legal de la contratante. No hay un campo aparte para el supervisor
+   * porque el formato no lo tiene: en la tabla figura como representante legal y al pie
+   * firma como «La Supervisora». Son la misma persona y con dos campos podrían discrepar.
+   */
   representanteLegal: string; representanteCc: string;
+  /** La contratista puede ser una empresa: identificación propia y representante legal. */
   contratistaCc: string;
+  contratistaRepLegal: string; contratistaRepCc: string;
   direccion: string; celular: string; correo: string;
   objeto: string;
   valor: string; formaPago: string;
   plazo: string;
   aprobacionGarantias: string;
-  // Reunión de inicio
+  inicio: string; terminacion: string;
+  /** Ciudad de la reunión de inicio. Solo aparece dentro del párrafo de apertura. */
   ciudadReunion: string;
-  supervisorNombre: string; supervisorCc: string;
   // Fechas
   fechaInicio: string; plazoCorto: string; fechaFinal: string;
   /** Texto del acta que Jurídica reescribió, por clave. Vacío = plantilla. */
@@ -41,13 +48,14 @@ const EMPTY: ActaState = {
   contratante: '', identTributaria: '', tipologia: '', contratista: '',
   representanteLegal: '', representanteCc: '',
   contratistaCc: '',
+  contratistaRepLegal: '', contratistaRepCc: '',
   direccion: '', celular: '', correo: '',
   objeto: '',
   valor: '', formaPago: '',
   plazo: '',
   aprobacionGarantias: '',
+  inicio: '', terminacion: '',
   ciudadReunion: '',
-  supervisorNombre: '', supervisorCc: '',
   fechaInicio: '', plazoCorto: '', fechaFinal: '',
   textos: {},
 };
@@ -86,6 +94,9 @@ export default function ActaInicioPage() {
         const d = data.data ?? {};
         const saved = (d.actaInicio ?? {}) as Partial<ActaState>;
         const des = (d.designacionSupervisor ?? {}) as Record<string, string>;
+        // `viejoSup` son los campos del acta anterior, que tenía supervisor aparte del
+        // representante legal. Se leen para que un acta ya guardada no pierda la firma.
+        const viejoSup = (d.actaInicio ?? {}) as Record<string, string>;
         // Prellenado: primero lo guardado del acta; luego el contrato (solicitud) y la designación.
         setF({
           ...EMPTY,
@@ -100,10 +111,12 @@ export default function ActaInicioPage() {
           plazoCorto: saved.plazoCorto || d.duracion || '',
           // De la designación de supervisor (mismo contrato):
           identTributaria: saved.identTributaria || des.contratanteNit || '',
-          representanteLegal: saved.representanteLegal || des.funcionarioNombre || '',
-          contratistaCc: saved.contratistaCc || des.contratistaCc || '',
-          supervisorNombre: saved.supervisorNombre || des.supervisorNombre || '',
+          representanteLegal: saved.representanteLegal || viejoSup.supervisorNombre || des.firmanteNombre || '',
+          representanteCc: saved.representanteCc || viejoSup.supervisorCc || des.firmanteCc || '',
+          contratistaCc: saved.contratistaCc || des.contratistaNit || '',
           aprobacionGarantias: saved.aprobacionGarantias || des.aprobacionGarantias || '',
+          inicio: saved.inicio || des.inicio || '',
+          terminacion: saved.terminacion || des.terminacion || '',
           ciudadReunion: saved.ciudadReunion || des.supervisorCiudad || '',
           textos: saved.textos ?? {},
         });
@@ -218,8 +231,9 @@ export default function ActaInicioPage() {
                 k="titulo"
                 plantilla={
                   'ACTA DE INICIO\n' +
-                  `CONTRATO ${(f.tipologia || 'prestación de servicios').toUpperCase()}\n` +
-                  `SUSCRITO ENTRE ${(f.contratante || '…').toUpperCase()} y ${(f.contratista || '…').toUpperCase()}`
+                  `CONTRATO DE ${(f.tipologia || 'prestación de servicios').toUpperCase()}\n` +
+                  // La contratista va primero, como en el formato.
+                  `SUSCRITO ENTRE ${tx(f.contratista).toUpperCase()} Y ${tx(f.contratante).toUpperCase()}`
                 }
                 className="text-center"
               />
@@ -233,7 +247,9 @@ export default function ActaInicioPage() {
                 <Row label="REPRESENTANTE LEGAL" value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} />
                 <Row label="IDENTIFICACIÓN" value={f.representanteCc} onChange={(v) => set('representanteCc', v)} placeholder="C.C. 000.000.000 de ..." />
                 <Row label="CONTRATISTA" value={f.contratista} onChange={(v) => set('contratista', v)} />
-                <Row label="IDENTIFICACIÓN" value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="C.C 000.000.000 expedida en ..." />
+                <Row label="IDENTIFICACIÓN" value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="NIT 000.000.000-0" />
+                <Row label="REPRESENTANTE LEGAL" value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} />
+                <Row label="IDENTIFICACIÓN" value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="C.C. 00.000.000 expedida en ..." />
                 <Row label="DIRECCIÓN DEL DOMICILIO" value={f.direccion} onChange={(v) => set('direccion', v)} />
                 <Row label="CELULAR" value={f.celular} onChange={(v) => set('celular', v)} />
                 <Row label="CORREO ELECTRÓNICO" value={f.correo} onChange={(v) => set('correo', v)} />
@@ -242,15 +258,22 @@ export default function ActaInicioPage() {
                   extra={<Sub label="Forma de pago" value={f.formaPago} onChange={(v) => set('formaPago', v)} />} />
                 <Row label="PLAZO DE EJECUCIÓN" value={f.plazo} onChange={(v) => set('plazo', v)} area />
                 <Row label="APROBACIÓN DE GARANTÍAS" value={f.aprobacionGarantias} onChange={(v) => set('aprobacionGarantias', v)} area
-                  placeholder="Garantía de Cumplimiento No. ..., Póliza de RCE No. ..., expedidas el ..." />
+                  placeholder="Garantía de Cumplimiento No. ..., Póliza de RCE No. ..., aprobadas el ..." />
+                {/* En minúscula porque así van en el formato, no por descuido. */}
+                <Row label="Inicio" value={f.inicio} onChange={(v) => set('inicio', v)}
+                  placeholder="00 de mes de 0000" />
+                <Row label="Terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)}
+                  placeholder="00 de mes de 0000" />
               </tbody>
             </table>
 
-            {/* Reunión de inicio */}
+            {/* Reunión de inicio. Clave nueva y no `reunion`: esa la usaba el formato
+                anterior con otra redacción —y otros datos— y un acta que la hubiera
+                reescrito heredaría aquí el párrafo equivocado. */}
             <div className="px-6 py-4 leading-relaxed text-[12.5px] border-t border-[#0a2a52]">
               <TextoEd
-                k="reunion"
-                plantilla={`En la ciudad de ${tx(f.ciudadReunion)}, se reunió el señor ${tx(f.supervisorNombre)}, identificado con número de cédula No. ${tx(f.supervisorCc)}, en calidad de SUPERVISOR por parte de EL CONTRATANTE y el señor ${tx(f.contratista)} identificado con número de cédula No. ${tx(f.contratistaCc)}, en calidad de CONTRATISTA, con el propósito de iniciar la ejecución del contrato.`}
+                k="apertura"
+                plantilla={`En ${tx(f.ciudadReunion)}, a los … días del mes de … de dos mil … (…), se reunieron la doctora ${tx(f.representanteLegal).toUpperCase()}, identificada con cédula de ciudadanía No. ${tx(f.representanteCc)}, en calidad de supervisora del contrato por parte de ${tx(f.contratante)}, y la señora ${tx(f.contratistaRepLegal).toUpperCase()}, identificada con cédula de ciudadanía No. ${tx(f.contratistaRepCc)}, actuando como representante legal de ${tx(f.contratista)}, en calidad de contratista. Una vez verificada la expedición, presentación y aprobación de las garantías contractuales exigidas, efectuada el ${tx(f.aprobacionGarantias)}, las partes acuerdan dar inicio a la ejecución del contrato a partir del ${tx(f.inicio)}, de conformidad con el cronograma y las condiciones contractuales pactadas.`}
               />
             </div>
 
@@ -281,21 +304,26 @@ export default function ActaInicioPage() {
               </tbody>
             </table>
 
-            {/* Firmas */}
+            {/* Firmas. La supervisora es la representante legal de la contratante —el
+                formato no tiene fila de supervisor—, y por la contratista firma su
+                representante legal, con el nombre de la empresa debajo. */}
             <div className="grid grid-cols-2 gap-8 px-6 pt-16 pb-4">
               <Firma>
-                <FLine value={f.supervisorNombre} onChange={(v) => set('supervisorNombre', v)} placeholder="NOMBRE DEL SUPERVISOR" bold />
-                <FLine value={f.supervisorCc} onChange={(v) => set('supervisorCc', v)} placeholder="Cédula. No. 00.000.000" />
-                <div className="font-bold">El Supervisor</div>
+                <FLine value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} placeholder="NOMBRE DE LA SUPERVISORA" bold />
+                <FLine value={f.representanteCc} onChange={(v) => set('representanteCc', v)} placeholder="Cédula. No. 00.000.000 de ..." />
+                <div className="font-bold">La Supervisora</div>
               </Firma>
               <Firma>
-                <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="NOMBRE DEL CONTRATISTA" bold />
-                <FLine value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="C.C. 0.000.000" />
-                <div className="font-bold">El Contratista</div>
+                <FLine value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} placeholder="NOMBRE DE QUIEN FIRMA" bold />
+                <FLine value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="C.C. 00.000.000 expedida en ..." />
+                <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="NOMBRE DE LA CONTRATISTA" bold />
+                <div>Representante Legal</div>
+                <div className="font-bold">La Contratista</div>
               </Firma>
             </div>
 
           </div>
+          <PieElaboracion />
           </TextosDocumento>
           </fieldset>
         )}

@@ -5,6 +5,7 @@ import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
  * Plantilla de contrato para el tipo "Término Indefinido" (contrato laboral, GJ-002-F).
@@ -410,6 +411,7 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
               </div>
             </div>
           </div>
+          <PieElaboracion />
           </fieldset>
         )}
 

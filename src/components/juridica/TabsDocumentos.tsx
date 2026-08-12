@@ -81,6 +81,12 @@ export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
     tab('acta-inicio',
       en(estado, ['en_acta_inicio', 'finalizado']),
       'Se habilita en la etapa de acta de inicio (tras la designación de supervisor)'),
+    // El otrosí no es una etapa: modifica un contrato que ya está corriendo. Se abre en
+    // la misma ventana que el acta de inicio y no se cierra nunca, porque una prórroga o
+    // una adición pueden firmarse en cualquier momento de la vida del contrato.
+    tab('otrosi',
+      en(estado, ['en_acta_inicio', 'finalizado']),
+      'Se habilita cuando el contrato ya está en ejecución (desde el acta de inicio)'),
   ];
 }
 

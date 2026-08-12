@@ -113,6 +113,12 @@ export default function SolicitudPrestacionServiciosPage() {
   const estado = sol?.estado ?? 'borrador';
   const locked = solicitudId !== null && estado !== 'borrador';
 
+  /**
+   * Si la montó un Director de Área, la solicitud saltó el paso de Gerencia de Proyectos
+   * y el recuadro de firmas va con dos. Lo marca el backend al enviarla.
+   */
+  const sinAutorizacion = sol?.data?.autorizacionGpOmitida === true;
+
   // Con qué formato arranca este trámite. Lo elige quien lo abre; mientras no elija,
   // lo propone el tipo de contrato. No depende de la etapa: la requisición va antes
   // que todo lo demás —pide 15 días de anticipación— y se abre desde el borrador.
@@ -659,12 +665,19 @@ export default function SolicitudPrestacionServiciosPage() {
           </div>
 
           {/* Autorizaciones */}
+          {/* Cuántas firmas lleva el recuadro depende de quién montó la solicitud. Si fue
+              un Director de Área, no hay autorización que dar por encima —su jefe es la
+              Gerencia—: la solicitud va directo a la Dra. Gloria y se firma entre dos.
+              Lo decide el backend al enviarla y lo deja escrito; aquí solo se lee, para
+              que el papel diga siempre lo mismo y no cambie según cuándo se abra. */}
           <SectionTitle>AUTORIZACIONES</SectionTitle>
-          <div className="grid grid-cols-3">
+          <div className={sinAutorizacion ? 'grid grid-cols-2' : 'grid grid-cols-3'}>
             <SignatureCell title="Solicitado por" nombre={f.solicitadoNombre} cargo={f.solicitadoCargo}
               hint="Se toma de quien crea la solicitud" />
-            <SignatureCell title="Autorizado por" nombre={f.autorizadoNombre} cargo={f.autorizadoCargo}
-              hint="Gerencia de Proyectos, al autorizar la solicitud" />
+            {!sinAutorizacion && (
+              <SignatureCell title="Autorizado por" nombre={f.autorizadoNombre} cargo={f.autorizadoCargo}
+                hint="Gerencia de Proyectos, al autorizar la solicitud" />
+            )}
             <SignatureCell title="Aprobado por" nombre={f.aprobadoNombre} cargo={f.aprobadoCargo}
               hint="Gerencia (Dra. Gloria), al firmar la solicitud" last />
           </div>

@@ -10,6 +10,7 @@ import { esRolPmo } from '@/utils/rolesPmo';
 import { estadoAlcanzo, estadoLabel } from '@/utils/juridicaWorkflow';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 const PERSONA_LABEL: Record<string, string> = { natural: 'Natural', juridica: 'Jurídica' };
 
@@ -435,6 +436,7 @@ export default function ChecklistContratoPage() {
                 hint="al guardar en revisión del contrato (Jurídica)" />
             </div>
           </div>
+          <PieElaboracion />
           </fieldset>
           </>
         )}

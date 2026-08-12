@@ -71,6 +71,7 @@ import { LayoutSistema } from './components/layout/LayoutSistema'
 import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
 import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
 import ActaInicioPage from './pages/ActaInicioPage'
+import OtrosiPage from './pages/OtrosiPage'
 import ContratoPage from './pages/ContratoPage'
 import MatrizContratosPage from './pages/MatrizContratosPage'
 import ContableHomePage from './pages/ContableHomePage'
@@ -279,6 +280,7 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/designacion-supervisor" element={<DesignacionSupervisorPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/contrato" element={<ContratoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/acta-inicio" element={<ActaInicioPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/otrosi" element={<OtrosiPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/matriz" element={<MatrizContratosPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable" element={<ContableHomePage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/anticipos" element={<SolicitudesContableListPage tipo="anticipos" />} />

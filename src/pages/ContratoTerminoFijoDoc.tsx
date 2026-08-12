@@ -5,6 +5,7 @@ import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
  * Plantilla de contrato para el tipo "Término Fijo" (contrato laboral).
@@ -306,6 +307,7 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
               </div>
             </div>
           </div>
+          <PieElaboracion />
           </fieldset>
         )}
 

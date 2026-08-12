@@ -69,12 +69,17 @@ const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // autoriza la solic
 const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por" · Dra. Gloria)
 
 /**
- * Los seis documentos del trámite. Son también las pestañas de la cabecera
+ * Los documentos del trámite. Son también las pestañas de la cabecera
  * (`TabsDocumentos`), que toma de aquí su tipo: la lista es una sola.
+ *
+ * El otrosí es el único que no pertenece al flujo: no lo pide ninguna etapa ni lo espera
+ * ninguna transición. Es lo que se firma **después**, cuando un contrato ya en ejecución
+ * se prorroga o se le adiciona valor, y puede haber varios sobre el mismo contrato.
  */
 export type DocumentoJuridica =
   | 'solicitud' | 'chequeo' | 'contrato'
-  | 'verificacion-garantias' | 'designacion-supervisor' | 'acta-inicio';
+  | 'verificacion-garantias' | 'designacion-supervisor' | 'acta-inicio'
+  | 'otrosi';
 
 /** Cómo se llama cada documento cuando hay que mandar al usuario a él. */
 export const DOCUMENTO_LABEL: Record<DocumentoJuridica, string> = {
@@ -84,6 +89,7 @@ export const DOCUMENTO_LABEL: Record<DocumentoJuridica, string> = {
   'verificacion-garantias': 'Verificación de garantías',
   'designacion-supervisor': 'Designación supervisor',
   'acta-inicio': 'Acta de inicio',
+  otrosi: 'Otrosí',
 };
 
 export interface Transicion {
@@ -106,7 +112,10 @@ export interface Transicion {
 }
 
 export const TRANSICIONES: Transicion[] = [
-  { accion: 'enviar', from: 'borrador', to: 'pendiente_autorizacion_gp', roles: [], soloCreador: true, label: 'Enviar a autorización', tone: 'primary', documento: 'solicitud' },
+  // A dónde llega la decide el backend con el rol de quien la montó: un Director de Área
+  // no tiene a quién pedirle autorización por encima y va directo a la firma de Gerencia.
+  // Por eso la etiqueta no nombra el paso siguiente — sería falsa la mitad de las veces.
+  { accion: 'enviar', from: 'borrador', to: 'pendiente_autorizacion_gp', roles: [], soloCreador: true, label: 'Enviar la solicitud', tone: 'primary', documento: 'solicitud' },
   { accion: 'autorizar_gp', from: 'pendiente_autorizacion_gp', to: 'pendiente_firma_gerencia', roles: ROLES_GERENCIA_PROYECTOS, label: 'Autorizar y enviar a firma de Gerencia', tone: 'primary', documento: 'solicitud' },
   { accion: 'rechazar_gp', from: 'pendiente_autorizacion_gp', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger', documento: 'solicitud' },
   { accion: 'aprobar_gerencia', from: 'pendiente_firma_gerencia', to: 'en_tramite_administrativa', roles: ROLES_GERENCIA, label: 'Firmar y remitir a Administrativa', tone: 'primary', documento: 'solicitud' },

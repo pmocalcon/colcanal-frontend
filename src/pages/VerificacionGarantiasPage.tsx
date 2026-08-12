@@ -13,6 +13,7 @@ import {
 } from '@/config/juridicaGarantias';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
  * Lista de Verificación de Garantías + Matriz resumen de riesgo contractual.
@@ -370,6 +371,7 @@ export default function VerificacionGarantiasPage() {
                 </div>
               </section>
             </div>
+            <PieElaboracion />
           </fieldset>
         )}
 

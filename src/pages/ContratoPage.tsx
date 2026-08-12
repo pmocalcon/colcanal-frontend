@@ -10,8 +10,10 @@ import { TextosDocumento, useTextosDocumento, TextoEd, ClausulaEd, ListaEd } fro
 import ContratoTerminoFijoDoc from './ContratoTerminoFijoDoc';
 import ContratoTerminoIndefinidoDoc from './ContratoTerminoIndefinidoDoc';
 import ContratoObraLaborDoc from './ContratoObraLaborDoc';
+import ContratoPrestacionDoc from './ContratoPrestacionDoc';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
  * Formato GJ-001-F · "Contrato por prestación de servicios" (paso de Generación/Revisión
@@ -167,6 +169,13 @@ export default function ContratoPage() {
   }
   if (sol?.data?.tipoContrato === 'obra-labor') {
     return <ContratoObraLaborDoc solicitud={sol} />;
+  }
+  // «Prestación de servicios» contrata a una sociedad —NIT, representante legal,
+  // certificado de existencia— y tiene su propio formato. No lo comparte con
+  // «Prestación de servicios Profesionales», que contrata a una persona natural y
+  // sigue con la plantilla de abajo.
+  if (sol?.data?.tipoContrato === 'prestacion-de-servicios') {
+    return <ContratoPrestacionDoc solicitud={sol} />;
   }
 
   return (
@@ -454,6 +463,7 @@ export default function ContratoPage() {
               </div>
             </div>
           </div>
+          <PieElaboracion />
           </TextosDocumento>
           </fieldset>
         )}
