@@ -4,129 +4,39 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { useAuth } from '@/contexts/AuthContext';
+import { SUBMODULOS_OBRAS, accesoObras } from '@/config/submodulos';
 
 export default function LevantamientoObrasPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { hasPermission } = useGranularPermissions();
 
-  const isDirectorTecnico = user?.nombreRol === 'Director Técnico';
-
-  const getSubModuleAccess = (slug: string): boolean => {
-    switch (slug) {
-      case 'obras':
-        return hasPermission('levantamientos:obras');
-      case 'crear-obra':
-        return hasPermission('levantamientos:nueva-obra') || isDirectorTecnico;
-      case 'levantamientos':
-        return hasPermission('levantamientos:levantamientos');
-      case 'ucaps':
-        return hasPermission('levantamientos:ucaps');
-      case 'presupuesto':
-        return hasPermission('levantamientos:presupuesto');
-      case 'presupuestos-list':
-        return !isDirectorTecnico && (hasPermission('levantamientos:presupuesto') || hasPermission('levantamientos:aprobar'));
-      case 'plan-anual':
-        return hasPermission('levantamientos:plan-anual') || hasPermission('levantamientos:autorizar');
-      case 'cronograma':
-        return hasPermission('levantamientos:cronograma');
-      default:
-        return false;
-    }
+  /*
+   * Los submódulos, su ruta y quién puede abrirlos salen de `config/submodulos`: la
+   * barra lateral despliega esta misma lista y no pueden discrepar. Las descripciones
+   * se quedan aquí porque son de la tarjeta; la barra no tiene sitio para ellas.
+   */
+  const DESCRIPCIONES: Record<string, string> = {
+    'crear-obra': 'Registrar una nueva obra',
+    levantamientos: 'Ver levantamientos realizados',
+    obras: 'Ver listado de obras registradas',
+    presupuesto: 'Elaborar presupuesto director de proyectos',
+    'presupuestos-list': 'Ver y editar presupuestos guardados',
+    'plan-anual': 'Asignar obras al plan anual por año',
+    cronograma: 'Ver avance y fechas de ejecución por obra',
   };
 
-  const subModules = [
-    {
-      gestionId: 402,
-      nombre: 'Nueva Obra',
-      slug: 'crear-obra',
-      icono: 'Plus',
-      hasAccess: getSubModuleAccess('crear-obra'),
-      description: 'Registrar una nueva obra',
-    },
-    {
-      gestionId: 403,
-      nombre: 'Levantamientos',
-      slug: 'levantamientos',
-      icono: 'ClipboardList',
-      hasAccess: getSubModuleAccess('levantamientos'),
-      description: 'Ver levantamientos realizados',
-    },
-    {
-      gestionId: 401,
-      nombre: 'Obras',
-      slug: 'obras',
-      icono: 'Building2',
-      hasAccess: getSubModuleAccess('obras'),
-      description: 'Ver listado de obras registradas',
-    },
-    {
-      gestionId: 406,
-      nombre: 'Presupuesto',
-      slug: 'presupuesto',
-      icono: 'Calculator',
-      hasAccess: getSubModuleAccess('presupuesto'),
-      description: 'Elaborar presupuesto director de proyectos',
-    },
-    {
-      gestionId: 407,
-      nombre: 'Ver Presupuestos',
-      slug: 'presupuestos-list',
-      icono: 'FolderOpen',
-      hasAccess: getSubModuleAccess('presupuestos-list'),
-      description: 'Ver y editar presupuestos guardados',
-    },
-    {
-      gestionId: 409,
-      nombre: 'Plan Anual',
-      slug: 'plan-anual',
-      icono: 'CalendarDays',
-      hasAccess: getSubModuleAccess('plan-anual'),
-      description: 'Asignar obras al plan anual por año',
-    },
-    {
-      gestionId: 410,
-      nombre: 'Cronograma',
-      slug: 'cronograma',
-      icono: 'CalendarRange',
-      hasAccess: getSubModuleAccess('cronograma'),
-      description: 'Ver avance y fechas de ejecución por obra',
-    },
-  ];
+  const subModules = SUBMODULOS_OBRAS.map((s) => ({
+    ...s,
+    hasAccess: accesoObras(s.slug, hasPermission, user?.nombreRol),
+    description: DESCRIPCIONES[s.slug] ?? '',
+  }));
 
   const handleSubModuleClick = (subModule: (typeof subModules)[0]) => {
     // Si no tiene acceso, no hacer nada (la tarjeta ya se ve en gris)
-    if (!subModule.hasAccess) {
-      return;
-    }
-
+    if (!subModule.hasAccess) return;
     // Navegar directamente - la protección la hace ProtectedRoute en App.tsx
-    switch (subModule.slug) {
-      case 'obras':
-        navigate('/dashboard/levantamiento-obras/obras');
-        break;
-      case 'crear-obra':
-        navigate('/dashboard/levantamiento-obras/obras/crear');
-        break;
-      case 'levantamientos':
-        navigate('/dashboard/levantamiento-obras/levantamientos');
-        break;
-      case 'ucaps':
-        navigate('/dashboard/levantamiento-obras/ucaps');
-        break;
-      case 'presupuesto':
-        navigate('/dashboard/levantamiento-obras/presupuesto');
-        break;
-      case 'presupuestos-list':
-        navigate('/dashboard/levantamiento-obras/presupuestos');
-        break;
-      case 'plan-anual':
-        navigate('/dashboard/levantamiento-obras/plan-anual');
-        break;
-      case 'cronograma':
-        navigate('/dashboard/levantamiento-obras/cronograma');
-        break;
-    }
+    navigate(subModule.to);
   };
 
   return (
@@ -183,7 +93,7 @@ export default function LevantamientoObrasPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {subModules.map((subModule) => (
             <ModuleCard
-              key={subModule.gestionId}
+              key={subModule.slug}
               nombre={subModule.nombre}
               slug={subModule.slug}
               icono={subModule.icono}

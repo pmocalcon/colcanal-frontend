@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { cregService } from '@/services/creg.service';
 import { surveysService } from '@/services/surveys.service';
@@ -66,7 +66,20 @@ export default function CregFlujoCajaPage() {
   const [facturasEnergia, setFacturasEnergia] = useState<Record<string, FacturaEnergia>>({});
 
   const [supuestos, setSupuestos] = useState<FlujoSupuestos>(emptySupuestos());
-  const [tab, setTab] = useState<Tab>('caom');
+
+  /*
+   * La pestaña vive en la URL (`?vista=energia`), no solo en el estado: así Control de
+   * energía puede ofrecerse como submódulo propio de CREG —es su propia pantalla para
+   * quien la usa— sin sacarla de aquí, que compartiría el censo, las UCAP y los
+   * supuestos con el resto del flujo y habría que cargarlo todo dos veces.
+   * Se reemplaza la entrada del historial en vez de apilarla: cambiar de pestaña no es
+   * navegar, y con `push` el botón «atrás» iría deshaciendo pestañas.
+   */
+  const [busqueda, setBusqueda] = useSearchParams();
+  const tab = (TABS.some((t) => t.id === busqueda.get('vista'))
+    ? busqueda.get('vista')
+    : 'caom') as Tab;
+  const setTab = (t: Tab) => setBusqueda({ vista: t }, { replace: true });
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

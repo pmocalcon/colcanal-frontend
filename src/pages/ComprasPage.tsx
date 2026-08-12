@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { modulesService, type ModulePermissions, type Module } from '@/services/modules.service';
 import { Footer } from '@/components/ui/footer';
+import { SUBMODULOS_COMPRAS, accesoCompras } from '@/config/submodulos';
 
 export default function ComprasPage() {
   const navigate = useNavigate();
@@ -37,205 +38,21 @@ export default function ComprasPage() {
     fetchPermissions();
   }, []);
 
-  /**
-   * Determines if a user has access to a specific sub-module based on backend permissions.
-   * Permission mapping:
-   * - Requisiciones: permisos.crear
-   * - Validación de Obra: permisos.validar (Director de Proyecto valida requisiciones con obra)
-   * - Revisión: permisos.revisar
-   * - Autorización: permisos.autorizar
-   * - Aprobación: permisos.aprobar
-   * - Cotizaciones: permisos.cotizar
-   * - Órdenes de Compra: permisos.cotizar (same as cotizaciones)
-   * - Facturas: permisos.cotizar (same as cotizaciones)
-   * - Recepciones: permisos.crear (everyone who can create can receive)
-   * - Recepción Contabilidad: special role check for Contabilidad
+  /*
+   * Los submódulos, su ruta y quién puede abrirlos salen de `config/submodulos`: la
+   * barra lateral despliega esta misma lista y no pueden discrepar.
    */
-  const getSubModuleAccess = (slug: string): boolean => {
-    if (!permissions) return false;
-
-    const userRole = user?.nombreRol;
-
-    switch (slug) {
-      case 'requisiciones':
-        // Can create requisitions
-        return permissions.crear === true;
-
-      case 'validacion-obra':
-        // Director de Proyecto can validate requisitions with obra
-        return permissions.validar === true;
-
-      case 'revision':
-        // Can review requisitions
-        return permissions.revisar === true;
-
-      case 'autorizacion':
-        // Can authorize requisitions
-        return permissions.autorizar === true;
-
-      case 'aprobacion':
-      case 'aprobacion-ordenes':
-        // Can approve requisitions and purchase orders
-        return permissions.aprobar === true;
-
-      case 'cotizaciones':
-      case 'ordenes-compra':
-      case 'facturas':
-        // Can quote and manage purchase orders
-        return permissions.cotizar === true;
-
-      case 'recepciones':
-        // Everyone who can create can also receive materials
-        return permissions.crear === true;
-
-      case 'recepcion-contabilidad':
-        // Only Contabilidad can access this module
-        return userRole === 'Contabilidad';
-
-      default:
-        return false;
-    }
-  };
-
-  const getExternalModuleAccess = (slug: string): boolean => {
-    // 'inventarios' is the backend slug for materiales
-    const slugsToCheck = slug === 'materiales' ? [slug, 'inventarios'] : [slug];
-    return allModules.some((m) => slugsToCheck.includes(m.slug) && m.hasAccess === true);
-  };
-
-  // Sub-módulos de Compras (Flujo completo del proceso)
-  const comprasModules = [
-    {
-      gestionId: 101,
-      nombre: 'Requisiciones',
-      slug: 'requisiciones',
-      icono: 'FileText',
-      hasAccess: getSubModuleAccess('requisiciones'),
-    },
-    {
-      gestionId: 102,
-      nombre: 'Revisión',
-      slug: 'revision',
-      icono: 'ClipboardCheck',
-      hasAccess: getSubModuleAccess('revision'),
-    },
-    {
-      gestionId: 109,
-      nombre: 'Autorización',
-      slug: 'autorizacion',
-      icono: 'Shield',
-      hasAccess: getSubModuleAccess('autorizacion'),
-    },
-    {
-      gestionId: 103,
-      nombre: 'Aprobar Requisiciones',
-      slug: 'aprobacion',
-      icono: 'CheckCircle2',
-      hasAccess: getSubModuleAccess('aprobacion'),
-    },
-    {
-      gestionId: 104,
-      nombre: 'Cotizaciones',
-      slug: 'cotizaciones',
-      icono: 'DollarSign',
-      hasAccess: getSubModuleAccess('cotizaciones'),
-    },
-    {
-      gestionId: 105,
-      nombre: 'Órdenes de Compra',
-      slug: 'ordenes-compra',
-      icono: 'ShoppingBag',
-      hasAccess: getSubModuleAccess('ordenes-compra'),
-    },
-    {
-      gestionId: 107,
-      nombre: 'Aprobar Órdenes de Compra',
-      slug: 'aprobacion-ordenes',
-      icono: 'CheckCheck',
-      hasAccess: getSubModuleAccess('aprobacion-ordenes'),
-    },
-    {
-      gestionId: 106,
-      nombre: 'Recepciones',
-      slug: 'recepciones',
-      icono: 'PackageCheck',
-      hasAccess: getSubModuleAccess('recepciones'),
-    },
-    {
-      gestionId: 108,
-      nombre: 'Gestión de Facturas',
-      slug: 'facturas',
-      icono: 'FileText',
-      hasAccess: getSubModuleAccess('facturas'),
-    },
-    {
-      gestionId: 110,
-      nombre: 'Recepción Contabilidad',
-      slug: 'recepcion-contabilidad',
-      icono: 'Calculator',
-      hasAccess: getSubModuleAccess('recepcion-contabilidad'),
-    },
-    {
-      gestionId: 112,
-      nombre: 'Proveedores',
-      slug: 'proveedores',
-      icono: 'Building2',
-      hasAccess: getExternalModuleAccess('proveedores'),
-    },
-    {
-      gestionId: 113,
-      nombre: 'Materiales',
-      slug: 'materiales',
-      icono: 'Package',
-      hasAccess: getExternalModuleAccess('materiales'),
-    },
-    {
-      gestionId: 114,
-      nombre: 'Auditorías',
-      slug: 'auditorias',
-      icono: 'ClipboardList',
-      hasAccess: getExternalModuleAccess('auditorias'),
-    },
-  ];
+  const comprasModules = SUBMODULOS_COMPRAS.map((s) => ({
+    ...s,
+    hasAccess: accesoCompras(s.slug, permissions, user?.nombreRol, allModules),
+  }));
 
   const handleSubModuleClick = (subModule: typeof comprasModules[0]) => {
-    // Check if user has access
     if (!subModule.hasAccess) {
       alert('No tiene permisos para acceder a este módulo');
       return;
     }
-
-    // Navigate to the sub-module
-    if (subModule.slug === 'requisiciones') {
-      navigate('/dashboard/compras/requisiciones');
-    } else if (subModule.slug === 'validacion-obra') {
-      navigate('/dashboard/compras/requisiciones/validar');
-    } else if (subModule.slug === 'revision' || subModule.slug === 'aprobacion') {
-      navigate('/dashboard/compras/requisiciones/revisar');
-    } else if (subModule.slug === 'autorizacion') {
-      navigate('/dashboard/compras/requisiciones/autorizar');
-    } else if (subModule.slug === 'aprobacion-ordenes') {
-      navigate('/dashboard/compras/ordenes-compra/aprobar');
-    } else if (subModule.slug === 'cotizaciones') {
-      navigate('/dashboard/compras/cotizaciones');
-    } else if (subModule.slug === 'ordenes-compra') {
-      navigate('/dashboard/compras/ordenes');
-    } else if (subModule.slug === 'facturas') {
-      navigate('/dashboard/compras/facturas');
-    } else if (subModule.slug === 'recepciones') {
-      navigate('/dashboard/compras/recepciones');
-    } else if (subModule.slug === 'recepcion-contabilidad') {
-      navigate('/dashboard/compras/recepcion-contabilidad');
-    } else if (subModule.slug === 'proveedores') {
-      navigate('/dashboard/proveedores');
-    } else if (subModule.slug === 'materiales') {
-      navigate('/dashboard/materiales');
-    } else if (subModule.slug === 'auditorias') {
-      navigate('/dashboard/auditorias');
-    } else {
-      // TODO: Implementar navegación a las otras sub-páginas
-      alert(`Navegando a ${subModule.nombre}. Esta funcionalidad estará disponible próximamente.`);
-    }
+    navigate(subModule.to);
   };
 
   if (loading) {
@@ -304,7 +121,7 @@ export default function ComprasPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {comprasModules.map((subModule) => (
             <ModuleCard
-              key={subModule.gestionId}
+              key={subModule.slug}
               nombre={subModule.nombre}
               slug={subModule.slug}
               icono={subModule.icono}

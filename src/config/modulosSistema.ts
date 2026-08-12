@@ -57,7 +57,9 @@ export const prepararModulos = (modules: Module[]): Module[] =>
  * enlaces que al abrirlos dicen «no tiene permisos». Entran por su portada hasta que
  * ese cálculo se pueda compartir.
  */
-export const SECCIONES_MODULO: Record<string, { to: string; label: string }[]> = {
+export interface Seccion { to: string; label: string }
+
+export const SECCIONES_MODULO: Record<string, Seccion[]> = {
   // Solo las dos gestiones construidas. Las otras doce existen en la portada como
   // tarjetas apagadas —para que se vea el mapa completo del sistema de gestión—, pero
   // en la barra serían doce entradas que no llevan a ninguna parte.

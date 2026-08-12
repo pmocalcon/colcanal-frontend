@@ -4,7 +4,11 @@ import * as Icons from 'lucide-react';
 import { ChevronsLeft, ChevronsRight, Home, Lock, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { modulesService, type Module } from '@/services/modules.service';
-import { prepararModulos, seccionesDe } from '@/config/modulosSistema';
+import { prepararModulos, seccionesDe, type Seccion } from '@/config/modulosSistema';
+import {
+  SUBMODULOS_COMPRAS, SUBMODULOS_CREG, SUBMODULOS_OBRAS, accesoCompras, accesoObras,
+} from '@/config/submodulos';
+import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { esRolPmo } from '@/utils/rolesPmo';
 
 /**
@@ -44,6 +48,7 @@ function IconoModulo({ nombre }: { nombre: string }) {
 
 export function LayoutSistema({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { hasPermission } = useGranularPermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [modules, setModules] = useState<Module[]>([]);
@@ -86,6 +91,34 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       .map((f) => ({ ...f, acceso: true }));
     return [...delBackend, ...fijos];
   }, [modules, user?.nombreRol]);
+
+  /*
+   * Las secciones de Compras y Obras se calculan con los permisos del usuario, con las
+   * mismas funciones que usan sus portadas. Se filtran, no se pintan con candado: la
+   * barra es para saltar de un sitio a otro y una lista de trece entradas donde solo
+   * tres se pueden abrir estorba más de lo que informa. El candado sigue en las
+   * tarjetas de la portada, que es donde se ve el mapa del módulo.
+   */
+  const secciones = (slug: string): Seccion[] | null => {
+    if (slug === 'compras') {
+      const permisos = modules.find((m) => m.slug === 'compras')?.permisos ?? null;
+      return SUBMODULOS_COMPRAS
+        .filter((s) => accesoCompras(s.slug, permisos, user?.nombreRol, modules))
+        .map((s) => ({ to: s.to, label: s.nombre }));
+    }
+    if (slug === 'levantamiento-obras') {
+      return SUBMODULOS_OBRAS
+        .filter((s) => accesoObras(s.slug, hasPermission, user?.nombreRol))
+        .map((s) => ({ to: s.to, label: s.nombre }));
+    }
+    if (slug === 'creg') {
+      // En CREG el acceso es el permiso granular y nada más.
+      return SUBMODULOS_CREG
+        .filter((s) => hasPermission(s.permiso))
+        .map((s) => ({ to: s.to, label: s.nombre }));
+    }
+    return null;
+  };
 
   if (oculta) return <>{children}</>;
 
@@ -176,7 +209,7 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
 
                 {/* Las secciones del módulo solo cuando se está dentro: fuera serían
                     un menú desplegado de algo que no se está usando. */}
-                {dentro && <Secciones ruta={location.pathname} />}
+                {dentro && <Secciones ruta={location.pathname} secciones={secciones(m.slug)} />}
               </div>
             );
           })}
@@ -213,12 +246,25 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Sub-navegación del módulo abierto, si la tiene declarada. */
-function Secciones({ ruta }: { ruta: string }) {
+/**
+ * Sub-navegación del módulo abierto. Las de Compras y Obras se calculan con los
+ * permisos y llegan por `secciones`; las demás son fijas y salen de la ruta.
+ */
+function Secciones({ ruta, secciones: dadas }: { ruta: string; secciones: Seccion[] | null }) {
+  const { search } = useLocation();
   // Manda la clave más específica: dentro de gestion-conocimiento hay varias gestiones
   // y cada una tiene lo suyo.
-  const secciones = seccionesDe(ruta);
-  if (!secciones) return null;
+  const secciones = dadas ?? seccionesDe(ruta);
+  if (!secciones || secciones.length === 0) return null;
+
+  /*
+   * No se usa el `isActive` de NavLink: ignora la parte de la consulta, y Flujo de Caja
+   * y Control de energía son la misma ruta con distinto `?vista=`. Con él, estando en
+   * una se marcarían las dos.
+   */
+  const aqui = ruta + search;
+  const esActivo = (to: string) => (to.includes('?') ? aqui === to : ruta === to);
+
   return (
     <div className="mt-1 ml-4 pl-3 border-l border-[#2b2b47] space-y-0.5">
       {secciones.map((s) => (
@@ -226,11 +272,11 @@ function Secciones({ ruta }: { ruta: string }) {
           key={s.to}
           to={s.to}
           end
-          className={({ isActive }) =>
+          className={
             'block px-3 py-1.5 rounded-lg text-[12px] transition-colors '
             // La sección activa no repite el amarillo del módulo: dos amarillos en la
             // misma columna competirían. Se marca con el texto en blanco.
-            + (isActive
+            + (esActivo(s.to)
               ? 'text-white font-semibold bg-[#23233d]'
               : 'text-[#8b8ba7] hover:text-white hover:bg-[#23233d]')}
         >
