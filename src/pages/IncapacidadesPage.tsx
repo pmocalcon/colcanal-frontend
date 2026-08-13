@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, HeartPulse, Loader2, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Campo, Selector } from '@/components/talentoHumano/campos';
 import { talentoHumanoService, type ThIncapacidad } from '@/services/talentoHumano.service';
 
 /**
@@ -318,45 +319,5 @@ export default function IncapacidadesPage() {
         )}
       </main>
     </div>
-  );
-}
-
-/* ── Subcomponentes ─────────────────────────────────────── */
-
-function Campo({ label, value, onChange, tipo, ancho }: {
-  label: string;
-  value: string | number;
-  onChange: (v: string) => void;
-  tipo?: string;
-  ancho?: string;
-}) {
-  return (
-    <label className={'block ' + (ancho ?? '')}>
-      <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">{label}</span>
-      <input
-        type={tipo ?? 'text'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
-      />
-    </label>
-  );
-}
-
-function Selector({ label, value, opciones, onChange }: {
-  label: string; value: string; opciones: string[]; onChange: (v: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
-      >
-        <option value="">—</option>
-        {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </label>
   );
 }
