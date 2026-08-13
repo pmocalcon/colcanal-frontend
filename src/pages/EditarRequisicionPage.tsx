@@ -160,12 +160,15 @@ const EditarRequisicionPage: React.FC = () => {
       setCodigoObra(requisition.codigoObra || '');
       setPriority(requisition.priority || 'normal');
 
-      // Convertir ítems existentes al formato del formulario
+      // Convertir ítems existentes al formato del formulario.
+      // La cantidad se pasa por `Number`: el backend la devuelve como texto —Postgres
+      // entrega así las columnas `numeric`—, y un "1.00" se pinta «1,00» al lado de un
+      // ítem nuevo que dice «1», como si fueran cantidades distintas.
       const formItems: ItemForm[] = requisition.items.map((item) => ({
         tempId: `existing-${item.itemId}`,
         itemId: item.itemId,
         materialId: item.materialId,
-        quantity: item.quantity,
+        quantity: Number(item.quantity) || 0,
         observation: item.observation || '',
       }));
 
@@ -215,7 +218,11 @@ const EditarRequisicionPage: React.FC = () => {
     const newItem: ItemForm = {
       tempId: `new-${Date.now()}`,
       materialId,
-      quantity: 1,
+      // Arranca en 0 para que la casilla salga vacía y se escriba encima, igual que al
+      // crear la requisición. Con un 1 puesto, había que borrarlo antes de teclear —y
+      // borrarlo era justamente lo que no se podía—. Guardar con 0 lo frena la
+      // validación de más abajo.
+      quantity: 0,
       observation: '',
     };
     setItems([...items, newItem]);
@@ -548,13 +555,21 @@ const EditarRequisicionPage: React.FC = () => {
                             {material?.materialGroup?.name || 'Sin grupo'}
                           </TableCell>
                           <TableCell>
+                            {/*
+                              El 0 se pinta como casilla vacía y al borrar se vuelve 0, no 1.
+                              Con `|| 1` la casilla no se dejaba editar: al borrar el dígito
+                              para escribir otro, `parseInt('')` daba NaN y el campo saltaba
+                              a 1 en la misma tecla, así que nunca se llegaba a teclear.
+                            */}
                             <Input
                               type="number"
                               min="1"
-                              value={item.quantity}
+                              step="1"
+                              value={item.quantity || ''}
                               onChange={(e) =>
-                                handleUpdateQuantity(item.tempId, parseInt(e.target.value) || 1)
+                                handleUpdateQuantity(item.tempId, parseInt(e.target.value) || 0)
                               }
+                              placeholder="0"
                               className="w-full"
                             />
                           </TableCell>
