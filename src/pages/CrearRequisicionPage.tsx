@@ -74,7 +74,8 @@ export default function CrearRequisicionPage() {
   const [items, setItems] = useState<RequisitionItem[]>([]);
 
   // Actas aprobadas (auto-fill)
-  const [approvedActas, setApprovedActas] = useState<Survey[]>([]);
+  // Las actas aprobadas no se guardan enteras: de la lista solo salen los grupos, y los
+  // materiales se piden al escoger. Guardarlas era para reusar sus materialItems.
   const [actaGroups, setActaGroups] = useState<ActaGroup[]>([]);
   const [loadingActas, setLoadingActas] = useState(false);
   const [loadingActaDetails, setLoadingActaDetails] = useState(false);
@@ -102,7 +103,6 @@ export default function CrearRequisicionPage() {
       const result = await surveysService.getSurveys({ status: 'approved', limit: 500 });
       // Restricción: solo mostrar actas con presupuesto aprobado
       const withApprovedBudget = result.data.filter((s) => s.budgetStatus === 'approved');
-      setApprovedActas(withApprovedBudget);
 
       // Agrupar por (empresa, número de acta): el número se reutiliza entre municipios.
       const groupMap = new Map<string, Survey[]>();
@@ -140,12 +140,9 @@ export default function CrearRequisicionPage() {
     setSelectedActaId(surveyId);
     setLoadingActaDetails(true);
     try {
-      // Use already-loaded data from the list (includes materialItems + work relations)
-      // to avoid an extra API call and permission issues
-      let survey = approvedActas.find((s) => s.surveyId === surveyId) || null;
-      if (!survey) {
-        survey = await surveysService.getSurveyById(surveyId);
-      }
+      // El detalle, siempre: la lista ya no trae los materiales. Los traía de los 500
+      // levantamientos para usar los de este, y con eso el backend se quedaba sin memoria.
+      const survey = await surveysService.getSurveyById(surveyId);
 
       // Auto-fill empresa
       if (survey.work?.companyId) {
@@ -190,7 +187,7 @@ export default function CrearRequisicionPage() {
     }
   };
 
-  const handleActaGroupSelected = (groupKey: string) => {
+  const handleActaGroupSelected = async (groupKey: string) => {
     setSelectedActaGroup(groupKey);
     setSelectedActaId(null);
     setLoadingActaDetails(true);
@@ -202,9 +199,15 @@ export default function CrearRequisicionPage() {
       // El proyecto (municipio) del acta, para no mezclar municipios de Canales.
       setProjectId(group.projectId);
 
+      // Los materiales se piden acá y no vienen en la lista: son los del acta escogida
+      // —un puñado de obras—, no los de los 500 levantamientos aprobados del sistema.
+      const surveys = await Promise.all(
+        group.surveys.map((s) => surveysService.getSurveyById(s.surveyId)),
+      );
+
       // Consolidar materialItems de todos los levantamientos del acta
       const itemMap = new Map<number, RequisitionItem>();
-      group.surveys.forEach((survey) => {
+      surveys.forEach((survey) => {
         (survey.materialItems || [])
           .filter((mi) => mi.materialId && Number(mi.quantity) > 0)
           .forEach((mi) => {
@@ -237,6 +240,9 @@ export default function CrearRequisicionPage() {
       });
       setItems(Array.from(itemMap.values()));
       setPriority('alta');
+    } catch (err) {
+      // Ahora hay red de por medio: sin captura, un fallo dejaría la pantalla girando.
+      console.error('Error loading acta group details:', err);
     } finally {
       setLoadingActaDetails(false);
     }
