@@ -126,6 +126,11 @@ export const TRANSICIONES: Transicion[] = [
   { accion: 'tramitar', from: 'en_tramite_administrativa', to: 'contrato_en_elaboracion', roles: ROLES_ADMINISTRATIVA, label: 'Trámite validado · remitir a Jurídica', tone: 'primary', documento: 'chequeo' },
   { accion: 'devolver_tramite', from: 'en_tramite_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver (faltan documentos/campos)', tone: 'danger', documento: 'chequeo' },
   { accion: 'contrato_listo', from: 'contrato_en_elaboracion', to: 'pendiente_firma_contrato', roles: ROLES_JURIDICA, label: 'Contrato listo · enviar a firma', tone: 'primary', documento: 'contrato' },
+  // El camino de vuelta de "tramitar", y por eso vive en el mismo documento: lo que
+  // Jurídica está mirando cuando decide devolver es la lista de chequeo. Retrocede un
+  // solo paso —no a borrador—: lo que hay que rehacer es la verificación de documentos,
+  // no la solicitud ni las dos firmas de autorización que ya se dieron.
+  { accion: 'devolver_juridica', from: 'contrato_en_elaboracion', to: 'en_tramite_administrativa', roles: ROLES_JURIDICA, requiereMotivo: true, label: 'Devolver a Administrativa', tone: 'danger', documento: 'chequeo' },
   { accion: 'firmar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_firmado', roles: ROLES_GERENCIA, label: 'Firmar el contrato', tone: 'primary', documento: 'contrato' },
   { accion: 'rechazar_contrato', from: 'pendiente_firma_contrato', to: 'contrato_en_elaboracion', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Devolver el contrato a Jurídica', tone: 'danger', documento: 'contrato' },
   // ── Pólizas (tras la firma del contrato) ──
@@ -268,10 +273,36 @@ export function sumarDiasHabiles(desde: Date, n: number): Date {
   return cursor;
 }
 
+/**
+ * Días hábiles entre dos fechas, sin contar el día de partida.
+ *
+ * Negativo cuando `hasta` ya pasó: son los días de atraso.
+ */
+export function diasHabilesEntre(desde: Date, hasta: Date): number {
+  const a = new Date(desde);
+  a.setHours(0, 0, 0, 0);
+  const b = new Date(hasta);
+  b.setHours(0, 0, 0, 0);
+
+  const signo = b >= a ? 1 : -1;
+  const cursor = signo > 0 ? new Date(a) : new Date(b);
+  const fin = signo > 0 ? b : a;
+
+  let n = 0;
+  while (cursor < fin) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (esDiaHabil(cursor)) n++;
+  }
+  return n * signo;
+}
+
 export interface SlaInfo {
   vence: Date;
   vencida: boolean;
+  /** El plazo del estado: cuántos días hábiles se dieron. */
   diasHabiles: number;
+  /** Cuántos faltan desde hoy. Negativo si ya se pasó. */
+  restantes: number;
 }
 
 /** Calcula el vencimiento del SLA del estado actual. Null si el estado no tiene plazo. */
@@ -281,7 +312,38 @@ export function calcularSla(estado: JuridicaEstado, estadoDesde: string | null):
   const vence = sumarDiasHabiles(new Date(estadoDesde), sla);
   // El vencimiento es al cierre del día hábil.
   vence.setHours(23, 59, 59, 999);
-  return { vence, vencida: new Date() > vence, diasHabiles: sla };
+  const ahora = new Date();
+  return {
+    vence,
+    vencida: ahora > vence,
+    diasHabiles: sla,
+    restantes: diasHabilesEntre(ahora, vence),
+  };
+}
+
+/**
+ * El texto del distintivo de plazo.
+ *
+ * Dice **cuánto falta**, no cuánto se dio. Antes decía «vence 18/08/2026 (3 días háb.)»,
+ * donde el 3 era el plazo del estado; pegado a una fecha de vencimiento eso se lee como
+ * los días que quedan, y no eran los que quedaban. Quien mira esto quiere saber si le da
+ * el tiempo, y el plazo del estado no responde esa pregunta.
+ *
+ * Vive acá y no en cada pantalla porque son tres las que lo pintan —la solicitud, el
+ * anticipo y su legalización— y ya se habían desincronizado una vez.
+ */
+export function textoSla(sla: { vence: Date; vencida: boolean; restantes: number }): string {
+  const fecha = sla.vence.toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const dias = (n: number) => `${n} día${n !== 1 ? 's' : ''} háb.`;
+
+  if (sla.vencida) return `Vencida · venció ${fecha} · ${dias(Math.abs(sla.restantes))} de atraso`;
+  if (sla.restantes <= 0) return `A tiempo · vence hoy, ${fecha}`;
+  const queda = sla.restantes === 1 ? 'queda' : 'quedan';
+  return `A tiempo · vence ${fecha} · ${queda} ${dias(sla.restantes)}`;
 }
 
 /**

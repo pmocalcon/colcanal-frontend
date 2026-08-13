@@ -14,7 +14,7 @@
  */
 
 import { esRolPmo } from './rolesPmo';
-import { sumarDiasHabiles } from './juridicaWorkflow';
+import { sumarDiasHabiles, diasHabilesEntre } from './juridicaWorkflow';
 
 export type LegalizacionEstado =
   | 'borrador'
@@ -88,7 +88,10 @@ export function accionesDisponibles(
 export interface SlaInfo {
   vence: Date;
   vencida: boolean;
+  /** El plazo del estado: cuántos días hábiles se dieron. */
   diasHabiles: number;
+  /** Cuántos faltan desde hoy. Negativo si ya se pasó. */
+  restantes: number;
 }
 
 /** Calcula el vencimiento del SLA del estado actual. Null si el estado no tiene plazo. */
@@ -97,7 +100,13 @@ export function calcularSla(estado: LegalizacionEstado, estadoDesde: string | nu
   if (!sla || !estadoDesde) return null;
   const vence = sumarDiasHabiles(new Date(estadoDesde), sla);
   vence.setHours(23, 59, 59, 999);
-  return { vence, vencida: new Date() > vence, diasHabiles: sla };
+  const ahora = new Date();
+  return {
+    vence,
+    vencida: ahora > vence,
+    diasHabiles: sla,
+    restantes: diasHabilesEntre(ahora, vence),
+  };
 }
 
 const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {

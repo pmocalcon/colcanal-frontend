@@ -19,6 +19,7 @@ import {
   fueraDeCorte,
   type LegalizacionTransicion,
 } from '@/utils/legalizacionWorkflow';
+import { textoSla } from '@/utils/juridicaWorkflow';
 
 /**
  * Formato GCT-006-F · "Legalización de anticipos" (G. contable y tributaria).
@@ -587,7 +588,7 @@ function LegalizacionWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
         {sla && (
           <span className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 ${sla.vencida ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
             {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-            {sla.vencida ? 'Vencida' : 'A tiempo'} · vence {fmtFecha(sla.vence)} ({sla.diasHabiles} día{sla.diasHabiles !== 1 ? 's' : ''} háb.)
+            {textoSla(sla)}
           </span>
         )}
         {LEGALIZACION_ESTADOS[estado]?.sla == null && !terminal && (

@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import {
   ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla,
-  documentosConAccion, DOCUMENTO_LABEL,
+  documentosConAccion, DOCUMENTO_LABEL, textoSla,
   ROLES_ADMINISTRATIVA, ROLES_JURIDICA,
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
@@ -1355,7 +1355,7 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
              alarma y no puede leerse igual que el estado normal. */
           <span className={`inline-flex items-center gap-1 text-xs font-medium rounded-lg px-2.5 py-1 ${sla.vencida ? 'bg-red-100 text-red-700 border border-red-200' : UI.chipAcento}`}>
             {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-            {sla.vencida ? 'Vencida' : 'A tiempo'} · vence {fmtFecha(sla.vence)} ({sla.diasHabiles} día{sla.diasHabiles !== 1 ? 's' : ''} háb.)
+            {textoSla(sla)}
           </span>
         )}
         {ESTADOS[estado]?.sla == null && !terminal && (
