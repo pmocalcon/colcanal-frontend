@@ -1,10 +1,12 @@
 import api from './api';
 
 /**
- * Talento humano: base de personal, incapacidades y ausentismos.
+ * Talento humano: personal, incapacidades, ausentismos y préstamos.
  *
- * Los **préstamos no están acá**: se piden con el formato de G. de talento humano y viven
- * en `gc_solicitudes`, así que su listado usa `gestionConocimiento.service`.
+ * Ojo con los préstamos, que son dos cosas distintas con el mismo nombre: el **formato**
+ * de solicitud de G. de talento humano vive en `gc_solicitudes` y es el papel con el que
+ * se pide uno nuevo; `th_prestamos` es la **cartera** —lo prestado, lo descontado por
+ * nómina y el saldo—, y es lo que se consulta acá.
  */
 
 export interface ThPersona {
@@ -79,6 +81,42 @@ export interface ThAusentismo {
   motivo: string | null;
   soporte: string | null;
   observaciones: string | null;
+}
+
+export interface ThPrestamoPago {
+  pagoId: number;
+  prestamoId: number;
+  anio: number;
+  mes: number;
+  valor: string;
+}
+
+export interface ThPrestamo {
+  prestamoId: number;
+  numero: number | null;
+  nombre: string;
+  /** Casi siempre null: la hoja de préstamos no trae cédula, solo el nombre. */
+  identificacion: string | null;
+  proyecto: string | null;
+  pagare: string | null;
+  mesInicio: string | null;
+  numeroCuotas: number | null;
+  fechaVencimiento: string | null;
+  valorPrestamo: string | null;
+  valorCuota: string | null;
+  valorCancelado: string | null;
+  saldo: string | null;
+  observaciones: string | null;
+  /** Solo viene en el detalle; el listado no las trae. */
+  pagos?: ThPrestamoPago[];
+}
+
+export interface ResumenPrestamos {
+  prestamos: number;
+  activos: number;
+  prestado: number;
+  cancelado: number;
+  saldo: number;
 }
 
 export interface ResumenRecobro {
@@ -169,6 +207,36 @@ export const talentoHumanoService = {
   },
   async deleteAusentismo(id: number) {
     await api.delete(`${BASE}/ausentismos/${id}`);
+  },
+
+  // ── Préstamos ──
+  async listPrestamos(filtros: { proyecto?: string; conSaldo?: string; buscar?: string } = {}) {
+    const { data } = await api.get<ThPrestamo[]>(`${BASE}/prestamos${query(filtros)}`);
+    return data;
+  },
+  async resumenPrestamos() {
+    const { data } = await api.get<ResumenPrestamos>(`${BASE}/prestamos/resumen`);
+    return data;
+  },
+  /** Trae el préstamo con su historia de descuentos. */
+  async getPrestamo(id: number) {
+    const { data } = await api.get<ThPrestamo>(`${BASE}/prestamos/${id}`);
+    return data;
+  },
+  async createPrestamo(payload: Partial<ThPrestamo>) {
+    const { data } = await api.post<ThPrestamo>(`${BASE}/prestamos`, payload);
+    return data;
+  },
+  async updatePrestamo(id: number, payload: Partial<ThPrestamo>) {
+    const { data } = await api.patch<ThPrestamo>(`${BASE}/prestamos/${id}`, payload);
+    return data;
+  },
+  async registrarPago(id: number, payload: { anio: number; mes: number; valor: number }) {
+    const { data } = await api.post<ThPrestamoPago>(`${BASE}/prestamos/${id}/pagos`, payload);
+    return data;
+  },
+  async deletePrestamo(id: number) {
+    await api.delete(`${BASE}/prestamos/${id}`);
   },
 };
 

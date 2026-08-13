@@ -10,8 +10,10 @@ import { Card, CardContent } from '@/components/ui/card';
  *
  * Ojo con la distinción, porque hay dos sitios con nombres parecidos: en **G. de talento
  * humano** (dentro de Gestión del conocimiento) se *diligencian los formatos* —préstamo,
- * permiso, vacaciones, horas extras—; acá se *consulta y administra la información* que
- * sale de ellos y de la base de personal.
+ * permiso, vacaciones, horas extras—; acá se *consulta y administra la información*.
+ *
+ * Se nota sobre todo en préstamos: allá se pide uno nuevo, acá está la cartera de lo
+ * prestado y su saldo. Son dos cosas distintas con el mismo nombre.
  */
 
 const SECCIONES = [
@@ -24,7 +26,7 @@ const SECCIONES = [
   {
     slug: 'prestamos',
     nombre: 'Préstamos',
-    descripcion: 'Las solicitudes de préstamo diligenciadas en G. de talento humano',
+    descripcion: 'La cartera: lo prestado, lo descontado por nómina y el saldo',
     Icon: Banknote,
   },
   {
