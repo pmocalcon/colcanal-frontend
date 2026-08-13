@@ -465,7 +465,7 @@ export default function SolicitudPrestacionServiciosPage() {
             </div>
           </div>
 
-          {/* Izq.: Fecha + Tipo de persona · Der.: Centro de costo / Contratante / Contratista */}
+          {/* Izq.: Fecha + Tipo de persona · Der.: Centro de costo / Contratante / Colaborador */}
           <div className="grid grid-cols-2 border-b border-[#0a2a52]">
             <div className="border-r border-[#0a2a52] flex flex-col">
               <div>
@@ -536,11 +536,18 @@ export default function SolicitudPrestacionServiciosPage() {
                   </select>
                 </div>
               </div>
-              {/* Contratista: se escribe libremente. */}
+              {/*
+                Se escribe libremente.
+
+                El rótulo dice «COLABORADOR» y el campo se sigue llamando `contratista`:
+                el nombre del dato lo comparten el contrato, el acta de inicio y la lista
+                de chequeo, y renombrarlo dejaría sin leer lo ya guardado. Lo que cambia
+                es cómo se le llama a la persona en el papel, no dónde vive el dato.
+              */}
               <div className="grid grid-cols-[110px_1fr]">
-                <MiniLabel>CONTRATISTA</MiniLabel>
+                <MiniLabel>COLABORADOR</MiniLabel>
                 <div className="px-2 py-1.5 min-w-0">
-                  <FieldInput value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre del contratista" />
+                  <FieldInput value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre del colaborador" />
                 </div>
               </div>
             </div>
