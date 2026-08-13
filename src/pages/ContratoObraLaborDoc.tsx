@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 
 /**
  * Plantilla de contrato para el tipo "Obra o Labor" (contrato laboral, GJ-004-F).
@@ -45,8 +47,15 @@ export default function ContratoObraLaborDoc({ solicitud }: { solicitud: GcSolic
   const navigate = useNavigate();
   const { user } = useAuth();
   const solicitudId = solicitud.solicitudId;
+  /*
+   * La solicitud se guarda en estado propio porque la acción de la etapa la cambia:
+   * al remitir el contrato a firma, `AccionesFlujo` devuelve la solicitud recargada y
+   * con ella se repintan las pestañas y el propio panel. Leyendo siempre la prop, la
+   * pantalla se quedaría mostrando la etapa anterior hasta que alguien recargara.
+   */
+  const [sol, setSol] = useState(solicitud);
   const editable = puedeEditar(user?.nombreRol);
-  const habilitada = HABILITADO.includes(solicitud.estado);
+  const habilitada = HABILITADO.includes(sol.estado);
   const [saving, setSaving] = useState(false);
 
   const [f, setF] = useState<OLState>(() => {
@@ -72,13 +81,20 @@ export default function ContratoObraLaborDoc({ solicitud }: { solicitud: GcSolic
 
   const set = <K extends keyof OLState>(k: K, v: OLState[K]) => setF((p) => ({ ...p, [k]: v }));
 
-  const handleSave = async () => {
+  /**
+   * Devuelve si se guardó, porque `AccionesFlujo` lo usa para decidir si sigue: la acción
+   * afirma lo que el documento dice, y remitir a firma un contrato que no se alcanzó a
+   * guardar adelantaría el trámite sobre un texto que nadie escribió.
+   */
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true);
     try {
       await gestionConocimientoService.saveDocumento(solicitudId, 'contrato', f);
       toast.success('Contrato guardado');
+      return true;
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -116,9 +132,19 @@ export default function ContratoObraLaborDoc({ solicitud }: { solicitud: GcSolic
             </Button>
           )}
         </div>
+
+        <div className="max-w-4xl mx-auto px-6 pb-2">
+          <TabsDocumentos solicitudId={solicitudId} sol={sol} activo="contrato" />
+        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* La acción de la etapa va donde se decide: el contrato se remite a firma acá.
+            Guardar el documento no mueve el flujo; esto sí. */}
+        <AccionesFlujo
+          sol={sol} documento="contrato" onCambio={setSol}
+          onAntes={editable && habilitada ? handleSave : undefined}
+        />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
             <p className="text-[hsl(var(--canalco-neutral-700))]">El contrato aún no está <b>habilitado</b>.</p>
