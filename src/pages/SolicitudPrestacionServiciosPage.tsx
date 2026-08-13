@@ -320,7 +320,7 @@ export default function SolicitudPrestacionServiciosPage() {
         <div className="max-w-5xl mx-auto px-6 py-3">
           {/* Fila 1: navegación, título/estado y acciones principales */}
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/juridica')} title="Volver a las solicitudes">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/juridica/contratos')} title="Volver a las solicitudes">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-grow min-w-0">

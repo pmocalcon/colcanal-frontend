@@ -5,10 +5,10 @@ import { DOCUMENTO_LABEL, type DocumentoJuridica, type JuridicaEstado } from '@/
 /**
  * Pestañas de los documentos de una solicitud de G. jurídica.
  *
- * Van en la cabecera de las seis pantallas del trámite —la solicitud y sus cinco
- * documentos—, así que quien entra a un documento puede volver a cualquier otro sin
- * pasar por la solicitud. Por eso la barra vive acá y no dentro de una pantalla: unas
- * pestañas que solo existen en el origen serían botones disfrazados.
+ * Van en la cabecera de todas las pantallas del trámite —la solicitud y sus documentos—,
+ * así que quien entra a un documento puede volver a cualquier otro sin pasar por la
+ * solicitud. Por eso la barra vive acá y no dentro de una pantalla: unas pestañas que
+ * solo existen en el origen serían botones disfrazados.
  *
  * Qué documento está habilitado depende de la etapa, y esa regla también vive acá: es
  * la misma en las seis pantallas y con una copia por pantalla acabarían discrepando.
@@ -36,7 +36,7 @@ interface Tab {
 
 const en = (estado: string, estados: JuridicaEstado[]) => estados.includes(estado as JuridicaEstado);
 
-/** Los seis documentos con su etapa mínima, en el orden en que se diligencian. */
+/** Los documentos con su etapa mínima, en el orden en que se diligencian. */
 export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
   const estado = sol?.estado ?? 'borrador';
 
@@ -75,6 +75,12 @@ export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
     tab('verificacion-garantias',
       en(estado, ['en_verificacion_garantias', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado']),
       'Se habilita cuando la póliza está pagada, antes de designar supervisor'),
+    // El acta de aprobación es la conclusión de la verificación —los datos de cada póliza
+    // y su CUMPLE / NO CUMPLE—, así que se levanta en la misma sesión y comparte etapa:
+    // no es un paso más del flujo, es el papel que se firma y se archiva.
+    tab('aprobacion-garantias',
+      en(estado, ['en_verificacion_garantias', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado']),
+      'Se habilita junto con la verificación de garantías, cuando la póliza está pagada'),
     tab('designacion-supervisor',
       en(estado, ['en_designacion_supervisor', 'en_acta_inicio', 'finalizado']),
       'Se habilita en la etapa de designación de supervisor (tras la firma del contrato)'),

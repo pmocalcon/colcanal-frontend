@@ -23,7 +23,7 @@ const GESTIONES: Gestion[] = [
   { slug: 'estrategica', nombre: '01. G. estratégica', descripcion: 'Direccionamiento estratégico, políticas y objetivos de la organización', Icon: Compass, ready: false },
   { slug: 'planeacion', nombre: '02. G. de planeación, monitoreo y control', descripcion: 'Planeación, seguimiento de indicadores y control de la gestión', Icon: LineChart, ready: false },
   { slug: 'administrativa', nombre: '03. G. administrativa', descripcion: 'Recursos físicos, servicios generales y apoyo administrativo', Icon: Building2, ready: false },
-  { slug: 'talento-humano', nombre: '04. G. de talento humano', descripcion: 'Selección, contratación, bienestar y desarrollo del personal', Icon: Users, ready: false },
+  { slug: 'talento-humano', nombre: '04. G. de talento humano', descripcion: 'Selección, contratación, bienestar y desarrollo del personal', Icon: Users, ready: true },
   { slug: 'tics', nombre: "05. G. Tic's", descripcion: 'Tecnologías de la información, sistemas y soporte', Icon: MonitorSmartphone, ready: false },
   { slug: 'documental', nombre: '06. G. documental', descripcion: 'Gestión, control y archivo de la documentación', Icon: FolderArchive, ready: false },
   { slug: 'financiera', nombre: '07. G. financiera', descripcion: 'Tesorería, presupuesto y gestión financiera', Icon: Wallet, ready: false },
@@ -71,7 +71,7 @@ export default function GestionConocimientoPage() {
         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-800">
             Selecciona una gestión para consultar y diligenciar sus formatos. Por ahora
-            <b> G. jurídica</b> y <b>G. contable y tributaria</b> están disponibles; las demás se habilitarán a medida que se definan sus formatos.
+            <b> G. jurídica</b>, <b>G. contable y tributaria</b> y <b>G. de talento humano</b> están disponibles; las demás se habilitarán a medida que se definan sus formatos.
           </p>
         </div>
 

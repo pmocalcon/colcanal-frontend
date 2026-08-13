@@ -60,17 +60,32 @@ export const prepararModulos = (modules: Module[]): Module[] =>
 export interface Seccion { to: string; label: string }
 
 export const SECCIONES_MODULO: Record<string, Seccion[]> = {
-  // Solo las dos gestiones construidas. Las otras doce existen en la portada como
-  // tarjetas apagadas —para que se vea el mapa completo del sistema de gestión—, pero
-  // en la barra serían doce entradas que no llevan a ninguna parte.
+  // Solo las gestiones construidas. Las demás existen en la portada como tarjetas
+  // apagadas —para que se vea el mapa completo del sistema de gestión—, pero en la barra
+  // serían entradas que no llevan a ninguna parte.
+  'talento-humano': [
+    { to: '/dashboard/talento-humano/personal', label: 'Personal' },
+    { to: '/dashboard/talento-humano/prestamos', label: 'Prestamos' },
+    { to: '/dashboard/talento-humano/incapacidades', label: 'Incapacidades' },
+    { to: '/dashboard/talento-humano/ausentismos', label: 'Ausentismos' },
+  ],
   'gestion-conocimiento': [
     { to: '/dashboard/gestion-conocimiento/contable', label: 'G. contable y tributaria' },
     { to: '/dashboard/gestion-conocimiento/juridica', label: 'G. jurídica' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano', label: 'G. de talento humano' },
   ],
   'gestion-conocimiento/juridica': [
-    { to: '/dashboard/gestion-conocimiento/juridica', label: 'Solicitudes' },
+    { to: '/dashboard/gestion-conocimiento/juridica/contratos', label: 'Trámite de contratación' },
+    { to: '/dashboard/gestion-conocimiento/juridica/terminacion', label: 'Terminación anticipada' },
+    { to: '/dashboard/gestion-conocimiento/juridica/tutela', label: 'Contestación de tutela' },
     { to: '/dashboard/gestion-conocimiento/juridica/matriz', label: 'Matriz de contratos' },
     { to: '/dashboard/gestion-conocimiento/juridica/nueva', label: 'Nueva solicitud' },
+  ],
+  'gestion-conocimiento/talento-humano': [
+    { to: '/dashboard/gestion-conocimiento/talento-humano/prestamo', label: 'Solicitud de préstamo' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/permiso', label: 'Solicitud de permiso' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/vacaciones', label: 'Solicitud de vacaciones' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/horas-extras', label: 'Horas extras' },
   ],
   'gestion-conocimiento/contable': [
     { to: '/dashboard/gestion-conocimiento/contable/anticipos', label: 'Anticipos' },

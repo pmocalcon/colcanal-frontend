@@ -1,0 +1,91 @@
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Banknote, CalendarClock, HeartPulse, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+
+/**
+ * Portada del módulo Talento Humano.
+ *
+ * Cuatro listados: el personal, los préstamos, las incapacidades y los ausentismos.
+ *
+ * Ojo con la distinción, porque hay dos sitios con nombres parecidos: en **G. de talento
+ * humano** (dentro de Gestión del conocimiento) se *diligencian los formatos* —préstamo,
+ * permiso, vacaciones, horas extras—; acá se *consulta y administra la información* que
+ * sale de ellos y de la base de personal.
+ */
+
+const SECCIONES = [
+  {
+    slug: 'personal',
+    nombre: 'Personal',
+    descripcion: 'La base de personal: estado, cargo, área, contrato y remuneración vigente',
+    Icon: Users,
+  },
+  {
+    slug: 'prestamos',
+    nombre: 'Préstamos',
+    descripcion: 'Las solicitudes de préstamo diligenciadas en G. de talento humano',
+    Icon: Banknote,
+  },
+  {
+    slug: 'incapacidades',
+    nombre: 'Incapacidades',
+    descripcion: 'Días que asume la empresa y la EPS o ARL, y seguimiento del recobro',
+    Icon: HeartPulse,
+  },
+  {
+    slug: 'ausentismos',
+    nombre: 'Ausentismos',
+    descripcion: 'Los permisos concedidos y las horas que se descuentan',
+    Icon: CalendarClock,
+  },
+];
+
+export default function TalentoHumanoHomePage() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
+      <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+          <div className="bg-white rounded-xl shadow-md p-3 w-16 h-16 flex items-center justify-center border-2 border-[hsl(var(--canalco-primary))] flex-shrink-0">
+            <img src="/assets/images/logo-canalco.png" alt="Canales Contactos" className="w-full h-full object-contain" />
+          </div>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="hover:bg-[hsl(var(--canalco-neutral-200))]" title="Volver al inicio">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-2">
+              <Users className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Talento Humano
+            </h1>
+            <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
+              Personal, préstamos, incapacidades y ausentismos
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {SECCIONES.map(({ slug, nombre, descripcion, Icon }) => (
+            <Card
+              key={slug}
+              onClick={() => navigate(`/dashboard/talento-humano/${slug}`)}
+              className="group cursor-pointer border-2 border-[hsl(var(--canalco-neutral-300))] hover:border-[hsl(var(--canalco-primary))] hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+            >
+              <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                <div className="mb-4 p-4 rounded-full bg-gradient-to-br from-[hsl(var(--canalco-primary))]/10 to-[hsl(var(--canalco-primary))]/20 group-hover:from-[hsl(var(--canalco-primary))]/20 group-hover:to-[hsl(var(--canalco-primary))]/30 transition-all">
+                  <Icon className="w-10 h-10 text-[hsl(var(--canalco-primary))]" />
+                </div>
+                <h3 className="text-lg font-semibold text-[hsl(var(--canalco-neutral-900))] group-hover:text-[hsl(var(--canalco-primary))] transition-colors">
+                  {nombre}
+                </h3>
+                <p className="text-sm text-[hsl(var(--canalco-neutral-600))] mt-2">{descripcion}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}

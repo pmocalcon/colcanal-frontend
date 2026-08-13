@@ -11,6 +11,7 @@ import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { esRolPmo } from '@/utils/rolesPmo';
 import { prepararModulos } from '@/config/modulosSistema';
+import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 // Qué módulos se muestran, con qué nombre y en qué orden: vive en
 // `config/modulosSistema` porque la barra lateral pinta la misma lista.
@@ -178,6 +179,19 @@ export default function DashboardPage() {
             hasAccess={true}
             onClick={() => navigate('/dashboard/gestion-conocimiento')}
           />
+          {/* Talento Humano: también fija, y solo para quien tiene acceso. Sin candado,
+              por la misma razón que Recurso Económico: no hay permiso que pedir, se
+              abre por rol. Es el módulo de consulta —personal, préstamos,
+              incapacidades—; los formatos se diligencian en Gestión del conocimiento. */}
+          {puedeVerTalentoHumano(user?.nombreRol) && (
+            <ModuleCard
+              nombre="Talento Humano"
+              slug="talento-humano"
+              icono="Users"
+              hasAccess={true}
+              onClick={() => navigate('/dashboard/talento-humano')}
+            />
+          )}
           {/* Recurso Económico: también fija, pero solo para el PMO. A quien no lo
               sea no se le pinta: la tarjeta con candado invitaría a pedir un
               permiso que no existe. */}

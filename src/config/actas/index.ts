@@ -25,6 +25,18 @@ const registry = new Map<string, ActaConfig>([
   ['6:',   puertoasisConfig],   // UT Alumbrado Público Puerto Asís (contratante EAAAP E.S.P.)
 ]);
 
+/**
+ * ¿El registro tiene una configuración propia para esta empresa?
+ *
+ * `getActaConfig` siempre devuelve algo —cae en Guacarí— y eso está bien para el Acta de
+ * Obra, que se abre desde una obra que ya existe. No sirve donde el respaldo sería una
+ * afirmación falsa: un escrito judicial con el membrete del municipio equivocado.
+ */
+export function hasActaConfig(companyId?: number, projectId?: number): boolean {
+  if (companyId === undefined) return false;
+  return registry.has(`${companyId}:${projectId ?? ''}`) || registry.has(`${companyId}:`);
+}
+
 export function getActaConfig(companyId?: number, projectId?: number): ActaConfig {
   if (companyId !== undefined) {
     const compound = `${companyId}:${projectId ?? ''}`;

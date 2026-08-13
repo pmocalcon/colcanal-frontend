@@ -78,7 +78,8 @@ const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por
  */
 export type DocumentoJuridica =
   | 'solicitud' | 'chequeo' | 'contrato'
-  | 'verificacion-garantias' | 'designacion-supervisor' | 'acta-inicio'
+  | 'verificacion-garantias' | 'aprobacion-garantias'
+  | 'designacion-supervisor' | 'acta-inicio'
   | 'otrosi';
 
 /** Cómo se llama cada documento cuando hay que mandar al usuario a él. */
@@ -87,6 +88,7 @@ export const DOCUMENTO_LABEL: Record<DocumentoJuridica, string> = {
   chequeo: 'Lista de chequeo',
   contrato: 'Contrato',
   'verificacion-garantias': 'Verificación de garantías',
+  'aprobacion-garantias': 'Aprobación de garantías',
   'designacion-supervisor': 'Designación supervisor',
   'acta-inicio': 'Acta de inicio',
   otrosi: 'Otrosí',

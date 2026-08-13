@@ -70,6 +70,20 @@ import RequisicionPersonalPage from './pages/RequisicionPersonalPage'
 import { LayoutSistema } from './components/layout/LayoutSistema'
 import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
 import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
+import AprobacionGarantiasPage from './pages/AprobacionGarantiasPage'
+import GestionFormatosHomePage from './pages/GestionFormatosHomePage'
+import FormatoListPage from './pages/FormatoListPage'
+import ActaTerminacionPage from './pages/ActaTerminacionPage'
+import ContestacionTutelaPage from './pages/ContestacionTutelaPage'
+import SolicitudPrestamoPage from './pages/SolicitudPrestamoPage'
+import SolicitudPermisoPage from './pages/SolicitudPermisoPage'
+import SolicitudVacacionesPage from './pages/SolicitudVacacionesPage'
+import HorasExtrasPage from './pages/HorasExtrasPage'
+import TalentoHumanoHomePage from './pages/TalentoHumanoHomePage'
+import PersonalListPage from './pages/PersonalListPage'
+import PrestamosListPage from './pages/PrestamosListPage'
+import IncapacidadesPage from './pages/IncapacidadesPage'
+import AusentismosPage from './pages/AusentismosPage'
 import ActaInicioPage from './pages/ActaInicioPage'
 import OtrosiPage from './pages/OtrosiPage'
 import ContratoPage from './pages/ContratoPage'
@@ -270,18 +284,43 @@ export default function App() {
             }
           />
           {/* Gestión del conocimiento */}
+          {/* Talento Humano: modulo propio. No confundir con G. de talento humano, que
+              esta dentro de Gestion del conocimiento y es donde se diligencian los formatos. */}
+          <Route path="/dashboard/talento-humano" element={<TalentoHumanoHomePage />} />
+          <Route path="/dashboard/talento-humano/personal" element={<PersonalListPage />} />
+          <Route path="/dashboard/talento-humano/prestamos" element={<PrestamosListPage />} />
+          <Route path="/dashboard/talento-humano/incapacidades" element={<IncapacidadesPage />} />
+          <Route path="/dashboard/talento-humano/ausentismos" element={<AusentismosPage />} />
           <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />
-          <Route path="/dashboard/gestion-conocimiento/juridica" element={<SolicitudesJuridicaListPage />} />
+          {/* La gestión abre en su portada de formatos; el trámite de contratación pasa a
+              vivir bajo /contratos. Los segmentos fijos ganan sobre /:id (React Router los
+              ordena por especificidad), igual que ya pasaba con /matriz. */}
+          <Route path="/dashboard/gestion-conocimiento/juridica" element={<GestionFormatosHomePage gestion="juridica" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/contratos" element={<SolicitudesJuridicaListPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/terminacion" element={<FormatoListPage gestion="juridica" slug="terminacion" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/terminacion/:id" element={<ActaTerminacionPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/tutela" element={<FormatoListPage gestion="juridica" slug="tutela" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/tutela/:id" element={<ContestacionTutelaPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/nueva" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/requisicion-personal" element={<RequisicionPersonalPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/chequeo" element={<ChecklistContratoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/verificacion-garantias" element={<VerificacionGarantiasPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/aprobacion-garantias" element={<AprobacionGarantiasPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/designacion-supervisor" element={<DesignacionSupervisorPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/contrato" element={<ContratoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/acta-inicio" element={<ActaInicioPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/otrosi" element={<OtrosiPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/matriz" element={<MatrizContratosPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano" element={<GestionFormatosHomePage gestion="talento-humano" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/prestamo" element={<FormatoListPage gestion="talento-humano" slug="prestamo" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/prestamo/:id" element={<SolicitudPrestamoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/permiso" element={<FormatoListPage gestion="talento-humano" slug="permiso" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/permiso/:id" element={<SolicitudPermisoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/vacaciones" element={<FormatoListPage gestion="talento-humano" slug="vacaciones" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/vacaciones/:id" element={<SolicitudVacacionesPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/horas-extras" element={<FormatoListPage gestion="talento-humano" slug="horas-extras" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/horas-extras/:id" element={<HorasExtrasPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable" element={<ContableHomePage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/anticipos" element={<SolicitudesContableListPage tipo="anticipos" />} />
           <Route path="/dashboard/gestion-conocimiento/contable/legalizaciones" element={<SolicitudesContableListPage tipo="legalizaciones" />} />

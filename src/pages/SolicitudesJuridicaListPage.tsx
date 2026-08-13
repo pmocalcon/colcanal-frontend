@@ -6,13 +6,17 @@ import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { ESTADOS, estadoLabel, estadoBadgeClass, calcularSla, type JuridicaEstado } from '@/utils/juridicaWorkflow';
 import { getTipo } from '@/config/juridicaContratos';
+import { FORMATO_CONTRATACION } from '@/config/formatosGestion';
 
 /** Le toca actuar al usuario: el backend ya resolvió rol y jerarquía. */
 const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
 
 /**
- * Listado de solicitudes de G. jurídica (formato GTH-002-F). Punto de entrada de la
- * gestión: desde aquí se crea una nueva o se abre una existente para editar/imprimir.
+ * Listado del trámite de contratación (GTH-002-F): desde aquí se crea uno nuevo o se abre
+ * uno existente para editar/imprimir.
+ *
+ * Ya no es la entrada de la gestión —esa es la portada de formatos— sino la de **este**
+ * formato, y por eso filtra por él.
  */
 export default function SolicitudesJuridicaListPage() {
   const navigate = useNavigate();
@@ -24,7 +28,10 @@ export default function SolicitudesJuridicaListPage() {
   const load = async () => {
     setLoading(true);
     try {
-      setRows(await gestionConocimientoService.list({ gestion: 'juridica' }));
+      // Filtrado por formato: la gestión ya no tiene un solo formato, y sin esto las
+      // actas de terminación saldrían acá con estado y SLA de un trámite que no tienen.
+      const todas = await gestionConocimientoService.list({ gestion: 'juridica' });
+      setRows(todas.filter((r) => r.formato === FORMATO_CONTRATACION));
     } catch {
       toast.error('No se pudieron cargar las solicitudes');
     } finally {
