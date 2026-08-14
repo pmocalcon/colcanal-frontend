@@ -106,7 +106,10 @@ export default function CregUnitFormPage() {
     const init = async () => {
       setLoading(true);
       try {
-        const companies: Company[] = await masterDataService.getCompanies();
+        // Solo para resolver el nombre del municipio de la unidad, no es un
+        // selector: incluye las ocultas para que una unidad vieja no salga sin
+        // encabezado.
+        const companies: Company[] = await masterDataService.getCompanies({ incluirOcultas: true });
         if (isEdit) {
           const unit = await cregService.getUnit(Number(id));
           const cfg = await cregService.getConfig(unit.companyId, unit.projectId);

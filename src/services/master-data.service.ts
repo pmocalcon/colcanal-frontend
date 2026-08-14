@@ -57,14 +57,33 @@ export interface RequisitionStatus {
   order?: number;
 }
 
+/**
+ * Uniones temporales que existen como empresa en la base pero por las que no se
+ * opera:
+ *  - Pueblorrico (11), Ciudad Bolívar (12), Tarso (13) y Jericó (14) se manejan
+ *    como proyectos de Canales & Contactos.
+ *  - Jamundí (5) no tiene operación: solo centro de costo y prefijo, sin obras,
+ *    requisiciones ni UCAPs.
+ *
+ * Se ocultan de los selectores para que no se creen registros nuevos colgados de
+ * ellas. No se borra nada: los registros que ya las referencian conservan su
+ * empresa, y quien necesite resolver el nombre de una de ellas puede pedir la
+ * lista completa con `getCompanies({ incluirOcultas: true })`.
+ */
+export const EMPRESAS_OCULTAS = [5, 11, 12, 13, 14];
+
 // Master Data Service
 export const masterDataService = {
   /**
    * Get all companies
+   *
+   * Sin opciones devuelve solo las empresas seleccionables (ver EMPRESAS_OCULTAS).
    */
-  async getCompanies(): Promise<Company[]> {
+  async getCompanies(opciones?: { incluirOcultas?: boolean }): Promise<Company[]> {
     const response = await api.get<{ data: Company[]; total: number }>('/purchases/master-data/companies');
-    return response.data.data;
+    const companies = Array.isArray(response.data.data) ? response.data.data : [];
+    if (opciones?.incluirOcultas) return companies;
+    return companies.filter((c) => !EMPRESAS_OCULTAS.includes(c.companyId));
   },
 
   /**
