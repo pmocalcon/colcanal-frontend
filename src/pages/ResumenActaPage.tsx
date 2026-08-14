@@ -9,7 +9,7 @@ import {
   type DirectorBudget,
 } from '@/services/director-budgets.service';
 import { getActaConfig } from '@/config/actas';
-import type { EncabezadoTablaRow } from '@/config/actas/types';
+import type { EncabezadoTablaRow, GarantiaAmparo } from '@/config/actas/types';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
 import { mapCompaniesToDepartments } from '@/utils/departmentMapper';
 import { useAuth } from '@/contexts/AuthContext';
@@ -282,6 +282,13 @@ export default function ResumenActaPage() {
   const [showGarantiaRceExtraParagraphs, setShowGarantiaRceExtraParagraphs] = useState<boolean>(
     () => getActaConfig().showGarantiaRceExtraParagraphs ?? true
   );
+  /** Amparos propios del municipio; sin ellos van los dos de siempre. */
+  const [garantiaAmparos, setGarantiaAmparos] = useState<GarantiaAmparo[] | undefined>(
+    () => getActaConfig().garantiaAmparos
+  );
+  const [showGarantiaRce, setShowGarantiaRce] = useState<boolean>(
+    () => getActaConfig().showGarantiaRce ?? true
+  );
   const [garantiaCumplimientoTitle, setGarantiaCumplimientoTitle] = useState<string | undefined>(
     () => getActaConfig().garantiaCumplimientoTitle
   );
@@ -356,6 +363,25 @@ export default function ResumenActaPage() {
     }
   };
 
+  /**
+   * De qué municipio es el texto que trae un borrador.
+   *
+   * `docFields.municipio` lo lleva todo borrador, viejo o nuevo, así que sirve de
+   * seña sin cambiar el formato de lo guardado.
+   */
+  const municipioDelBorrador = (draft: unknown): string | null => {
+    const campos = (draft as { docFields?: { municipio?: unknown } } | null | undefined)?.docFields;
+    const m = campos?.municipio;
+    return typeof m === 'string' && m.trim() ? m.trim() : null;
+  };
+
+  /** Sin tildes y en mayúsculas: 'GUACARÍ' y 'GUACARI' son el mismo municipio. */
+  const mismoMunicipio = (a: string, b: string) => {
+    const n = (s: string) =>
+      s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+    return n(a) === n(b);
+  };
+
   const applyDraftPayload = (draft: any) => {
     if (!draft) return false;
 
@@ -381,20 +407,42 @@ export default function ResumenActaPage() {
     return true;
   };
 
-  const applySavedDraft = async (companyId?: number | null) => {
+  /**
+   * Restaura el borrador del acta, salvo que sea de otro municipio.
+   *
+   * El borrador guarda las ediciones de un acta; no decide de qué municipio es
+   * —eso lo fija la configuración por empresa y proyecto—. Hubo un tiempo en que
+   * `getActaConfig` caía en Guacarí para las actas de Canales & Contactos, y
+   * quien abrió una de esas y guardó dejó el texto de Guacarí pegado al acta:
+   * desde entonces se restauraba encima de la plantilla correcta, cada vez, y el
+   * acta de Pueblorrico se abría con el escudo y el articulado de Guacarí.
+   *
+   * Descartarlo es lo correcto: un acta con el membrete del municipio
+   * equivocado no es un borrador a medias, es un documento falso.
+   */
+  const applySavedDraft = async (
+    companyId: number | null | undefined,
+    municipioDelActa: string | undefined,
+  ) => {
+    const aplicar = (draft: Parameters<typeof applyDraftPayload>[0]) => {
+      const suyo = municipioDelBorrador(draft);
+      if (suyo && municipioDelActa && !mismoMunicipio(suyo, municipioDelActa)) return false;
+      return applyDraftPayload(draft);
+    };
+
     if (!companyId || !recordNumber) {
-      return applyDraftPayload(getSavedDraft(companyId));
+      return aplicar(getSavedDraft(companyId));
     }
 
     try {
       const response = await surveysService.getActaSummaryDraft(companyId, getCurrentProjectId(), recordNumber);
-      if (response.payload) return applyDraftPayload(response.payload);
+      if (response.payload) return aplicar(response.payload);
       return false;
     } catch {
       // Fallback local solo para no perder el trabajo si el backend no responde.
     }
 
-    return applyDraftPayload(getSavedDraft(companyId));
+    return aplicar(getSavedDraft(companyId));
   };
 
   const handleSaveDraft = async () => {
@@ -935,7 +983,12 @@ export default function ResumenActaPage() {
       // El IPP inicial vive por PROYECTO, así que tomamos el projectId de las obras.
       const companyId =
         actaCompanyId ?? worksInput[0]?.companyId ?? (worksInput[0] as any)?.company?.companyId;
+      // El proyecto de la URL manda, igual que la empresa: es la identidad del
+      // acta. Tomarlo solo de las obras dejaba la plantilla a merced de que el
+      // API devolviera `projectId`, y sin él la clave «1:» no está en el
+      // registro y todas las actas de Canales & Contactos caían en Guacarí.
       const projectId =
+        actaProjectId ??
         worksInput.find((w) => w.projectId)?.projectId ??
         (worksInput.find((w) => (w as any).project?.projectId) as any)?.project?.projectId ??
         worksInput[0]?.projectId;
@@ -973,12 +1026,14 @@ export default function ResumenActaPage() {
       setLogoUrl(cfg.logoUrl);
       setHideMunicipioBanner(cfg.hideMunicipioBanner ?? false);
       setShowGarantiaRceExtraParagraphs(cfg.showGarantiaRceExtraParagraphs ?? true);
+      setGarantiaAmparos(cfg.garantiaAmparos);
+      setShowGarantiaRce(cfg.showGarantiaRce ?? true);
       setGarantiaCumplimientoTitle(cfg.garantiaCumplimientoTitle);
       setGarantiaRceTitle(cfg.garantiaRceTitle ?? 'I. GARANTÍA DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL:');
       setTituloLineas(cfg.tituloLineas);
       setEncabezadoTabla(cfg.encabezadoTabla);
       setConsideracionNumeracion(cfg.consideracionNumeracion ?? 'roman');
-      const restoredDraft = await applySavedDraft(companyId);
+      const restoredDraft = await applySavedDraft(companyId, cfg.docFields.municipio);
       if (restoredDraft) {
         // El borrador guarda la lista de bloques, y puede traer bloques de obras que
         // ya no son de esta acta (los borradores viejos se guardaron cuando el acta
@@ -1784,21 +1839,38 @@ export default function ResumenActaPage() {
                                 <td className="border border-gray-500 px-2 py-1" colSpan={3}><EditableText>Municipio de </EditableText><InlineInput value={docFields.municipio} onChange={setDF('municipio')} /><EditableText> identificado con Nit. </EditableText><InlineInput value={docFields.municipioNit} onChange={setDF('municipioNit')} /></td>
                               </tr>
                               <tr>
-                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-middle" rowSpan={3} contentEditable={canEdit} suppressContentEditableWarning>Amparos,<br/>vigencia y<br/>valores<br/>asegurados</td>
+                                <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-middle" rowSpan={1 + (garantiaAmparos?.length ?? 2)} contentEditable={canEdit} suppressContentEditableWarning>Amparos,<br/>vigencia y<br/>valores<br/>asegurados</td>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>AMPARO</td>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>% DE AMPARO</td>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 text-center" contentEditable={canEdit} suppressContentEditableWarning>VIGENCIA</td>
                               </tr>
-                              <tr>
-                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>CUMPLIMIENTO DEL CONTRATO.</td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de autorización No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del Acta de autorización No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
-                              </tr>
-                              <tr>
-                                <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>PÓLIZA PARA GARANTIZAR EL BUEN MANEJO Y CORRECTA INVERSIÓN DEL ANTICIPO.</td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>.</EditableText></td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de autorización </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre está cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
-                              </tr>
+                              {/*
+                                Los amparos del municipio, si los trae su configuración.
+                                Los de por defecto están redactados sobre el acta de
+                                autorización, y hay pólizas que amparan contra el
+                                contrato y con otra vigencia: ahí el texto de siempre
+                                diría algo que la póliza no dice.
+                              */}
+                              {garantiaAmparos ? garantiaAmparos.map((amparo, i) => (
+                                <tr key={`amparo-${i}`}>
+                                  <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>{amparo.amparo}</td>
+                                  <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>{amparo.porcentaje}</td>
+                                  <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>{amparo.vigencia}</td>
+                                </tr>
+                              )) : (
+                                <>
+                                  <tr>
+                                    <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>CUMPLIMIENTO DEL CONTRATO.</td>
+                                    <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>10% del valor total del acta de autorización No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /></td>
+                                    <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>Por el plazo de ejecución del contrato y tres (3) meses más, contados a partir de la fecha de perfeccionamiento del Acta de autorización No. </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>.</EditableText></td>
+                                  </tr>
+                                  <tr>
+                                    <td className="border border-gray-500 px-2 py-1 align-top" contentEditable={canEdit} suppressContentEditableWarning>PÓLIZA PARA GARANTIZAR EL BUEN MANEJO Y CORRECTA INVERSIÓN DEL ANTICIPO.</td>
+                                    <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>100% del valor total del acta de obra No. </EditableText><InlineInput value={docFields.actaNumero} onChange={setDF('actaNumero')} /><EditableText>.</EditableText></td>
+                                    <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>La vigencia de la garantía será establecida en el acta de autorización </EditableText><InlineInput value={docFields.actaReferenciaAnterior} onChange={setDF('actaReferenciaAnterior')} /><EditableText>, de manera que siempre está cubierto el anticipo otorgado o su valor reajustado, para la cual tendrá una vigencia por el plazo de ejecución de la presente acta.</EditableText></td>
+                                  </tr>
+                                </>
+                              )}
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Tomador</td>
                                 <td className="border border-gray-500 px-2 py-1" colSpan={3}><InlineInput value={docFields.conEmpresa} onChange={setDF('conEmpresa')} /><EditableText>, identificada con Nit. </EditableText><InlineInput value={docFields.conNit} onChange={setDF('conNit')} /></td>
@@ -1815,6 +1887,9 @@ export default function ResumenActaPage() {
                               </tr>
                             </tbody>
                           </table>
+                          {/* La RCE no es de todos: el acta de Pueblorrico cierra en la
+                              tabla de cumplimiento y no exige póliza extracontractual. */}
+                          {showGarantiaRce && (<>
                           <p className="font-semibold mt-5 mb-1" contentEditable={canEdit} suppressContentEditableWarning>{garantiaRceTitle}</p>
                           <p className="mb-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá contratar un seguro que ampare la responsabilidad civil extracontractual de la empresa con las siguientes características:</p>
                           <table className="w-full border-collapse text-[10.5pt]">
@@ -1872,6 +1947,7 @@ export default function ResumenActaPage() {
                               <p className="mt-2 text-justify" contentEditable={canEdit} suppressContentEditableWarning>El contratista deberá anexar el comprobante de pago de la prima del seguro de responsabilidad civil extracontractual.</p>
                             </>
                           )}
+                          </>)}
                         </div>
                       )}
                     </div>

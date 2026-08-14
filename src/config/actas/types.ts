@@ -67,6 +67,13 @@ export interface EncabezadoTablaRow {
   value: string;
 }
 
+/** Una fila de la tabla de amparos de la garantía de cumplimiento. */
+export interface GarantiaAmparo {
+  amparo: string;
+  porcentaje: string;
+  vigencia: string;
+}
+
 export interface ActaConfig {
   docFields: ActaDocFields;
   consideraciones: string[];
@@ -80,6 +87,18 @@ export interface ActaConfig {
   consideracionNumeracion?: 'roman' | 'decimalDash' | 'decimal' | 'alpha';
   logoUrl?: string;
   hideMunicipioBanner?: boolean;
+  /**
+   * Filas de amparos de la garantía de cumplimiento. Sin esto se usan las dos de
+   * siempre, redactadas sobre el acta de autorización; hay municipios que amparan
+   * contra el contrato y con otra vigencia, y ahí el texto por defecto diría algo
+   * que la póliza no dice.
+   */
+  garantiaAmparos?: GarantiaAmparo[];
+  /**
+   * Si el acta lleva garantía de responsabilidad civil extracontractual.
+   * Pueblorrico no la exige: su acta cierra en la tabla de cumplimiento.
+   */
+  showGarantiaRce?: boolean;
   showGarantiaRceExtraParagraphs?: boolean;
   garantiaCumplimientoTitle?: string;
   garantiaRceTitle?: string;

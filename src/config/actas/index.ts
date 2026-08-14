@@ -14,9 +14,9 @@ import { puertoasisConfig } from './puertoasis';
 // Clave simple "companyId:" — para UTAPs con companyId único por municipio.
 const registry = new Map<string, ActaConfig>([
   ['1:2',  ciudadBolivarConfig], // Canales & Contactos, proyecto Ciudad Bolívar
-  ['14:',  jericoConfig],        // Canales & Contactos, proyecto Jericó
   ['1:4',  pueblorricoConfig],   // Canales & Contactos, proyecto Pueblorrico
-  ['1:5',  tarsoConfig],          // Canales & Contactos, proyecto Tarso
+  ['1:5',  tarsoConfig],         // Canales & Contactos, proyecto Tarso
+  ['14:',  jericoConfig],        // UT Alumbrado Público Jericó (empresa propia, sin proyecto)
   ['4:',   guacariConfig],
   ['3:',   circasiaConfig],
   ['2:',   cerritoConfig],
