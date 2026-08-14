@@ -10,7 +10,6 @@ import type {
 } from '@/services/audit.service';
 import { usersService } from '@/services/users.service';
 import type { User } from '@/services/users.service';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -197,26 +196,29 @@ const ACTION_COLORS: Record<string, string> = {
 
 type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control' | 'proveedores';
 const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control', 'proveedores'];
-// "Control de Compras" cruza órdenes con facturas y "Proveedores" expone los
-// precios por proveedor: ambas quedan reservadas al Analista PMO.
-const PMO_ONLY_TABS: AuditTab[] = ['control', 'proveedores'];
+
+/*
+ * Las cinco pestañas las ve cualquiera que entre a Auditorías.
+ *
+ * «Control de Compras» y «Proveedores» estuvieron reservadas al Analista PMO,
+ * pero quien cruza órdenes con facturas o mira los precios por proveedor es
+ * justamente quien audita: Gerencia, la Dirección Financiera, Compras. La
+ * puerta del módulo es la gestión `auditorias`, y esa es la que decide; una
+ * segunda reja por nombre de rol dejaba fuera incluso al Director PMO, que
+ * tiene el mismo alcance que el Analista.
+ */
 
 export default function AuditoriasComprasPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isAnalistaPMO = user?.nombreRol === 'Analista PMO';
 
   // La pestaña activa vive en la URL (?tab=...) para que al entrar a una
   // requisición y volver con "atrás" se restaure la que estabas viendo, en vez
   // de reiniciar a "Registros".
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const requestedTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
+  const activeTab: AuditTab = AUDIT_TABS.includes(tabParam as AuditTab)
     ? (tabParam as AuditTab)
     : 'registros';
-  // Un ?tab=... escrito a mano no debe abrirle una pestaña a quien no la ve.
-  const activeTab: AuditTab =
-    PMO_ONLY_TABS.includes(requestedTab) && !isAnalistaPMO ? 'registros' : requestedTab;
   const setActiveTab = useCallback((tab: AuditTab) => {
     const p = new URLSearchParams(searchParams);
     p.set('tab', tab);
@@ -844,26 +846,22 @@ export default function AuditoriasComprasPage() {
             <BarChart2 className="w-4 h-4 mr-2" />
             Gráficos
           </Button>
-          {isAnalistaPMO && (
-            <Button
-              variant={activeTab === 'control' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('control')}
-              className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
-            >
-              <Lightbulb className="w-4 h-4 mr-2" />
-              Control de Compras
-            </Button>
-          )}
-          {isAnalistaPMO && (
-            <Button
-              variant={activeTab === 'proveedores' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('proveedores')}
-              className={activeTab === 'proveedores' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
-            >
-              <Truck className="w-4 h-4 mr-2" />
-              Proveedores
-            </Button>
-          )}
+          <Button
+            variant={activeTab === 'control' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('control')}
+            className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+          >
+            <Lightbulb className="w-4 h-4 mr-2" />
+            Control de Compras
+          </Button>
+          <Button
+            variant={activeTab === 'proveedores' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('proveedores')}
+            className={activeTab === 'proveedores' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
+          >
+            <Truck className="w-4 h-4 mr-2" />
+            Proveedores
+          </Button>
         </div>
 
         {/* ── REGISTROS TAB ── */}
