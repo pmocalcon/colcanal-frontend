@@ -10,7 +10,10 @@
  */
 
 import type { Ucap } from '@/services/surveys.service';
-import { UCAP_GRUPOS } from '@/services/creg.service';
+import {
+  UCAP_GRUPOS, indiceDisponibilidad, indiceDisponibilidadOn,
+  type IddOffMes, type IddOnMes, type LiquidacionMes,
+} from '@/services/creg.service';
 
 export const toNum = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -56,10 +59,17 @@ export const normalizeCell = (raw: CellQty | number | undefined | null): CellQty
   return { inv: raw.inv || 0, mun: raw.mun || 0, con: raw.con || 0 };
 };
 
-/** Vida útil (años) según el grupo de la UCAP → clave del parámetro. */
+/**
+ * Vida útil (años) según el grupo de la UCAP → clave del parámetro.
+ *
+ * Las claves son las de la hoja de Parámetros (`CregParametrosPage`) y tienen que
+ * escribirse igual: una clave que no existe deja la UCAP sin vida útil, y sin
+ * `nper` la anualidad no se puede calcular, así que esa fila aporta 0 a la
+ * inversión sin decirlo. Es lo que pasaba con luminarias y fotocontroles.
+ */
 const VIDA_UTIL_KEY: Record<string, string> = {
-  'LUMINARIAS': 'vuLuminarias',
-  'FOTOCONTROLES': 'vuFotocontroles',
+  'LUMINARIAS': 'vuLuminariaLed',
+  'FOTOCONTROLES': 'vuFotocontrol',
   'ELEMENTOS DE SOPORTE': 'vuElementosSoporte',
   'BOMBILLAS': 'vuBombillas',
   'POSTES': 'vuPostes',
@@ -199,10 +209,23 @@ export const factorAomDe = (P: CregParamsDerived, ym: string): number | null => 
   return base != null ? (base + P.faoms) / 100 : null;
 };
 
-const vidaUtilDe = (P: CregParamsDerived, grupo: string | null): number | null => {
+/**
+ * Vida útil (años) de una UCAP según su grupo, leída de los parámetros crudos.
+ *
+ * Se exporta para que la Liquidación no lleve su propia copia de la tabla: es
+ * un mapa de nombres, y dos copias acaban discrepando en una tecla sin que nada
+ * falle —la fila simplemente deja de aportar inversión—.
+ */
+export const vidaUtilDeGrupo = (
+  params: Record<string, any>,
+  grupo: string | null,
+): number | null => {
   const key = VIDA_UTIL_KEY[(grupo || '').trim().toUpperCase()];
-  return key ? toNum(P.params[key]) : null;
+  return key ? toNum(params[key]) : null;
 };
+
+const vidaUtilDe = (P: CregParamsDerived, grupo: string | null): number | null =>
+  vidaUtilDeGrupo(P.params, grupo);
 
 /** Mes del censo que le aplica a una columna del flujo. */
 export interface CensoDelMes {
@@ -264,6 +287,32 @@ export interface GrupoMes {
   invMes: number;   // Inversión del mes (sin índice)
 }
 
+/** Grupo con que se contabiliza una UCAP que no trae ninguno. */
+const SIN_GRUPO = 'SIN GRUPO';
+
+const grupoDe = (u: Ucap): string => (u.grupo || '').trim().toUpperCase() || SIN_GRUPO;
+
+/**
+ * Los grupos con que se agrupa el cálculo: los 11 de la lista fija más los que
+ * traigan las UCAPs por fuera de ella.
+ *
+ * Los de fuera existen —una UCAP sin grupo, o con uno escrito distinto— y valen
+ * lo mismo que las demás. Antes no tenían casillero y se caían del cálculo en
+ * silencio, mientras la Liquidación sí las sumaba: el mismo municipio daba dos
+ * cifras según la pantalla. Salen de `ucaps`, no de las cantidades, así que la
+ * lista es la misma en todos los meses y se puede indexar por posición.
+ */
+export const gruposDe = (ucaps: Ucap[]): string[] => {
+  const extra: string[] = [];
+  for (const u of ucaps) {
+    const g = grupoDe(u);
+    if (!UCAP_GRUPOS.includes(g as (typeof UCAP_GRUPOS)[number]) && !extra.includes(g)) {
+      extra.push(g);
+    }
+  }
+  return [...UCAP_GRUPOS, ...extra];
+};
+
 export interface MesResultado {
   ym: string;
   /** Mes del censo de donde salieron las cantidades (ver `censoVigente`). */
@@ -271,7 +320,7 @@ export interface MesResultado {
   /** true si ese censo es el de un mes anterior, arrastrado hasta aquí. */
   censoArrastrado: boolean;
   indice: number | null;      // IPP(m-1) / IPPo
-  grupos: GrupoMes[];         // 11 grupos, en orden fijo
+  grupos: GrupoMes[];         // los 11 fijos y los de fuera (ver `gruposDe`)
   activo: number;             // total infraestructura
   aomMes: number;             // Σ aomMes (sin índice)
   invMes: number;             // Σ invMes (sin índice)
@@ -302,12 +351,12 @@ export const computeMes = (
   const { idApagadas, idEncendidas } = opts;
   const indice = opts.ippMes != null && P.ippo ? opts.ippMes / P.ippo : null;
 
+  const orden = gruposDe(ucaps);
   const acc = new Map<string, GrupoMes>();
-  for (const g of UCAP_GRUPOS) acc.set(g, { grupo: g, activo: 0, aomMes: 0, invMes: 0 });
+  for (const g of orden) acc.set(g, { grupo: g, activo: 0, aomMes: 0, invMes: 0 });
 
   for (const u of ucaps) {
-    const grupoKey = (u.grupo || '').trim().toUpperCase();
-    const bucket = acc.get(grupoKey);
+    const bucket = acc.get(grupoDe(u))!;
     for (const row of rowsForUcap(u)) {
       const c = normalizeCell(quantities[row.key]?.[censoYm]);
       const cantA = c.inv;
@@ -333,15 +382,13 @@ export const computeMes = (
           valorTotal: activo,
         }) ?? 0;
 
-      if (bucket) {
-        bucket.activo += activo;
-        bucket.aomMes += aomAnual / 12;
-        bucket.invMes += invAnual / 12;
-      }
+      bucket.activo += activo;
+      bucket.aomMes += aomAnual / 12;
+      bucket.invMes += invAnual / 12;
     }
   }
 
-  const grupos = UCAP_GRUPOS.map((g) => acc.get(g)!);
+  const grupos = orden.map((g) => acc.get(g)!);
   const activo = grupos.reduce((a, g) => a + g.activo, 0);
   const aomMes = grupos.reduce((a, g) => a + g.aomMes, 0);
   const invMes = grupos.reduce((a, g) => a + g.invMes, 0);
@@ -351,6 +398,112 @@ export const computeMes = (
     indice, grupos, activo, aomMes, invMes,
     caomMensual: aomMes * f,
     cinvMensual: invMes * f,
+  };
+};
+
+/* ── Valor a pagar del mes ──────────────────────────────────────────────────
+ * La tarjeta LIQUIDACIÓN de la pantalla de Liquidación y su barra verde: lo que
+ * se le cobra al municipio ese mes.
+ *
+ * Vive acá porque la Factura de concesión factura exactamente eso. Si cada
+ * pantalla lo calculara por su lado, la factura podría salir por un valor que la
+ * liquidación no reconoce, y el municipio tendría dos cifras del mismo mes.
+ */
+
+/** Las hojas CREG de un municipio: todo lo que hace falta para liquidar un mes. */
+export interface HojasCreg {
+  ucaps: Ucap[];
+  quantities: Record<string, Record<string, CellQty | number>>;
+  /** Parámetros del municipio, con la serie `ippMeses` del DANE ya inyectada. */
+  params: Record<string, any>;
+  /** Lo propio de cada mes liquidado: el IPP con que se liquidó y los ajustes. */
+  meses: Record<string, LiquidacionMes>;
+  iddOff: Record<string, IddOffMes>;
+  iddOn: Record<string, IddOnMes>;
+  /** El +12 en las horas fuera de servicio. Es por proyecto (ver `horasFuera`). */
+  sumaMediaNoche: boolean;
+}
+
+export interface LiquidacionResultado {
+  ym: string;
+  es101: boolean;
+  indice: number | null;
+  ippMes: number | null;
+  idApagadas: number | null;
+  idEncendidas: number;
+  /** Los dos "Valor a pagar" de la tarjeta, antes de ajustes. */
+  valorAom: number;
+  valorInv: number;
+  /** Costos ambientales del mes. Solo en la 101-013. */
+  ambMes: number;
+  ajusteAom: number;
+  ajusteInv: number;
+  ajusteAmb: number;
+  valorChura: number;
+  /**
+   * Los tres conceptos como van a la factura, ya redondeados al peso.
+   *
+   * Cada uno lleva su ajuste incorporado: el ajuste no es una nota al margen,
+   * es parte de lo que se cobra —en el mes de la foto, la inversión se cobra
+   * con 16,7 millones de ajuste— y una factura sin él saldría corta.
+   */
+  aom: number;
+  inversion: number;
+  /** Ambientales y CVURA, que en la factura no son AOM ni inversión. */
+  otros: number;
+  /** aom + inversion + otros. Se suma ya redondeado, que es lo que se factura. */
+  total: number;
+  /** El mes está cerrado en la Liquidación: la cifra ya no se mueve. */
+  aprobado: boolean;
+  /** false cuando el censo no tiene ese mes: todavía no hay nada que liquidar. */
+  hayCenso: boolean;
+}
+
+/** Lo que se le cobra al municipio en `ym`, con las reglas de su resolución. */
+export const liquidarMes = (h: HojasCreg, ym: string): LiquidacionResultado => {
+  const P = deriveParams(h.params);
+  const mes = h.meses[ym] ?? {};
+
+  // Los índices del mes mandan sobre los parámetros: el de la hoja está quemado
+  // a un mes concreto y solo sirve de respaldo.
+  const off = h.iddOff[ym];
+  const on = h.iddOn[ym];
+  const idApagadas =
+    (off ? indiceDisponibilidad(off.fallas ?? [], off.wt, off.t, h.sumaMediaNoche) : null)
+    ?? P.idApagadas;
+  const idEncendidas =
+    (on ? indiceDisponibilidadOn(on.fallas ?? [], on.wt, on.t) : null)
+    ?? P.idEncendidasParam ?? 1;
+
+  // El IPP con que se liquidó el mes manda sobre la tabla del DANE: es el que
+  // quedó firmado. Sin proyectar hacia adelante — esto liquida meses que ya
+  // pasaron, no proyecta el contrato como el flujo de caja.
+  const ippMes = mes.ippMes ?? ippDelMes(h.params, ym);
+
+  const r = computeMes(h.ucaps, h.quantities, P, ym, { idApagadas, idEncendidas, ippMes });
+
+  const valorAom = r.caomMensual;
+  const valorInv = r.cinvMensual;
+  const pctAmbiental = P.es101 && P.costosAmbientales != null ? P.costosAmbientales / 100 : 0;
+  const ambMes = r.aomMes * pctAmbiental * (r.indice ?? 1);
+  const ajusteAom = mes.ajusteAom ?? 0;
+  const ajusteInv = mes.ajusteInv ?? 0;
+  const ajusteAmb = P.es101 ? (mes.ajusteAmb ?? 0) : 0;
+  const valorChura = P.es101 ? (mes.valorChura ?? 0) : 0;
+
+  const aom = Math.round(valorAom + ajusteAom);
+  const inversion = Math.round(valorInv + ajusteInv);
+  const otros = Math.round(ambMes + ajusteAmb + valorChura);
+
+  return {
+    ym, es101: P.es101, indice: r.indice, ippMes, idApagadas, idEncendidas,
+    valorAom, valorInv, ambMes, ajusteAom, ajusteInv, ajusteAmb, valorChura,
+    aom, inversion, otros,
+    // Se suman los tres ya redondeados y no el total con decimales: así el
+    // subtotal de la factura da exactamente esto y no un peso más.
+    total: aom + inversion + otros,
+    aprobado: !!mes.aprobado,
+    hayCenso: r.activo > 0,
   };
 };
 

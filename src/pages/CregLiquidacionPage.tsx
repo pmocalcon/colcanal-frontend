@@ -18,7 +18,7 @@ import type { TipoSge } from '@/utils/censoCompare';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ippDelMes } from '@/utils/cregCalc';
+import { ippDelMes, vidaUtilDeGrupo } from '@/utils/cregCalc';
 import { buildXlsxBlob, downloadBlob } from '@/utils/xlsxWriter';
 import { agregarFirmas } from '@/utils/cregFirmasXlsx';
 import type { XlsxRow, XlsxCell, XlsxImage } from '@/utils/xlsxWriter';
@@ -92,24 +92,6 @@ const rowsForUcap = (u: Ucap): LiqRow[] =>
 const rowLabel = (r: LiqRow) =>
   r.apellido ? `${r.ucap.description} (${r.apellido})` : r.ucap.description;
 
-/**
- * Vida útil por grupo de UCAP: cada grupo tiene su propia clave en la hoja de
- * Parámetros (el Excel usa 15 años en luminarias y 10 en medidores/diseños).
- */
-const VIDA_UTIL_KEY: Record<string, string> = {
-  'LUMINARIAS': 'vuLuminariaLed',
-  'FOTOCONTROLES': 'vuFotocontrol',
-  'ELEMENTOS DE SOPORTE': 'vuElementosSoporte',
-  'BOMBILLAS': 'vuBombillas',
-  'POSTES': 'vuPostes',
-  'REDES': 'vuRedes',
-  'CANALIZACIONES': 'vuCanalizaciones',
-  'TRANSFORMADORES': 'vuTransformadores',
-  'MEDIDORES': 'vuMedidores',
-  'PUESTA A TIERRA': 'vuPuestaTierra',
-  'TELEGESTIÓN': 'vuTelegestion',
-};
-
 const toNum = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string' && v.trim() !== '') {
@@ -169,6 +151,8 @@ export default function CregLiquidacionPage() {
   const [quantities, setQuantities] = useState<Record<string, Record<string, CellQty | number>>>({});
   const [meses, setMeses] = useState<Record<string, LiquidacionMes>>({});
   const [iddMeses, setIddMeses] = useState<Record<string, IddOffMes>>({});
+  /** El +12 de las horas fuera de servicio. Es por proyecto (ver `horasFuera`). */
+  const [iddMediaNoche, setIddMediaNoche] = useState(false);
   const [iddOnMeses, setIddOnMeses] = useState<Record<string, IddOnMes>>({});
   const [selYm, setSelYm] = useState<string | null>(null);
 
@@ -220,6 +204,7 @@ export default function CregLiquidacionPage() {
         setQuantities(censo.data?.quantities ?? {});
         setMeses(liq.data?.meses ?? {});
         setIddMeses(idd.data?.meses ?? {});
+        setIddMediaNoche(!!idd.data?.sumaMediaNoche);
         setIddOnMeses(iddOn.data?.meses ?? {});
         setLoading(false);
       })
@@ -288,10 +273,10 @@ export default function CregLiquidacionPage() {
   }, [es101, faomlDelAnio, P.faom, P.faoms]);
 
   /** Vida útil (años) de una UCAP según su grupo. */
-  const vidaUtilDe = useCallback((grupo: string | null): number | null => {
-    const key = VIDA_UTIL_KEY[(grupo || '').trim().toUpperCase()];
-    return key ? toNum(params[key]) : null;
-  }, [params]);
+  const vidaUtilDe = useCallback(
+    (grupo: string | null): number | null => vidaUtilDeGrupo(params, grupo),
+    [params],
+  );
 
   /**
    * IDapagadas del mes: lo calcula IDD OFF con las fallas de ese periodo. El
@@ -301,8 +286,11 @@ export default function CregLiquidacionPage() {
   const idCalculado = useMemo(() => {
     if (!selYm) return null;
     const m = iddMeses[selYm];
-    return m ? indiceDisponibilidad(m.fallas ?? [], m.wt, m.t) : null;
-  }, [iddMeses, selYm]);
+    // El +12 del proyecto entra acá igual que en IDD OFF y en el flujo de caja:
+    // sin él las horas fuera de servicio salen cortas, el ID sube y con él sube
+    // lo que se le cobra al municipio.
+    return m ? indiceDisponibilidad(m.fallas ?? [], m.wt, m.t, iddMediaNoche) : null;
+  }, [iddMeses, iddMediaNoche, selYm]);
 
   const idApagadas = idCalculado ?? P.idApagadas;
 
