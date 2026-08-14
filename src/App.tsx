@@ -62,7 +62,9 @@ import CregIddOnPage from './pages/CregIddOnPage'
 import CregUnitFormPage from './pages/CregUnitFormPage'
 import CregFacturaEnergiaPage from './pages/CregFacturaEnergiaPage'
 import GestionConocimientoPage from './pages/GestionConocimientoPage'
+import RecursoEconomicoHomePage from './pages/RecursoEconomicoHomePage'
 import RecursoEconomicoPage from './pages/RecursoEconomicoPage'
+import FacturaConcesionPage from './pages/FacturaConcesionPage'
 import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
 import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
 import ChecklistContratoPage from './pages/ChecklistContratoPage'
@@ -333,7 +335,9 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/:id" element={<CuentasCompaniasPage />} />
           {/* Recurso Económico: solo PMO. La página repite la verificación de rol
               y el backend la cierra con RolesGuard. */}
-          <Route path="/dashboard/recurso-economico" element={<RecursoEconomicoPage />} />
+          <Route path="/dashboard/recurso-economico" element={<RecursoEconomicoHomePage />} />
+          <Route path="/dashboard/recurso-economico/parametros" element={<RecursoEconomicoPage />} />
+          <Route path="/dashboard/recurso-economico/factura" element={<FacturaConcesionPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

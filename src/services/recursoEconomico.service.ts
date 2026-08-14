@@ -1,7 +1,8 @@
 import api from './api';
 
 /**
- * Recurso Económico: interventoría por año y retenciones por proyecto.
+ * Recurso Económico: interventoría por año, retenciones por proyecto y la factura de
+ * concesión de cada municipio, mes a mes.
  *
  * Los proyectos son las empresas que ya existen en el sistema; el módulo no
  * lleva su propia lista de municipios.
@@ -50,12 +51,107 @@ export interface RetencionProyecto {
   estampillas?: number | null;
 }
 
+/** Los cuatro descuentos, en el orden en que van en la orden de pago. */
+export const CONCEPTOS_RETENCION = [
+  { key: 'rteFte', label: 'RTE. FTE.' },
+  { key: 'rteIca', label: 'RETEICA' },
+  { key: 'timbre', label: 'TIMBRE' },
+  { key: 'estampillas', label: 'ESTAMPILLAS' },
+] as const;
+
+export type ConceptoRetencion = (typeof CONCEPTOS_RETENCION)[number]['key'];
+
+/**
+ * La factura de concesión de un municipio en un mes.
+ *
+ * Los tres conceptos son los mismos de la factura electrónica: AOM, inversión y lo que
+ * no cae en ninguno de los dos —la CVURA de Puerto Asís, por ejemplo—.
+ *
+ * Las retenciones **no se guardan**: salen del subtotal por los porcentajes que ya
+ * están en la pestaña Retención. Solo se guarda el valor cuando alguien lo escribe
+ * distinto, y entonces ese manda. Es el mismo trato que el `valorManual` de
+ * interventoría, y por la misma razón: cambiar un porcentaje debe corregir todos los
+ * meses que no se hayan tocado, no dejarlos con la cifra vieja.
+ */
+export interface FacturaMes {
+  aom?: number | null;
+  inversion?: number | null;
+  otros?: number | null;
+  /** Retención escrita a mano. Vacío = se calcula con el % del proyecto. */
+  manual?: Partial<Record<ConceptoRetencion, number | null>>;
+  /** Enlace a la factura electrónica o al correo con que se envió. */
+  link?: string;
+  /** Visto bueno de la Directora. Se estampa al marcar la casilla. */
+  visto?: { nombre: string; fecha: string } | null;
+}
+
 export interface RecursoEconomicoData {
   /** 'YYYY' -> año de interventoría. */
   anios?: Record<string, AnioInterventoria>;
   /** companyId -> retenciones. No van por año: cambian por acuerdo, no por vigencia. */
   retenciones?: Record<string, RetencionProyecto>;
+  /**
+   * 'YYYY-MM' -> companyId -> factura de ese mes.
+   *
+   * La llave es el periodo y no el año porque así se consulta: se escoge un mes y se
+   * miran los diez municipios de una vez, igual que las otras dos tablas.
+   */
+  facturas?: Record<string, Record<string, FacturaMes>>;
 }
+
+/** AOM + inversión + otros: la base sobre la que se calculan las retenciones. */
+export const subtotalFactura = (f: FacturaMes | undefined): number => {
+  if (!f) return 0;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return n(f.aom) + n(f.inversion) + n(f.otros);
+};
+
+/**
+ * Cuánto se retiene por un concepto.
+ *
+ * Devuelve también de dónde salió, porque la pantalla lo distingue: una cifra escrita
+ * a mano no puede verse igual que una calculada, o nadie sabría cuál va a cambiar
+ * cuando se corrija el porcentaje.
+ *
+ * Se redondea al peso: es lo que va a la orden de pago.
+ */
+export const retencionFactura = (
+  f: FacturaMes | undefined,
+  ret: RetencionProyecto | undefined,
+  concepto: ConceptoRetencion,
+): { valor: number | null; manual: boolean } => {
+  const escrito = f?.manual?.[concepto];
+  if (typeof escrito === 'number' && Number.isFinite(escrito)) {
+    return { valor: escrito, manual: true };
+  }
+  const pct = ret?.[concepto];
+  // `null` es "no aplica", no "cero por ciento": no se retiene nada y la celda queda
+  // vacía en vez de mostrar $0, que se leería como una retención que sí rige.
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return { valor: null, manual: false };
+
+  // Sin factura no hay nada que retener. Sin esto la columna se llenaba de ceros antes
+  // de que nadie hubiera escrito una cifra, como si ya estuviera liquidada en cero.
+  const base = subtotalFactura(f);
+  if (base <= 0) return { valor: null, manual: false };
+
+  return { valor: Math.round((base * pct) / 100), manual: false };
+};
+
+/** Lo que de verdad se paga: el subtotal menos todo lo retenido. */
+export const valorPagoFactura = (
+  f: FacturaMes | undefined,
+  ret: RetencionProyecto | undefined,
+): number => {
+  const descontado = CONCEPTOS_RETENCION.reduce(
+    (s, c) => s + (retencionFactura(f, ret, c.key).valor ?? 0),
+    0,
+  );
+  return subtotalFactura(f) - descontado;
+};
+
+/** Una factura cuenta como diligenciada cuando tiene algún valor. */
+export const facturaDiligenciada = (f: FacturaMes | undefined): boolean =>
+  subtotalFactura(f) > 0;
 
 export interface EmpresaRecurso {
   companyId: number;
@@ -64,6 +160,18 @@ export interface EmpresaRecurso {
 
 /** IVA colombiano vigente, con el que se calcula el valor de interventoría. */
 export const IVA = 0.19;
+
+/*
+ * Los dos formatos del módulo viven acá y no en la pantalla porque los usan las tres
+ * tablas, y una de ellas está en otro archivo. Dos copias de «$ 1.234» acaban
+ * discrepando en los decimales, que es justo donde se nota.
+ */
+
+export const fmtCOP = (n: number) =>
+  n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+
+export const fmtPct = (n: number | null | undefined): string =>
+  n == null ? '' : `${n.toLocaleString('es-CO', { maximumFractionDigits: 3 })}%`;
 
 /**
  * Valor de interventoría del proyecto: SMLV × SMMLV, con IVA si el contrato lo

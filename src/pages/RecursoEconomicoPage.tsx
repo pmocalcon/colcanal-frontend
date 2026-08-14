@@ -4,20 +4,20 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { esRolPmo } from '@/utils/rolesPmo';
 import {
-  recursoEconomicoService, valorInterventoria, totalRetenciones, IVA,
-  type RecursoEconomicoData, type EmpresaRecurso,
-  type ProyectoAnio, type RetencionProyecto,
+  valorInterventoria, totalRetenciones, IVA, fmtCOP, fmtPct,
+  type EmpresaRecurso, type ProyectoAnio, type RetencionProyecto,
 } from '@/services/recursoEconomico.service';
+import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Footer } from '@/components/ui/footer';
-import { ArrowLeft, Loader2, Save, Wallet, Plus, Copy } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, SlidersHorizontal, Plus, Copy } from 'lucide-react';
 
 /**
- * Recurso Económico.
+ * Recurso Económico → Parámetros.
  *
  * Dos tablas que viven juntas porque describen el mismo contrato desde los dos
- * lados del dinero:
+ * lados del dinero, y las dos se configuran una vez al año:
  *
  *   Interventoría — cuánto se paga al interventor de cada proyecto. Cambia cada
  *                   año, así que la tabla es por vigencia: el SMLV del contrato
@@ -25,14 +25,14 @@ import { ArrowLeft, Loader2, Save, Wallet, Plus, Copy } from 'lucide-react';
  *   Retenciones   — qué descuentos lleva la orden de pago de la factura de
  *                   concesión en cada municipio.
  *
+ * La **Factura** es el otro submódulo: se diligencia todos los meses y toma de acá los
+ * porcentajes, así que corregir uno rehace las facturas que nadie haya escrito a mano.
+ *
  * Módulo del PMO. El backend lo cierra por rol; acá se repite la verificación
  * para no pintar una página que después no va a cargar.
  */
 
 type Tab = 'interventoria' | 'retenciones';
-
-const fmtCOP = (n: number) =>
-  n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
 /** '4', '4,5', '8/1000' -> 4 | 4.5 | 0.8. Vacío -> null (no aplica). */
 const parsePct = (texto: string): number | null => {
@@ -49,65 +49,25 @@ const parsePct = (texto: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const fmtPct = (n: number | null | undefined): string => {
-  if (n == null) return '';
-  return `${n.toLocaleString('es-CO', { maximumFractionDigits: 3 })}%`;
-};
-
 export default function RecursoEconomicoPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const esPmo = esRolPmo(user?.nombreRol);
 
-  const [datos, setDatos] = useState<RecursoEconomicoData>({});
-  const [guardado, setGuardado] = useState<RecursoEconomicoData>({});
-  const [empresas, setEmpresas] = useState<EmpresaRecurso[]>([]);
-  /** Proyectos del cuadro que no existen como empresa: no se pueden guardar. */
-  const [sinEmpresa, setSinEmpresa] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar } =
+    useRecursoEconomico(esPmo);
+
   const [tab, setTab] = useState<Tab>('interventoria');
   const [anio, setAnio] = useState<string>(String(new Date().getFullYear()));
 
+  // Se abre en el año más reciente que ya tenga datos, no en el actual: si la vigencia
+  // todavía no se ha cargado, la tabla saldría vacía sin decir por qué. Depende de
+  // `loading` y no de los datos porque después manda el selector de vigencia.
   useEffect(() => {
-    if (!esPmo) { setLoading(false); return; }
-    recursoEconomicoService.get()
-      .then(({ data, empresas: e, sinEmpresa: falta }) => {
-        setDatos(data); setGuardado(data); setEmpresas(e); setSinEmpresa(falta);
-        // Se abre en el año más reciente que ya tenga datos, no en el actual:
-        // si el año todavía no se ha cargado, la tabla saldría vacía.
-        const anios = Object.keys(data.anios ?? {}).sort();
-        if (anios.length) setAnio(anios[anios.length - 1]);
-      })
-      .catch(() => toast.error('No se pudo cargar Recurso Económico'))
-      .finally(() => setLoading(false));
-  }, [esPmo]);
+    const cargados = Object.keys(datos.anios ?? {}).sort();
+    if (cargados.length) setAnio(cargados[cargados.length - 1]);
 
-  const sinGuardar = useMemo(
-    () => JSON.stringify(datos) !== JSON.stringify(guardado),
-    [datos, guardado],
-  );
-
-  // Aviso del navegador al cerrar con cambios pendientes.
-  useEffect(() => {
-    if (!sinGuardar) return;
-    const avisar = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', avisar);
-    return () => window.removeEventListener('beforeunload', avisar);
-  }, [sinGuardar]);
-
-  const guardar = useCallback(async () => {
-    setSaving(true);
-    try {
-      const fresco = await recursoEconomicoService.save(datos);
-      setGuardado(fresco); setDatos(fresco);
-      toast.success('Recurso Económico guardado');
-    } catch {
-      toast.error('No se pudo guardar');
-    } finally {
-      setSaving(false);
-    }
-  }, [datos]);
+  }, [loading]);
 
   const anios = useMemo(() => Object.keys(datos.anios ?? {}).sort(), [datos.anios]);
   const anioActual = datos.anios?.[anio];
@@ -181,7 +141,7 @@ export default function RecursoEconomicoPage() {
       <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-50))]">
         <div className="text-center max-w-md px-6">
           <h1 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-2">
-            Recurso Económico
+            Parámetros
           </h1>
           <p className="text-[hsl(var(--canalco-neutral-600))]">
             Este módulo es del PMO. Si necesitas consultarlo, pídeselo al Analista o al
@@ -203,14 +163,14 @@ export default function RecursoEconomicoPage() {
             variant="ghost" size="icon"
             onClick={() => {
               if (sinGuardar && !window.confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
-              navigate('/dashboard');
+              navigate('/dashboard/recurso-economico');
             }}
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
             <h1 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-2">
-              <Wallet className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Recurso Económico
+              <SlidersHorizontal className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Parámetros
             </h1>
             <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
               Interventoría por año · Retenciones de la orden de pago

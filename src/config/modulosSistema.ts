@@ -63,6 +63,10 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
   // Solo las gestiones construidas. Las demás existen en la portada como tarjetas
   // apagadas —para que se vea el mapa completo del sistema de gestión—, pero en la barra
   // serían entradas que no llevan a ninguna parte.
+  'recurso-economico': [
+    { to: '/dashboard/recurso-economico/parametros', label: 'Parámetros' },
+    { to: '/dashboard/recurso-economico/factura', label: 'Factura' },
+  ],
   'talento-humano': [
     { to: '/dashboard/talento-humano/personal', label: 'Personal' },
     { to: '/dashboard/talento-humano/prestamos', label: 'Prestamos' },
