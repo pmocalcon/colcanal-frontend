@@ -104,9 +104,9 @@ export const SUBMODULOS_CREG: SubModuloConPermiso[] = [
   { slug: 'idd-on', nombre: 'ID ON', icono: 'Power', to: '/dashboard/creg/idd-on', permiso: 'creg:iddon' },
   { slug: 'liquidacion', nombre: 'Liquidación', icono: 'Receipt', to: '/dashboard/creg/liquidacion', permiso: 'creg:liquidacion' },
   { slug: 'flujo-caja', nombre: 'Flujo de Caja', icono: 'LineChart', to: '/dashboard/creg/flujo-caja', permiso: 'creg:liquidacion' },
-  // Control de energía es una vista del flujo de caja, no una pantalla aparte: comparte
-  // su censo, sus UCAP y sus supuestos. Se ofrece como submódulo propio —que es como se
-  // usa— abriendo el flujo directamente en esa pestaña.
+  // Control de energía se entra solo por acá: ya no es una pestaña del flujo de caja.
+  // Por dentro sigue siendo esa pantalla —comparte censo, UCAP y supuestos, y cargarla
+  // aparte sería traerlo todo dos veces—, abierta en su vista y sin la tira de pestañas.
   { slug: 'control-energia', nombre: 'Control de energía', icono: 'Zap', to: '/dashboard/creg/flujo-caja?vista=energia', permiso: 'creg:liquidacion' },
 ];
 

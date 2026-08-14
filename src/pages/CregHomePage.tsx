@@ -34,7 +34,7 @@ const DESCRIPCIONES: Record<string, string> = {
   'idd-off': 'Índice de disponibilidad de las apagadas: horas fuera de servicio del periodo',
   'idd-on': 'Índice de disponibilidad de las encendidas: prendidas cuando deben estar apagadas',
   liquidacion: 'Cálculo de activo y valor a pagar del mes: AOM, inversión, ambientales y SIAP',
-  'flujo-caja': 'Proyección mes a mes del contrato: CAOM, CINV, energía, FCM y flujo anual',
+  'flujo-caja': 'Proyección mes a mes del contrato: CAOM, CINV, FCM y flujo anual',
   'control-energia': 'Consumo, pérdidas y lo facturado por el comercializador mes a mes',
 };
 

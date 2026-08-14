@@ -13,7 +13,7 @@ import {
 import { recursoEconomicoService } from '@/services/recursoEconomico.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2, AlertCircle, LineChart, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, LineChart, Save, Zap } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -34,11 +34,19 @@ const fmtCOP = (n: number | null) =>
   n == null ? '—' : '$' + Math.round(n).toLocaleString('es-CO');
 
 type Tab = 'supuestos' | 'caom' | 'cinv' | 'energia' | 'fcm' | 'anual';
+
+/**
+ * Las pestañas del Flujo de Caja.
+ *
+ * Control de energía no está: es su propio submódulo de CREG y se entra por su
+ * tarjeta, no por acá. Sigue siendo esta misma pantalla —comparte el censo, las
+ * UCAP y los supuestos, y cargarla aparte sería traerlo todo dos veces—, pero
+ * abierta en `?vista=energia` se presenta sola, sin la tira de pestañas.
+ */
 const TABS: { id: Tab; label: string }[] = [
   { id: 'supuestos', label: 'Supuestos' },
   { id: 'caom', label: 'CAOM' },
   { id: 'cinv', label: 'CINV' },
-  { id: 'energia', label: 'CONTROL DE ENERGÍA' },
   { id: 'fcm', label: 'FCM' },
   { id: 'anual', label: 'FCA' },
 ];
@@ -68,18 +76,19 @@ export default function CregFlujoCajaPage() {
   const [supuestos, setSupuestos] = useState<FlujoSupuestos>(emptySupuestos());
 
   /*
-   * La pestaña vive en la URL (`?vista=energia`), no solo en el estado: así Control de
-   * energía puede ofrecerse como submódulo propio de CREG —es su propia pantalla para
-   * quien la usa— sin sacarla de aquí, que compartiría el censo, las UCAP y los
-   * supuestos con el resto del flujo y habría que cargarlo todo dos veces.
+   * La pestaña vive en la URL (`?vista=…`), no solo en el estado: así Control de
+   * energía entra por su propia tarjeta de CREG sin dejar de ser esta pantalla.
    * Se reemplaza la entrada del historial en vez de apilarla: cambiar de pestaña no es
    * navegar, y con `push` el botón «atrás» iría deshaciendo pestañas.
    */
   const [busqueda, setBusqueda] = useSearchParams();
-  const tab = (TABS.some((t) => t.id === busqueda.get('vista'))
-    ? busqueda.get('vista')
+  const vista = busqueda.get('vista');
+  const tab = (vista === 'energia' || TABS.some((t) => t.id === vista)
+    ? vista
     : 'caom') as Tab;
   const setTab = (t: Tab) => setBusqueda({ vista: t }, { replace: true });
+  /** Abierta como Control de energía: la hoja sola, sin el resto del flujo. */
+  const soloEnergia = tab === 'energia';
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -411,10 +420,16 @@ export default function CregFlujoCajaPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-xl md:text-2xl font-bold text-[hsl(var(--canalco-neutral-900))] flex items-center gap-2">
-              <LineChart className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Flujo de Caja
+              {soloEnergia ? (
+                <><Zap className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Control de energía</>
+              ) : (
+                <><LineChart className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Flujo de Caja</>
+              )}
             </h1>
             <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-              Proyección mes a mes: CAOM · CINV · Energía · FCM · Flujo anual
+              {soloEnergia
+                ? 'Consumo, pérdidas y lo facturado por el comercializador mes a mes'
+                : 'Proyección mes a mes: CAOM · CINV · FCM · Flujo anual'}
             </p>
           </div>
         </div>
@@ -499,7 +514,7 @@ export default function CregFlujoCajaPage() {
           <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
             {/* Pestañas */}
             <div className="p-3 border-b border-[hsl(var(--canalco-neutral-200))] flex items-center gap-2 flex-wrap">
-              {TABS.map((t) => (
+              {!soloEnergia && TABS.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
