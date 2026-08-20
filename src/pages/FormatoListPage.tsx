@@ -14,9 +14,13 @@ import { getFormato, rutaFormato, rutaGestion } from '@/config/formatosGestion';
  * cambia —el título, el icono, las columnas— sale de `GESTIONES_FORMATOS`, que ya lo tiene
  * declarado para pintar la portada.
  *
- * **Sin estados ni semáforo de SLA**, a diferencia del listado de contratación: estos
- * formatos no tienen flujo. Se diligencian, se guardan y se imprimen para firmarlos en
- * papel, así que una columna de estado diría lo mismo en todas las filas.
+ * La mayoría no tiene flujo: se diligencian, se guardan y se imprimen para firmarlos en
+ * papel. Los que sí lo tienen —hoy la solicitud de préstamo— declaran `estadoMeta` en el
+ * catálogo y entonces el listado les pinta la columna «Estado»; sin ella la columna no
+ * aparece, porque diría lo mismo en todas las filas.
+ *
+ * **Sin semáforo de SLA**, a diferencia del listado de contratación: el plazo se ve al
+ * abrir el formato, que es donde se actúa.
  */
 
 const fecha = (iso: string) =>
@@ -59,19 +63,19 @@ export default function FormatoListPage({ gestion, slug }: { gestion: string; sl
   const { Icon, nombre, descripcion, formato } = cfg;
   const singular = cfg.singular ?? 'registro';
   const columnas = cfg.columnas ?? [];
+  const estadoMeta = cfg.estadoMeta;
+  // Un formato con flujo solo se borra mientras es borrador: más adelante ya lo firmó
+  // alguien, y el listado no es el sitio para deshacer un trámite aprobado.
+  const sePuedeBorrar = (r: GcSolicitud) => !estadoMeta || r.estado === 'borrador';
 
-  const crear = async () => {
-    try {
-      const creada = await gestionConocimientoService.create({
-        gestion,
-        formato,
-        data: {},
-      });
-      navigate(`${rutaFormato(gestion, slug)}/${creada.solicitudId}`);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo crear');
-    }
-  };
+  /**
+   * Abre el formato en blanco SIN crearlo todavía.
+   *
+   * La solicitud nace al guardar por primera vez. Creándola aquí, quien entraba
+   * y se arrepentía dejaba una fila vacía en el listado y gastaba un número de
+   * solicitud, que no se recicla.
+   */
+  const crear = () => navigate(`${rutaFormato(gestion, slug)}/nuevo`);
 
   const eliminar = async (id: number) => {
     if (!window.confirm(`¿Eliminar esta ${singular}? No se puede deshacer.`)) return;
@@ -127,6 +131,7 @@ export default function FormatoListPage({ gestion, slug }: { gestion: string; sl
                   {columnas.map((c) => (
                     <th key={c.campo} className="text-left px-4 py-2 font-semibold">{c.label}</th>
                   ))}
+                  {estadoMeta && <th className="text-left px-4 py-2 font-semibold">Estado</th>}
                   <th className="text-left px-4 py-2 font-semibold">Actualizada</th>
                   <th className="w-12"></th>
                 </tr>
@@ -150,19 +155,28 @@ export default function FormatoListPage({ gestion, slug }: { gestion: string; sl
                         )}
                       </td>
                     ))}
+                    {estadoMeta && (
+                      <td className="px-4 py-2">
+                        <span className={`text-xs font-medium rounded px-2 py-1 ${estadoMeta.badgeClass(r.estado)}`}>
+                          {estadoMeta.label(r.estado)}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-2 text-[hsl(var(--canalco-neutral-600))]">{fecha(r.updatedAt)}</td>
                     <td className="px-4 py-2">
-                      <button
-                        type="button"
-                        title="Eliminar"
-                        onClick={(e) => { e.stopPropagation(); void eliminar(r.solicitudId); }}
-                        disabled={borrando === r.solicitudId}
-                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                      >
-                        {borrando === r.solicitudId
-                          ? <Loader2 className="w-4 h-4 animate-spin" />
-                          : <Trash2 className="w-4 h-4" />}
-                      </button>
+                      {sePuedeBorrar(r) && (
+                        <button
+                          type="button"
+                          title="Eliminar"
+                          onClick={(e) => { e.stopPropagation(); void eliminar(r.solicitudId); }}
+                          disabled={borrando === r.solicitudId}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                        >
+                          {borrando === r.solicitudId
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

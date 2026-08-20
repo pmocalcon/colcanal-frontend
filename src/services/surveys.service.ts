@@ -783,7 +783,150 @@ export const surveysService = {
     );
     return response.data;
   },
+
+  // ── Acta provisional · compra anticipada ────────────────────────────────
+
+  /** Obras del municipio que no están agrupadas en ningún acta. */
+  async getObrasSinActa(companyId: number, projectId: number | null): Promise<Work[]> {
+    const response = await api.get('/surveys/actas/obras-sin-acta', {
+      params: { companyId, projectId },
+    });
+    return response.data;
+  },
+
+  /** Actas provisionales del municipio, con cuántas obras agrupa cada una. */
+  async getActasProvisionales(
+    companyId: number,
+    projectId: number | null,
+  ): Promise<ActaProvisional[]> {
+    const response = await api.get('/surveys/actas/provisionales', {
+      params: { companyId, projectId },
+    });
+    return response.data;
+  },
+
+  async asignarActaProvisional(
+    companyId: number,
+    projectId: number | null,
+    actaNumber: string,
+    workIds: number[],
+  ): Promise<WorkActa> {
+    const response = await api.post('/surveys/actas/provisionales/asignar', {
+      companyId,
+      projectId,
+      actaNumber,
+      workIds,
+    });
+    return response.data;
+  },
+
+  async quitarDeActaProvisional(
+    companyId: number,
+    projectId: number | null,
+    workIds: number[],
+  ): Promise<{ quitadas: number }> {
+    const response = await api.post('/surveys/actas/provisionales/quitar', {
+      companyId,
+      projectId,
+      workIds,
+    });
+    return response.data;
+  },
+
+  /** Compras anticipadas esperando la autorización de Gerencia (todas las empresas). */
+  async getComprasAnticipadasPendientes(): Promise<CompraAnticipadaPendiente[]> {
+    const response = await api.get('/surveys/actas/compras-anticipadas-pendientes');
+    return response.data;
+  },
+
+  /**
+   * Requisiciones anticipadas que siguen esperando el código de contabilidad.
+   * Es global (todas las empresas): sirve para ver qué se está quedando atrás.
+   */
+  async getRequisicionesSinCodigo(): Promise<RequisicionSinCodigo[]> {
+    const response = await api.get('/surveys/actas/requisiciones-sin-codigo');
+    return response.data;
+  },
+
+  async solicitarRequisicionAnticipada(
+    companyId: number,
+    projectId: number | null,
+    actaNumber: string,
+    justificacion: string,
+  ): Promise<ActaProvisional> {
+    const response = await api.patch(
+      `/surveys/actas/${encodeURIComponent(actaNumber)}/rq-anticipada/solicitar`,
+      { companyId, projectId, justificacion },
+    );
+    return response.data;
+  },
+
+  async resolverRequisicionAnticipada(
+    companyId: number,
+    projectId: number | null,
+    actaNumber: string,
+    aprobar: boolean,
+    motivo?: string,
+  ): Promise<ActaProvisional> {
+    const response = await api.patch(
+      `/surveys/actas/${encodeURIComponent(actaNumber)}/rq-anticipada/resolver`,
+      { companyId, projectId, aprobar, motivo },
+    );
+    return response.data;
+  },
 };
+
+/** Estado del permiso de Gerencia para comprar contra un acta sin código. */
+export type RqAnticipadaStatus = 'no_aplica' | 'pendiente' | 'aprobada' | 'rechazada';
+
+export interface ActaProvisional {
+  actaId: number;
+  companyId: number;
+  projectId: number | null;
+  actaNumber: string;
+  status: string;
+  esProvisional: boolean;
+  projectCode: string | null;
+  rqAnticipadaStatus: RqAnticipadaStatus;
+  rqAnticipadaJustificacion: string | null;
+  rqAnticipadaMotivo: string | null;
+  rqAnticipadaSolicitadaAt: string | null;
+  rqAnticipadaResueltaAt: string | null;
+  /** Cuántas obras agrupa. Lo calcula el backend. */
+  obras: number;
+}
+
+/** Fila de la bandeja de Gerencia: solicitud esperando su decisión. */
+export interface CompraAnticipadaPendiente {
+  actaId: number;
+  companyId: number;
+  projectId: number | null;
+  actaNumber: string;
+  empresa: string;
+  municipio: string | null;
+  obras: number;
+  justificacion: string | null;
+  solicitadaPor: string | null;
+  solicitadaAt: string | null;
+  /** Días que lleva esperando decisión. */
+  dias: number;
+}
+
+/** Fila del vigilante: compra hecha por anticipado que sigue sin imputación. */
+export interface RequisicionSinCodigo {
+  requisitionId: number;
+  requisitionNumber: string;
+  empresa: string;
+  municipio: string | null;
+  actaNumber: string;
+  /** Estado del acta a la que se le va a imputar; null si ni siquiera existe. */
+  actaStatus: string | null;
+  estado: string;
+  creadaPor: string | null;
+  createdAt: string;
+  /** Días desde que se creó la requisición. */
+  dias: number;
+}
 
 // Reviewer Access Types
 export interface AccessCompany {

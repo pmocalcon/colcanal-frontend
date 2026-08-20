@@ -96,6 +96,11 @@ export interface SubModuloConPermiso extends SubModulo {
 export const SUBMODULOS_CREG: SubModuloConPermiso[] = [
   { slug: 'unidades', nombre: 'Unidades constructivas', icono: 'Boxes', to: '/dashboard/creg/unidades', permiso: 'creg:unidades' },
   { slug: 'resumen', nombre: 'Resumen UCAP', icono: 'Table2', to: '/dashboard/creg/resumen', permiso: 'creg:resumen' },
+  // Comparador comparte el permiso del Resumen: es la misma tabla mirada a lo ancho
+  // —todos los municipios a la vez en vez de uno—, y solo lee. Un permiso propio
+  // habría obligado a tocar las tablas de permisos, que tienen las secuencias
+  // desalineadas, sin nada que graduar a cambio.
+  { slug: 'comparador', nombre: 'Comparador de UCAP', icono: 'GitCompare', to: '/dashboard/creg/comparador', permiso: 'creg:resumen' },
   { slug: 'parametros', nombre: 'Parámetros', icono: 'SlidersHorizontal', to: '/dashboard/creg/parametros', permiso: 'creg:parametros' },
   { slug: 'ipp', nombre: 'IPP por mes', icono: 'TrendingUp', to: '/dashboard/creg/ipp', permiso: 'creg:parametros' },
   { slug: 'censo', nombre: 'Censo físico', icono: 'ClipboardList', to: '/dashboard/creg/censo', permiso: 'creg:censo' },
@@ -118,6 +123,7 @@ export const SUBMODULOS_OBRAS: SubModulo[] = [
   { slug: 'obras', nombre: 'Obras', icono: 'Building2', to: '/dashboard/levantamiento-obras/obras' },
   { slug: 'presupuesto', nombre: 'Presupuesto', icono: 'Calculator', to: '/dashboard/levantamiento-obras/presupuesto' },
   { slug: 'presupuestos-list', nombre: 'Ver Presupuestos', icono: 'FolderOpen', to: '/dashboard/levantamiento-obras/presupuestos' },
+  { slug: 'actas-provisionales', nombre: 'Actas Provisionales', icono: 'FileClock', to: '/dashboard/levantamiento-obras/actas-provisionales' },
   { slug: 'plan-anual', nombre: 'Plan Anual', icono: 'CalendarDays', to: '/dashboard/levantamiento-obras/plan-anual' },
   { slug: 'cronograma', nombre: 'Cronograma', icono: 'CalendarRange', to: '/dashboard/levantamiento-obras/cronograma' },
 ];
@@ -139,6 +145,14 @@ export const accesoObras = (
     case 'presupuestos-list':
       return !esDirectorTecnico
         && (tienePermiso('levantamientos:presupuesto') || tienePermiso('levantamientos:aprobar'));
+    // Agrupar obras sin acta y pedir comprarles materiales es de Gerencia de
+    // Proyectos; Gerencia entra a la misma pantalla porque es quien autoriza.
+    case 'actas-provisionales':
+      return (
+        rol === 'Gerencia de Proyectos' ||
+        rol === 'Gerencia' ||
+        rol === 'Director Financiero y Administrativo'
+      );
     case 'plan-anual':
       return tienePermiso('levantamientos:plan-anual') || tienePermiso('levantamientos:autorizar');
     case 'cronograma': return tienePermiso('levantamientos:cronograma');

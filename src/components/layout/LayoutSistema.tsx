@@ -4,7 +4,13 @@ import * as Icons from 'lucide-react';
 import { ChevronsLeft, ChevronsRight, Home, Lock, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { modulesService, type Module } from '@/services/modules.service';
-import { prepararModulos, seccionesDe, type Seccion } from '@/config/modulosSistema';
+import {
+  prepararModulos,
+  seccionesDe,
+  puedeVerAprobaciones,
+  APROBACIONES,
+  type Seccion,
+} from '@/config/modulosSistema';
 import {
   SUBMODULOS_COMPRAS, SUBMODULOS_CREG, SUBMODULOS_OBRAS, accesoCompras, accesoObras,
 } from '@/config/submodulos';
@@ -23,10 +29,11 @@ import { esRolPmo } from '@/utils/rolesPmo';
  * los que el rol no puede abrir se muestran con candado, igual que las tarjetas.
  */
 
-/** Los dos módulos que no vienen de la tabla `gestiones` y viven fijos en el frontend. */
+/** Los módulos que no vienen de la tabla `gestiones` y viven fijos en el frontend. */
 const FIJOS = [
   { slug: 'gestion-conocimiento', nombre: 'Gestión del conocimiento', icono: 'BookOpen' },
   { slug: 'recurso-economico', nombre: 'Recurso Económico', icono: 'Wallet' },
+  APROBACIONES,
 ];
 
 /** Las dos primeras iniciales del nombre, para el círculo del usuario. */
@@ -85,9 +92,14 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       slug: m.slug, nombre: m.nombre, icono: m.icono, acceso: m.hasAccess,
     }));
     const fijos = FIJOS
-      // Recurso Económico es solo del PMO: a quien no lo sea no se le pinta, ni con
-      // candado, porque no hay permiso que pueda pedir.
-      .filter((f) => f.slug !== 'recurso-economico' || esRolPmo(user?.nombreRol))
+      // Recurso Económico y Aprobaciones se abren por rol, no por permiso: a quien
+      // no lo tenga no se le pintan, ni con candado, porque no hay permiso que
+      // pueda pedir. Gestión del conocimiento sí es para todos.
+      .filter((f) => {
+        if (f.slug === 'recurso-economico') return esRolPmo(user?.nombreRol);
+        if (f.slug === APROBACIONES.slug) return puedeVerAprobaciones(user?.nombreRol);
+        return true;
+      })
       .map((f) => ({ ...f, acceso: true }));
     return [...delBackend, ...fijos];
   }, [modules, user?.nombreRol]);

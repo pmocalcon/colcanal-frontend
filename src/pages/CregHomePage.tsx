@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Boxes, ClipboardList, LineChart, Power, PowerOff, Receipt, SlidersHorizontal, Table2, TrendingUp, Zap } from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardList, GitCompare, LineChart, Power, PowerOff, Receipt, SlidersHorizontal, Table2, TrendingUp, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { SUBMODULOS_CREG } from '@/config/submodulos';
@@ -13,6 +13,7 @@ import { SUBMODULOS_CREG } from '@/config/submodulos';
 const ICONOS: Record<string, typeof Boxes> = {
   unidades: Boxes,
   resumen: Table2,
+  comparador: GitCompare,
   parametros: SlidersHorizontal,
   ipp: TrendingUp,
   censo: ClipboardList,
@@ -27,6 +28,7 @@ const ICONOS: Record<string, typeof Boxes> = {
 const DESCRIPCIONES: Record<string, string> = {
   unidades: 'Define la hoja de costos de reposición a nuevo de cada UCAP',
   resumen: 'Tabla resumen de todas las UCAPs con su desglose de costos y precio actualizado',
+  comparador: 'La misma UCAP en todos los municipios, para ver dónde el valor se sale del rango',
   parametros: 'Hoja de parametrización por municipio: costos, impuestos, vida útil y factores FAOML/FAOMn',
   ipp: 'Índice de precios al productor mes a mes: una sola serie para todos los municipios',
   censo: 'Cantidad de UCAPs instaladas por mes, con rango de fechas y subtotales de costo',

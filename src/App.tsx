@@ -44,6 +44,8 @@ import GestionarUcapsPage from './pages/GestionarUcapsPage'
 import PresupuestoPage from './pages/PresupuestoPage'
 import PresupuestosListPage from './pages/PresupuestosListPage'
 import PlanAnualPage from './pages/PlanAnualPage'
+import ActasProvisionalesPage from './pages/ActasProvisionalesPage'
+import AprobacionesPage from './pages/AprobacionesPage'
 import ResumenPlanAnualPage from './pages/ResumenPlanAnualPage'
 import ResumenActaPage from './pages/ResumenActaPage'
 import RevisarCantidadesActaPage from './pages/RevisarCantidadesActaPage'
@@ -52,6 +54,7 @@ import NotificacionesPage from './pages/NotificacionesPage'
 import CregHomePage from './pages/CregHomePage'
 import CregPage from './pages/CregPage'
 import CregResumenPage from './pages/CregResumenPage'
+import CregComparadorPage from './pages/CregComparadorPage'
 import CregParametrosPage from './pages/CregParametrosPage'
 import CregIppPage from './pages/CregIppPage'
 import CregCensoPage from './pages/CregCensoPage'
@@ -145,6 +148,15 @@ export default function App() {
           {/* Proveedores */}
           <Route path="/dashboard/proveedores" element={<ProveedoresPage />} />
           {/* Levantamiento de Obras */}
+          {/* Bandeja unica de Gerencia. El PMO entra por su condicion de comodin. */}
+          <Route
+            path="/dashboard/aprobaciones"
+            element={
+              <ProtectedRoute allowedRoles={['Gerencia', 'Analista PMO', 'Director PMO']}>
+                <AprobacionesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/dashboard/levantamiento-obras" element={<LevantamientoObrasPage />} />
           <Route path="/dashboard/levantamiento-obras/obras" element={<ObrasListPage />} />
           <Route
@@ -176,6 +188,23 @@ export default function App() {
           <Route path="/dashboard/levantamiento-obras/presupuesto" element={<PresupuestoPage />} />
           <Route path="/dashboard/levantamiento-obras/presupuesto/:id" element={<PresupuestoPage />} />
           <Route path="/dashboard/levantamiento-obras/presupuestos" element={<PresupuestosListPage />} />
+          {/* Gerencia de Proyectos arma el acta provisional, Gerencia autoriza la compra
+              y la Dirección Financiera entra solo al control de las que siguen sin código. */}
+          <Route
+            path="/dashboard/levantamiento-obras/actas-provisionales"
+            element={
+              <ProtectedRoute
+                permission={['levantamientos:autorizar', 'levantamientos:aprobar']}
+                allowedRoles={[
+                  'Gerencia de Proyectos',
+                  'Gerencia',
+                  'Director Financiero y Administrativo',
+                ]}
+              >
+                <ActasProvisionalesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/dashboard/levantamiento-obras/plan-anual" element={<PlanAnualPage />} />
           <Route path="/dashboard/levantamiento-obras/plan-anual/resumen" element={<ResumenPlanAnualPage />} />
           <Route
@@ -210,6 +239,14 @@ export default function App() {
             element={
               <ProtectedRoute permission="creg:resumen">
                 <CregResumenPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/creg/comparador"
+            element={
+              <ProtectedRoute permission="creg:resumen">
+                <CregComparadorPage />
               </ProtectedRoute>
             }
           />

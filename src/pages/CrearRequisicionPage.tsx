@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { masterDataService } from '@/services/master-data.service';
 import { requisitionsService } from '@/services/requisitions.service';
@@ -53,6 +53,16 @@ interface ActaGroup {
 export default function CrearRequisicionPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  /**
+   * Compra anticipada: se llega desde «Actas provisionales» con el acta ya
+   * autorizada por Gerencia. La requisición se crea sin código de contabilidad
+   * —el acta todavía no lo tiene— y el backend se lo estampa cuando el acta se
+   * apruebe. El número del acta es lo que la deja enganchada mientras tanto.
+   */
+  const actaAnticipada =
+    searchParams.get('anticipada') === '1' ? searchParams.get('acta') : null;
 
   // Master data state
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -456,8 +466,9 @@ export default function CrearRequisicionPage() {
       return false;
     }
 
+    // La anticipada es justamente la que se crea sin código: la exigencia no aplica.
     // Restricción: código de contabilidad obligatorio cuando viene de un acta
-    if ((selectedActaGroup || selectedActaId) && !codigoObra.trim()) {
+    if (!actaAnticipada && (selectedActaGroup || selectedActaId) && !codigoObra.trim()) {
       alert('Debe ingresar el Código de Contabilidad (Código de obra) para requisiciones generadas desde un acta');
       return false;
     }
@@ -490,6 +501,7 @@ export default function CrearRequisicionPage() {
         projectId: projectId || undefined,
         obra: obra || undefined,
         codigoObra: codigoObra || undefined,
+        actaNumber: actaAnticipada || undefined,
         priority,
         items: items.map(({ materialId, quantity, observation }) => ({
           materialId,

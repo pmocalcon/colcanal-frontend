@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { esRolPmo } from '@/utils/rolesPmo';
-import { prepararModulos } from '@/config/modulosSistema';
+import { prepararModulos, puedeVerAprobaciones, APROBACIONES } from '@/config/modulosSistema';
 import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 // Qué módulos se muestran, con qué nombre y en qué orden: vive en
@@ -202,6 +202,18 @@ export default function DashboardPage() {
               icono="Wallet"
               hasAccess={true}
               onClick={() => navigate('/dashboard/recurso-economico')}
+            />
+          )}
+          {/* Aprobaciones: la bandeja de Gerencia. Fija como las anteriores —no es
+              una gestión de la tabla— y sin candado: se abre por rol, no por
+              permiso. */}
+          {puedeVerAprobaciones(user?.nombreRol) && (
+            <ModuleCard
+              nombre={APROBACIONES.nombre}
+              slug={APROBACIONES.slug}
+              icono={APROBACIONES.icono}
+              hasAccess={true}
+              onClick={() => navigate(`/dashboard/${APROBACIONES.slug}`)}
             />
           )}
         </div>

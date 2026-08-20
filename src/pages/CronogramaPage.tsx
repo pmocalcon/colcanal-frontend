@@ -1421,7 +1421,7 @@ export default function CronogramaPage() {
                         <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
                           <td colSpan={2} className="py-2 pr-2 align-middle">
                             <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
-                            <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                            <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin código'}</p>
                           </td>
                           {days.map((date) => {
                             const dateTotal = getWorkDateTotal(work.workId, schedule.items, date);
@@ -1491,7 +1491,7 @@ export default function CronogramaPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                    <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                    <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
                     <td className="pt-2" />
                     {days.map((date) => {
                       const dayTotal = rowsWithItems.reduce((sum, { work, schedule }) => sum + getWorkDateTotal(work.workId, schedule.items, date), 0);
@@ -1714,7 +1714,7 @@ export default function CronogramaPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                    <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                    <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
                     {days.map((date) => {
                       const dayTotal = rowsWithMaterials.reduce((sum, { work, materials }) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
                       return (
@@ -2013,7 +2013,7 @@ export default function CronogramaPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                    <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                    <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
                     {days.map((date) => {
                       const dayTotal = activityGroups.reduce((sum, group) => sum + (group.dayTotals[date] ?? 0), 0);
                       return (
@@ -4824,7 +4824,7 @@ export default function CronogramaPage() {
                                               <td colSpan={2} className="py-2 pr-2 align-middle">
                                                 <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
                                                 <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
-                                                  {work.workCode || 'Sin codigo'}{work.recordNumber ? ` · Acta ${work.recordNumber}` : ''}
+                                                  {work.workCode || 'Sin código'}{work.recordNumber ? ` · Acta ${work.recordNumber}` : ''}
                                                 </p>
                                               </td>
                                               {days.map((date) => {
@@ -4994,7 +4994,7 @@ export default function CronogramaPage() {
                                                   <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
                                                     <td colSpan={3} className="py-2 pr-2 align-middle">
                                                       <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
-                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin código'}</p>
                                                     </td>
                                                     {days.map((date) => {
                                                       const dateTotal = getWorkMaterialDateTotal(work.workId, materials, date);
@@ -5066,7 +5066,7 @@ export default function CronogramaPage() {
                                           </tbody>
                                           <tfoot>
                                             <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                                              <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                                              <td colSpan={2} className="pt-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
                                               <td className="pt-2" />
                                               {days.map((date) => {
                                                 const dayTotal = rowsWithMaterials.reduce((sum, { work, materials }) => sum + getWorkMaterialDateTotal(work.workId, materials, date), 0);
@@ -5312,7 +5312,7 @@ export default function CronogramaPage() {
                                                   <tr className="bg-[hsl(var(--canalco-neutral-50))] border-t border-[hsl(var(--canalco-neutral-200))]">
                                                     <td className="py-2 pr-2 align-middle">
                                                       <p className="text-xs font-bold text-[hsl(var(--canalco-neutral-800))] truncate">{work.name}</p>
-                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin codigo'}</p>
+                                                      <p className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">{work.workCode || 'Sin código'}</p>
                                                     </td>
                                                     {days.map((date) => {
                                                       const dateTotal = getWorkActivityDateTotal(work.workId, rows, date);
@@ -5415,7 +5415,7 @@ export default function CronogramaPage() {
                                           )}
                                           <tfoot>
                                             <tr className="border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                                              <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total dia</td>
+                                              <td className="pt-2 pb-2 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))]">Total día</td>
                                               {days.map((date) => {
                                                 const dayTotal = groupedActivities.reduce((sum, group) => sum + (group.dayTotals[date] ?? 0), 0);
                                                 return (

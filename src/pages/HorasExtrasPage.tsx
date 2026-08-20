@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { gestionConocimientoService } from '@/services/gestionConocimiento.service';
+import { useAuth } from '@/contexts/AuthContext';
+import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { FORMATO_HORAS_EXTRAS } from '@/config/formatosGestion';
+import {
+  type HorasExtrasEstado,
+  type HorasExtrasTransicion,
+  accionesDisponibles,
+  calcularSla,
+  estadoLabel,
+  estadoBadgeClass,
+  HORAS_EXTRAS_ESTADOS,
+  esTerminal,
+  esEditable,
+} from '@/utils/horasExtrasWorkflow';
+import { textoSla } from '@/utils/juridicaWorkflow';
 
 /**
  * Horas Extras Personal · formato GTH-016-F (G. de talento humano).
@@ -18,16 +32,23 @@ import { gestionConocimientoService } from '@/services/gestionConocimiento.servi
  *
  * Va apaisado: la tabla tiene dieciséis columnas y en vertical no cabe.
  *
+ * Pasa por cuatro manos antes de llegar a nómina: la registra quien atiende el
+ * municipio, la revisa un Director de Proyecto, la avala Gerencia de Proyectos y la
+ * cierra Dirección Administrativa. Fuera del borrador queda de solo lectura, para que
+ * lo que se avaló sea lo que se paga.
+ *
+ * @see horasExtrasWorkflow — la máquina de estados, espejo de la del backend.
+ *
  * Ruta: `.../talento-humano/horas-extras/:id`.
  */
 
 /** Los tipos de hora extra con su recargo, tal como están impresos en el encabezado. */
 const TIPOS_HORA = [
-  { key: 'diurna', label: 'DIURNA', factor: 1.25 },
-  { key: 'recargoNocturno', label: 'RECARGO NOCTURNA', factor: 0.35 },
-  { key: 'nocturna', label: 'NOCTURNA', factor: 1.75 },
-  { key: 'diurnaFestiva', label: 'DIURNA FESTIVA', factor: 2 },
-  { key: 'nocturnaFestiva', label: 'NOCTURNA FESTIVA', factor: 2.5 },
+  { key: 'diurna', label: 'HED', factor: 1.25 },
+  { key: 'recargoNocturno', label: 'RN', factor: 0.35 },
+  { key: 'nocturna', label: 'HEN', factor: 1.75 },
+  { key: 'diurnaFestiva', label: 'HDDYF', factor: 2.15 },
+  { key: 'nocturnaFestiva', label: 'HNDYF', factor: 2.65 },
 ] as const;
 
 type TipoHora = typeof TIPOS_HORA[number]['key'];
@@ -80,6 +101,20 @@ const num = (v: string | undefined): number => {
 const cop = (n: number) =>
   n > 0 ? '$' + Math.round(n).toLocaleString('es-CO') : '';
 
+/**
+ * El estado de la pantalla a partir de la fila guardada. Los renglones en blanco no se
+ * guardan, así que al abrir una planilla vacía se repone la hoja de doce para poder
+ * escribir sin pulsar «Agregar» en cada línea.
+ */
+const desde = (row: GcSolicitud): HorasExtrasState => {
+  const saved = (row.data ?? {}) as Partial<HorasExtrasState>;
+  return {
+    ...EMPTY,
+    ...saved,
+    filas: saved.filas?.length ? saved.filas.map((x) => ({ ...filaVacia(), ...x })) : EMPTY.filas,
+  };
+};
+
 /** Horas extras laboradas: la suma de los cinco tipos, sin recargo. */
 const horasDe = (f: Fila) => TIPOS_HORA.reduce((s, t) => s + num(f.horas[t.key]), 0);
 
@@ -89,12 +124,18 @@ const liquidacionDe = (f: Fila, valorHora: number) =>
 
 export default function HorasExtrasPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { id: idParam } = useParams<{ id: string }>();
   const docId = idParam && /^\d+$/.test(idParam) ? Number(idParam) : null;
 
   const [f, setF] = useState<HorasExtrasState>(EMPTY);
+  const [sol, setSol] = useState<GcSolicitud | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const estado = (sol?.estado as HorasExtrasEstado | undefined) ?? undefined;
+  const locked = !esEditable(estado ?? null);
+  const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
 
   const set = <K extends keyof HorasExtrasState>(k: K, v: HorasExtrasState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -119,12 +160,8 @@ export default function HorasExtrasPage() {
       try {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
-        const saved = (row.data ?? {}) as Partial<HorasExtrasState>;
-        setF({
-          ...EMPTY,
-          ...saved,
-          filas: saved.filas?.length ? saved.filas.map((x) => ({ ...filaVacia(), ...x })) : EMPTY.filas,
-        });
+        setSol(row);
+        setF(desde(row));
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la planilla');
       } finally {
@@ -134,16 +171,54 @@ export default function HorasExtrasPage() {
     return () => { cancelled = true; };
   }, [docId]);
 
-  const handleSave = async () => {
+  const recargar = async () => {
     if (docId === null) return;
+    try {
+      const row = await gestionConocimientoService.get(docId);
+      setSol(row);
+      setF(desde(row));
+    } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
+  };
+
+  const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
+    let motivo: string | undefined;
+    if (requiereMotivo) {
+      const m = window.prompt('Indica el motivo:');
+      if (m === null) return;
+      if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
+      motivo = m.trim();
+    }
+    try {
+      await gestionConocimientoService.transition(docId!, { accion, motivo });
+      toast.success('Acción registrada');
+      await recargar();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo ejecutar la acción');
+    }
+  };
+
+  const handleSave = async () => {
     setSaving(true);
     try {
       // No se guardan los renglones en blanco: la planilla nace con doce solo para poder
       // escribir sin pulsar «Agregar», y guardarlos llenaría la base de filas vacías.
       const filas = f.filas.filter((x) =>
         Object.values(x).some((v) => (typeof v === 'string' ? v.trim() !== '' : Object.values(v).some((h) => String(h).trim() !== ''))));
-      await gestionConocimientoService.update(docId, { data: { ...f, filas } });
+      const guardada = await gestionConocimientoService.guardar(docId, {
+        gestion: 'talento-humano',
+        formato: FORMATO_HORAS_EXTRAS,
+        data: { ...f, filas },
+      });
+      setSol(guardada);
       toast.success('Planilla guardada');
+      // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
+      // siguiente guardado crearía una segunda planilla.
+      if (docId === null) {
+        navigate(
+          `/dashboard/gestion-conocimiento/talento-humano/horas-extras/${guardada.solicitudId}`,
+          { replace: true },
+        );
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
     } finally {
@@ -189,30 +264,44 @@ export default function HorasExtrasPage() {
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
-          </Button>
+          {/* Una vez enviada, la planilla es la que revisaron: no se reescribe. */}
+          {!locked && (
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 py-6">
+        {sol && (
+          <HorasExtrasWorkflowPanel
+            sol={sol}
+            nombreRol={user?.nombreRol}
+            esCreador={esCreador}
+            onAccion={handleTransicion}
+          />
+        )}
+
         <div className="doc bg-white border border-black text-[9px] text-black shadow-md overflow-x-auto">
 
           {/* Encabezado del formato */}
-          <div className="grid grid-cols-[130px_1fr_160px_130px] border-b border-black min-w-[1000px]">
-            <div className="flex items-center justify-center p-2 border-r border-black">
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
-            </div>
-            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[13px] tracking-wide border-r border-black text-[#7b1c2b]">
-              HORAS EXTRAS PERSONAL
-            </div>
+          {/* Los anchos van con su logo, no con su posición: Canales necesita más
+              caja que Alumbrado, así que al cambiarlos de lado se cambian los dos. */}
+          <div className="grid grid-cols-[160px_1fr_130px_130px] border-b border-black min-w-[1000px]">
             <div className="flex items-center justify-center p-2 border-r border-black">
               <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-10 object-contain" />
             </div>
+            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[13px] tracking-wide border-r border-black text-black">
+              HORAS EXTRAS PERSONAL
+            </div>
+            <div className="flex items-center justify-center p-2 border-r border-black">
+              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
+            </div>
             <div className="grid grid-cols-[auto_1fr] text-[9px] content-start">
               <Meta label="CÓDIGO:" value="GTH-016-F" />
-              <Meta label="FECHA:" value="16/02/2026" />
-              <Meta label="VERSIÓN:" value="4" last />
+              <Meta label="FECHA:" value="20/08/2026" />
+              <Meta label="VERSIÓN:" value="5" last />
             </div>
           </div>
 
@@ -225,16 +314,16 @@ export default function HorasExtrasPage() {
 
           {/* Datos del trabajador */}
           <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
-            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} />
-            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} />
-            <Dato label="SALARIO: $" value={f.salario} onChange={(v) => set('salario', v)} />
-            <Dato label="PERIODO" value={f.periodo} onChange={(v) => set('periodo', v)} last />
+            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} />
+            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} readOnly={locked} />
+            <Dato label="SALARIO: $" value={f.salario} onChange={(v) => set('salario', v)} readOnly={locked} />
+            <Dato label="PERIODO" value={f.periodo} onChange={(v) => set('periodo', v)} readOnly={locked} last />
           </div>
           <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
-            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} />
+            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
             <div className="border-r border-black" />
             <div className="border-r border-black" />
-            <Dato label="VALOR HORA: $" value={f.valorHora} onChange={(v) => set('valorHora', v)} last />
+            <Dato label="VALOR HORA: $" value={f.valorHora} onChange={(v) => set('valorHora', v)} readOnly={locked} last />
           </div>
 
           {/* Registro diario */}
@@ -250,7 +339,7 @@ export default function HorasExtrasPage() {
                 <Th colSpan={5}>HORAS EXTRAS</Th>
                 <Th rowSpan={2}>HORAS EXTRAS LABORADAS</Th>
                 <Th rowSpan={2}>LIQUIDACIÓN PROYECTADA</Th>
-                <Th rowSpan={2}>CODIGO LABOR EJECUTADA</Th>
+                <Th rowSpan={2}>CÓDIGO LABOR EJECUTADA</Th>
                 <Th rowSpan={2}>LABOR EJECUTADA</Th>
                 <Th rowSpan={2}>FIRMA DEL TRABAJADOR</Th>
                 <th className="border-0 w-6 no-print" rowSpan={2}></th>
@@ -270,26 +359,26 @@ export default function HorasExtrasPage() {
                 const liq = liquidacionDe(fila, valorHora);
                 return (
                   <tr key={i}>
-                    <Td><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} /></Td>
-                    <Td><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} /></Td>
-                    <Td><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} /></Td>
-                    <Td><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} centro /></Td>
-                    <Td><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} centro /></Td>
-                    <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} centro /></Td>
+                    <Td><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={locked} /></Td>
+                    <Td><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={locked} /></Td>
+                    <Td><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={locked} /></Td>
+                    <Td><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={locked} centro /></Td>
+                    <Td><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={locked} centro /></Td>
+                    <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} readOnly={locked} centro /></Td>
                     {TIPOS_HORA.map((t) => (
                       <Td key={t.key}>
-                        <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} centro />
+                        <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} readOnly={locked} centro />
                       </Td>
                     ))}
                     {/* Calculadas: no se teclean. */}
                     <Td className="text-center font-semibold">{horas > 0 ? horas.toLocaleString('es-CO') : ''}</Td>
                     <Td className="text-right font-semibold whitespace-nowrap">{cop(liq)}</Td>
-                    <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} centro /></Td>
-                    <Td><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} /></Td>
+                    <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={locked} centro /></Td>
+                    <Td><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={locked} /></Td>
                     {/* La firma va a mano sobre el impreso. */}
                     <Td />
                     <td className="border-0 px-0.5 no-print align-middle">
-                      {f.filas.length > 1 && (
+                      {!locked && f.filas.length > 1 && (
                         <button type="button" onClick={() => quitarFila(i)} title="Quitar renglón"
                           className="text-red-600 hover:text-red-800">
                           <Trash2 className="w-3 h-3" />
@@ -322,16 +411,121 @@ export default function HorasExtrasPage() {
         </div>
 
         <div className="no-print mt-3 flex items-center gap-3">
-          <Button type="button" variant="outline" size="sm" onClick={agregarFila} className="h-8 text-[12px] gap-1.5">
-            <Plus className="w-4 h-4" /> Agregar renglón
-          </Button>
-          {!valorHora && (
+          {!locked && (
+            <Button type="button" variant="outline" size="sm" onClick={agregarFila} className="h-8 text-[12px] gap-1.5">
+              <Plus className="w-4 h-4" /> Agregar renglón
+            </Button>
+          )}
+          {!locked && !valorHora && (
             <p className="text-xs text-[#8a8aa0]">
               La liquidación aparece cuando se escribe el <b>valor hora</b>.
             </p>
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+/* ── Flujo de aprobación ────────────────────────────────── */
+
+const fmtFechaHora = (d?: string | Date | null) =>
+  d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+/**
+ * Estado de la planilla, botones del paso que toca y bitácora. No se imprime: el papel
+ * lleva las horas y las firmas, no el recorrido.
+ */
+function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
+  sol: GcSolicitud;
+  nombreRol?: string;
+  esCreador: boolean;
+  onAccion: (accion: string, requiereMotivo?: boolean) => void;
+}) {
+  const estado = sol.estado as HorasExtrasEstado;
+  const acciones = accionesDisponibles(estado, nombreRol, esCreador);
+  const sla = calcularSla(estado, sol.estadoDesde);
+  const terminal = esTerminal(estado);
+  const d = sol.data ?? {};
+
+  // Quién avaló qué, para que se vea sin abrir el historial.
+  const avales: { label: string; quien?: string; fecha?: string }[] = [
+    { label: 'Revisó', quien: d.revisadoPor, fecha: d.fechaRevision },
+    { label: 'Gerencia de Proyectos', quien: d.aprobadoGpPor, fecha: d.fechaAprobacionGp },
+    { label: 'Dirección Administrativa', quien: d.aprobadoAdminPor, fecha: d.fechaAprobacionAdmin },
+  ].filter((a) => a.quien);
+
+  return (
+    <div className="no-print mb-6 bg-white border border-[#e6e6f0] rounded-xl shadow-sm p-4 space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-[#4a4a63]">Estado de la planilla:</span>
+        <span className={`text-sm font-medium rounded px-2.5 py-1 ${estadoBadgeClass(estado)}`}>
+          {estadoLabel(estado)}
+        </span>
+        {sla && (
+          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 ${sla.vencida ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+            {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+            {textoSla(sla)}
+          </span>
+        )}
+        {HORAS_EXTRAS_ESTADOS[estado]?.sla == null && !terminal && (
+          <span className="text-xs text-[#8a8aa3]">sin plazo</span>
+        )}
+      </div>
+
+      {avales.length > 0 && (
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#4a4a63]">
+          {avales.map((a) => (
+            <span key={a.label}>
+              <b>{a.label}:</b> {a.quien}
+              {a.fecha ? ` · ${a.fecha}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {acciones.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {acciones.map((a: HorasExtrasTransicion) => (
+            <Button
+              key={a.accion}
+              onClick={() => onAccion(a.accion, a.requiereMotivo)}
+              variant={a.tone === 'danger' ? 'outline' : 'default'}
+              className={a.tone === 'danger'
+                ? 'border-red-300 text-red-700 hover:bg-red-50'
+                : 'bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]'}
+            >
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      {acciones.length === 0 && !terminal && (
+        <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
+      )}
+      {terminal && (
+        <p className="text-xs font-medium text-green-700">
+          ✓ Planilla aprobada. Lista para liquidar en nómina.
+        </p>
+      )}
+
+      {sol.historial && sol.historial.length > 0 && (
+        <div className="pt-3 border-t border-[#e6e6f0]">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-[#8a8aa3] uppercase tracking-wide mb-2">
+            <History className="w-3.5 h-3.5" /> Historial
+          </p>
+          <ul className="space-y-1.5">
+            {[...sol.historial].reverse().map((h, i) => (
+              <li key={i} className="text-xs text-[#4a4a63] flex flex-wrap gap-x-2">
+                <span className="text-[#a8a8bd] font-mono">{fmtFechaHora(h.fecha)}</span>
+                <span className="font-medium">{estadoLabel(h.estado)}</span>
+                {h.userName && <span className="text-[#8a8aa3]">· {h.userName}</span>}
+                {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -347,8 +541,8 @@ function Meta({ label, value, last }: { label: string; value: string; last?: boo
   );
 }
 
-function Dato({ label, value, onChange, last }: {
-  label: string; value: string; onChange: (v: string) => void; last?: boolean;
+function Dato({ label, value, onChange, last, readOnly }: {
+  label: string; value: string; onChange: (v: string) => void; last?: boolean; readOnly?: boolean;
 }) {
   return (
     <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + (last ? '' : 'border-r border-black')}>
@@ -356,6 +550,7 @@ function Dato({ label, value, onChange, last }: {
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
         className="flex-grow min-w-0 bg-transparent outline-none text-[9px]"
       />
     </div>
@@ -382,13 +577,14 @@ function Td({ children, className, colSpan }: {
   );
 }
 
-function Cel({ value, onChange, centro }: {
-  value: string; onChange: (v: string) => void; centro?: boolean;
+function Cel({ value, onChange, centro, readOnly }: {
+  value: string; onChange: (v: string) => void; centro?: boolean; readOnly?: boolean;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      readOnly={readOnly}
       className={'w-full bg-transparent outline-none text-[9px] ' + (centro ? 'text-center' : '')}
     />
   );

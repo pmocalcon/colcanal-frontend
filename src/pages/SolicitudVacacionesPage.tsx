@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService } from '@/services/gestionConocimiento.service';
+import { FORMATO_VACACIONES } from '@/config/formatosGestion';
 
 /**
  * Solicitud de Vacaciones · formato GTH-018-F (G. de talento humano).
@@ -150,16 +151,27 @@ export default function SolicitudVacacionesPage() {
   }, [docId]);
 
   const handleSave = async () => {
-    if (docId === null) return;
     setSaving(true);
     try {
       // El resumen se arma acá y no en el listado: el listado lee `data` en crudo y no
       // tiene por qué saber que el periodo son cuatro casillas.
       const lado = (p: MesAnio) => [p.mes, p.anio].filter(Boolean).join('/');
       const periodoResumen = [lado(f.periodoDe), lado(f.periodoA)].filter(Boolean).join(' a ');
-      await gestionConocimientoService.update(docId, { data: { ...f, periodoResumen } });
+      const guardada = await gestionConocimientoService.guardar(docId, {
+        gestion: 'talento-humano',
+        formato: FORMATO_VACACIONES,
+        data: { ...f, periodoResumen },
+      });
       setF((p) => ({ ...p, periodoResumen }));
       toast.success('Solicitud guardada');
+      // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
+      // siguiente guardado crearía una segunda solicitud.
+      if (docId === null) {
+        navigate(
+          `/dashboard/gestion-conocimiento/talento-humano/vacaciones/${guardada.solicitudId}`,
+          { replace: true },
+        );
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
     } finally {
@@ -194,7 +206,10 @@ export default function SolicitudVacacionesPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Solicitud de vacaciones</h1>
-            <p className="text-xs text-[#4a4a63]">Formato GTH-018-F · Solicitud N.º {docId}</p>
+            <p className="text-xs text-[#4a4a63]">
+              Formato GTH-018-F ·{' '}
+              {docId === null ? 'Sin guardar' : `Solicitud N.º ${docId}`}
+            </p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -221,8 +236,8 @@ export default function SolicitudVacacionesPage() {
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
               <Meta label="Código:" value="GTH-018-F" />
-              <Meta label="Fecha:" value="31/07/2023" />
-              <Meta label="Versión:" value="1" last />
+              <Meta label="Fecha:" value="20/08/2026" />
+              <Meta label="Versión:" value="2" last />
             </div>
           </div>
 
@@ -234,7 +249,7 @@ export default function SolicitudVacacionesPage() {
                   <td colSpan={3} className="border border-black px-3 py-0.5 font-bold">FECHA DE SOLICITUD</td>
                 </tr>
                 <tr className="font-bold">
-                  <td className="border border-black px-3 py-0.5">DIA</td>
+                  <td className="border border-black px-3 py-0.5">DÍA</td>
                   <td className="border border-black px-3 py-0.5">MES</td>
                   <td className="border border-black px-3 py-0.5">AÑO</td>
                 </tr>
@@ -322,7 +337,7 @@ export default function SolicitudVacacionesPage() {
               <CasillasFecha valor={f.fechaFinal} onChange={(p, v) => setFecha('fechaFinal', p, v)} />
             </Recuadro>
 
-            <Recuadro rotulo="DIAS A DISFRUTAR">
+            <Recuadro rotulo="DÍAS A DISFRUTAR">
               <input
                 value={f.diasDisfrutar}
                 onChange={(e) => set('diasDisfrutar', e.target.value)}
@@ -330,7 +345,7 @@ export default function SolicitudVacacionesPage() {
               />
             </Recuadro>
 
-            <Recuadro rotulo="DIAS A COMPENSAR">
+            <Recuadro rotulo="DÍAS A COMPENSAR">
               <input
                 value={f.diasCompensar}
                 onChange={(e) => set('diasCompensar', e.target.value)}
@@ -343,7 +358,7 @@ export default function SolicitudVacacionesPage() {
           <h2 className="font-bold text-[13px] text-center pt-3">USO EXCLUSIVO ÁREA RECURSOS HUMANOS</h2>
 
           <div className="grid grid-cols-2 gap-3">
-            <Recuadro rotulo="NUMERO DE SOLICITUD">
+            <Recuadro rotulo="NÚMERO DE SOLICITUD">
               <input
                 value={f.rhNumeroSolicitud}
                 onChange={(e) => set('rhNumeroSolicitud', e.target.value)}

@@ -33,6 +33,12 @@ export interface GcSolicitud {
   historial: GcHistorialEntry[] | null;
   data: Record<string, any> | null;
   createdBy: number | null;
+  /**
+   * Nombre de quien la creó. La creación no deja entrada en el historial —la
+   * solicitud nace con él vacío—, así que la primera línea de la bitácora se
+   * arma con esto.
+   */
+  creadorNombre?: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -79,6 +85,31 @@ export const gestionConocimientoService = {
   async update(id: number, payload: UpdateSolicitudPayload): Promise<GcSolicitud> {
     const { data } = await api.put<GcSolicitud>(`${BASE}/${id}`, payload);
     return data;
+  },
+
+  /**
+   * Guarda el formato: lo crea si aún no existe, lo actualiza si ya existe.
+   *
+   * Existe para que la solicitud NO se cree al pulsar «Nueva solicitud» sino al
+   * guardar por primera vez. Creándola antes, quien abría el formato y se
+   * arrepentía dejaba una fila vacía —«Sin diligenciar»— y gastaba un número de
+   * solicitud, que es un contador que no se recicla.
+   *
+   * Devuelve la solicitud para que la pantalla se quede con su id: sin eso, el
+   * segundo guardado crearía una segunda fila.
+   */
+  async guardar(
+    id: number | null,
+    payload: { gestion: string; formato: string; data: Record<string, any> },
+  ): Promise<GcSolicitud> {
+    if (id === null) {
+      return this.create({
+        gestion: payload.gestion,
+        formato: payload.formato,
+        data: payload.data,
+      });
+    }
+    return this.update(id, { data: payload.data });
   },
 
   async transition(

@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
-import { FORMATO_CONTRATACION } from '@/config/formatosGestion';
+import { FORMATO_CONTRATACION, FORMATO_TERMINACION } from '@/config/formatosGestion';
 
 /**
  * Acta de terminación anticipada de mutuo acuerdo a un contrato de prestación de servicios.
@@ -223,11 +223,22 @@ export default function ActaTerminacionPage() {
   };
 
   const handleSave = async () => {
-    if (actaId === null) return;
     setSaving(true);
     try {
-      await gestionConocimientoService.update(actaId, { data: f });
+      const guardada = await gestionConocimientoService.guardar(actaId, {
+        gestion: 'juridica',
+        formato: FORMATO_TERMINACION,
+        data: f,
+      });
       toast.success('Acta guardada');
+      // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
+      // siguiente guardado crearía una segunda acta.
+      if (actaId === null) {
+        navigate(
+          `/dashboard/gestion-conocimiento/juridica/terminacion/${guardada.solicitudId}`,
+          { replace: true },
+        );
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
     } finally {

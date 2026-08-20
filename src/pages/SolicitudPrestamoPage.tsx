@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Printer, Save } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { gestionConocimientoService } from '@/services/gestionConocimiento.service';
+import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { FORMATO_PRESTAMO } from '@/config/formatosGestion';
+import {
+  type PrestamoEstado,
+  type PrestamoTransicion,
+  accionesDisponibles,
+  calcularSla,
+  estadoLabel,
+  estadoBadgeClass,
+  PRESTAMO_ESTADOS,
+  esTerminal,
+  esEditable,
+} from '@/utils/prestamoWorkflow';
+import { textoSla } from '@/utils/juridicaWorkflow';
 
 /**
  * Solicitud de Préstamo (G. de talento humano).
@@ -12,8 +25,14 @@ import { gestionConocimientoService } from '@/services/gestionConocimiento.servi
  * Es un **formulario impreso**, no un documento de texto: casillas, renglones y tres
  * bloques. Por eso no usa `TextoEd` —no hay párrafos que reescribir— sino campos.
  *
- * El empleado lo diligencia y lo firma; la Dirección Administrativa firma abajo y Gerencia
- * aprueba en el bloque 3. Hoy esas firmas van en papel: el formato se guarda y se imprime.
+ * Las tres firmas del papel son los tres pasos del trámite: el empleado lo diligencia y
+ * lo envía, la Dirección Administrativa firma y Gerencia aprueba fijando el valor del
+ * bloque 3. Cada firma la estampa el backend con el nombre de quien ejecutó el paso y la
+ * fecha del sistema, así que no hay campo donde escribir un nombre ajeno.
+ *
+ * Fuera del borrador el formato queda de solo lectura: lo que se firmó es lo que se ve.
+ *
+ * @see prestamoWorkflow — la máquina de estados, espejo de la del backend.
  *
  * Ruta: `.../talento-humano/prestamo/:id`.
  */
@@ -62,8 +81,25 @@ interface PrestamoState {
   valorSolicitado: string;
   motivo: string;
 
+  /*
+   * Condiciones del préstamo. Las fija Dirección Administrativa cuando la solicitud
+   * está en su paso, no el empleado al pedirlo.
+   */
+  fechaDesembolso: string;
+  numeroCuotas: string;
+  valorCuota: string;
+
   // 3. Uso exclusivo de la empresa
   valorAprobado: string;
+
+  /*
+   * Firmas del formato. No se escriben a mano: las estampa el backend al ejecutar
+   * cada paso del flujo, con el nombre de quien lo ejecutó y la fecha del sistema.
+   * Acá solo se muestran.
+   */
+  firmaEmpleado: string; fechaFirmaEmpleado: string;
+  firmaAdministrativa: string; fechaFirmaAdministrativa: string;
+  firmaGerencia: string; fechaFirmaGerencia: string;
 }
 
 const EMPTY: PrestamoState = {
@@ -75,7 +111,11 @@ const EMPTY: PrestamoState = {
   telefonoResidencia: '', celular: '', otros: '',
   cargo: '', area: '', salario: '',
   valorSolicitado: '', motivo: '',
+  fechaDesembolso: '', numeroCuotas: '', valorCuota: '',
   valorAprobado: '',
+  firmaEmpleado: '', fechaFirmaEmpleado: '',
+  firmaAdministrativa: '', fechaFirmaAdministrativa: '',
+  firmaGerencia: '', fechaFirmaGerencia: '',
 };
 
 // Lo diligencia el empleado, así que no se restringe a un área: lo abre quien lo pide.
@@ -88,8 +128,24 @@ export default function SolicitudPrestamoPage() {
   const docId = idParam && /^\d+$/.test(idParam) ? Number(idParam) : null;
 
   const [f, setF] = useState<PrestamoState>(EMPTY);
+  const [sol, setSol] = useState<GcSolicitud | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const estado = (sol?.estado as PrestamoEstado | undefined) ?? undefined;
+  // El formato solo se diligencia en borrador: una vez enviado, lo que se ve es lo
+  // que firmaron los demás, y editarlo por debajo dejaría firmas sobre otro texto.
+  const locked = !esEditable(estado ?? null);
+  const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
+  // Fuera del borrador hay dos zonas que sí se diligencian, cada una en su paso y por
+  // quien manda ahí: las condiciones del préstamo son de Dirección Administrativa y el
+  // valor aprobado es de Gerencia. Ambas viajan con la acción, no con «Guardar».
+  const editaAdministrativa =
+    estado === 'pendiente_administrativa' &&
+    accionesDisponibles(estado, user?.nombreRol, esCreador).some((a) => a.accion === 'aprobar_administrativa');
+  const puedeAprobarGerencia =
+    estado === 'pendiente_gerencia' &&
+    accionesDisponibles(estado, user?.nombreRol, esCreador).some((a) => a.accion === 'aprobar_gerencia');
 
   const set = <K extends keyof PrestamoState>(k: K, v: PrestamoState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -111,6 +167,7 @@ export default function SolicitudPrestamoPage() {
       try {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
+        setSol(row);
         setF({ ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> });
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
@@ -121,15 +178,65 @@ export default function SolicitudPrestamoPage() {
     return () => { cancelled = true; };
   }, [docId]);
 
-  const handleSave = async () => {
+  const recargar = async () => {
     if (docId === null) return;
+    try {
+      const row = await gestionConocimientoService.get(docId);
+      setSol(row);
+      setF({ ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> });
+    } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
+  };
+
+  const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
+    let motivo: string | undefined;
+    if (requiereMotivo) {
+      const m = window.prompt('Indica el motivo:');
+      if (m === null) return;
+      if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
+      motivo = m.trim();
+    }
+    // Cada paso manda lo suyo: Administrativa las condiciones del préstamo y Gerencia
+    // el valor aprobado, que puede ser distinto al solicitado.
+    const data =
+      accion === 'aprobar_administrativa'
+        ? {
+            fechaDesembolso: f.fechaDesembolso,
+            numeroCuotas: f.numeroCuotas,
+            valorCuota: f.valorCuota,
+          }
+        : accion === 'aprobar_gerencia'
+          ? { valorAprobado: f.valorAprobado }
+          : undefined;
+    try {
+      await gestionConocimientoService.transition(docId!, { accion, motivo, data });
+      toast.success('Acción registrada');
+      await recargar();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo ejecutar la acción');
+    }
+  };
+
+  const handleSave = async () => {
     setSaving(true);
     try {
       // Se guarda armado para que el listado lo lea directo: el listado lee `data` en
       // crudo y no tiene por qué saber cómo se compone un nombre en este formato.
-      await gestionConocimientoService.update(docId, { data: { ...f, nombreCompleto } });
+      const guardada = await gestionConocimientoService.guardar(docId, {
+        gestion: 'talento-humano',
+        formato: FORMATO_PRESTAMO,
+        data: { ...f, nombreCompleto },
+      });
       setF((p) => ({ ...p, nombreCompleto }));
+      setSol(guardada);
       toast.success('Solicitud guardada');
+      // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
+      // siguiente guardado crearía una segunda solicitud.
+      if (docId === null) {
+        navigate(
+          `/dashboard/gestion-conocimiento/talento-humano/prestamo/${guardada.solicitudId}`,
+          { replace: true },
+        );
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');
     } finally {
@@ -165,19 +272,33 @@ export default function SolicitudPrestamoPage() {
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Solicitud de préstamo</h1>
             <p className="text-xs text-[#4a4a63]">
-              Solicitud N.º {docId}{user?.nombre ? ` · ${user.nombre}` : ''}
+              Formato GTH-007-F · Solicitud N.º {docId}{user?.nombre ? ` · ${user.nombre}` : ''}
             </p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
-          </Button>
+          {/* Fuera del borrador el formato ya no se edita: guardar no tendría qué guardar. */}
+          {!locked && (
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* El flujo aparece cuando la solicitud existe: en blanco todavía no hay nada
+            que enviar ni a quién avisarle. */}
+        {sol && (
+          <PrestamoWorkflowPanel
+            sol={sol}
+            nombreRol={user?.nombreRol}
+            esCreador={esCreador}
+            onAccion={handleTransicion}
+          />
+        )}
+
         <div className="doc bg-white border border-black text-[11px] text-black shadow-md">
 
           {/* Encabezado del formato */}
@@ -192,7 +313,8 @@ export default function SolicitudPrestamoPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
-              <Meta label="FECHA:" value="09-05-2023" />
+              <Meta label="CÓDIGO:" value="GTH-007-F" />
+              <Meta label="FECHA:" value="20/08/2026" />
               <Meta label="VERSIÓN:" value="1" last />
             </div>
           </div>
@@ -205,10 +327,10 @@ export default function SolicitudPrestamoPage() {
           <Seccion titulo="1. INFORMACIÓN BÁSICA" />
 
           <div className="grid grid-cols-4 border-b border-black">
-            <Celda label="1er Apellido" value={f.primerApellido} onChange={(v) => set('primerApellido', v)} />
-            <Celda label="2do Apellido" value={f.segundoApellido} onChange={(v) => set('segundoApellido', v)} />
-            <Celda label="1er Nombre" value={f.primerNombre} onChange={(v) => set('primerNombre', v)} />
-            <Celda label="2do Nombre" value={f.segundoNombre} onChange={(v) => set('segundoNombre', v)} last />
+            <Celda label="1er Apellido" value={f.primerApellido} onChange={(v) => set('primerApellido', v)} readOnly={locked} />
+            <Celda label="2do Apellido" value={f.segundoApellido} onChange={(v) => set('segundoApellido', v)} readOnly={locked} />
+            <Celda label="1er Nombre" value={f.primerNombre} onChange={(v) => set('primerNombre', v)} readOnly={locked} />
+            <Celda label="2do Nombre" value={f.segundoNombre} onChange={(v) => set('segundoNombre', v)} readOnly={locked} last />
           </div>
 
           <div className="px-2 py-1.5 border-b border-black flex items-center gap-4 flex-wrap">
@@ -219,6 +341,7 @@ export default function SolicitudPrestamoPage() {
                 label={e.label}
                 checked={f.estadoCivil === e.key}
                 onToggle={() => set('estadoCivil', f.estadoCivil === e.key ? '' : e.key)}
+                disabled={locked}
               />
             ))}
           </div>
@@ -231,35 +354,36 @@ export default function SolicitudPrestamoPage() {
                 label={t.label}
                 checked={f.tipoDocumento === t.key}
                 onToggle={() => set('tipoDocumento', f.tipoDocumento === t.key ? '' : t.key)}
+                disabled={locked}
               />
             ))}
           </div>
 
           <div className="px-2 py-1.5 border-b border-black grid grid-cols-2 gap-6">
-            <Renglon label="Número:" value={f.numero} onChange={(v) => set('numero', v)} />
-            <Renglon label="Expedida:" value={f.expedida} onChange={(v) => set('expedida', v)} />
+            <Renglon label="Número:" value={f.numero} onChange={(v) => set('numero', v)} readOnly={locked} />
+            <Renglon label="Expedida:" value={f.expedida} onChange={(v) => set('expedida', v)} readOnly={locked} />
           </div>
 
           <div className="grid grid-cols-4 border-b border-black">
-            <Celda label="Dirección residencia:" value={f.direccion} onChange={(v) => set('direccion', v)} />
-            <Celda label="Barrio:" value={f.barrio} onChange={(v) => set('barrio', v)} />
-            <Celda label="Municipio:" value={f.municipio} onChange={(v) => set('municipio', v)} />
-            <Celda label="Departamento:" value={f.departamento} onChange={(v) => set('departamento', v)} last />
+            <Celda label="Dirección residencia:" value={f.direccion} onChange={(v) => set('direccion', v)} readOnly={locked} />
+            <Celda label="Barrio:" value={f.barrio} onChange={(v) => set('barrio', v)} readOnly={locked} />
+            <Celda label="Municipio:" value={f.municipio} onChange={(v) => set('municipio', v)} readOnly={locked} />
+            <Celda label="Departamento:" value={f.departamento} onChange={(v) => set('departamento', v)} readOnly={locked} last />
           </div>
 
           <div className="grid grid-cols-3 border-b border-black">
-            <Celda label="Teléfono residencia:" value={f.telefonoResidencia} onChange={(v) => set('telefonoResidencia', v)} />
-            <Celda label="Celular:" value={f.celular} onChange={(v) => set('celular', v)} />
-            <Celda label="Otros:" value={f.otros} onChange={(v) => set('otros', v)} last />
+            <Celda label="Teléfono residencia:" value={f.telefonoResidencia} onChange={(v) => set('telefonoResidencia', v)} readOnly={locked} />
+            <Celda label="Celular:" value={f.celular} onChange={(v) => set('celular', v)} readOnly={locked} />
+            <Celda label="Otros:" value={f.otros} onChange={(v) => set('otros', v)} readOnly={locked} last />
           </div>
 
           {/* ── 2. Datos laborales ── */}
           <Seccion titulo="2. DATOS LABORALES" />
 
           <div className="grid grid-cols-3 border-b border-black">
-            <Celda label="Cargo:" value={f.cargo} onChange={(v) => set('cargo', v)} />
-            <Celda label="Area:" value={f.area} onChange={(v) => set('area', v)} />
-            <Celda label="Salario:" value={f.salario} onChange={(v) => set('salario', v)} last />
+            <Celda label="Cargo:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
+            <Celda label="Area:" value={f.area} onChange={(v) => set('area', v)} readOnly={locked} />
+            <Celda label="Salario:" value={f.salario} onChange={(v) => set('salario', v)} readOnly={locked} last />
           </div>
 
           <div className="grid grid-cols-2 border-b border-black">
@@ -269,10 +393,43 @@ export default function SolicitudPrestamoPage() {
               <input
                 value={f.valorSolicitado}
                 onChange={(e) => set('valorSolicitado', e.target.value)}
+                readOnly={locked}
                 className="w-32 bg-transparent outline-none border-b border-black ml-1 text-[11px]"
               />
             </div>
-            <Celda label="Motivo de la Solicitud:" value={f.motivo} onChange={(v) => set('motivo', v)} last area />
+            <Celda label="Motivo de la Solicitud:" value={f.motivo} onChange={(v) => set('motivo', v)} readOnly={locked} last area />
+          </div>
+
+          {/* Condiciones del préstamo: cómo se desembolsa y cómo se descuenta. Las fija
+              Dirección Administrativa en su paso, que es quien conoce la nómina; el
+              empleado las ve pero no las escribe. */}
+          <div className="px-2 py-1 font-bold border-b border-black bg-[hsl(var(--canalco-neutral-100))] flex items-baseline gap-2">
+            <span>CONDICIONES DEL PRÉSTAMO</span>
+            <span className="font-normal italic text-[9px] text-[#4a4a63]">
+              (las diligencia Dirección Administrativa)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 border-b border-black">
+            <Celda
+              label="Fecha de desembolso:"
+              value={f.fechaDesembolso}
+              onChange={(v) => set('fechaDesembolso', v)}
+              readOnly={!editaAdministrativa}
+            />
+            <Celda
+              label="N.° de cuotas:"
+              value={f.numeroCuotas}
+              onChange={(v) => set('numeroCuotas', v)}
+              readOnly={!editaAdministrativa}
+            />
+            <Celda
+              label="Valor de la cuota:"
+              value={f.valorCuota}
+              onChange={(v) => set('valorCuota', v)}
+              readOnly={!editaAdministrativa}
+              last
+            />
           </div>
 
           {/* Política */}
@@ -285,14 +442,21 @@ export default function SolicitudPrestamoPage() {
 
           {/* Firmas del empleado y de Administrativa */}
           <div className="grid grid-cols-2 border-b border-black">
-            <FirmaCelda titulo="Firma Empleado" />
-            <FirmaCelda titulo={'Firma Dirección\nAdministrativa'} last />
+            <FirmaCelda titulo="Firma Empleado" nombre={nombreCompleto} cedula={f.numero} fecha={f.fechaFirmaEmpleado} />
+            <FirmaCelda
+              titulo={'Firma Dirección\nAdministrativa'}
+              nombre={f.firmaAdministrativa}
+              fecha={f.fechaFirmaAdministrativa}
+              last
+            />
           </div>
 
           {/* ── 3. Uso exclusivo de la empresa ── */}
           <Seccion titulo="3. ESPACIO PARA USO EXCLUSIVO DE LA EMPRESA" />
 
           <div className="grid grid-cols-2 border-b border-black">
+            {/* El bloque 3 es de la empresa: el valor solo lo escribe Gerencia, y solo
+                en su paso del flujo. Va con la acción de aprobar, no con «Guardar». */}
             <div className="px-2 py-2 border-r border-black text-center">
               <p className="font-bold">Valor<br />Aprobado</p>
               <div className="flex items-end justify-center gap-1 mt-8">
@@ -300,13 +464,24 @@ export default function SolicitudPrestamoPage() {
                 <input
                   value={f.valorAprobado}
                   onChange={(e) => set('valorAprobado', e.target.value)}
+                  readOnly={!puedeAprobarGerencia}
+                  placeholder={puedeAprobarGerencia ? f.valorSolicitado : ''}
                   className="w-40 bg-transparent outline-none border-b border-black text-[11px] text-center"
                 />
               </div>
+              {puedeAprobarGerencia && (
+                <p className="no-print mt-1 text-[9px] text-[#4a4a63]">
+                  En blanco se aprueba por el valor solicitado.
+                </p>
+              )}
             </div>
             <div className="px-2 py-2 text-center">
               <p className="font-bold">Firma de<br />Aprobación</p>
               <div className="mt-8 mx-auto w-48 border-b border-black h-4" />
+              {f.firmaGerencia && <p className="leading-tight">{f.firmaGerencia}</p>}
+              {f.fechaFirmaGerencia && (
+                <p className="text-[9px] text-[#4a4a63] leading-tight">{fmtFecha(f.fechaFirmaGerencia)}</p>
+              )}
               <p className="mt-1">GERENCIA</p>
             </div>
           </div>
@@ -328,15 +503,114 @@ export default function SolicitudPrestamoPage() {
             préstamo solicitado.
           </p>
 
+          {/* El nombre y la cédula salen del bloque 1: quien autoriza el descuento es
+              el mismo que pide el préstamo, así que no se vuelven a escribir. */}
           <div className="mt-8">
             <span className="inline-flex items-baseline gap-2">
               Firma:
               <span className="inline-block w-56 border-b border-black h-4" />
             </span>
-            <p className="mt-1 pl-10">CC.</p>
+            <p className="mt-1 pl-10 leading-tight">{nombreCompleto}</p>
+            <p className="pl-10 leading-tight">CC. {f.numero}</p>
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+/* ── Flujo de aprobación ────────────────────────────────── */
+
+const fmtFecha = (d?: string | Date | null) =>
+  d ? new Date(`${d}`.length === 10 ? `${d}T00:00:00` : `${d}`).toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  }) : '';
+
+const fmtFechaHora = (d?: string | Date | null) =>
+  d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+/**
+ * Estado del trámite, botones del paso que toca y bitácora. No se imprime: el papel
+ * lleva las firmas, no el recorrido.
+ */
+function PrestamoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
+  sol: GcSolicitud;
+  nombreRol?: string;
+  esCreador: boolean;
+  onAccion: (accion: string, requiereMotivo?: boolean) => void;
+}) {
+  const estado = sol.estado as PrestamoEstado;
+  const acciones = accionesDisponibles(estado, nombreRol, esCreador);
+  const sla = calcularSla(estado, sol.estadoDesde);
+  const terminal = esTerminal(estado);
+
+  return (
+    <div className="no-print mb-6 bg-white border border-[#e6e6f0] rounded-xl shadow-sm p-4 space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-[#4a4a63]">Estado del trámite:</span>
+        <span className={`text-sm font-medium rounded px-2.5 py-1 ${estadoBadgeClass(estado)}`}>
+          {estadoLabel(estado)}
+        </span>
+        {sla && (
+          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 ${sla.vencida ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+            {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+            {textoSla(sla)}
+          </span>
+        )}
+        {PRESTAMO_ESTADOS[estado]?.sla == null && !terminal && (
+          <span className="text-xs text-[#8a8aa3]">sin plazo</span>
+        )}
+      </div>
+
+      {acciones.some((a) => a.accion === 'aprobar_administrativa') && (
+        <p className="text-xs text-[#4a4a63]">
+          Antes de firmar, diligencia las <b>condiciones del préstamo</b> —desembolso, cuotas y
+          valor de la cuota—: se guardan con tu firma.
+        </p>
+      )}
+
+      {acciones.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {acciones.map((a: PrestamoTransicion) => (
+            <Button
+              key={a.accion}
+              onClick={() => onAccion(a.accion, a.requiereMotivo)}
+              variant={a.tone === 'danger' ? 'outline' : 'default'}
+              className={a.tone === 'danger'
+                ? 'border-red-300 text-red-700 hover:bg-red-50'
+                : 'bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]'}
+            >
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      {acciones.length === 0 && !terminal && (
+        <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
+      )}
+      {terminal && (
+        <p className="text-xs font-medium text-green-700">
+          ✓ Préstamo aprobado. Imprime el formato para archivarlo con las firmas.
+        </p>
+      )}
+
+      {sol.historial && sol.historial.length > 0 && (
+        <div className="pt-3 border-t border-[#e6e6f0]">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-[#8a8aa3] uppercase tracking-wide mb-2">
+            <History className="w-3.5 h-3.5" /> Historial
+          </p>
+          <ul className="space-y-1.5">
+            {[...sol.historial].reverse().map((h, i) => (
+              <li key={i} className="text-xs text-[#4a4a63] flex flex-wrap gap-x-2">
+                <span className="text-[#a8a8bd] font-mono">{fmtFechaHora(h.fecha)}</span>
+                <span className="font-medium">{estadoLabel(h.estado)}</span>
+                {h.userName && <span className="text-[#8a8aa3]">· {h.userName}</span>}
+                {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -361,16 +635,17 @@ function Seccion({ titulo }: { titulo: string }) {
 }
 
 /** Casilla del formato: cuadrito y etiqueta, excluyente dentro de su fila. */
-function Casilla({ label, checked, onToggle }: {
-  label: string; checked: boolean; onToggle: () => void;
+function Casilla({ label, checked, onToggle, disabled }: {
+  label: string; checked: boolean; onToggle: () => void; disabled?: boolean;
 }) {
   return (
-    <label className="inline-flex items-center gap-1.5 cursor-pointer">
+    <label className={'inline-flex items-center gap-1.5 ' + (disabled ? '' : 'cursor-pointer')}>
       <span className="order-2">{label}</span>
       <input
         type="checkbox"
         checked={checked}
         onChange={onToggle}
+        disabled={disabled}
         className="order-1 w-3.5 h-3.5 accent-black"
       />
     </label>
@@ -378,8 +653,9 @@ function Casilla({ label, checked, onToggle }: {
 }
 
 /** Celda con etiqueta arriba y el espacio para escribir debajo. */
-function Celda({ label, value, onChange, last, area }: {
-  label: string; value: string; onChange: (v: string) => void; last?: boolean; area?: boolean;
+function Celda({ label, value, onChange, last, area, readOnly }: {
+  label: string; value: string; onChange: (v: string) => void;
+  last?: boolean; area?: boolean; readOnly?: boolean;
 }) {
   return (
     <div className={'px-2 py-1 ' + (last ? '' : 'border-r border-black')}>
@@ -388,6 +664,7 @@ function Celda({ label, value, onChange, last, area }: {
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          readOnly={readOnly}
           rows={2}
           className="w-full bg-transparent outline-none resize-none text-[11px]"
         />
@@ -395,6 +672,7 @@ function Celda({ label, value, onChange, last, area }: {
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          readOnly={readOnly}
           className="w-full bg-transparent outline-none text-[11px]"
         />
       )}
@@ -403,8 +681,8 @@ function Celda({ label, value, onChange, last, area }: {
 }
 
 /** «Etiqueta: ______» en una sola línea, como los renglones del formato. */
-function Renglon({ label, value, onChange }: {
-  label: string; value: string; onChange: (v: string) => void;
+function Renglon({ label, value, onChange, readOnly }: {
+  label: string; value: string; onChange: (v: string) => void; readOnly?: boolean;
 }) {
   return (
     <div className="flex items-baseline gap-2">
@@ -412,6 +690,7 @@ function Renglon({ label, value, onChange }: {
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
         className="flex-grow min-w-0 bg-transparent outline-none border-b border-black text-[11px]"
       />
     </div>
@@ -430,12 +709,27 @@ function Sobre({ valor, ancho }: { valor: string; ancho: string }) {
   );
 }
 
-/** Recuadro de firma: el espacio se firma a mano sobre el impreso. */
-function FirmaCelda({ titulo, last }: { titulo: string; last?: boolean }) {
+/**
+ * Recuadro de firma: el espacio se firma a mano sobre el impreso.
+ *
+ * `nombre` y `cedula` van debajo del renglón, como en el papel, y salen del bloque 1.
+ * Solo los lleva la firma del empleado: las otras dos las firma quien corresponda y
+ * ponerle ahí el nombre del solicitante diría que firmó él.
+ */
+function FirmaCelda({ titulo, nombre, cedula, fecha, last }: {
+  titulo: string; nombre?: string; cedula?: string; fecha?: string; last?: boolean;
+}) {
   return (
     <div className={'px-2 py-2 text-center ' + (last ? '' : 'border-r border-black')}>
       <p className="font-bold whitespace-pre-line">{titulo}</p>
       <div className="mt-10 mx-auto w-56 border-b border-black h-4" />
+      {(nombre || cedula || fecha) && (
+        <div className="mt-1 leading-tight">
+          {nombre && <p>{nombre}</p>}
+          {cedula && <p>CC. {cedula}</p>}
+          {fecha && <p className="text-[9px] text-[#4a4a63]">{fmtFecha(fecha)}</p>}
+        </div>
+      )}
     </div>
   );
 }

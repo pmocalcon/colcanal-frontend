@@ -53,7 +53,7 @@ const BLOCKS: BlockInfo[] = [
   },
   {
     key: 'investment',
-    title: 'II. DESCRIPCION DE INVERSION',
+    title: 'II. DESCRIPCIÓN DE INVERSIÓN',
     icon: <FileText className="w-5 h-5" />,
     statusField: 'investmentStatus',
     commentsField: 'investmentComments',

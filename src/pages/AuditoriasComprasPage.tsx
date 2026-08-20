@@ -67,6 +67,55 @@ const tipoObraDe = (raw: string | null): string => {
   return TIPO_OBRA_EQUIVALENTES[valor.toLowerCase()] ?? valor;
 };
 
+/**
+ * Las cinco formas en que puede nacer una requisición.
+ *
+ * El historial no guarda una sola acción de creación: según por dónde entre, la
+ * requisición nace con `crear_requisicion`, `_obra`, `_directo_gerencia`,
+ * `_poliza` o `_obra_autorizacion`. Mirar solo la primera dejaba fuera 44 de las
+ * 227 requisiciones del periodo —las de obra sobre todo—, que desaparecían de
+ * las gráficas aunque sí contaran en la tarjeta del total: por eso las barras no
+ * cuadraban con el número de arriba.
+ */
+const ACCIONES_CREACION = [
+  'crear_requisicion',
+  'crear_requisicion_obra',
+  'crear_requisicion_directo_gerencia',
+  'crear_requisicion_poliza',
+  'crear_requisicion_obra_autorizacion',
+];
+
+/**
+ * Cuándo nació la requisición, venga por donde venga.
+ *
+ * Si tiene más de una acción de creación —una requisición de obra que además
+ * pasó por autorización deja las dos— manda la más antigua, que es la que marca
+ * el mes en que realmente empezó.
+ */
+const fechaCreacion = (events: Record<string, string>): string | undefined => {
+  const fechas = ACCIONES_CREACION.map((a) => events[a]).filter((d): d is string => !!d);
+  return fechas.length > 0 ? fechas.sort()[0] : undefined;
+};
+
+/** Cuántos proveedores se muestran antes de tener que pedir el resto. */
+const TOP_PROVEEDORES = 15;
+
+/**
+ * Desde cuántos pesos una diferencia entre lo ordenado y lo facturado cuenta.
+ *
+ * Por debajo es redondeo del IVA —se ven diferencias de un peso— y marcarlo
+ * como pendiente sería ruido que tapa lo que sí falta por facturar.
+ */
+const UMBRAL_DIFERENCIA = 1000;
+
+/**
+ * A partir de aquí una orden sin factura deja de ser normal.
+ *
+ * Entre la orden y su factura pasan 17 días de promedio, así que al mes largo
+ * sin recibirla ya hay algo que preguntar al proveedor.
+ */
+const DIAS_SIN_FACTURA = 30;
+
 const MATRIX_ACTION_LABELS: Record<string, string> = {
   crear_requisicion: 'Creación',
   revisar_aprobar: 'Revisión ✓',
@@ -80,6 +129,7 @@ const MATRIX_ACTION_LABELS: Record<string, string> = {
   crear_ordenes_compra: 'Crear OC',
   aprobar_todas_ordenes_compra: 'Aprobar OC',
   registrar_recepcion: 'Recepción',
+  factura_contabilidad: 'Factura a contabilidad',
   anular_requisicion: 'Anulación',
 };
 
@@ -96,10 +146,24 @@ const MATRIX_ACTION_COLORS: Record<string, string> = {
   crear_ordenes_compra: 'bg-indigo-100 text-indigo-800',
   aprobar_todas_ordenes_compra: 'bg-indigo-100 text-indigo-800',
   registrar_recepcion: 'bg-teal-100 text-teal-800',
+  factura_contabilidad: 'bg-amber-100 text-amber-800',
   anular_requisicion: 'bg-slate-100 text-slate-800',
 };
 
+/**
+ * Los estados traen un instante con hora, pero «Factura a contabilidad» trae una
+ * fecha sola (`YYYY-MM-DD`): la persona indica el día en que la entregó, sin
+ * hora. `new Date('2026-04-05')` la interpreta como medianoche UTC y en Colombia
+ * —cinco horas atrás— sale «04/04 19:00»: un día antes y con una hora inventada.
+ * Se pinta tal cual viene.
+ */
+const SOLO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
 function formatMatrixDate(iso: string): string {
+  if (SOLO_FECHA.test(iso)) {
+    const [yyyy, mm, dd] = iso.split('-');
+    return `${dd}/${mm}/${yyyy.slice(-2)}`;
+  }
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -119,17 +183,57 @@ function formatElapsed(ms: number): string {
   return `${days}d ${hrs % 24}h`;
 }
 
+/** La fecha como `YYYY-MM-DD` en hora local, para cotejarla con los festivos. */
+const claveDia = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Ni sábado, ni domingo, ni festivo colombiano. */
+const esDiaHabil = (d: Date, festivos: Set<string>) => {
+  const dia = d.getDay();
+  return dia !== 0 && dia !== 6 && !festivos.has(claveDia(d));
+};
+
+/**
+ * Milisegundos entre dos instantes contando SOLO los días hábiles.
+ *
+ * Se recorre día a día y se suma nada más el tramo que cae en días laborables,
+ * así que un paso dado el viernes por la tarde y resuelto el lunes por la mañana
+ * ya no aparece como «3d»: el fin de semana no le corría el reloj a nadie.
+ *
+ * Se cuentan las 24 horas de cada día hábil, no la jornada de 7:00 a 16:30. Lo
+ * que se pidió fue descontar fines de semana y festivos; recortar además a la
+ * jornada mediría otra cosa —horas de trabajo, no tiempo transcurrido— y haría
+ * los números incomparables con los que ya se venían mirando.
+ */
+function msHabiles(desde: Date, hasta: Date, festivos: Set<string>): number {
+  if (hasta <= desde) return 0;
+  let total = 0;
+  const cursor = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  while (cursor.getTime() < hasta.getTime()) {
+    const siguiente = new Date(cursor);
+    siguiente.setDate(siguiente.getDate() + 1);
+    if (esDiaHabil(cursor, festivos)) {
+      const ini = Math.max(cursor.getTime(), desde.getTime());
+      const fin = Math.min(siguiente.getTime(), hasta.getTime());
+      if (fin > ini) total += fin - ini;
+    }
+    cursor.setTime(siguiente.getTime());
+  }
+  return total;
+}
+
 function getElapsedFromPrev(
   events: Record<string, string>,
   actions: string[],
   currentIdx: number,
+  festivos: Set<string>,
 ): string | null {
   const currentDate = events[actions[currentIdx]];
   if (!currentDate) return null;
   for (let i = currentIdx - 1; i >= 0; i--) {
     const prevDate = events[actions[i]];
     if (prevDate) {
-      const diff = new Date(currentDate).getTime() - new Date(prevDate).getTime();
+      const diff = msHabiles(new Date(prevDate), new Date(currentDate), festivos);
       return diff > 0 ? formatElapsed(diff) : null;
     }
   }
@@ -268,7 +372,14 @@ export default function AuditoriasComprasPage() {
   // Filtros del tab Gráficos (empresa + material + fechas)
   const [graphCompany, setGraphCompany] = useState('');
   const [graphMaterial, setGraphMaterial] = useState('');
-  const [graphRequester, setGraphRequester] = useState('');
+  // El selector de «Persona» filtra por CARGO, no por nombre: es lo que se
+  // muestra, y además el nombre no siempre identifica a alguien —hay dos
+  // usuarias «Estefania Serna», en PQRS Tarso y en PQRS Pueblorrico—.
+  const [graphCargo, setGraphCargo] = useState('');
+  // Con 66 proveedores el gráfico se vuelve ilegible; se muestran los grandes y
+  // el resto queda a un clic.
+  const [verTodosProveedores, setVerTodosProveedores] = useState(false);
+  const [soloConDiferencia, setSoloConDiferencia] = useState(false);
   const [systemUsers, setSystemUsers] = useState<User[]>([]);
   const [requesterLoading, setRequesterLoading] = useState(false);
   const [graphFrom, setGraphFrom] = useState('2026-01-10');
@@ -358,7 +469,7 @@ export default function AuditoriasComprasPage() {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const loadMatrix = useCallback(async (filters: { search: string; from: string; to: string; company: string; material?: string; requester?: string }) => {
+  const loadMatrix = useCallback(async (filters: { search: string; from: string; to: string; company: string; material?: string; cargo?: string }) => {
     try {
       setMatrixLoading(true);
       const data = await auditService.getMatrix({
@@ -367,7 +478,7 @@ export default function AuditoriasComprasPage() {
         toDate: filters.to || undefined,
         companyName: filters.company || undefined,
         materialCode: filters.material || undefined,
-        requesterName: filters.requester || undefined,
+        requesterCargo: filters.cargo || undefined,
       });
       setMatrixData(data);
       setMatrixLoaded(true);
@@ -378,8 +489,8 @@ export default function AuditoriasComprasPage() {
     }
   }, []);
 
-  // Filtro por persona del gráfico de materiales: recarga silenciosa (no oculta el tab).
-  const applyRequester = useCallback(async (requester: string) => {
+  // Filtro por cargo del gráfico de materiales: recarga silenciosa (no oculta el tab).
+  const applyCargo = useCallback(async (cargo: string) => {
     try {
       setRequesterLoading(true);
       const data = await auditService.getMatrix({
@@ -387,7 +498,7 @@ export default function AuditoriasComprasPage() {
         toDate: graphTo || undefined,
         companyName: graphCompany || undefined,
         materialCode: graphMaterial || undefined,
-        requesterName: requester || undefined,
+        requesterCargo: cargo || undefined,
       });
       setMatrixData(data);
     } catch {
@@ -439,6 +550,113 @@ export default function AuditoriasComprasPage() {
         .catch(() => {});
     }
   }, [activeTab, matrixLoaded, loadMatrix, auditStats, systemUsers.length]);
+
+  /** Los festivos que manda el backend, para descontarlos de los tiempos. */
+  const festivos = useMemo(
+    () => new Set(matrixData?.holidays ?? []),
+    [matrixData],
+  );
+
+  /**
+   * Qué área compra más.
+   *
+   * Se guardan las dos medidas porque no dicen lo mismo: un área puede levantar
+   * muchas requisiciones pequeñas y otra pocas y grandes.
+   */
+  const areasData = useMemo(() => {
+    const filas = matrixData?.purchasesByArea ?? [];
+    const total = filas.reduce((s, a) => s + a.amount, 0);
+    return filas.map((a) => ({
+      ...a,
+      participacion: total > 0 ? Math.round((a.amount / total) * 1000) / 10 : 0,
+    }));
+  }, [matrixData]);
+
+  /** Órdenes con facturación pendiente, de la más vieja a la más nueva. */
+  const sinFactura = useMemo(
+    () => matrixData?.ordersPendingInvoice ?? [],
+    [matrixData],
+  );
+  /** Lo que falta por facturar, no el valor de las órdenes: en las parciales no es lo mismo. */
+  const sinFacturaTotal = useMemo(
+    () => sinFactura.reduce((s, o) => s + o.pendingAmount, 0),
+    [sinFactura],
+  );
+  const sinFacturaAtrasadas = useMemo(
+    () => sinFactura.filter((o) => o.days >= DIAS_SIN_FACTURA).length,
+    [sinFactura],
+  );
+
+  /**
+   * Compras por proveedor, de mayor a menor.
+   *
+   * El valor es el total de las órdenes —con IVA y otros conceptos—, la misma
+   * cifra de «Órdenes de compra y facturación por mes». La facturación de un
+   * proveedor puede quedar por debajo de sus órdenes sin que haya nada mal: son
+   * las que todavía no ha facturado.
+   */
+  const proveedoresData = useMemo(() => {
+    const filas = matrixData?.topSuppliers ?? [];
+    const total = filas.reduce((s, p) => s + p.totalAmount, 0);
+    return filas.map((p) => {
+      const pendiente = p.totalAmount - p.invoicedAmount;
+      return {
+        nombreCompleto: p.name,
+        // El eje no da para nombres largos; el completo va en el tooltip.
+        nombre: p.name.length > 30 ? `${p.name.slice(0, 29)}…` : p.name,
+        orderCount: p.orderCount,
+        totalAmount: p.totalAmount,
+        invoicedAmount: p.invoicedAmount,
+        pendiente,
+        /**
+         * Diferencias de uno o dos pesos son redondeo del IVA, no algo por
+         * facturar: marcarlas llenaría la lista de ruido y escondería las de
+         * verdad.
+         */
+        tieneDiferencia: Math.abs(pendiente) >= UMBRAL_DIFERENCIA,
+        participacion: total > 0 ? Math.round((p.totalAmount / total) * 1000) / 10 : 0,
+      };
+    });
+  }, [matrixData]);
+
+  /** Los que aún no han facturado todo lo que se les ordenó. */
+  const proveedoresConDiferencia = useMemo(
+    () => proveedoresData.filter((p) => p.tieneDiferencia),
+    [proveedoresData],
+  );
+
+  const pendienteTotal = useMemo(
+    () => proveedoresConDiferencia.reduce((s, p) => s + p.pendiente, 0),
+    [proveedoresConDiferencia],
+  );
+
+  const proveedoresVisibles = useMemo(() => {
+    const base = soloConDiferencia ? proveedoresConDiferencia : proveedoresData;
+    return verTodosProveedores ? base : base.slice(0, TOP_PROVEEDORES);
+  }, [proveedoresData, proveedoresConDiferencia, soloConDiferencia, verTodosProveedores]);
+
+  /** Cuánto de la compra se va en los tres primeros: la señal de concentración. */
+  const concentracionTop3 = useMemo(() => {
+    const total = proveedoresData.reduce((s, p) => s + p.totalAmount, 0);
+    if (total <= 0) return 0;
+    const top3 = proveedoresData.slice(0, 3).reduce((s, p) => s + p.totalAmount, 0);
+    return Math.round((top3 / total) * 1000) / 10;
+  }, [proveedoresData]);
+
+  /**
+   * Los cargos que se ofrecen en el selector de «Persona».
+   *
+   * Van sin repetir: dos personas pueden compartir cargo —«Analista Comercial»,
+   * «Contador»— y ofrecerlo dos veces daría dos opciones idénticas que devuelven
+   * lo mismo. Elegido el cargo, el filtro trae lo de todos los que lo tienen,
+   * que es lo que la pantalla promete al mostrar cargos y no nombres.
+   */
+  const cargosDisponibles = useMemo(
+    () =>
+      [...new Set(systemUsers.map((u) => (u.cargo ?? '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es')),
+    [systemUsers],
+  );
 
   const controlRows = useMemo(() => {
     if (!control) return [];
@@ -555,7 +773,7 @@ export default function AuditoriasComprasPage() {
     const counts: Record<string, ReturnType<typeof blank>> = {};
 
     matrixData.rows.forEach((row) => {
-      const creacion = row.events['crear_requisicion'] || row.events['crear_requisicion_directo_gerencia'];
+      const creacion = fechaCreacion(row.events);
       if (!creacion) return;
       const d = new Date(creacion);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -617,8 +835,12 @@ export default function AuditoriasComprasPage() {
     const blank = (): Acc => ({ total: 0, nTotal: 0, cg: 0, nCg: 0, go: 0, nGo: 0, rec: 0, nRec: 0, rc: 0, nRc: 0 });
     matrixData.rows.forEach((row) => {
       const ev = row.events;
-      const times = actions
-        .map((action) => ev[action])
+      // La creación va aparte: `actions` viene del backend, que solo lista
+      // `crear_requisicion`, así que para una requisición de obra el inicio del
+      // proceso no estaría en la lista y el total se mediría desde su segundo
+      // paso.
+      const inicio = fechaCreacion(ev);
+      const times = [...actions.map((action) => ev[action]), inicio]
         .filter((d): d is string => !!d)
         .map((d) => new Date(d).getTime())
         .filter((t) => !Number.isNaN(t));
@@ -632,7 +854,7 @@ export default function AuditoriasComprasPage() {
       const totalDiff = Math.max(...times) - start;
       if (totalDiff > 0) { acc.total += totalDiff; acc.nTotal += 1; }
       // Fase Creación → Gerencia.
-      const creacion = tsOf('crear_requisicion', ev);
+      const creacion = inicio ? new Date(inicio).getTime() : NaN;
       const gerencia = tsOf('aprobar_gerencia', ev);
       const oc = tsOf('aprobar_todas_ordenes_compra', ev);
       const recepcion = tsOf('registrar_recepcion', ev);
@@ -1225,7 +1447,7 @@ export default function AuditoriasComprasPage() {
                             {matrixData.actions.map((action, actionIdx) => {
                               const date = row.events[action];
                               const elapsed = date
-                                ? getElapsedFromPrev(row.events, matrixData.actions, actionIdx)
+                                ? getElapsedFromPrev(row.events, matrixData.actions, actionIdx, festivos)
                                 : null;
                               const colorClass = MATRIX_ACTION_COLORS[action] || 'bg-gray-100 text-gray-700';
                               return (
@@ -1277,7 +1499,7 @@ export default function AuditoriasComprasPage() {
                     {visibleRows.length}{matrixStateFilter && visibleRows.length !== matrixData.rows.length ? ` de ${matrixData.rows.length}` : ''} requisiciones · {matrixData.actions.length} estados visibles
                     {matrixStateFilter && <span className="ml-2 text-[hsl(var(--canalco-primary))] font-medium">· con {MATRIX_ACTION_LABELS[matrixStateFilter] || matrixStateFilter}</span>}
                   </span>
-                  <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">▲ = tiempo desde estado anterior · Clic en fila para ver detalle</span>
+                  <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">▲ = tiempo desde el estado anterior, en días hábiles (sin fines de semana ni festivos) · Clic en fila para ver detalle</span>
                 </div>
               </div>
               );
@@ -1319,20 +1541,20 @@ export default function AuditoriasComprasPage() {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Persona</label>
+                    <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-500))]">Cargo</label>
                     <div className="flex items-center gap-2">
                       <select
-                        value={graphRequester}
+                        value={graphCargo}
                         onChange={(e) => {
                           const value = e.target.value;
-                          setGraphRequester(value);
-                          applyRequester(value);
+                          setGraphCargo(value);
+                          applyCargo(value);
                         }}
                         className="h-9 w-56 rounded-md border border-[hsl(var(--canalco-neutral-300))] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--canalco-primary))]"
                       >
-                        <option value="">Todas las personas</option>
-                        {systemUsers.map((u) => (
-                          <option key={u.userId} value={u.nombre}>{u.nombre}</option>
+                        <option value="">Todos los cargos</option>
+                        {cargosDisponibles.map((cargo) => (
+                          <option key={cargo} value={cargo}>{cargo}</option>
                         ))}
                       </select>
                       {requesterLoading && (
@@ -1360,15 +1582,15 @@ export default function AuditoriasComprasPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => loadMatrix({ search: '', from: graphFrom, to: graphTo, company: graphCompany, material: graphMaterial, requester: graphRequester })}
+                    onClick={() => loadMatrix({ search: '', from: graphFrom, to: graphTo, company: graphCompany, material: graphMaterial, cargo: graphCargo })}
                     className="h-9 px-4 rounded-md bg-[hsl(var(--canalco-primary))] text-white text-sm font-semibold hover:opacity-90"
                   >
                     Aplicar
                   </button>
-                  {(graphCompany || graphMaterial || graphRequester || graphFrom !== '2026-01-10' || graphTo) && (
+                  {(graphCompany || graphMaterial || graphCargo || graphFrom !== '2026-01-10' || graphTo) && (
                     <button
                       type="button"
-                      onClick={() => { setGraphCompany(''); setGraphMaterial(''); setGraphRequester(''); setGraphFrom('2026-01-10'); setGraphTo(''); loadMatrix({ search: '', from: '2026-01-10', to: '', company: '', material: '', requester: '' }); }}
+                      onClick={() => { setGraphCompany(''); setGraphMaterial(''); setGraphCargo(''); setGraphFrom('2026-01-10'); setGraphTo(''); loadMatrix({ search: '', from: '2026-01-10', to: '', company: '', material: '', cargo: '' }); }}
                       className="h-9 px-4 rounded-md border border-[hsl(var(--canalco-neutral-300))] text-sm font-medium text-[hsl(var(--canalco-neutral-600))] hover:bg-[hsl(var(--canalco-neutral-50))]"
                     >
                       Limpiar
@@ -1466,41 +1688,285 @@ export default function AuditoriasComprasPage() {
                 {/* Órdenes de compra y facturación (en pesos) */}
                 <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
                   <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
-                    Órdenes de compra y facturación por mes
+                    Órdenes de compra con facturación pendiente
                   </h3>
                   <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
-                    Valor en pesos de las órdenes de compra emitidas y de la facturación recibida.
+                    Órdenes emitidas a las que les falta facturación —sin factura o
+                    facturadas a medias—, de la más antigua a la más reciente. Entre la
+                    orden y su factura pasan 17 días en promedio.
                   </p>
-                  {monthlyChartData.every((m) => !m.ocValor && !m.facturacionValor) ? (
-                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
-                      No hay datos de OC ni facturación para mostrar.
+                  {sinFactura.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-48 text-sm gap-2">
+                      <span className="text-green-700 font-medium">
+                        Todas las órdenes del periodo están facturadas por completo.
+                      </span>
                     </div>
                   ) : (
-                    <ResponsiveContainer width="100%" height={340}>
-                      <BarChart data={monthlyChartData} margin={{ top: 16, right: 12, left: 12, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis
-                          dataKey="mes"
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
-                          axisLine={{ stroke: '#e5e7eb' }}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`)}
-                        />
-                        <Tooltip
-                          contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-                          cursor={{ fill: '#f9fafb' }}
-                          formatter={(v: number, name) => [`$${Number(v).toLocaleString('es-CO')}`, name]}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                        <Bar dataKey="ocValor" name="Órdenes de Compra $" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={48} />
-                        <Bar dataKey="facturacionValor" name="Facturación $" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={48} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <>
+                      <div className="flex flex-wrap gap-4 mb-4">
+                        <div className="rounded-lg border border-[hsl(var(--canalco-neutral-300))] px-4 py-3">
+                          <div className="text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
+                            {sinFactura.length}
+                          </div>
+                          <div className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                            órdenes con pendiente
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-[hsl(var(--canalco-neutral-300))] px-4 py-3">
+                          <div className="text-2xl font-bold text-[hsl(var(--canalco-neutral-900))]">
+                            ${sinFacturaTotal.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                          </div>
+                          <div className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                            pendiente de facturar
+                          </div>
+                        </div>
+                        {sinFacturaAtrasadas > 0 && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                            <div className="text-2xl font-bold text-red-700">{sinFacturaAtrasadas}</div>
+                            <div className="text-xs text-red-800">
+                              llevan más de {DIAS_SIN_FACTURA} días
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left">
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))]">OC</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))]">Requisición</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))]">Proveedor</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))]">Municipio</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))]">Emitida</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))] text-right">Días</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))] text-right">Valor OC</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))] text-right">Valor factura</th>
+                              <th className="px-3 py-2 font-semibold border-b border-[hsl(var(--canalco-neutral-300))] text-right">Diferencia</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sinFactura.map((o) => {
+                              const tarde = o.days >= DIAS_SIN_FACTURA;
+                              return (
+                                <tr
+                                  key={o.purchaseOrderNumber}
+                                  className={
+                                    'border-b border-[hsl(var(--canalco-neutral-200))] ' +
+                                    (tarde ? 'bg-red-50/60' : '')
+                                  }
+                                >
+                                  <td className="px-3 py-2 font-medium whitespace-nowrap">
+                                    {o.purchaseOrderNumber}
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-[hsl(var(--canalco-neutral-600))]">
+                                    {o.requisitionNumber ?? '—'}
+                                  </td>
+                                  <td className="px-3 py-2">{o.supplierName}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--canalco-neutral-600))]">
+                                    {o.companyName ?? '—'}
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    {o.issueDate ? o.issueDate.slice(0, 10) : '—'}
+                                  </td>
+                                  <td
+                                    className={
+                                      'px-3 py-2 text-right tabular-nums ' +
+                                      (tarde ? 'font-bold text-red-700' : '')
+                                    }
+                                  >
+                                    {o.days}
+                                  </td>
+                                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                    ${o.totalAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                                  </td>
+                                  <td
+                                    className={
+                                      'px-3 py-2 text-right tabular-nums whitespace-nowrap ' +
+                                      (o.invoicedAmount === 0
+                                        ? 'text-[hsl(var(--canalco-neutral-400))]'
+                                        : '')
+                                    }
+                                    title={o.invoicedAmount === 0 ? 'Sin ninguna factura' : 'Facturada parcialmente'}
+                                  >
+                                    {o.invoicedAmount === 0
+                                      ? '—'
+                                      : `$${o.invoicedAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
+                                  </td>
+                                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap font-semibold">
+                                    ${o.pendingAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Compras por área */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))] mb-1">
+                    Compras por área
+                  </h3>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
+                    Valor de las órdenes de compra que salieron de las requisiciones de cada
+                    área. El área se deduce del rol de quien la creó.
+                  </p>
+                  {areasData.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay compras para mostrar.
+                    </div>
+                  ) : (
+                    <>
+                      <ResponsiveContainer width="100%" height={Math.max(240, areasData.length * 34 + 60)}>
+                        <BarChart
+                          data={areasData}
+                          layout="vertical"
+                          margin={{ top: 8, right: 28, left: 12, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                          <XAxis
+                            type="number"
+                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`)}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="area"
+                            width={150}
+                            tick={{ fontSize: 12, fill: '#374151' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                            cursor={{ fill: '#f9fafb' }}
+                            formatter={(v: number) => [`$${Number(v).toLocaleString('es-CO')}`, 'Comprado']}
+                            labelFormatter={(area: string) => {
+                              const a = areasData.find((x) => x.area === area);
+                              return a
+                                ? `${a.area} · ${a.requisitions} requisiciones · ${a.participacion}% del total`
+                                : area;
+                            }}
+                          />
+                          <Bar dataKey="amount" name="Comprado $" fill="#6366f1" radius={[0, 4, 4, 0]} maxBarSize={22} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      {areasData[0] && (
+                        <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-4">
+                          <strong className="text-[hsl(var(--canalco-neutral-700))]">{areasData[0].area}</strong>{' '}
+                          es la que más compra: ${areasData[0].amount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                          {' '}({areasData[0].participacion}% del total) en {areasData[0].requisitions} requisiciones.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Compras por proveedor */}
+                <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] p-6 mt-6">
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+                    <h3 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))]">
+                      Compras por proveedor
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      {proveedoresConDiferencia.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs font-medium text-[hsl(var(--canalco-neutral-700))] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={soloConDiferencia}
+                            onChange={(e) => setSoloConDiferencia(e.target.checked)}
+                            className="accent-[hsl(var(--canalco-primary))]"
+                          />
+                          Solo los que tienen diferencia ({proveedoresConDiferencia.length})
+                        </label>
+                      )}
+                      {(soloConDiferencia ? proveedoresConDiferencia : proveedoresData).length > TOP_PROVEEDORES && (
+                        <button
+                          type="button"
+                          onClick={() => setVerTodosProveedores((v) => !v)}
+                          className="text-xs font-medium text-[hsl(var(--canalco-primary))] hover:underline"
+                        >
+                          {verTodosProveedores
+                            ? `Ver solo el top ${TOP_PROVEEDORES}`
+                            : `Ver los ${(soloConDiferencia ? proveedoresConDiferencia : proveedoresData).length}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
+                    Valor de las órdenes de compra emitidas a cada proveedor y cuánto ha
+                    facturado. Incluye IVA y otros conceptos, igual que la gráfica de arriba.
+                  </p>
+                  {proveedoresData.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-[hsl(var(--canalco-neutral-500))] text-sm">
+                      No hay compras a proveedores para mostrar.
+                    </div>
+                  ) : (
+                    <>
+                      <ResponsiveContainer width="100%" height={Math.max(260, proveedoresVisibles.length * 34 + 60)}>
+                        <BarChart
+                          data={proveedoresVisibles}
+                          layout="vertical"
+                          margin={{ top: 8, right: 24, left: 12, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                          <XAxis
+                            type="number"
+                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v}`)}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="nombre"
+                            width={190}
+                            tick={{ fontSize: 11, fill: '#374151' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                            cursor={{ fill: '#f9fafb' }}
+                            formatter={(v: number, name) => [`$${Number(v).toLocaleString('es-CO')}`, name]}
+                            labelFormatter={(nombre: string) => {
+                              const p = proveedoresData.find((x) => x.nombre === nombre);
+                              if (!p) return nombre;
+                              const falta = p.tieneDiferencia
+                                ? ` · falta por facturar $${p.pendiente.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`
+                                : ' · facturado completo';
+                              return `${p.nombreCompleto} · ${p.orderCount} OC · ${p.participacion}% del total${falta}`;
+                            }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
+                          <Bar dataKey="totalAmount" name="Órdenes de Compra $" fill="#16a34a" radius={[0, 4, 4, 0]} maxBarSize={22} />
+                          <Bar dataKey="invoicedAmount" name="Facturación $" fill="#f59e0b" radius={[0, 4, 4, 0]} maxBarSize={22} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-4">
+                        {proveedoresData.length} proveedores · los {Math.min(3, proveedoresData.length)} primeros
+                        concentran el {concentracionTop3}% de la compra.
+                        {proveedoresConDiferencia.length > 0 && (
+                          <>
+                            {' '}
+                            <strong className="text-[hsl(var(--canalco-neutral-700))]">
+                              {proveedoresConDiferencia.length}
+                            </strong>{' '}
+                            tienen diferencia entre lo ordenado y lo facturado, por{' '}
+                            <strong className="text-[hsl(var(--canalco-neutral-700))]">
+                              ${pendienteTotal.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                            </strong>
+                            .
+                          </>
+                        )}
+                      </p>
+                    </>
                   )}
                 </div>
 

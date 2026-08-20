@@ -9,8 +9,11 @@ interface ProtectedRouteProps {
   /**
    * Permiso(s) requerido(s) para acceder a esta ruta
    * Puede ser un string único o un array de permisos
+   *
+   * Opcional: hay rutas que se abren por rol y no por permiso, porque no existe
+   * un permiso que las describa. En ese caso se omite y se usa `allowedRoles`.
    */
-  permission: string | string[];
+  permission?: string | string[];
 
   /**
    * Si es true y `permission` es un array, requiere TODOS los permisos
@@ -77,11 +80,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user } = useAuth();
 
   const hasAccess = React.useMemo(() => {
-    const permAccess = Array.isArray(permission)
-      ? requireAll
-        ? hasAllPermissions(permission)
-        : hasAnyPermission(permission)
-      : hasPermission(permission);
+    // Sin `permission` la ruta se decide solo por rol; no se concede por defecto.
+    const permAccess = !permission
+      ? false
+      : Array.isArray(permission)
+        ? requireAll
+          ? hasAllPermissions(permission)
+          : hasAnyPermission(permission)
+        : hasPermission(permission);
 
     const roleAccess = allowedRoles
       ? Array.isArray(allowedRoles)

@@ -7,10 +7,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import {
+  gestionConocimientoService,
+  type GcSolicitud, type GcHistorialEntry,
+} from '@/services/gestionConocimiento.service';
 import {
   ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla,
-  documentosConAccion, DOCUMENTO_LABEL, textoSla,
+  documentosConAccion, DOCUMENTO_LABEL, textoSla, accionInfo, ACCION_CREACION,
   ROLES_ADMINISTRATIVA, ROLES_JURIDICA,
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
@@ -1339,7 +1342,24 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
     : acciones
   ).filter((a) => a.documento === 'solicitud');
   const enOtroDocumento = documentosConAccion(estado, nombreRol, esCreador, 'solicitud');
-  const hayHistorial = !!sol.historial && sol.historial.length > 0;
+  /*
+   * La bitácora completa, del principio.
+   *
+   * La creación no queda registrada —la solicitud nace con el historial vacío—,
+   * así que una recién creada no mostraba nada y en las demás la primera línea
+   * era el envío, borrando quién la hizo y cuándo. Se arma acá con `createdAt` y
+   * `creadorNombre`, que sí quedan guardados, en vez de escribir la entrada al
+   * crear: así también aparece en las que ya existen.
+   */
+  const creacion: GcHistorialEntry = {
+    estado: 'borrador',
+    accion: ACCION_CREACION,
+    fecha: sol.createdAt,
+    userId: sol.createdBy,
+    userName: sol.creadorNombre ?? null,
+  };
+  const historial = [creacion, ...(sol.historial ?? [])];
+  const hayHistorial = historial.length > 0;
 
   return (
     /* Estado e historial van lado a lado: son las dos preguntas que se hacen al abrir
@@ -1544,7 +1564,7 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
         </header>
         <div className="p-5">
           <ol className="relative pl-5 space-y-4 before:absolute before:inset-y-1.5 before:left-[3px] before:w-px before:bg-[#e6e6f0]">
-            {[...sol.historial].reverse().map((h, i) => {
+            {[...historial].reverse().map((h, i) => {
               // Los avisos de vencimiento comparten bitácora con las transiciones,
               // pero no son un cambio de estado: si se pintaran igual, la fila diría
               // "Contrato en ejecución" y parecería que el flujo se movió. Van con su
@@ -1607,11 +1627,29 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
                       {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
                     </>
                   ) : (
-                    <>
-                      <span className="font-medium">{estadoLabel(h.estado)}</span>
-                      {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
-                      {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
-                    </>
+                    /*
+                     * Manda lo que se hizo, no dónde quedó. Con solo el estado, una
+                     * devolución y un envío se leían igual —«Borrador · Jorge Fong»
+                     * las dos—, que es justamente lo que hay que poder distinguir.
+                     * El estado resultante queda detrás, como contexto.
+                     */
+                    (() => {
+                      const info = accionInfo(h.accion);
+                      return (
+                        <>
+                          <span className={'font-medium ' + (info?.devuelve ? 'text-red-700' : '')}>
+                            {info?.label ?? estadoLabel(h.estado)}
+                          </span>
+                          {h.userName && <span className="text-[hsl(var(--canalco-neutral-500))]">· {h.userName}</span>}
+                          {info && h.accion !== ACCION_CREACION && (
+                            <span className="text-[hsl(var(--canalco-neutral-500))]">
+                              · queda en {estadoLabel(h.estado)}
+                            </span>
+                          )}
+                          {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+                        </>
+                      );
+                    })()
                   )}
                   </div>
                 </li>

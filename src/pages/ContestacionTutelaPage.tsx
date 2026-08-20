@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService } from '@/services/gestionConocimiento.service';
+import { FORMATO_TUTELA } from '@/config/formatosGestion';
 import { TextosDocumento, useTextosDocumento, TextoEd, AutoTextarea } from '@/components/juridica/textoEditable';
 import { masterDataService, type Company } from '@/services/master-data.service';
 import { getActaConfig, hasActaConfig } from '@/config/actas';
@@ -357,10 +358,21 @@ export default function ContestacionTutelaPage() {
   };
 
   const handleSave = async () => {
-    if (docId === null) return;
     setSaving(true);
     try {
-      await gestionConocimientoService.update(docId, { data: f });
+      const guardada = await gestionConocimientoService.guardar(docId, {
+        gestion: 'juridica',
+        formato: FORMATO_TUTELA,
+        data: f,
+      });
+      // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
+      // siguiente guardado crearía una segunda contestación.
+      if (docId === null) {
+        navigate(
+          `/dashboard/gestion-conocimiento/juridica/tutela/${guardada.solicitudId}`,
+          { replace: true },
+        );
+      }
       toast.success('Contestación guardada');
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'No se pudo guardar');

@@ -365,5 +365,38 @@ const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {
 };
 
 export const estadoLabel = (estado: string) => ESTADOS[estado as JuridicaEstado]?.label ?? estado;
+
+/** Acción de la creación. No es una transición: la solicitud nace en borrador. */
+export const ACCION_CREACION = 'creacion_solicitud';
+
+/**
+ * Acciones que el flujo ya no ofrece pero que están en bitácoras viejas.
+ *
+ * `iniciar_designacion` pasaba del contrato firmado directo a la designación del
+ * supervisor, antes de que las pólizas entraran al flujo. Los contratos que se
+ * tramitaron así siguen existiendo y su historial tiene que poder leerse. No
+ * vuelven a TRANSICIONES: eso es lo que decide qué se puede hacer hoy.
+ */
+const ACCIONES_RETIRADAS: Record<string, string> = {
+  iniciar_designacion: 'Iniciar designación de supervisor',
+};
+
+/**
+ * Qué se hizo en una entrada del historial, y si fue una devolución.
+ *
+ * La bitácora guardaba solo el estado en que quedó la solicitud, y así una
+ * devolución era indistinguible de cualquier otro paso: «Borrador · Jorge Fong»
+ * tanto si la envió como si se la rechazaron. El nombre de la acción es lo que
+ * de verdad se audita.
+ */
+export const accionInfo = (
+  accion: string,
+): { label: string; devuelve: boolean } | null => {
+  if (accion === ACCION_CREACION) return { label: 'Solicitud creada', devuelve: false };
+  const t = TRANSICIONES.find((x) => x.accion === accion);
+  if (t) return { label: t.label, devuelve: t.tone === 'danger' };
+  const retirada = ACCIONES_RETIRADAS[accion];
+  return retirada ? { label: retirada, devuelve: false } : null;
+};
 export const estadoBadgeClass = (estado: string) =>
   TONE_CLASSES[ESTADOS[estado as JuridicaEstado]?.tone ?? 'gray'];

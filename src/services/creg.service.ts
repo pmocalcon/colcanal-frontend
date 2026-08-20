@@ -557,11 +557,65 @@ export interface CregSummary {
   byMunicipio: CregSummaryMunicipio[];
 }
 
+/** Una columna del comparador: el municipio, sea empresa o proyecto de Canales. */
+export interface ComparadorMunicipio {
+  /** `companyId:projectId` (0 si no hay proyecto). Es la llave de `valores`. */
+  clave: string;
+  companyId: number;
+  projectId: number | null;
+  nombre: string;
+}
+
+/** Lo que un municipio tiene cargado para un elemento. */
+export interface ComparadorCelda {
+  valor: number | null;
+  /** El código local. Cada contrato numeró su catálogo aparte, así que difiere. */
+  code: string;
+  /** El texto tal como está escrito allí, que rara vez coincide letra a letra. */
+  descripcion: string;
+}
+
+/** Una fila del comparador: un elemento visto en todos los municipios. */
+export interface ComparadorFila {
+  /** Descripción normalizada: la llave con la que se cruzan los municipios. */
+  clave: string;
+  /** La descripción más frecuente, como nombre del elemento. */
+  elemento: string;
+  grupo: string | null;
+  /** Lo cargado en cada municipio. Si la clave no está, allí no existe. */
+  celdas: Record<string, ComparadorCelda>;
+  presentes: number;
+  minimo: number | null;
+  maximo: number | null;
+  /** Cuántas veces cabe el menor en el mayor. `null` si está en un solo municipio. */
+  veces: number | null;
+}
+
+export interface CregComparador {
+  municipios: ComparadorMunicipio[];
+  filas: ComparadorFila[];
+}
+
 // ============ SERVICIO ============
 
 const BASE = '/creg';
 
 export const cregService = {
+  /**
+   * El mismo elemento en todos los municipios. Solo lectura.
+   *
+   * Cruza por descripción, no por código: entre contratos el código no identifica
+   * nada —el mismo PROP-020 es una luminaria en un municipio y un poste en otro—.
+   *
+   * Compara el total con indirectos SIN IPP: el factor IPP cambia de un municipio
+   * a otro por razones legítimas y metido aquí taparía las diferencias de costo,
+   * que son las que interesan.
+   */
+  async getComparador(): Promise<CregComparador> {
+    const { data } = await api.get<CregComparador>(`${BASE}/comparador`);
+    return data;
+  },
+
   async getConfig(companyId: number, projectId?: number | null): Promise<CregConfig> {
     const { data } = await api.get<CregConfig>(`${BASE}/config/${companyId}`, {
       params: projectId != null ? { projectId } : undefined,

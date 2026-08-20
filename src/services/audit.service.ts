@@ -120,6 +120,50 @@ export interface MatrixResponse {
   totalInvoiceValue?: number;
   topMaterials?: { code: string; description: string; reqCount: number; totalQuantity: number; totalAmount: number }[];
   topMaterialsByMonth?: { year: number; month: number; code: string; description: string; reqCount: number; totalQuantity: number; totalAmount: number }[];
+  /**
+   * A qué proveedores se les compró, de mayor a menor.
+   *
+   * `totalAmount` es el total de las órdenes —subtotal + IVA + otros conceptos—,
+   * la misma cifra de la gráfica de órdenes por mes, y no la suma de los ítems,
+   * que deja fuera fletes y similares.
+   */
+  topSuppliers?: {
+    supplierId: number;
+    name: string;
+    nit: string | null;
+    orderCount: number;
+    totalAmount: number;
+    invoicedAmount: number;
+  }[];
+  /**
+   * Órdenes a las que les falta facturación —sin factura o facturadas a
+   * medias—, de la más vieja a la más nueva. `days` son los días desde la
+   * emisión y `pendingAmount` lo que el proveedor no ha cobrado todavía.
+   */
+  /**
+   * Qué área compra más, de mayor a menor por valor.
+   *
+   * El área sale del rol de quien creó la requisición: la base no la guarda como
+   * tal. La agrupación vive en `areas.constants.ts` del backend.
+   */
+  purchasesByArea?: { area: string; requisitions: number; amount: number }[];
+  /**
+   * Festivos colombianos como `YYYY-MM-DD`. La matriz los descuenta —junto con
+   * los fines de semana— al medir cuánto tardó cada paso. Vienen del backend
+   * para que la lista viva en un solo sitio.
+   */
+  holidays?: string[];
+  ordersPendingInvoice?: {
+    purchaseOrderNumber: string;
+    supplierName: string;
+    issueDate: string | null;
+    days: number;
+    totalAmount: number;
+    invoicedAmount: number;
+    pendingAmount: number;
+    requisitionNumber: string | null;
+    companyName: string | null;
+  }[];
 }
 
 export interface MaterialPurchaseRow {
@@ -200,6 +244,8 @@ export const auditService = {
     companyName?: string;
     materialCode?: string;
     requesterName?: string;
+    /** Cargo de quien creó la requisición. Es por lo que filtra el selector de personas. */
+    requesterCargo?: string;
   }): Promise<MatrixResponse> {
     const params = new URLSearchParams();
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
@@ -208,6 +254,7 @@ export const auditService = {
     if (filters?.companyName) params.append('companyName', filters.companyName);
     if (filters?.materialCode) params.append('materialCode', filters.materialCode);
     if (filters?.requesterName) params.append('requesterName', filters.requesterName);
+    if (filters?.requesterCargo) params.append('requesterCargo', filters.requesterCargo);
     const response = await api.get<MatrixResponse>(`/audit/matrix?${params.toString()}`);
     return response.data;
   },

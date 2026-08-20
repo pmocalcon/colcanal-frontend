@@ -433,7 +433,7 @@ export default function ResumenPlanAnualPage() {
               <tr><th colspan="8" class="blue-sub">${escapeHtml(municipioLabel)}${escapeHtml(zoneLabel)} - ${projectSummaries.length} proyecto${projectSummaries.length !== 1 ? 's' : ''}</th></tr>
               <tr>
                 <th>Item</th>
-                <th>Codigo</th>
+                <th>Código</th>
                 <th>UCAP</th>
                 <th>Unidad</th>
                 <th>Cant. total</th>
@@ -1123,7 +1123,7 @@ export default function ResumenPlanAnualPage() {
                     </tr>
                     <tr className="bg-white">
                       <th className="border border-black px-2 py-1 text-center w-12">Item</th>
-                      <th className="border border-black px-2 py-1 text-center w-28">Codigo</th>
+                      <th className="border border-black px-2 py-1 text-center w-28">Código</th>
                       <th className="border border-black px-2 py-1 text-center">UCAP</th>
                       <th className="border border-black px-2 py-1 text-center w-24">Unidad</th>
                       <th className="border border-black px-2 py-1 text-center w-24">Cant. total</th>

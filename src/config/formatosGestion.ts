@@ -2,6 +2,18 @@ import {
   Banknote, CalendarClock, Clock4, FileSignature, FileX2, Gavel, Plane, Scale, Users,
   type LucideIcon,
 } from 'lucide-react';
+import {
+  estadoLabel as prestamoEstadoLabel,
+  estadoBadgeClass as prestamoEstadoBadge,
+} from '@/utils/prestamoWorkflow';
+import {
+  estadoLabel as permisoEstadoLabel,
+  estadoBadgeClass as permisoEstadoBadge,
+} from '@/utils/permisoWorkflow';
+import {
+  estadoLabel as horasExtrasEstadoLabel,
+  estadoBadgeClass as horasExtrasEstadoBadge,
+} from '@/utils/horasExtrasWorkflow';
 
 /**
  * Los formatos de cada gestión, y de qué gestiones hay portada.
@@ -27,7 +39,7 @@ export const FORMATO_TERMINACION = 'ACTA-TERMINACION';
 export const FORMATO_TUTELA = 'CONTESTACION-TUTELA';
 
 // ── G. de talento humano ──
-export const FORMATO_PRESTAMO = 'SOLICITUD-PRESTAMO';
+export const FORMATO_PRESTAMO = 'GTH-007-F';
 export const FORMATO_PERMISO = 'GTH-009-F';
 export const FORMATO_VACACIONES = 'GTH-018-F';
 export const FORMATO_HORAS_EXTRAS = 'GTH-016-F';
@@ -55,6 +67,15 @@ export interface FormatoDoc {
   columnas?: ColumnaListado[];
   /** Cómo se nombra un registro suyo en los botones y los vacíos. */
   singular?: string;
+  /**
+   * Cómo se rotula y colorea el estado en el listado. Solo la llevan los formatos con
+   * flujo de aprobación; con ella, el listado genérico les pinta la columna «Estado» y
+   * protege del borrado los que ya salieron del borrador.
+   *
+   * Va acá y no en el listado para que la pantalla genérica no tenga que conocer la
+   * máquina de estados de cada formato.
+   */
+  estadoMeta?: { label: (estado: string) => string; badgeClass: (estado: string) => string };
 }
 
 export interface GestionFormatos {
@@ -120,6 +141,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
           { label: 'Empleado', campo: 'nombreCompleto' },
           { label: 'Valor solicitado', campo: 'valorSolicitado' },
         ],
+        estadoMeta: { label: prestamoEstadoLabel, badgeClass: prestamoEstadoBadge },
       },
       {
         slug: 'permiso',
@@ -132,6 +154,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
           { label: 'Nombre', campo: 'nombre' },
           { label: 'Fecha del permiso', campo: 'fechaPermiso' },
         ],
+        estadoMeta: { label: permisoEstadoLabel, badgeClass: permisoEstadoBadge },
       },
       {
         slug: 'vacaciones',
@@ -156,6 +179,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
           { label: 'Trabajador', campo: 'nombre' },
           { label: 'Periodo', campo: 'periodo' },
         ],
+        estadoMeta: { label: horasExtrasEstadoLabel, badgeClass: horasExtrasEstadoBadge },
       },
     ],
   },

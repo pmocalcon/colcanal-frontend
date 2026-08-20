@@ -131,6 +131,13 @@ export interface CreateRequisitionDto {
   projectId?: number;
   obra?: string;
   codigoObra?: string;
+  /**
+   * Solo en la compra anticipada. El acta todavía no tiene código de
+   * contabilidad, así que este número es lo que permite estampárselo a la
+   * requisición cuando el acta se apruebe. Exige que Gerencia haya autorizado
+   * la compra sobre esa acta.
+   */
+  actaNumber?: string;
   priority?: 'alta' | 'normal';
   items: CreateRequisitionItemDto[];
 }

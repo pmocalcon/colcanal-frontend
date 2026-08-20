@@ -32,6 +32,33 @@ const NOMBRES: Record<string, string> = {
   'levantamiento-obras': 'Obras',
 };
 
+/**
+ * Bandeja única de Gerencia. No viene del backend porque no es una gestión con
+ * permisos propios: es una vista de lo que ya existe en otros módulos, abierta a
+ * Gerencia y al PMO. Crear una gestión en la base solo para esto habría exigido
+ * tocar las tablas de permisos —que tienen las secuencias desalineadas— sin ganar
+ * nada: no hay nada que graduar, se entra o no se entra.
+ *
+ * Por eso se pinta con las demás tarjetas fijas del frontend —Gestión del
+ * conocimiento, Talento Humano, Recurso Económico— y no dentro de la lista que
+ * ordena `prepararModulos`: esas fijas van después de los módulos del backend, y
+ * metida en la lista quedaría siempre antes de ellas.
+ */
+export const APROBACIONES = {
+  slug: 'aprobaciones',
+  nombre: 'Aprobaciones',
+  icono: 'Stamp',
+};
+
+const ROLES_APROBACIONES = ['Gerencia', 'Analista PMO', 'Director PMO'];
+
+/**
+ * Quién ve la bandeja. Vive aquí —y no en cada pantalla— para que el dashboard y
+ * la barra lateral no puedan contradecirse sobre a quién se le muestra.
+ */
+export const puedeVerAprobaciones = (rol?: string | null): boolean =>
+  ROLES_APROBACIONES.includes((rol ?? '').trim());
+
 export const prepararModulos = (modules: Module[]): Module[] =>
   modules
     .map((m) => {
