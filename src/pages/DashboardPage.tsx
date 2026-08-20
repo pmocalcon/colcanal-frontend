@@ -161,6 +161,18 @@ export default function DashboardPage() {
 
         {/* Modules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Aprobaciones va de primera: es lo que hay pendiente de firmar, y quien la
+              ve entra al sistema para eso. Fija como las demás de abajo —no es una
+              gestión de la tabla— y sin candado: se abre por rol, no por permiso. */}
+          {puedeVerAprobaciones(user?.nombreRol) && (
+            <ModuleCard
+              nombre={APROBACIONES.nombre}
+              slug={APROBACIONES.slug}
+              icono={APROBACIONES.icono}
+              hasAccess={true}
+              onClick={() => navigate(`/dashboard/${APROBACIONES.slug}`)}
+            />
+          )}
           {sortedModules.map((module) => (
             <ModuleCard
               key={module.gestionId}
@@ -202,18 +214,6 @@ export default function DashboardPage() {
               icono="Wallet"
               hasAccess={true}
               onClick={() => navigate('/dashboard/recurso-economico')}
-            />
-          )}
-          {/* Aprobaciones: la bandeja de Gerencia. Fija como las anteriores —no es
-              una gestión de la tabla— y sin candado: se abre por rol, no por
-              permiso. */}
-          {puedeVerAprobaciones(user?.nombreRol) && (
-            <ModuleCard
-              nombre={APROBACIONES.nombre}
-              slug={APROBACIONES.slug}
-              icono={APROBACIONES.icono}
-              hasAccess={true}
-              onClick={() => navigate(`/dashboard/${APROBACIONES.slug}`)}
             />
           )}
         </div>

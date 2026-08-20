@@ -16,6 +16,7 @@ import {
 } from '@/config/submodulos';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { esRolPmo } from '@/utils/rolesPmo';
+import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 /**
  * Barra lateral del sistema: el navegador de la aplicación.
@@ -29,11 +30,15 @@ import { esRolPmo } from '@/utils/rolesPmo';
  * los que el rol no puede abrir se muestran con candado, igual que las tarjetas.
  */
 
-/** Los módulos que no vienen de la tabla `gestiones` y viven fijos en el frontend. */
+/**
+ * Los módulos que no vienen de la tabla `gestiones` y viven fijos en el frontend.
+ * En el mismo orden en que el dashboard pinta sus tarjetas: las dos pantallas son la
+ * misma lista vista de dos maneras y no pueden contradecirse.
+ */
 const FIJOS = [
   { slug: 'gestion-conocimiento', nombre: 'Gestión del conocimiento', icono: 'BookOpen' },
+  { slug: 'talento-humano', nombre: 'Talento Humano', icono: 'Users' },
   { slug: 'recurso-economico', nombre: 'Recurso Económico', icono: 'Wallet' },
-  APROBACIONES,
 ];
 
 /** Las dos primeras iniciales del nombre, para el círculo del usuario. */
@@ -92,16 +97,21 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       slug: m.slug, nombre: m.nombre, icono: m.icono, acceso: m.hasAccess,
     }));
     const fijos = FIJOS
-      // Recurso Económico y Aprobaciones se abren por rol, no por permiso: a quien
-      // no lo tenga no se le pintan, ni con candado, porque no hay permiso que
-      // pueda pedir. Gestión del conocimiento sí es para todos.
+      // Talento Humano y Recurso Económico se abren por rol, no por permiso: a quien
+      // no lo tenga no se le pintan, ni con candado, porque no hay permiso que pueda
+      // pedir. Gestión del conocimiento sí es para todos.
       .filter((f) => {
+        if (f.slug === 'talento-humano') return puedeVerTalentoHumano(user?.nombreRol);
         if (f.slug === 'recurso-economico') return esRolPmo(user?.nombreRol);
-        if (f.slug === APROBACIONES.slug) return puedeVerAprobaciones(user?.nombreRol);
         return true;
       })
       .map((f) => ({ ...f, acceso: true }));
-    return [...delBackend, ...fijos];
+    // Aprobaciones encabeza la barra, en el mismo orden que el tablero: es lo que hay
+    // pendiente de firmar y quien la ve entra al sistema para eso.
+    const aprobaciones = puedeVerAprobaciones(user?.nombreRol)
+      ? [{ ...APROBACIONES, acceso: true }]
+      : [];
+    return [...aprobaciones, ...delBackend, ...fijos];
   }, [modules, user?.nombreRol]);
 
   /*
