@@ -32,10 +32,10 @@ import { textoSla } from '@/utils/juridicaWorkflow';
  *
  * Va apaisado: la tabla tiene dieciséis columnas y en vertical no cabe.
  *
- * Pasa por cuatro manos antes de llegar a nómina: la registra quien atiende el
- * municipio, la revisa un Director de Proyecto, la avala Gerencia de Proyectos y la
- * cierra Dirección Administrativa. Fuera del borrador queda de solo lectura, para que
- * lo que se avaló sea lo que se paga.
+ * Pasa por cuatro manos antes de llegar a nómina: la llena el PQRS, la revisa el
+ * Director de Proyecto que lo tiene a cargo, la valida Dirección Técnica y la aprueba
+ * Gerencia de Proyectos. Fuera del borrador queda de solo lectura, para que lo que se
+ * avaló sea lo que se paga.
  *
  * @see horasExtrasWorkflow — la máquina de estados, espejo de la del backend.
  *
@@ -450,9 +450,9 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
 
   // Quién avaló qué, para que se vea sin abrir el historial.
   const avales: { label: string; quien?: string; fecha?: string }[] = [
-    { label: 'Revisó', quien: d.revisadoPor, fecha: d.fechaRevision },
+    { label: 'Director de Proyecto', quien: d.revisadoPor, fecha: d.fechaRevision },
+    { label: 'Dirección Técnica', quien: d.revisadoTecnicaPor, fecha: d.fechaRevisionTecnica },
     { label: 'Gerencia de Proyectos', quien: d.aprobadoGpPor, fecha: d.fechaAprobacionGp },
-    { label: 'Dirección Administrativa', quien: d.aprobadoAdminPor, fecha: d.fechaAprobacionAdmin },
   ].filter((a) => a.quien);
 
   return (

@@ -1,10 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck, FileText, ClipboardList, Compass, Trash2, RotateCcw, Wallet, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Mail, Bell, CheckCircle2, XCircle, ShoppingCart, Package, ClipboardCheck, FileText, ClipboardList, Compass, Trash2, RotateCcw, Wallet, CalendarClock, Banknote, Clock4, Users, FileSignature, AlertTriangle, Receipt, PlayCircle, Send } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
 
-// Refleja los métodos notify* del backend (notifications.service.ts). Cada tarjeta
-// = una notificación real que el sistema despacha por correo.
+/**
+ * Catálogo de los correos que el sistema despacha. Cada tarjeta es un envío real:
+ * los de compras y obras salen de `notifications.service.ts`, y los de gestión del
+ * conocimiento de las máquinas de estados de cada formato, que declaran a quién se
+ * avisa al entrar a cada estado.
+ *
+ * Es documentación, no configuración: no hay interruptores porque los correos no se
+ * apagan uno por uno. Al agregar un flujo nuevo hay que agregar su tarjeta acá, o la
+ * pantalla pasa a decir menos de lo que el sistema hace.
+ */
 const NOTIFICATION_TYPES = [
   // ── Requisiciones (compras) ──
   {
@@ -255,6 +263,125 @@ const NOTIFICATION_TYPES = [
     description: 'Se notifica al creador cuando el Director Técnico devuelve el cronograma para corrección.',
     trigger: 'Al devolver cronograma',
   },
+
+  // ── Acta provisional y compra anticipada ──
+  {
+    icon: Bell,
+    color: 'text-purple-600',
+    bg: 'bg-purple-50',
+    title: 'Compra anticipada solicitada',
+    description: 'Se envía a Gerencia cuando se pide permiso para comprar contra un acta provisional, todavía sin código de contabilidad.',
+    trigger: 'Al solicitar la compra anticipada',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Compra anticipada resuelta',
+    description: 'Se notifica a quien la solicitó cuando Gerencia la aprueba o la rechaza, con el motivo si la niega.',
+    trigger: 'Al aprobar o rechazar la compra anticipada',
+  },
+
+  // ── G. jurídica · trámite de contratación (GTH-002-F) ──
+  {
+    icon: FileSignature,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: 'Trámite de contratación en su siguiente etapa',
+    description: 'Se envía a quien le toca actuar en cada paso del trámite: revisión jurídica, elaboración del contrato, firma, garantías y acta de inicio.',
+    trigger: 'En cada paso del trámite',
+  },
+  {
+    icon: FileText,
+    color: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    title: 'Documento del contrato guardado',
+    description: 'Se avisa cuando Jurídica guarda la designación del supervisor o el acta de inicio, con el supervisor y las fechas en el cuerpo.',
+    trigger: 'Al guardar un documento del contrato',
+  },
+  {
+    icon: PlayCircle,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
+    title: 'Inicio de contrato (interno)',
+    description: 'Se avisa al supervisor designado y a las áreas cuando el acta de inicio queda firmada, con la fecha de inicio y la terminación pactada.',
+    trigger: 'Al firmar el acta de inicio',
+  },
+  {
+    icon: Send,
+    color: 'text-teal-600',
+    bg: 'bg-teal-50',
+    title: 'Inicio de contrato (al contratista)',
+    description: 'Correo externo al contratista informándole que su contrato inició. Va aparte y sin el detalle interno del trámite.',
+    trigger: 'Al firmar el acta de inicio',
+  },
+  {
+    icon: AlertTriangle,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: 'Contrato próximo a vencer',
+    description: 'Aviso automático con anticipación a la terminación pactada, para definir si se prorroga, se liquida o se deja terminar.',
+    trigger: 'Automático, antes del vencimiento',
+  },
+  // ── G. contable ──
+  {
+    icon: Receipt,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    title: 'Solicitud de anticipo (GF-005-F)',
+    description: 'Se avisa en cada paso: al jefe del solicitante, a Gerencia de Proyectos, a Gerencia y a Tesorería; al solicitante cuando queda pagado o se le devuelve.',
+    trigger: 'En cada paso del anticipo',
+  },
+  {
+    icon: Receipt,
+    color: 'text-cyan-600',
+    bg: 'bg-cyan-50',
+    title: 'Legalización del anticipo (GCT-006-F)',
+    description: 'Se avisa al jefe del solicitante y a Contabilidad a medida que avanza, y al solicitante cuando queda causada o se devuelve.',
+    trigger: 'En cada paso de la legalización',
+  },
+  {
+    icon: Wallet,
+    color: 'text-slate-600',
+    bg: 'bg-slate-100',
+    title: 'Cuentas entre compañías (GF-004-F5)',
+    description: 'Se avisa a Contabilidad cuando queda pendiente la conciliación mensual, y a quien lo radicó cuando se concilia.',
+    trigger: 'Al radicar y al conciliar',
+  },
+
+  // ── G. de talento humano ──
+  {
+    icon: Banknote,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    title: 'Solicitud de préstamo (GTH-007-F)',
+    description: 'Se avisa a Dirección Administrativa cuando el empleado la envía, a Gerencia cuando Administrativa firma, y al empleado cuando se aprueba o se le devuelve.',
+    trigger: 'En cada paso del préstamo',
+  },
+  {
+    icon: CalendarClock,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    title: 'Solicitud de permiso (GTH-009-F)',
+    description: 'Se avisa al jefe de área del solicitante —el que lo autoriza, no un rol fijo— y al empleado cuando su permiso se aprueba o se niega.',
+    trigger: 'Al enviar y al resolver el permiso',
+  },
+  {
+    icon: Clock4,
+    color: 'text-orange-600',
+    bg: 'bg-orange-50',
+    title: 'Horas extras (GTH-016-F)',
+    description: 'Se avisa al Director de Proyecto que tiene a cargo a quien la registró, luego a Dirección Técnica y a Gerencia de Proyectos.',
+    trigger: 'En cada paso de la planilla',
+  },
+  {
+    icon: Users,
+    color: 'text-green-600',
+    bg: 'bg-green-50',
+    title: 'Horas extras aprobadas',
+    description: 'Al quedar aprobada se avisa a quien la registró y a la Dirección Administrativa y Financiera, que es quien la liquida en nómina.',
+    trigger: 'Al aprobar la planilla',
+  },
 ];
 
 export default function NotificacionesPage() {
@@ -294,8 +421,9 @@ export default function NotificacionesPage() {
           <div>
             <h2 className="font-semibold text-blue-900 mb-1">Notificaciones por correo electrónico</h2>
             <p className="text-sm text-blue-800">
-              El sistema envía alertas automáticas por email a los usuarios involucrados en cada etapa de compras y obras.
-              Las notificaciones se despachan en tiempo real cuando ocurre un evento relevante.
+              El sistema envía alertas automáticas por correo a quien le toca actuar en cada etapa de compras, obras y
+              gestión del conocimiento. Se despachan en el momento en que ocurre el evento, no en un resumen diario, y
+              van a la dirección de notificación del usuario o, si no tiene, a su correo corporativo.
             </p>
           </div>
         </div>
@@ -328,20 +456,6 @@ export default function NotificacionesPage() {
           })}
         </div>
 
-        {/* Config note */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-          <p className="text-sm text-amber-800">
-            <strong>Configuración del correo:</strong> En producción las notificaciones se envían por{' '}
-            <strong>Microsoft Graph</strong> (OAuth2). El administrador debe configurar{' '}
-            <code className="bg-amber-100 px-1 rounded">GRAPH_TENANT_ID</code>,{' '}
-            <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_ID</code>,{' '}
-            <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_SECRET</code> y{' '}
-            <code className="bg-amber-100 px-1 rounded">GRAPH_SENDER</code> en el servidor backend.
-            El envío por SMTP (<code className="bg-amber-100 px-1 rounded">SMTP_HOST</code>/
-            <code className="bg-amber-100 px-1 rounded">SMTP_USER</code>/
-            <code className="bg-amber-100 px-1 rounded">SMTP_PASS</code>) queda solo como respaldo.
-          </p>
-        </div>
       </main>
 
       <Footer />

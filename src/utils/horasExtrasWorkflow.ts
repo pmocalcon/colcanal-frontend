@@ -2,9 +2,14 @@
  * Flujo de la planilla de Horas Extras (GTH-016-F) en el frontend. Espeja la máquina de
  * estados del backend (horas-extras-workflow.ts).
  *
- * Cuatro manos, porque la planilla acaba en nómina: la registra quien atiende el
- * municipio, la revisa un Director de Proyecto, la avala Gerencia de Proyectos y la
- * cierra Dirección Administrativa.
+ * Cuatro manos, porque la planilla acaba en nómina: la llena el PQRS, la revisa el
+ * Director de Proyecto que lo tiene a cargo, la valida Dirección Técnica y la aprueba
+ * Gerencia de Proyectos.
+ *
+ * El primer paso combina rol y jerarquía: no lo revisa cualquier Director de Proyecto
+ * sino el de esa persona. Como la jerarquía es dinámica, aquí el botón se le ofrece a
+ * todo Director de Proyecto que no sea el creador y el backend valida que de verdad lo
+ * tenga a cargo.
  *
  * @see rolesPmo — el PMO (Analista y Director) puede ejecutar cualquier paso.
  */
@@ -14,8 +19,8 @@ import { esRolPmo } from './rolesPmo';
 export type HorasExtrasEstado =
   | 'borrador'
   | 'pendiente_director_proyecto'
+  | 'pendiente_direccion_tecnica'
   | 'pendiente_gerencia_proyectos'
-  | 'pendiente_direccion_administrativa'
   | 'aprobado';
 
 interface EstadoMeta {
@@ -27,8 +32,8 @@ interface EstadoMeta {
 export const HORAS_EXTRAS_ESTADOS: Record<HorasExtrasEstado, EstadoMeta> = {
   borrador: { label: 'Borrador', sla: null, tone: 'gray' },
   pendiente_director_proyecto: { label: 'Pendiente de revisión del Director de Proyecto', sla: 2, tone: 'amber' },
-  pendiente_gerencia_proyectos: { label: 'Pendiente de aprobación de Gerencia de Proyectos', sla: 2, tone: 'blue' },
-  pendiente_direccion_administrativa: { label: 'Pendiente de aprobación de Dirección Administrativa', sla: 2, tone: 'violet' },
+  pendiente_direccion_tecnica: { label: 'Pendiente de revisión de Dirección Técnica', sla: 2, tone: 'blue' },
+  pendiente_gerencia_proyectos: { label: 'Pendiente de aprobación de Gerencia de Proyectos', sla: 2, tone: 'violet' },
   aprobado: { label: 'Aprobada', sla: null, tone: 'green' },
 };
 
@@ -38,8 +43,8 @@ const ROLES_DIRECTOR_PROYECTO = [
   'Director de Proyecto Valle',
   'Director de Proyecto Putumayo',
 ];
-const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // Lorena
-const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo']; // Daniela
+const ROLES_DIRECCION_TECNICA = ['Director Técnico']; // Andrés Gómez
+const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // Lorena Martínez
 
 export interface HorasExtrasTransicion {
   accion: string;
@@ -47,6 +52,8 @@ export interface HorasExtrasTransicion {
   to: HorasExtrasEstado;
   roles: string[];
   soloCreador?: boolean;
+  /** Además del rol, hay que tener a cargo al creador. Lo valida el backend. */
+  jefeAutorizador?: boolean;
   requiereMotivo?: boolean;
   label: string;
   tone: 'primary' | 'danger';
@@ -54,12 +61,12 @@ export interface HorasExtrasTransicion {
 
 export const HORAS_EXTRAS_TRANSICIONES: HorasExtrasTransicion[] = [
   { accion: 'enviar', from: 'borrador', to: 'pendiente_director_proyecto', roles: [], soloCreador: true, label: 'Enviar a revisión', tone: 'primary' },
-  { accion: 'revisar', from: 'pendiente_director_proyecto', to: 'pendiente_gerencia_proyectos', roles: ROLES_DIRECTOR_PROYECTO, label: 'Revisar y enviar a Gerencia de Proyectos', tone: 'primary' },
-  { accion: 'devolver_director', from: 'pendiente_director_proyecto', to: 'borrador', roles: ROLES_DIRECTOR_PROYECTO, requiereMotivo: true, label: 'Devolver para corrección', tone: 'danger' },
-  { accion: 'aprobar_gp', from: 'pendiente_gerencia_proyectos', to: 'pendiente_direccion_administrativa', roles: ROLES_GERENCIA_PROYECTOS, label: 'Aprobar y enviar a Dirección Administrativa', tone: 'primary' },
+  { accion: 'revisar_director', from: 'pendiente_director_proyecto', to: 'pendiente_direccion_tecnica', roles: ROLES_DIRECTOR_PROYECTO, jefeAutorizador: true, label: 'Revisar y enviar a Dirección Técnica', tone: 'primary' },
+  { accion: 'devolver_director', from: 'pendiente_director_proyecto', to: 'borrador', roles: ROLES_DIRECTOR_PROYECTO, jefeAutorizador: true, requiereMotivo: true, label: 'Devolver para corrección', tone: 'danger' },
+  { accion: 'revisar_tecnica', from: 'pendiente_direccion_tecnica', to: 'pendiente_gerencia_proyectos', roles: ROLES_DIRECCION_TECNICA, label: 'Revisar y enviar a Gerencia de Proyectos', tone: 'primary' },
+  { accion: 'devolver_tecnica', from: 'pendiente_direccion_tecnica', to: 'borrador', roles: ROLES_DIRECCION_TECNICA, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
+  { accion: 'aprobar_gp', from: 'pendiente_gerencia_proyectos', to: 'aprobado', roles: ROLES_GERENCIA_PROYECTOS, label: 'Aprobar la planilla', tone: 'primary' },
   { accion: 'rechazar_gp', from: 'pendiente_gerencia_proyectos', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
-  { accion: 'aprobar_administrativa', from: 'pendiente_direccion_administrativa', to: 'aprobado', roles: ROLES_ADMINISTRATIVA, label: 'Aprobar la planilla', tone: 'primary' },
-  { accion: 'rechazar_administrativa', from: 'pendiente_direccion_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
 ];
 
 /** Acciones que el usuario (por su rol) puede ejecutar sobre la planilla en cierto estado. */
@@ -74,7 +81,9 @@ export function accionesDisponibles(
     if (t.from !== estado) return false;
     if (esPmo) return true;
     if (t.soloCreador) return esCreador;
-    return t.roles.includes(rol);
+    if (!t.roles.includes(rol)) return false;
+    // El backend comprueba que sea el Director de Proyecto de esa persona.
+    return t.jefeAutorizador ? !esCreador : true;
   });
 }
 
