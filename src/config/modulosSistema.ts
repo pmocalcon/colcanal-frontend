@@ -12,12 +12,21 @@ import type { Module } from '@/services/modules.service';
 /** Se muestran dentro de Compras, no como módulo suelto. */
 const DENTRO_DE_COMPRAS = ['proveedores', 'materiales', 'inventarios', 'auditorias'];
 
+/**
+ * Módulos que el backend devuelve pero que no se muestran.
+ *
+ * Se ocultan aquí y no quitándoles el permiso en la base: el permiso decide quién
+ * puede entrar, esto decide qué se ofrece. Quitarlo de la tabla `gestiones` habría
+ * obligado a tocar las tablas de permisos —que tienen las secuencias desalineadas—
+ * y dejaría sin acceso a quien todavía llegue por un enlace guardado.
+ */
+const OCULTOS = ['dashboard'];
+
 /** Orden de presentación. Lo que no está listado va al final. */
 const ORDEN = [
   'compras',
   'levantamiento-obras',
   'usuarios',
-  'dashboard',
   'notificaciones',
 ];
 
@@ -65,7 +74,7 @@ export const prepararModulos = (modules: Module[]): Module[] =>
       const slug = SLUGS[m.slug] || m.slug;
       return { ...m, slug, nombre: NOMBRES[slug] || m.nombre };
     })
-    .filter((m) => !DENTRO_DE_COMPRAS.includes(m.slug))
+    .filter((m) => !DENTRO_DE_COMPRAS.includes(m.slug) && !OCULTOS.includes(m.slug))
     .sort((a, b) => {
       const ia = ORDEN.indexOf(a.slug);
       const ib = ORDEN.indexOf(b.slug);

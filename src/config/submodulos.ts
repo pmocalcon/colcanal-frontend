@@ -20,7 +20,19 @@ export interface SubModulo {
 
 /* ── Compras ─────────────────────────────────────────────────────────── */
 
-export const SUBMODULOS_COMPRAS: SubModulo[] = [
+/**
+ * Los que dejaron de mostrarse. No se borran de la lista: siguen existiendo como
+ * pantalla y con su permiso, y dejarlos declarados es lo que explica por qué no
+ * aparecen. Borrarlos haría que dentro de un mes nadie supiera si el submódulo se
+ * quitó a propósito o se perdió.
+ *
+ * Aprobar requisiciones y Aprobar órdenes de compra se ocultan porque ese trabajo
+ * pasó al módulo de **Aprobaciones**, que reúne en un solo sitio todo lo que espera
+ * la firma de Gerencia. Sus rutas siguen vivas para los enlaces ya repartidos.
+ */
+const OCULTOS_COMPRAS = new Set(['aprobacion', 'aprobacion-ordenes']);
+
+const TODOS_COMPRAS: SubModulo[] = [
   { slug: 'requisiciones', nombre: 'Requisiciones', icono: 'FileText', to: '/dashboard/compras/requisiciones' },
   { slug: 'revision', nombre: 'Revisión', icono: 'ClipboardCheck', to: '/dashboard/compras/requisiciones/revisar' },
   { slug: 'autorizacion', nombre: 'Autorización', icono: 'Shield', to: '/dashboard/compras/requisiciones/autorizar' },
@@ -37,6 +49,10 @@ export const SUBMODULOS_COMPRAS: SubModulo[] = [
   { slug: 'materiales', nombre: 'Materiales', icono: 'Package', to: '/dashboard/materiales' },
   { slug: 'auditorias', nombre: 'Auditorías', icono: 'ClipboardList', to: '/dashboard/auditorias' },
 ];
+
+export const SUBMODULOS_COMPRAS: SubModulo[] = TODOS_COMPRAS.filter(
+  (s) => !OCULTOS_COMPRAS.has(s.slug),
+);
 
 /** Los que no son de Compras: se muestran dentro pero son módulos con permiso propio. */
 const AJENOS_A_COMPRAS = new Set(['proveedores', 'materiales', 'auditorias']);
@@ -117,7 +133,15 @@ export const SUBMODULOS_CREG: SubModuloConPermiso[] = [
 
 /* ── Obras ───────────────────────────────────────────────────────────── */
 
-export const SUBMODULOS_OBRAS: SubModulo[] = [
+/**
+ * Presupuesto se oculta: no se entra a elaborar un presupuesto desde una tarjeta sino
+ * desde el acta que lo pide, en «Ver Presupuestos» → «Realizar presupuesto», que es
+ * quien sabe a qué acta se le está haciendo. La ruta sigue viva porque es justo la que
+ * abre ese botón.
+ */
+const OCULTOS_OBRAS = new Set(['presupuesto']);
+
+const TODOS_OBRAS: SubModulo[] = [
   { slug: 'crear-obra', nombre: 'Nueva Obra', icono: 'Plus', to: '/dashboard/levantamiento-obras/obras/crear' },
   { slug: 'levantamientos', nombre: 'Levantamientos', icono: 'ClipboardList', to: '/dashboard/levantamiento-obras/levantamientos' },
   { slug: 'obras', nombre: 'Obras', icono: 'Building2', to: '/dashboard/levantamiento-obras/obras' },
@@ -127,6 +151,10 @@ export const SUBMODULOS_OBRAS: SubModulo[] = [
   { slug: 'plan-anual', nombre: 'Plan Anual', icono: 'CalendarDays', to: '/dashboard/levantamiento-obras/plan-anual' },
   { slug: 'cronograma', nombre: 'Cronograma', icono: 'CalendarRange', to: '/dashboard/levantamiento-obras/cronograma' },
 ];
+
+export const SUBMODULOS_OBRAS: SubModulo[] = TODOS_OBRAS.filter(
+  (s) => !OCULTOS_OBRAS.has(s.slug),
+);
 
 /** Quién puede abrir cada submódulo de Obras. Corre sobre los permisos granulares. */
 export const accesoObras = (
