@@ -4,7 +4,8 @@
  *
  * Cuatro manos, porque la planilla acaba en nómina: la llena el PQRS, la revisa el
  * Director de Proyecto que lo tiene a cargo, la valida Dirección Técnica y la aprueba
- * Gerencia de Proyectos.
+ * Gerencia de Proyectos. Ya aprobada le llega a Dirección Administrativa, que no
+ * vuelve a aprobar pero puede devolverla si no cuadra con lo que va a liquidar.
  *
  * El primer paso combina rol y jerarquía: no lo revisa cualquier Director de Proyecto
  * sino el de esa persona. Como la jerarquía es dinámica, aquí el botón se le ofrece a
@@ -45,6 +46,7 @@ const ROLES_DIRECTOR_PROYECTO = [
 ];
 const ROLES_DIRECCION_TECNICA = ['Director Técnico']; // Andrés Gómez
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // Lorena Martínez
+const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo']; // Daniela Swann
 
 export interface HorasExtrasTransicion {
   accion: string;
@@ -55,6 +57,8 @@ export interface HorasExtrasTransicion {
   /** Además del rol, hay que tener a cargo al creador. Lo valida el backend. */
   jefeAutorizador?: boolean;
   requiereMotivo?: boolean;
+  /** Remedio sobre una planilla ya cerrada, no un paso pendiente del flujo. */
+  correctiva?: boolean;
   label: string;
   tone: 'primary' | 'danger';
 }
@@ -67,6 +71,9 @@ export const HORAS_EXTRAS_TRANSICIONES: HorasExtrasTransicion[] = [
   { accion: 'devolver_tecnica', from: 'pendiente_direccion_tecnica', to: 'borrador', roles: ROLES_DIRECCION_TECNICA, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
   { accion: 'aprobar_gp', from: 'pendiente_gerencia_proyectos', to: 'aprobado', roles: ROLES_GERENCIA_PROYECTOS, label: 'Aprobar la planilla', tone: 'primary' },
   { accion: 'rechazar_gp', from: 'pendiente_gerencia_proyectos', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
+  // Dirección Administrativa no aprueba: recibe la planilla aprobada y, si las horas no
+  // cuadran con lo que va a liquidar, la devuelve al borrador con el motivo.
+  { accion: 'devolver_administrativa', from: 'aprobado', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, correctiva: true, label: 'Devolver la planilla', tone: 'danger' },
 ];
 
 /** Acciones que el usuario (por su rol) puede ejecutar sobre la planilla en cierto estado. */

@@ -308,7 +308,7 @@ export default function HorasExtrasPage() {
           <p className="px-2 py-1 text-center font-bold border-b border-black min-w-[1000px]">
             Horario de jornada laboral establecido:{' '}
             <span className="font-normal">
-              De lunes a Viernes de 7 a.m. a 12 p.m. y de 1:30 p.m. a 4:30 p.m. Sábados de 8 a.m. a 12:00 p.m.
+              De  Lunes a Viernes de 7:30 a.m. a 12 p.m. y de 1:30 p.m. a 4:30 p.m. Sábados de 8 a.m. a 12:30 p.m.
             </span>
           </p>
 
@@ -484,6 +484,18 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
         </div>
       )}
 
+      {terminal && (
+        <p className="text-xs font-medium text-green-700">
+          ✓ Planilla aprobada. Lista para liquidar en nómina.
+          {acciones.length > 0 && (
+            <span className="font-normal text-[#8a8aa3]">
+              {' '}Si las horas no cuadran con lo que vas a liquidar, devuélvela al
+              borrador indicando el motivo: se corrige y vuelve a recorrer la cadena.
+            </span>
+          )}
+        </p>
+      )}
+
       {acciones.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {acciones.map((a: HorasExtrasTransicion) => (
@@ -502,11 +514,6 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
       )}
       {acciones.length === 0 && !terminal && (
         <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
-      )}
-      {terminal && (
-        <p className="text-xs font-medium text-green-700">
-          ✓ Planilla aprobada. Lista para liquidar en nómina.
-        </p>
       )}
 
       {sol.historial && sol.historial.length > 0 && (

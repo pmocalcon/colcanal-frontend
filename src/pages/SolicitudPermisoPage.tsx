@@ -278,7 +278,7 @@ export default function SolicitudPermisoPage() {
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
               <Meta label="CÓDIGO:" value="GTH-009-F" />
-              <Meta label="FECHA:" value="06/10/2025" />
+              <Meta label="FECHA:" value="20/08/2026" />
               <Meta label="VERSIÓN:" value="2" last />
             </div>
           </div>
