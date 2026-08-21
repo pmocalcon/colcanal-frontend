@@ -33,6 +33,38 @@ import {
 /** A partir de aquí una firma pendiente deja de ser normal. */
 const DIAS_ALERTA = 8;
 
+/**
+ * Un color por bandeja, para que la lista se lea de un vistazo.
+ *
+ * La bandeja mezcla cosas de módulos distintos en una sola columna, y todos los
+ * títulos en negro obligaban a leerlos para saber dónde termina una y empieza
+ * otra. El color va en el título, en el contador y en una marca a la izquierda:
+ * repetido en tres sitios se distingue también en pantallas donde el texto de
+ * color queda lavado.
+ *
+ * Se eligen por familia y no al azar: lo de Compras en azules —requisiciones y
+ * órdenes—, el dinero de Obras en verde, lo que es una excepción en ámbar, y lo
+ * de personas en cálidos.
+ */
+const COLORES_BANDEJA: Record<string, { punto: string; titulo: string; contador: string }> = {
+  requisiciones:      { punto: 'bg-blue-500',    titulo: 'text-blue-800',    contador: 'bg-blue-100 text-blue-800' },
+  'ordenes-compra':   { punto: 'bg-indigo-500',  titulo: 'text-indigo-800',  contador: 'bg-indigo-100 text-indigo-800' },
+  presupuestos:       { punto: 'bg-emerald-500', titulo: 'text-emerald-800', contador: 'bg-emerald-100 text-emerald-800' },
+  'compra-anticipada':{ punto: 'bg-amber-500',   titulo: 'text-amber-800',   contador: 'bg-amber-100 text-amber-800' },
+  contratos:          { punto: 'bg-violet-500',  titulo: 'text-violet-800',  contador: 'bg-violet-100 text-violet-800' },
+  anticipos:          { punto: 'bg-teal-500',    titulo: 'text-teal-800',    contador: 'bg-teal-100 text-teal-800' },
+  prestamos:          { punto: 'bg-rose-500',    titulo: 'text-rose-800',    contador: 'bg-rose-100 text-rose-800' },
+};
+
+/** Gris para una bandeja nueva: mejor sin color que con el de otra. */
+const COLOR_NEUTRO = {
+  punto: 'bg-slate-400',
+  titulo: 'text-slate-800',
+  contador: 'bg-slate-100 text-slate-800',
+};
+
+const colorDe = (clave: string) => COLORES_BANDEJA[clave] ?? COLOR_NEUTRO;
+
 const pesos = (v: number | null) =>
   v == null
     ? null
@@ -192,8 +224,16 @@ export default function AprobacionesPage() {
           .map((bandeja) => (
             <section key={bandeja.clave} className="space-y-3">
               <div className="flex items-baseline gap-2">
-                <h2 className="text-lg font-semibold">{bandeja.titulo}</h2>
-                <Badge variant="secondary">{bandeja.total}</Badge>
+                <span
+                  aria-hidden
+                  className={`h-2.5 w-2.5 shrink-0 self-center rounded-sm ${colorDe(bandeja.clave).punto}`}
+                />
+                <h2 className={`text-lg font-semibold ${colorDe(bandeja.clave).titulo}`}>
+                  {bandeja.titulo}
+                </h2>
+                <Badge variant="secondary" className={colorDe(bandeja.clave).contador}>
+                  {bandeja.total}
+                </Badge>
                 <span className="text-sm text-muted-foreground">· {bandeja.modulo}</span>
               </div>
 
