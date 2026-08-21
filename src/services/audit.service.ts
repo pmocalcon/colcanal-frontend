@@ -46,6 +46,24 @@ export interface FilterAuditParams {
   toDate?: string;
 }
 
+/**
+ * Una orden de compra de la requisición, en el desglose de Registros.
+ *
+ * Salen todas las de la requisición, no solo las que deben factura: el cuadro de
+ * «pendientes de factura» filtra porque es un cuadro de pendientes, pero aquí un
+ * desglose vacío se leería como que la pantalla falló.
+ */
+export interface RequisitionPurchaseOrder {
+  purchaseOrderNumber: string;
+  issueDate: string | null;
+  /** Días corridos desde que se emitió. */
+  days: number;
+  totalAmount: number;
+  invoicedAmount: number;
+  /** Lo que falta por facturar: valor de la orden menos lo facturado. */
+  pendingAmount: number;
+}
+
 export interface TimelineEvent {
   logId: number;
   action: string;
@@ -59,7 +77,6 @@ export interface TimelineEvent {
   previousStatus: string | null;
   newStatus: string | null;
   comments: string | null;
-  timeSincePrevious: string | null;
 }
 
 export interface RequisitionDetailResponse {
@@ -90,6 +107,12 @@ export interface RequisitionDetailResponse {
     total: number;
   };
   timeline: TimelineEvent[];
+  /**
+   * Festivos colombianos como `YYYY-MM-DD`. La línea de tiempo los descuenta
+   * —junto con los fines de semana— al medir cuánto tardó cada paso. Vienen del
+   * backend para que la lista viva en un solo sitio.
+   */
+  holidays?: string[];
 }
 
 export interface AuditStats {
@@ -234,6 +257,14 @@ export const auditService = {
 
   async getRequisitionDetail(requisitionId: number): Promise<RequisitionDetailResponse> {
     const response = await api.get<RequisitionDetailResponse>(`/audit/requisition/${requisitionId}`);
+    return response.data;
+  },
+
+  /** Las órdenes de compra de una requisición, para el desglose de Registros. */
+  async getRequisitionPurchaseOrders(requisitionId: number): Promise<RequisitionPurchaseOrder[]> {
+    const response = await api.get<RequisitionPurchaseOrder[]>(
+      `/audit/requisition/${requisitionId}/purchase-orders`,
+    );
     return response.data;
   },
 

@@ -14,6 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateShort, formatDate } from '@/utils/dateUtils';
+import { msHabiles, formatElapsedLargo } from '@/utils/tiempoHabil';
 
 // Mapeo de acciones a etiquetas legibles
 const ACTION_LABELS: Record<string, string> = {
@@ -24,6 +25,12 @@ const ACTION_LABELS: Record<string, string> = {
   registrar_cotizacion: 'Cotización Registrada',
   crear_ordenes_compra: 'Órdenes de Compra Generadas',
   registrar_recepcion: 'Recepción Registrada',
+  // El tramo de facturación, que ocurre sobre la orden de compra: hasta ahora la
+  // línea de tiempo terminaba en la recepción y lo que venía después no se veía.
+  registrar_factura: 'Factura Registrada',
+  enviar_facturas_contabilidad: 'Factura Enviada a Contabilidad',
+  recibir_facturas_contabilidad: 'Factura Recibida por Contabilidad',
+  devolver_facturas_contabilidad: 'Factura Devuelta por Contabilidad',
 };
 
 // Mapeo de acciones a colores
@@ -35,6 +42,10 @@ const ACTION_COLORS: Record<string, string> = {
   registrar_cotizacion: 'bg-purple-500/10 text-purple-700 border-purple-500/20',
   crear_ordenes_compra: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20',
   registrar_recepcion: 'bg-teal-500/10 text-teal-700 border-teal-500/20',
+  registrar_factura: 'bg-sky-500/10 text-sky-700 border-sky-500/20',
+  enviar_facturas_contabilidad: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  recibir_facturas_contabilidad: 'bg-green-500/10 text-green-700 border-green-500/20',
+  devolver_facturas_contabilidad: 'bg-red-500/10 text-red-700 border-red-500/20',
 };
 
 export default function AuditoriasComprasDetallePage() {
@@ -124,6 +135,26 @@ export default function AuditoriasComprasDetallePage() {
   }
 
   const { requisition, amounts, timeline } = detail;
+
+  /** Los festivos que manda el backend, para descontarlos de los tiempos. */
+  const festivos = new Set(detail.holidays ?? []);
+
+  /**
+   * Cuánto pasó desde el paso anterior, sin contar fines de semana ni festivos.
+   *
+   * Se calcula acá y no en el servidor porque los días hábiles empiezan y terminan
+   * en hora de Colombia: el backend corre en UTC y una requisición aprobada un
+   * viernes por la noche caería en sábado.
+   */
+  const transcurrido = (index: number): string | null => {
+    if (index === 0) return null;
+    const ms = msHabiles(
+      new Date(timeline[index - 1].createdAt),
+      new Date(timeline[index].createdAt),
+      festivos,
+    );
+    return ms > 0 ? formatElapsedLargo(ms) : null;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -403,7 +434,9 @@ export default function AuditoriasComprasDetallePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {timeline.map((event, index) => (
+              {timeline.map((event, index) => {
+                const desdeElAnterior = transcurrido(index);
+                return (
                 <div
                   key={event.logId}
                   className="relative pl-8 pb-6 border-l-2 border-[hsl(var(--canalco-neutral-300))] last:border-l-0 last:pb-0"
@@ -430,10 +463,10 @@ export default function AuditoriasComprasDetallePage() {
                         <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
                           {formatDate(event.createdAt)}
                         </p>
-                        {event.timeSincePrevious && (
+                        {desdeElAnterior && (
                           <p className="text-xs text-[hsl(var(--canalco-neutral-600))] flex items-center gap-1 justify-end mt-1">
                             <Clock className="w-3 h-3" />
-                            {event.timeSincePrevious} después
+                            {desdeElAnterior} después
                           </p>
                         )}
                       </div>
@@ -466,8 +499,12 @@ export default function AuditoriasComprasDetallePage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
+            <p className="mt-3 text-xs text-[hsl(var(--canalco-neutral-500))]">
+              Los tiempos van en días hábiles: no cuentan fines de semana ni festivos.
+            </p>
           </CardContent>
         </Card>
 

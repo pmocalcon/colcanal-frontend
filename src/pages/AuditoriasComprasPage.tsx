@@ -7,6 +7,7 @@ import type {
   AuditStats,
   MaterialPurchaseControlResponse,
   SupplierPurchasesResponse,
+  RequisitionPurchaseOrder,
 } from '@/services/audit.service';
 import { usersService } from '@/services/users.service';
 import type { User } from '@/services/users.service';
@@ -45,6 +46,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateShort } from '@/utils/dateUtils';
+import { msHabiles, formatElapsed } from '@/utils/tiempoHabil';
 import { getMunicipioName } from '@/utils/departmentMapper';
 
 /** Grupo con el que arranca el control de compras, como el Excel de luminarias. */
@@ -173,55 +175,6 @@ function formatMatrixDate(iso: string): string {
   return `${dd}/${mm}/${yy} ${hh}:${min}`;
 }
 
-function formatElapsed(ms: number): string {
-  if (ms < 0) return '';
-  const mins = Math.floor(ms / 60000);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ${hrs % 24}h`;
-}
-
-/** La fecha como `YYYY-MM-DD` en hora local, para cotejarla con los festivos. */
-const claveDia = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-/** Ni sábado, ni domingo, ni festivo colombiano. */
-const esDiaHabil = (d: Date, festivos: Set<string>) => {
-  const dia = d.getDay();
-  return dia !== 0 && dia !== 6 && !festivos.has(claveDia(d));
-};
-
-/**
- * Milisegundos entre dos instantes contando SOLO los días hábiles.
- *
- * Se recorre día a día y se suma nada más el tramo que cae en días laborables,
- * así que un paso dado el viernes por la tarde y resuelto el lunes por la mañana
- * ya no aparece como «3d»: el fin de semana no le corría el reloj a nadie.
- *
- * Se cuentan las 24 horas de cada día hábil, no la jornada de 7:00 a 16:30. Lo
- * que se pidió fue descontar fines de semana y festivos; recortar además a la
- * jornada mediría otra cosa —horas de trabajo, no tiempo transcurrido— y haría
- * los números incomparables con los que ya se venían mirando.
- */
-function msHabiles(desde: Date, hasta: Date, festivos: Set<string>): number {
-  if (hasta <= desde) return 0;
-  let total = 0;
-  const cursor = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
-  while (cursor.getTime() < hasta.getTime()) {
-    const siguiente = new Date(cursor);
-    siguiente.setDate(siguiente.getDate() + 1);
-    if (esDiaHabil(cursor, festivos)) {
-      const ini = Math.max(cursor.getTime(), desde.getTime());
-      const fin = Math.min(siguiente.getTime(), hasta.getTime());
-      if (fin > ini) total += fin - ini;
-    }
-    cursor.setTime(siguiente.getTime());
-  }
-  return total;
-}
-
 function getElapsedFromPrev(
   events: Record<string, string>,
   actions: string[],
@@ -281,6 +234,12 @@ const ACTION_LABELS: Record<string, string> = {
   aprobar_todas_ordenes_compra: 'Todas las OC Aprobadas',
   autorizar: 'Autorizada',
   rechazar_autorizador: 'Rechazada por Autorizador',
+  // El tramo de facturación, que ocurre sobre la orden de compra y hasta ahora no
+  // aparecía por ninguna parte: la historia terminaba en la recepción.
+  registrar_factura: 'Factura Registrada',
+  enviar_facturas_contabilidad: 'Factura Enviada a Contabilidad',
+  recibir_facturas_contabilidad: 'Factura Recibida por Contabilidad',
+  devolver_facturas_contabilidad: 'Factura Devuelta por Contabilidad',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -296,6 +255,10 @@ const ACTION_COLORS: Record<string, string> = {
   aprobar_todas_ordenes_compra: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
   autorizar: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/20',
   rechazar_autorizador: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  registrar_factura: 'bg-sky-500/10 text-sky-700 border-sky-500/20',
+  enviar_facturas_contabilidad: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+  recibir_facturas_contabilidad: 'bg-green-500/10 text-green-700 border-green-500/20',
+  devolver_facturas_contabilidad: 'bg-red-500/10 text-red-700 border-red-500/20',
 };
 
 type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control' | 'proveedores';
@@ -340,6 +303,44 @@ export default function AuditoriasComprasPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 50;
+
+  /**
+   * El desglose de órdenes de compra que se abre bajo cada requisición.
+   *
+   * Se piden al abrir y se guardan por requisición: son 50 filas por página y
+   * traerlas todas de entrada serían 50 consultas para ver, con suerte, una.
+   * Lo ya pedido se queda en memoria, así que cerrar y volver a abrir no cuesta.
+   */
+  const [ocAbiertas, setOcAbiertas] = useState<Set<number>>(new Set());
+  const [ocPorRequisicion, setOcPorRequisicion] = useState<Record<number, RequisitionPurchaseOrder[]>>({});
+  const [ocCargando, setOcCargando] = useState<Set<number>>(new Set());
+
+  const alternarOc = async (requisitionId: number) => {
+    setOcAbiertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(requisitionId)) next.delete(requisitionId);
+      else next.add(requisitionId);
+      return next;
+    });
+
+    if (ocPorRequisicion[requisitionId]) return;
+
+    setOcCargando((prev) => new Set(prev).add(requisitionId));
+    try {
+      const filas = await auditService.getRequisitionPurchaseOrders(requisitionId);
+      setOcPorRequisicion((prev) => ({ ...prev, [requisitionId]: filas }));
+    } catch {
+      // Si falla, se guarda vacío: el desglose dirá que no hay órdenes en vez de
+      // quedarse girando para siempre.
+      setOcPorRequisicion((prev) => ({ ...prev, [requisitionId]: [] }));
+    } finally {
+      setOcCargando((prev) => {
+        const next = new Set(prev);
+        next.delete(requisitionId);
+        return next;
+      });
+    }
+  };
 
   // ── Stats state ──
   const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
@@ -1215,12 +1216,28 @@ export default function AuditoriasComprasPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    groupedRequisitions.map((requisition) => (
+                    groupedRequisitions.map((requisition) => {
+                      const abierta = ocAbiertas.has(requisition.requisitionId);
+                      const ordenes = ocPorRequisicion[requisition.requisitionId];
+                      const cargandoOc = ocCargando.has(requisition.requisitionId);
+                      return (
+                      <Fragment key={requisition.requisitionId}>
                       <TableRow
-                        key={requisition.requisitionId}
                         className="hover:bg-[hsl(var(--canalco-neutral-100))] transition-colors"
                       >
-                        <TableCell className="font-medium">{requisition.requisitionNumber}</TableCell>
+                        <TableCell className="font-medium">
+                          <button
+                            type="button"
+                            onClick={() => alternarOc(requisition.requisitionId)}
+                            className="flex items-center gap-1.5 hover:text-[hsl(var(--canalco-primary))] transition-colors"
+                            title={abierta ? 'Ocultar las órdenes de compra' : 'Ver las órdenes de compra'}
+                          >
+                            {abierta
+                              ? <ChevronDown className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))] flex-shrink-0" />
+                              : <ChevronRight className="w-4 h-4 text-[hsl(var(--canalco-neutral-500))] flex-shrink-0" />}
+                            {requisition.requisitionNumber}
+                          </button>
+                        </TableCell>
                         <TableCell>{requisition.companyName}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
@@ -1256,7 +1273,110 @@ export default function AuditoriasComprasPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
+
+                      {abierta && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="bg-[hsl(var(--canalco-neutral-100))] p-0">
+                            <div className="px-6 py-4">
+                              {cargandoOc && (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                                  Cargando las órdenes de compra…
+                                </p>
+                              )}
+                              {!cargandoOc && ordenes && ordenes.length === 0 && (
+                                <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
+                                  Esta requisición todavía no tiene órdenes de compra.
+                                </p>
+                              )}
+                              {!cargandoOc && ordenes && ordenes.length > 0 && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-[hsl(var(--canalco-neutral-600))] border-b border-[hsl(var(--canalco-neutral-300))]">
+                                        <th className="px-3 py-2 font-semibold">OC</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Emitida</th>
+                                        <th className="px-3 py-2 font-semibold text-right">Días</th>
+                                        <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor OC</th>
+                                        <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor factura</th>
+                                        <th className="px-3 py-2 font-semibold text-right">Diferencia</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {ordenes.map((o) => {
+                                        // Una orden sin nada pendiente ya está saldada: los días que
+                                        // lleva emitida dejan de ser una alarma y el cero no se pinta
+                                        // en rojo junto a las que sí deben.
+                                        const saldada = o.pendingAmount <= 0;
+                                        const tarde = !saldada && o.days >= DIAS_SIN_FACTURA;
+                                        return (
+                                          <tr
+                                            key={o.purchaseOrderNumber}
+                                            className={
+                                              'border-b border-[hsl(var(--canalco-neutral-200))] last:border-b-0 ' +
+                                              (tarde ? 'bg-red-50/60' : '')
+                                            }
+                                          >
+                                            <td className="px-3 py-2 font-medium whitespace-nowrap">
+                                              {o.purchaseOrderNumber}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                              {o.issueDate ? o.issueDate.slice(0, 10) : '—'}
+                                            </td>
+                                            <td
+                                              className={
+                                                'px-3 py-2 text-right tabular-nums ' +
+                                                (tarde
+                                                  ? 'font-bold text-red-700'
+                                                  : saldada
+                                                    ? 'text-[hsl(var(--canalco-neutral-400))]'
+                                                    : '')
+                                              }
+                                              title={saldada ? 'Ya facturada por completo' : 'Días desde que se emitió'}
+                                            >
+                                              {saldada ? '—' : o.days}
+                                            </td>
+                                            <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                              ${o.totalAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                                            </td>
+                                            <td
+                                              className={
+                                                'px-3 py-2 text-right tabular-nums whitespace-nowrap ' +
+                                                (o.invoicedAmount === 0 ? 'text-[hsl(var(--canalco-neutral-400))]' : '')
+                                              }
+                                              title={o.invoicedAmount === 0 ? 'Sin ninguna factura' : undefined}
+                                            >
+                                              {o.invoicedAmount === 0
+                                                ? '—'
+                                                : `$${o.invoicedAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
+                                            </td>
+                                            <td
+                                              className={
+                                                'px-3 py-2 text-right tabular-nums whitespace-nowrap font-semibold ' +
+                                                (saldada ? 'text-green-700' : '')
+                                              }
+                                            >
+                                              {saldada
+                                                ? '$0'
+                                                : `$${o.pendingAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                  <p className="mt-2 text-xs text-[hsl(var(--canalco-neutral-500))]">
+                                    Diferencia = valor de la orden menos lo facturado. En rojo, las que
+                                    llevan {DIAS_SIN_FACTURA} días o más sin factura completa.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </Fragment>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
