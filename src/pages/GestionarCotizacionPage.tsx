@@ -51,6 +51,54 @@ interface ItemQuotationState {
   showResults2: boolean;
 }
 
+/** Cuántos proveedores admite un ítem. La pantalla pinta dos casillas y el backend
+ *  rechaza más de dos, así que el número tiene que ser el mismo en los dos lados. */
+const MAX_PROVEEDORES = 2;
+
+/**
+ * Las cotizaciones guardadas, convertidas en las dos casillas que se pintan.
+ *
+ * Antes se mapeaban todas tal cual, y si un ítem tenía más de dos vigentes —pasó
+ * con SB-009 y JE-021, que quedaron con cuatro— las de sobra viajaban invisibles
+ * en el guardado: la pantalla solo dibuja dos casillas, pero mandaba las cuatro y
+ * el backend las rechazaba. El ítem quedaba trabado sin nada que el usuario
+ * pudiera borrar, porque no había dónde verlas.
+ *
+ * Se descartan los repetidos por proveedor antes de cortar: con dos filas del mismo
+ * proveedor, quedarse con las dos primeras dejaría la segunda casilla ocupada por
+ * un duplicado en vez de libre para el proveedor que falta.
+ */
+const dosProveedores = (
+  quotations: Array<{ supplier?: Supplier | null; supplierOrder: number; observations?: string | null }>,
+): ItemQuotationState['suppliers'] => {
+  const vistos = new Set<number>();
+  const slots: ItemQuotationState['suppliers'] = quotations
+    .filter((q) => q.supplier)
+    .sort((a, b) => a.supplierOrder - b.supplierOrder)
+    .filter((q) => {
+      const id = q.supplier!.supplierId;
+      if (vistos.has(id)) return false;
+      vistos.add(id);
+      return true;
+    })
+    .slice(0, MAX_PROVEEDORES)
+    // El orden se renumera: si lo que quedó venía con órdenes 2 y 3, dejarlas tal
+    // cual pintaría la primera casilla vacía y la segunda llena.
+    .map((q, i) => ({
+      supplier: q.supplier!,
+      supplierOrder: i + 1,
+      observations: q.observations || '',
+    }));
+
+  // Siempre salen las dos casillas, aunque solo venga un proveedor: los manejadores
+  // de la pantalla escriben por posición —la casilla 2 es `suppliers[1]`— y sobre un
+  // arreglo corto escribirían sobre un hueco.
+  while (slots.length < MAX_PROVEEDORES) {
+    slots.push({ supplier: null, supplierOrder: slots.length + 1, observations: '' });
+  }
+  return slots;
+};
+
 export default function GestionarCotizacionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -167,14 +215,7 @@ export default function GestionarCotizacionPage() {
             itemId: item.itemId,
             action: hasSuppliers ? 'cotizar' : 'no_requiere',
             suppliers: hasSuppliers
-              ? existingQuotations
-                  .filter(q => q.supplier)
-                  .sort((a, b) => a.supplierOrder - b.supplierOrder)
-                  .map(q => ({
-                    supplier: q.supplier,
-                    supplierOrder: q.supplierOrder,
-                    observations: q.observations || '',
-                  }))
+              ? dosProveedores(existingQuotations)
               : [
                   { supplier: null, supplierOrder: 1, observations: '' },
                   { supplier: null, supplierOrder: 2, observations: '' },
