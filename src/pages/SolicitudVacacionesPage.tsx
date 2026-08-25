@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Printer, Save } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { gestionConocimientoService } from '@/services/gestionConocimiento.service';
+import { useAuth } from '@/contexts/AuthContext';
+import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_VACACIONES } from '@/config/formatosGestion';
+import {
+  type VacacionesEstado,
+  type VacacionesTransicion,
+  accionesDisponibles,
+  calcularSla,
+  estadoLabel,
+  estadoBadgeClass,
+  VACACIONES_ESTADOS,
+  esTerminal,
+  esEditable,
+} from '@/utils/vacacionesWorkflow';
+import { textoSla } from '@/utils/juridicaWorkflow';
 
 /**
  * Solicitud de Vacaciones · formato GTH-018-F (G. de talento humano).
@@ -69,6 +82,18 @@ interface VacacionesState {
   valorAnticipo: string;
   fechaPago: Fecha;
   fechaAprobacion: Fecha;
+
+  /*
+   * ── Flujo de aprobación ──
+   *
+   * Los cuatro recuadros de "APROBACIÓN" se siguen firmando a mano sobre el impreso,
+   * pero el sistema ahora también deja constancia de quién dio cada Vo.Bo. y cuándo —
+   * el servidor las estampa al ejecutar cada paso, no se escriben a mano.
+   */
+  enviadoPor: string;
+  voBoJefeNombre: string; voBoJefeFecha: string;
+  voBoTalentoHumanoNombre: string; voBoTalentoHumanoFecha: string;
+  aprobadoPorGerencia: string;
 }
 
 const EMPTY: VacacionesState = {
@@ -90,6 +115,10 @@ const EMPTY: VacacionesState = {
   valorPrima: '', valorAnticipo: '',
   fechaPago: { ...FECHA_VACIA },
   fechaAprobacion: { ...FECHA_VACIA },
+  enviadoPor: '',
+  voBoJefeNombre: '', voBoJefeFecha: '',
+  voBoTalentoHumanoNombre: '', voBoTalentoHumanoFecha: '',
+  aprobadoPorGerencia: '',
 };
 
 /** Los campos que son una fecha de tres casillas. */
@@ -97,14 +126,42 @@ type CampoFecha =
   | 'fechaSolicitud' | 'fechaIngreso' | 'fechaInicio' | 'fechaFinal'
   | 'rhFechaRecibido' | 'rhFechaInicio' | 'rhFechaFinal' | 'fechaPago' | 'fechaAprobacion';
 
+/** El estado de la pantalla a partir de la fila guardada. */
+const desde = (row: GcSolicitud): VacacionesState => {
+  const saved = (row.data ?? {}) as Partial<VacacionesState>;
+  // Las fechas se rellenan una por una: una solicitud guardada antes de que existiera
+  // un campo dejaría su objeto en `undefined` y el input reventaría.
+  return {
+    ...EMPTY,
+    ...saved,
+    fechaSolicitud: { ...FECHA_VACIA, ...saved.fechaSolicitud },
+    fechaIngreso: { ...FECHA_VACIA, ...saved.fechaIngreso },
+    fechaInicio: { ...FECHA_VACIA, ...saved.fechaInicio },
+    fechaFinal: { ...FECHA_VACIA, ...saved.fechaFinal },
+    rhFechaRecibido: { ...FECHA_VACIA, ...saved.rhFechaRecibido },
+    rhFechaInicio: { ...FECHA_VACIA, ...saved.rhFechaInicio },
+    rhFechaFinal: { ...FECHA_VACIA, ...saved.rhFechaFinal },
+    fechaPago: { ...FECHA_VACIA, ...saved.fechaPago },
+    fechaAprobacion: { ...FECHA_VACIA, ...saved.fechaAprobacion },
+    periodoDe: { ...MES_ANIO_VACIO, ...saved.periodoDe },
+    periodoA: { ...MES_ANIO_VACIO, ...saved.periodoA },
+  };
+};
+
 export default function SolicitudVacacionesPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { id: idParam } = useParams<{ id: string }>();
   const docId = idParam && /^\d+$/.test(idParam) ? Number(idParam) : null;
 
   const [f, setF] = useState<VacacionesState>(EMPTY);
+  const [sol, setSol] = useState<GcSolicitud | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const estado = (sol?.estado as VacacionesEstado | undefined) ?? undefined;
+  const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
+  const locked = !esEditable(estado ?? null);
 
   const set = <K extends keyof VacacionesState>(k: K, v: VacacionesState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -123,24 +180,8 @@ export default function SolicitudVacacionesPage() {
       try {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
-        const saved = (row.data ?? {}) as Partial<VacacionesState>;
-        // Las fechas se rellenan una por una: una solicitud guardada antes de que
-        // existiera un campo dejaría su objeto en `undefined` y el input reventaría.
-        setF({
-          ...EMPTY,
-          ...saved,
-          fechaSolicitud: { ...FECHA_VACIA, ...saved.fechaSolicitud },
-          fechaIngreso: { ...FECHA_VACIA, ...saved.fechaIngreso },
-          fechaInicio: { ...FECHA_VACIA, ...saved.fechaInicio },
-          fechaFinal: { ...FECHA_VACIA, ...saved.fechaFinal },
-          rhFechaRecibido: { ...FECHA_VACIA, ...saved.rhFechaRecibido },
-          rhFechaInicio: { ...FECHA_VACIA, ...saved.rhFechaInicio },
-          rhFechaFinal: { ...FECHA_VACIA, ...saved.rhFechaFinal },
-          fechaPago: { ...FECHA_VACIA, ...saved.fechaPago },
-          fechaAprobacion: { ...FECHA_VACIA, ...saved.fechaAprobacion },
-          periodoDe: { ...MES_ANIO_VACIO, ...saved.periodoDe },
-          periodoA: { ...MES_ANIO_VACIO, ...saved.periodoA },
-        });
+        setSol(row);
+        setF(desde(row));
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
       } finally {
@@ -149,6 +190,33 @@ export default function SolicitudVacacionesPage() {
     })();
     return () => { cancelled = true; };
   }, [docId]);
+
+  const recargar = async () => {
+    if (docId === null) return;
+    try {
+      const row = await gestionConocimientoService.get(docId);
+      setSol(row);
+      setF(desde(row));
+    } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
+  };
+
+  const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
+    let motivo: string | undefined;
+    if (requiereMotivo) {
+      const m = window.prompt('Indica el motivo:');
+      if (m === null) return;
+      if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
+      motivo = m.trim();
+    }
+    try {
+      await gestionConocimientoService.transition(docId!, { accion, motivo });
+      toast.success('Acción registrada');
+      await recargar();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || 'No se pudo ejecutar la acción');
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -162,6 +230,7 @@ export default function SolicitudVacacionesPage() {
         formato: FORMATO_VACACIONES,
         data: { ...f, periodoResumen },
       });
+      setSol(guardada);
       setF((p) => ({ ...p, periodoResumen }));
       toast.success('Solicitud guardada');
       // Si acaba de nacer, la pantalla pasa a su URL definitiva: sin esto el
@@ -214,13 +283,25 @@ export default function SolicitudVacacionesPage() {
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
-          </Button>
+          {/* Una vez enviada, la solicitud es la que se está aprobando: no se reescribe. */}
+          {!locked && (
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8">
+        {sol && (
+          <VacacionesWorkflowPanel
+            sol={sol}
+            nombreRol={user?.nombreRol}
+            esCreador={esCreador}
+            onAccion={handleTransicion}
+          />
+        )}
+
         <div className="doc bg-white text-[11px] text-black shadow-md p-4 space-y-3">
 
           {/* Encabezado del formato */}
@@ -259,6 +340,7 @@ export default function SolicitudVacacionesPage() {
                       <input
                         value={f.fechaSolicitud[parte]}
                         onChange={(e) => setFecha('fechaSolicitud', parte, e.target.value)}
+                        readOnly={locked}
                         className="w-14 bg-transparent outline-none text-center text-[11px] py-0.5"
                       />
                     </td>
@@ -276,6 +358,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.nombres}
                 onChange={(e) => set('nombres', e.target.value)}
+                readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
@@ -289,6 +372,7 @@ export default function SolicitudVacacionesPage() {
                       type="checkbox"
                       checked={f.tipoDocumento === t}
                       onChange={() => set('tipoDocumento', f.tipoDocumento === t ? '' : t)}
+                      disabled={locked}
                       className="w-3.5 h-3.5 accent-black"
                     />
                   </label>
@@ -298,6 +382,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.documento}
                 onChange={(e) => set('documento', e.target.value)}
+                readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
@@ -306,6 +391,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.cargo}
                 onChange={(e) => set('cargo', e.target.value)}
+                readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
@@ -314,33 +400,35 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.areaCargo}
                 onChange={(e) => set('areaCargo', e.target.value)}
+                readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
 
             <Recuadro rotulo="FECHA DE INGRESO A LA EMPRESA">
-              <CasillasFecha valor={f.fechaIngreso} onChange={(p, v) => setFecha('fechaIngreso', p, v)} />
+              <CasillasFecha valor={f.fechaIngreso} onChange={(p, v) => setFecha('fechaIngreso', p, v)} readOnly={locked} />
             </Recuadro>
 
             <Recuadro rotulo="PERIODO DE VACACIONES SOLICITADO">
               <div className="flex flex-wrap items-center gap-3">
-                <CasillasMesAnio prefijo="DE:" valor={f.periodoDe} onChange={(p, v) => setPeriodo('periodoDe', p, v)} />
-                <CasillasMesAnio prefijo="A:" valor={f.periodoA} onChange={(p, v) => setPeriodo('periodoA', p, v)} />
+                <CasillasMesAnio prefijo="DE:" valor={f.periodoDe} onChange={(p, v) => setPeriodo('periodoDe', p, v)} readOnly={locked} />
+                <CasillasMesAnio prefijo="A:" valor={f.periodoA} onChange={(p, v) => setPeriodo('periodoA', p, v)} readOnly={locked} />
               </div>
             </Recuadro>
 
             <Recuadro rotulo="FECHA INICIO PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.fechaInicio} onChange={(p, v) => setFecha('fechaInicio', p, v)} />
+              <CasillasFecha valor={f.fechaInicio} onChange={(p, v) => setFecha('fechaInicio', p, v)} readOnly={locked} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA FINAL PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.fechaFinal} onChange={(p, v) => setFecha('fechaFinal', p, v)} />
+              <CasillasFecha valor={f.fechaFinal} onChange={(p, v) => setFecha('fechaFinal', p, v)} readOnly={locked} />
             </Recuadro>
 
             <Recuadro rotulo="DÍAS A DISFRUTAR">
               <input
                 value={f.diasDisfrutar}
                 onChange={(e) => set('diasDisfrutar', e.target.value)}
+                readOnly={locked}
                 className="w-14 border border-black bg-transparent outline-none text-center text-[11px]"
               />
             </Recuadro>
@@ -349,6 +437,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.diasCompensar}
                 onChange={(e) => set('diasCompensar', e.target.value)}
+                readOnly={locked}
                 className="w-14 border border-black bg-transparent outline-none text-center text-[11px]"
               />
             </Recuadro>
@@ -362,20 +451,21 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.rhNumeroSolicitud}
                 onChange={(e) => set('rhNumeroSolicitud', e.target.value)}
+                readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
 
             <Recuadro rotulo="FECHA RECIBIDO SOLICITUD">
-              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} />
+              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} readOnly={locked} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA INICIO PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} />
+              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} readOnly={locked} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA FINAL PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} />
+              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} readOnly={locked} />
             </Recuadro>
           </div>
 
@@ -387,6 +477,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasDisfrutar}
                   onChange={(e) => set('rhDiasDisfrutar', e.target.value)}
+                  readOnly={locked}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -395,6 +486,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasCompensar}
                   onChange={(e) => set('rhDiasCompensar', e.target.value)}
+                  readOnly={locked}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -405,6 +497,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.rhDiasPendientes}
                 onChange={(e) => set('rhDiasPendientes', e.target.value)}
+                readOnly={locked}
                 className="w-10 border-b border-black bg-transparent outline-none text-center text-[10px]"
               />{' '}
               días.
@@ -418,6 +511,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorPrima}
                   onChange={(e) => set('valorPrima', e.target.value)}
+                  readOnly={locked}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
@@ -429,13 +523,14 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorAnticipo}
                   onChange={(e) => set('valorAnticipo', e.target.value)}
+                  readOnly={locked}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
             </Recuadro>
 
             <Recuadro rotulo="FECHA DE PAGO">
-              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} />
+              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} readOnly={locked} />
             </Recuadro>
 
             <div className="border border-black rounded px-2 py-1">
@@ -450,21 +545,30 @@ export default function SolicitudVacacionesPage() {
 
           {/* ── Aprobación ── */}
           <h2 className="font-bold text-[13px] text-center pt-3">APROBACIÓN</h2>
+          {!sol && (
+            <p className="no-print text-[10px] italic text-[#8a8aa3] text-center">
+              Guarda la solicitud para poder enviarla a aprobación.
+            </p>
+          )}
 
-          {/* Las cuatro firmas van a mano sobre el impreso. */}
+          {/* Las firmas van a mano sobre el impreso; debajo, lo que ya quedó registrado
+              en el sistema al ejecutar cada paso. */}
           <div className="grid grid-cols-3 gap-3">
-            <Firma rotulo="FIRMA" />
-            <Firma rotulo="Vo.Bo. JEFE INMEDIATO" subrayado />
-            <Firma rotulo="Vo.Bo. TALENTO HUMANO" subrayado />
+            <Firma rotulo="FIRMA" nombre={f.enviadoPor} />
+            <Firma rotulo="Vo.Bo. JEFE INMEDIATO" subrayado nombre={f.voBoJefeNombre} fecha={f.voBoJefeFecha} />
+            <Firma rotulo="Vo.Bo. TALENTO HUMANO" subrayado nombre={f.voBoTalentoHumanoNombre} fecha={f.voBoTalentoHumanoFecha} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Recuadro rotulo="FECHA APROBACIÓN VACACIONES">
-              <CasillasFecha valor={f.fechaAprobacion} onChange={(p, v) => setFecha('fechaAprobacion', p, v)} />
+              <CasillasFecha valor={f.fechaAprobacion} onChange={(p, v) => setFecha('fechaAprobacion', p, v)} readOnly={locked} />
             </Recuadro>
             <div className="px-2 pt-6 text-center">
               <div className="mx-auto w-52 border-b border-black h-4" />
               <p className="font-bold mt-1">APRUEBA GERENCIA</p>
+              {f.aprobadoPorGerencia && (
+                <p className="text-[10px] mt-0.5">{f.aprobadoPorGerencia}</p>
+              )}
             </div>
           </div>
         </div>
@@ -499,19 +603,30 @@ function Recuadro({ rotulo, children, extra }: {
   );
 }
 
-/** Recuadro de firma: el espacio se firma a mano sobre el impreso. */
-function Firma({ rotulo, subrayado }: { rotulo: string; subrayado?: boolean }) {
+/**
+ * Recuadro de firma: el espacio se sigue firmando a mano sobre el impreso. Cuando el
+ * paso ya se ejecutó en el sistema, debajo queda el nombre (y la fecha) que estampó el
+ * servidor — no reemplaza la firma, la respalda.
+ */
+function Firma({ rotulo, subrayado, nombre, fecha }: {
+  rotulo: string; subrayado?: boolean; nombre?: string; fecha?: string;
+}) {
   return (
     <div className="border border-black rounded px-2 pt-8 pb-2 text-center">
       <div className="mx-auto w-full max-w-[10rem] border-b border-black h-4" />
       <p className={'font-bold mt-1 text-[10px] ' + (subrayado ? 'underline' : '')}>{rotulo}</p>
+      {nombre && (
+        <p className="text-[9px] text-[hsl(var(--canalco-neutral-600))] mt-0.5">
+          {nombre}{fecha ? ` · ${fecha}` : ''}
+        </p>
+      )}
     </div>
   );
 }
 
 /** DIA · MES · AÑO, cada uno en su casilla, como está impreso. */
-function CasillasFecha({ valor, onChange }: {
-  valor: Fecha; onChange: (parte: keyof Fecha, v: string) => void;
+function CasillasFecha({ valor, onChange, readOnly }: {
+  valor: Fecha; onChange: (parte: keyof Fecha, v: string) => void; readOnly?: boolean;
 }) {
   const partes: { key: keyof Fecha; label: string }[] = [
     { key: 'dia', label: 'DIA' },
@@ -526,6 +641,7 @@ function CasillasFecha({ valor, onChange }: {
           <input
             value={valor[key]}
             onChange={(e) => onChange(key, e.target.value)}
+            readOnly={readOnly}
             className="w-10 border border-black bg-transparent outline-none text-center text-[11px]"
           />
         </span>
@@ -535,8 +651,8 @@ function CasillasFecha({ valor, onChange }: {
 }
 
 /** MES · AÑO con su prefijo («DE:» / «A:»). El periodo causado no lleva día. */
-function CasillasMesAnio({ prefijo, valor, onChange }: {
-  prefijo: string; valor: MesAnio; onChange: (parte: keyof MesAnio, v: string) => void;
+function CasillasMesAnio({ prefijo, valor, onChange, readOnly }: {
+  prefijo: string; valor: MesAnio; onChange: (parte: keyof MesAnio, v: string) => void; readOnly?: boolean;
 }) {
   const partes: { key: keyof MesAnio; label: string }[] = [
     { key: 'mes', label: 'MES' },
@@ -551,10 +667,91 @@ function CasillasMesAnio({ prefijo, valor, onChange }: {
           <input
             value={valor[key]}
             onChange={(e) => onChange(key, e.target.value)}
+            readOnly={readOnly}
             className="w-10 border border-black bg-transparent outline-none text-center text-[11px]"
           />
         </span>
       ))}
     </span>
+  );
+}
+
+/* ── Flujo de aprobación ────────────────────────────────── */
+
+const fmtFechaHora = (d?: string | Date | null) =>
+  d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+/**
+ * Estado del trámite, botones del paso que toca y bitácora. No se imprime: el papel
+ * lleva los recuadros de aprobación, no el recorrido.
+ */
+function VacacionesWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
+  sol: GcSolicitud;
+  nombreRol?: string;
+  esCreador: boolean;
+  onAccion: (accion: string, requiereMotivo?: boolean) => void;
+}) {
+  const estado = sol.estado as VacacionesEstado;
+  const acciones = accionesDisponibles(estado, nombreRol, esCreador);
+  const sla = calcularSla(estado, sol.estadoDesde);
+  const terminal = esTerminal(estado);
+
+  return (
+    <div className="no-print mb-6 bg-white border border-[#e6e6f0] rounded-xl shadow-sm p-4 space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-[#4a4a63]">Estado del trámite:</span>
+        <span className={`text-sm font-medium rounded px-2.5 py-1 ${estadoBadgeClass(estado)}`}>
+          {estadoLabel(estado)}
+        </span>
+        {sla && (
+          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded px-2 py-1 ${sla.vencida ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+            {sla.vencida ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+            {textoSla(sla)}
+          </span>
+        )}
+        {VACACIONES_ESTADOS[estado]?.sla == null && !terminal && (
+          <span className="text-xs text-[#8a8aa3]">sin plazo</span>
+        )}
+      </div>
+
+      {acciones.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {acciones.map((a: VacacionesTransicion) => (
+            <Button
+              key={a.accion}
+              onClick={() => onAccion(a.accion, a.requiereMotivo)}
+              variant={a.tone === 'danger' ? 'outline' : 'default'}
+              className={a.tone === 'danger'
+                ? 'border-red-300 text-red-700 hover:bg-red-50'
+                : 'bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]'}
+            >
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      {acciones.length === 0 && !terminal && (
+        <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
+      )}
+      {terminal && <p className="text-xs font-medium text-green-700">✓ Vacaciones aprobadas.</p>}
+
+      {sol.historial && sol.historial.length > 0 && (
+        <div className="pt-3 border-t border-[#e6e6f0]">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-[#8a8aa3] uppercase tracking-wide mb-2">
+            <History className="w-3.5 h-3.5" /> Historial
+          </p>
+          <ul className="space-y-1.5">
+            {[...sol.historial].reverse().map((h, i) => (
+              <li key={i} className="text-xs text-[#4a4a63] flex flex-wrap gap-x-2">
+                <span className="text-[#a8a8bd] font-mono">{fmtFechaHora(h.fecha)}</span>
+                <span className="font-medium">{estadoLabel(h.estado)}</span>
+                {h.userName && <span className="text-[#8a8aa3]">· {h.userName}</span>}
+                {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

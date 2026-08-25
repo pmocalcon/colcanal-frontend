@@ -132,6 +132,72 @@ export interface ResumenAusentismo {
   horas: number;
 }
 
+export interface ThHorasExtraDetalle {
+  detalleId: number;
+  horasExtraId: number;
+  fecha: string | null;
+  proyecto: string | null;
+  region: string | null;
+  horaEntrada: string | null;
+  horaSalida: string | null;
+  almuerzo: string | null;
+  codigoLabor: string | null;
+  labor: string | null;
+  diurna: string | null;
+  recargoNocturno: string | null;
+  nocturna: string | null;
+  diurnaFestiva: string | null;
+  nocturnaFestiva: string | null;
+  liquidacion: string | null;
+}
+
+export interface ThHorasExtra {
+  horasExtraId: number;
+  identificacion: string | null;
+  nombre: string;
+  cargo: string | null;
+  salario: string | null;
+  periodo: string | null;
+  valorHora: string | null;
+  totalHoras: string | null;
+  totalLiquidacion: string | null;
+  observaciones: string | null;
+  /** Solo viene en el detalle; el listado no lo trae. */
+  detalle?: ThHorasExtraDetalle[];
+}
+
+export interface ResumenHorasExtras {
+  planillas: number;
+  totalHoras: number;
+  totalLiquidacion: number;
+}
+
+export interface ThVacacion {
+  vacacionId: number;
+  identificacion: string;
+  nombre: string;
+  cargo: string | null;
+  area: string | null;
+  fechaIngreso: string | null;
+  periodoCausado: string | null;
+  fechaInicio: string | null;
+  fechaFinal: string | null;
+  diasDisfrutar: number | null;
+  diasCompensar: number | null;
+  diasPendientes: number | null;
+  valorPrima: string | null;
+  valorAnticipo: string | null;
+  fechaPago: string | null;
+  fechaAprobacion: string | null;
+  observaciones: string | null;
+}
+
+export interface ResumenVacaciones {
+  registros: number;
+  diasDisfrutar: number;
+  diasCompensar: number;
+}
+
 const BASE = '/talento-humano';
 
 const query = (params: Record<string, string | undefined>) => {
@@ -237,6 +303,45 @@ export const talentoHumanoService = {
   },
   async deletePrestamo(id: number) {
     await api.delete(`${BASE}/prestamos/${id}`);
+  },
+
+  // ── Horas extras ──
+  async listHorasExtras(filtros: { buscar?: string } = {}) {
+    const { data } = await api.get<ThHorasExtra[]>(`${BASE}/horas-extras${query(filtros)}`);
+    return data;
+  },
+  async resumenHorasExtras() {
+    const { data } = await api.get<ResumenHorasExtras>(`${BASE}/horas-extras/resumen`);
+    return data;
+  },
+  /** Trae la planilla con su detalle día a día. */
+  async getHorasExtra(id: number) {
+    const { data } = await api.get<ThHorasExtra>(`${BASE}/horas-extras/${id}`);
+    return data;
+  },
+  async updateHorasExtra(id: number, payload: Partial<ThHorasExtra>) {
+    const { data } = await api.patch<ThHorasExtra>(`${BASE}/horas-extras/${id}`, payload);
+    return data;
+  },
+  async deleteHorasExtra(id: number) {
+    await api.delete(`${BASE}/horas-extras/${id}`);
+  },
+
+  // ── Vacaciones ──
+  async listVacaciones(filtros: { buscar?: string; anio?: string } = {}) {
+    const { data } = await api.get<ThVacacion[]>(`${BASE}/vacaciones${query(filtros)}`);
+    return data;
+  },
+  async resumenVacaciones(anio?: string) {
+    const { data } = await api.get<ResumenVacaciones>(`${BASE}/vacaciones/resumen${query({ anio })}`);
+    return data;
+  },
+  async updateVacacion(id: number, payload: Partial<ThVacacion>) {
+    const { data } = await api.patch<ThVacacion>(`${BASE}/vacaciones/${id}`, payload);
+    return data;
+  },
+  async deleteVacacion(id: number) {
+    await api.delete(`${BASE}/vacaciones/${id}`);
   },
 };
 

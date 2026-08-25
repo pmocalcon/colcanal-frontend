@@ -89,6 +89,9 @@ import PersonalListPage from './pages/PersonalListPage'
 import PrestamosListPage from './pages/PrestamosListPage'
 import IncapacidadesPage from './pages/IncapacidadesPage'
 import AusentismosPage from './pages/AusentismosPage'
+import HorasExtrasListPage from './pages/HorasExtrasListPage'
+import VacacionesListPage from './pages/VacacionesListPage'
+import NominaPage from './pages/NominaPage'
 import ActaInicioPage from './pages/ActaInicioPage'
 import OtrosiPage from './pages/OtrosiPage'
 import ContratoPage from './pages/ContratoPage'
@@ -330,6 +333,9 @@ export default function App() {
           <Route path="/dashboard/talento-humano/prestamos" element={<PrestamosListPage />} />
           <Route path="/dashboard/talento-humano/incapacidades" element={<IncapacidadesPage />} />
           <Route path="/dashboard/talento-humano/ausentismos" element={<AusentismosPage />} />
+          <Route path="/dashboard/talento-humano/horas-extras" element={<HorasExtrasListPage />} />
+          <Route path="/dashboard/talento-humano/vacaciones" element={<VacacionesListPage />} />
+          <Route path="/dashboard/talento-humano/nomina" element={<NominaPage />} />
           <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />
           {/* La gestión abre en su portada de formatos; el trámite de contratación pasa a
               vivir bajo /contratos. Los segmentos fijos ganan sobre /:id (React Router los

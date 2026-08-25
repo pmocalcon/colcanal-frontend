@@ -44,6 +44,12 @@ interface PermisoState {
   fechaSolicitud: string;
   proyecto: string;
   nombre: string;
+  /**
+   * No está en el papel modelo. Se agrega para que el permiso aprobado se pueda
+   * registrar en la base real de ausentismos (`th_ausentismos`), que exige
+   * identificación: sin ella el permiso quedaría aprobado sin alimentarla.
+   */
+  identificacion: string;
   cargo: string;
   tipoPermiso: string;
   motivo: string;
@@ -59,7 +65,7 @@ interface PermisoState {
 }
 
 const EMPTY: PermisoState = {
-  fechaSolicitud: '', proyecto: '', nombre: '', cargo: '', tipoPermiso: '',
+  fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', tipoPermiso: '',
   motivo: '', fechaPermiso: '', horario: '', nombreSolicitante: '',
   aprobaciones: {}, fechaAprobacion: '', observaciones: '',
 };
@@ -92,13 +98,14 @@ const DIRECCIONES: { key: string; label: string }[] = [
  * filas pintan un `input`, y `aprobaciones` no es un texto.
  */
 type CampoTexto =
-  | 'fechaSolicitud' | 'proyecto' | 'nombre' | 'cargo' | 'tipoPermiso'
+  | 'fechaSolicitud' | 'proyecto' | 'nombre' | 'identificacion' | 'cargo' | 'tipoPermiso'
   | 'motivo' | 'fechaPermiso' | 'horario' | 'nombreSolicitante';
 
 const FILAS: { key: CampoTexto; label: string; area?: boolean }[] = [
   { key: 'fechaSolicitud', label: 'FECHA DE SOLICITUD:' },
   { key: 'proyecto', label: 'PROYECTO:' },
   { key: 'nombre', label: 'NOMBRE:' },
+  { key: 'identificacion', label: 'IDENTIFICACIÓN:' },
   { key: 'cargo', label: 'CARGO:' },
   // Va antes del motivo: primero de qué tipo es el permiso y después por qué.
   { key: 'tipoPermiso', label: 'TIPO DE PERMISO:' },

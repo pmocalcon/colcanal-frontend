@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, CalendarClock, HeartPulse, Users } from 'lucide-react';
+import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Plane, Users, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -41,6 +41,24 @@ const SECCIONES = [
     descripcion: 'Los permisos concedidos y las horas que se descuentan',
     Icon: CalendarClock,
   },
+  {
+    slug: 'horas-extras',
+    nombre: 'Horas extras',
+    descripcion: 'Planillas aprobadas: horas laboradas y liquidación proyectada para nómina',
+    Icon: Clock4,
+  },
+  {
+    slug: 'vacaciones',
+    nombre: 'Vacaciones',
+    descripcion: 'Vacaciones aprobadas: días a disfrutar, a compensar y pendientes por periodo',
+    Icon: Plane,
+  },
+  {
+    slug: 'nomina',
+    nombre: 'Nómina',
+    descripcion: 'Novedades del mes y liquidación: devengado, deducciones y neto a pagar',
+    Icon: Wallet,
+  },
 ];
 
 export default function TalentoHumanoHomePage() {
@@ -61,7 +79,7 @@ export default function TalentoHumanoHomePage() {
               <Users className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Talento Humano
             </h1>
             <p className="text-xs md:text-sm text-[hsl(var(--canalco-neutral-600))]">
-              Personal, préstamos, incapacidades y ausentismos
+              Personal, préstamos, incapacidades, ausentismos, horas extras y vacaciones
             </p>
           </div>
         </div>

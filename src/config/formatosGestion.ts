@@ -14,6 +14,10 @@ import {
   estadoLabel as horasExtrasEstadoLabel,
   estadoBadgeClass as horasExtrasEstadoBadge,
 } from '@/utils/horasExtrasWorkflow';
+import {
+  estadoLabel as vacacionesEstadoLabel,
+  estadoBadgeClass as vacacionesEstadoBadge,
+} from '@/utils/vacacionesWorkflow';
 
 /**
  * Los formatos de cada gestión, y de qué gestiones hay portada.
@@ -167,6 +171,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
           { label: 'Empleado', campo: 'nombres' },
           { label: 'Periodo', campo: 'periodoResumen' },
         ],
+        estadoMeta: { label: vacacionesEstadoLabel, badgeClass: vacacionesEstadoBadge },
       },
       {
         slug: 'horas-extras',
