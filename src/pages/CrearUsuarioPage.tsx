@@ -61,8 +61,11 @@ export default function CrearUsuarioPage() {
     if (!formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       return 'El email no es válido';
     }
-    if (!formData.password || formData.password.length < 6) {
-      return 'La contraseña debe tener al menos 6 caracteres';
+    if (!formData.password || formData.password.length < 8) {
+      return 'La contraseña debe tener al menos 8 caracteres';
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(formData.password)) {
+      return 'La contraseña debe incluir mayúscula, minúscula y número';
     }
     if (!formData.nombre.trim()) {
       return 'El nombre es obligatorio';

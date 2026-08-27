@@ -77,7 +77,7 @@ const ROLES_GERENCIA = ['Gerencia']; // aprueba/firma el contrato ("Aprobado por
  * se prorroga o se le adiciona valor, y puede haber varios sobre el mismo contrato.
  */
 export type DocumentoJuridica =
-  | 'solicitud' | 'chequeo' | 'contrato'
+  | 'solicitud' | 'chequeo' | 'antecedentes' | 'contrato'
   | 'verificacion-garantias' | 'aprobacion-garantias'
   | 'designacion-supervisor' | 'acta-inicio'
   | 'otrosi';
@@ -86,6 +86,7 @@ export type DocumentoJuridica =
 export const DOCUMENTO_LABEL: Record<DocumentoJuridica, string> = {
   solicitud: 'Solicitud',
   chequeo: 'Lista de chequeo',
+  antecedentes: 'Antecedentes',
   contrato: 'Contrato',
   'verificacion-garantias': 'Verificación de garantías',
   'aprobacion-garantias': 'Aprobación de garantías',

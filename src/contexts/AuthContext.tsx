@@ -8,7 +8,12 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User>;
+  marcarPasswordCambiada: () => void;
+  /** Correo del admin real mientras se impersona; null si no se impersona. */
+  impersonadorEmail: string | null;
+  impersonar: (userId: number) => Promise<User>;
+  salirImpersonacion: () => void;
   logout: () => void;
   error: string | null;
   clearError: () => void;
@@ -24,6 +29,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [impersonadorEmail, setImpersonadorEmail] = useState<string | null>(
+    authService.getImpersonadorEmail(),
+  );
 
   // Initialize - Check if user is already logged in
   useEffect(() => {
@@ -50,6 +58,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const response = await authService.login(credentials);
       setUser(response.user);
+      return response.user;
     } catch (err) {
       const axiosError = err as AxiosError<{ message: string | string[] }>;
 
@@ -85,6 +94,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
   };
 
+  // Refleja en memoria que el usuario ya fijó su contraseña, sin repetir el login.
+  const marcarPasswordCambiada = () => {
+    setUser((prev) => (prev ? { ...prev, debeCambiarPassword: false } : prev));
+  };
+
+  const impersonar = async (userId: number) => {
+    const usuario = await authService.impersonar(userId);
+    setUser(usuario);
+    setImpersonadorEmail(authService.getImpersonadorEmail());
+    return usuario;
+  };
+
+  const salirImpersonacion = () => {
+    const admin = authService.salirImpersonacion();
+    setUser(admin);
+    setImpersonadorEmail(null);
+  };
+
   const clearError = () => {
     setError(null);
   };
@@ -94,6 +121,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!user,
     isLoading,
     login,
+    marcarPasswordCambiada,
+    impersonadorEmail,
+    impersonar,
+    salirImpersonacion,
     logout,
     error,
     clearError,

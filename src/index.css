@@ -30,6 +30,29 @@
     --canalco-info: 221 83% 53%;             /* Azul - información */
 
     /* ============================================
+       Barra de navegación — los azules del logo
+       ============================================
+       Sacados del propio logo-canalco.png: la «C» va de un azul profundo
+       hsl(206 69% 40%) a un azul claro hsl(205 65% 83%), todo sobre el mismo
+       tono —entre 202 y 208— con una saturación pareja del 65 al 70 %. Acá se
+       estira esa misma familia hacia lo oscuro para que sirva de superficie de
+       navegación, sin salirse del tono.
+
+       Van aparte de `--canalco-primary`, que sigue siendo el dorado del resto
+       de la aplicación: la barra es lo único que lleva la marca de Canales &
+       Contactos, y meter el azul en el token principal repintaría botones,
+       focos y avisos de todo el sistema. */
+    --nav-surface: 208 55% 13%;              /* Fondo de la barra */
+    --nav-surface-raised: 207 45% 21%;       /* Hover y píldoras */
+    --nav-border: 207 38% 27%;               /* Separadores */
+    --nav-accent: 202 68% 55%;               /* El azul vivo del logo: ítem activo */
+    --nav-accent-soft: 203 69% 70%;          /* El mismo azul como texto sobre lo oscuro */
+    --nav-text: 205 30% 76%;                 /* Texto de los ítems */
+    --nav-text-dim: 205 20% 64%;             /* Subítems y rol del usuario */
+    --nav-text-off: 205 15% 42%;             /* Lo deshabilitado */
+    --nav-danger: 0 100% 77%;                /* Cerrar sesión */
+
+    /* ============================================
        CANALCO - Tipografía
        ============================================ */
     --canalco-font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

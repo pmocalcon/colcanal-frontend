@@ -97,6 +97,17 @@ export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
     tab('solicitud', true, ''),
     tab('chequeo', chequeo,
       'Se habilita cuando la solicitud se remite a Administrativa'),
+    /*
+     * La constancia de antecedentes va antes del contrato porque es lo que se mira antes
+     * de contratar: quién es la persona, no cómo quedó el contrato. Se habilita con la
+     * lista de chequeo —las dos son la debida diligencia previa— y sigue abierta después,
+     * porque una verificación puede repetirse al renovar o al prorrogar.
+     *
+     * No está en `DOCS_SOLO_SERVICIOS`: la finalidad del propio formato incluye
+     * «vinculación laboral», así que también aplica a una requisición de personal.
+     */
+    tab('antecedentes', chequeo,
+      'Se habilita cuando la solicitud se remite a Administrativa'),
     tab('contrato', contrato,
       estado === 'contrato_en_elaboracion'
         ? 'Falta que la lista de chequeo la revisen la Dirección Administrativa y la Jurídica'

@@ -9,6 +9,8 @@ export interface User {
   cargo: string;
   rolId: number;
   nombreRol: string;
+  /** Obliga a fijar una contraseña personal en el primer ingreso. */
+  debeCambiarPassword?: boolean;
 }
 
 export interface LoginCredentials {

@@ -5,35 +5,105 @@ import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 
 /**
- * Plantilla de contrato para el tipo "Término Fijo" (contrato laboral).
- * Estructura distinta al de prestación de servicios: empleadora/trabajadora, salario,
- * jornada y prestaciones de ley. Recibe la solicitud ya cargada. Se guarda en data.contrato.
+ * Contrato individual de trabajo a término fijo, plantilla 2026 (el formato «15 Plantilla
+ * Contrato Termino Fijo Ajustada 2026»).
+ *
+ * Es un contrato **laboral**, no de prestación: hay empleadora y trabajador(a), salario,
+ * jornada, período de prueba y seguridad social. Lo reparte `ContratoPage` según el tipo y
+ * se guarda en `data.contrato`, como las otras plantillas de contrato.
+ *
+ * Igual que la de prestación, la plantilla 2026 puso **todo lo variable en la parte
+ * inicial** y las cláusulas la referencian: la sexta dice «el salario básico mensual
+ * indicado en la parte inicial» en vez de repetir la cifra. Antes el salario aparecía dos
+ * veces y bastaba corregir una para que el contrato se contradijera.
+ *
+ * Lo que trae de nuevo, y hay que mirar al diligenciarlo:
+ *  - la jornada máxima es de **cuarenta y dos (42) horas** semanales;
+ *  - las prórrogas quedan sujetas al artículo 46 del CST **modificado por la Ley 2466 de
+ *    2025**, con su límite máximo y el preaviso de treinta días;
+ *  - el período de prueba se acota: si el término inicial es menor a un año, no puede
+ *    pasar de la quinta parte ni de dos meses.
+ *
+ * El texto de las cláusulas se edita, como en las demás: la plantilla es el punto de
+ * partida y solo se guarda lo que Jurídica cambie (`textos`, por clave).
  */
 
 interface TFState {
-  empleadora: string; empleadoraCc: string; domicilioEmpleadora: string;
-  trabajadora: string; trabajadoraCc: string; direccionTrabajadora: string; lugarFechaNacimiento: string;
-  cargo: string; salario: string; periodosPago: string;
-  fechaIniciacion: string; fechaTerminacion: string;
-  duracion: string; inicio: string; fin: string; periodoPrueba: string;
-  ciudadFirma: string; fechaFirma: string;
-  empleadoraFirmante: string; empleadoraFirmanteCc: string;
+  /* ── La parte inicial: la ficha del contrato ── */
+  empleadora: string;
+  nit: string;
+  domicilioEmpleadora: string;
+  trabajador: string;
+  documento: string;
+  contacto: string;
+  cargo: string;
+  dependencia: string;
+  salario: string;
+  periodoPago: string;
+  fechaInicio: string;
+  fechaTerminacion: string;
+  terminoInicial: string;
+
+  /* ── Firma del trabajador ── */
+  trabajadorCc: string;
+  trabajadorLugarCc: string;
+
+  /** Texto de las cláusulas que Jurídica reescribió, por clave. Vacío = plantilla. */
+  textos: Record<string, string>;
 }
 
+/**
+ * Los huecos van como valores y no como `placeholder`: un placeholder se ve en pantalla
+ * pero no se imprime, y el formato en blanco tiene que poder imprimirse para diligenciarlo
+ * a mano. Se escriben en la convención de la plantilla —corchetes en mayúscula—.
+ */
 const EMPTY: TFState = {
-  empleadora: '', empleadoraCc: '', domicilioEmpleadora: '',
-  trabajadora: '', trabajadoraCc: '', direccionTrabajadora: '', lugarFechaNacimiento: '',
-  cargo: '', salario: '', periodosPago: '',
-  fechaIniciacion: '', fechaTerminacion: '',
-  duracion: '', inicio: '', fin: '', periodoPrueba: '',
-  ciudadFirma: '', fechaFirma: '',
-  empleadoraFirmante: '', empleadoraFirmanteCc: '',
+  // La empleadora es siempre la misma: va escrita, no en blanco.
+  empleadora: 'CANALES Y CONTACTOS S.A.S.',
+  nit: '900.456.735-7',
+  domicilioEmpleadora: 'Calle 13A No. 101-60, Ciudad Jardín, Cali (Valle del Cauca)',
+  trabajador: '[NOMBRE COMPLETO]',
+  documento: '[TIPO Y NÚMERO - LUGAR DE EXPEDICIÓN]',
+  contacto: '[DIRECCIÓN] / [CORREO] / [CELULAR]',
+  cargo: '[CARGO]',
+  dependencia: '[ÁREA O DIRECCIÓN]',
+  salario: '[VALOR EN LETRAS] PESOS M/CTE ($[VALOR])',
+  periodoPago: '[MENSUAL / QUINCENAL]',
+  fechaInicio: '[DD/MM/AAAA]',
+  fechaTerminacion: '[DD/MM/AAAA]',
+  terminoInicial: '[NÚMERO] [MESES/AÑOS]',
+
+  trabajadorCc: '[NÚMERO]',
+  trabajadorLugarCc: '[LUGAR]',
+
+  textos: {},
 };
+
+/**
+ * Lo guardado con la plantilla vieja, traído a la nueva.
+ *
+ * Los campos se llamaban en femenino —`trabajadora`, `direccionTrabajadora`— porque la
+ * plantilla anterior estaba redactada para una trabajadora concreta; la de 2026 usa
+ * «EL/LA TRABAJADOR(A)». Sin este puente, un contrato a medio diligenciar se abriría en
+ * blanco. Lo que la plantilla vieja tenía y esta no —el lugar y la fecha de nacimiento,
+ * la duración suelta— **no se borra**: sigue en `data.contrato`, solo deja de leerse.
+ */
+function traerDeLaPlantillaVieja(saved: Record<string, unknown>): Partial<TFState> {
+  const texto = (k: string) => (typeof saved[k] === 'string' ? (saved[k] as string).trim() : '');
+  const puente: Partial<TFState> = {};
+  if (!saved.trabajador && texto('trabajadora')) puente.trabajador = texto('trabajadora');
+  if (!saved.documento && texto('trabajadoraCc')) puente.documento = texto('trabajadoraCc');
+  if (!saved.contacto && texto('direccionTrabajadora')) puente.contacto = texto('direccionTrabajadora');
+  if (!saved.periodoPago && texto('periodosPago')) puente.periodoPago = texto('periodosPago');
+  if (!saved.fechaInicio && texto('fechaIniciacion')) puente.fechaInicio = texto('fechaIniciacion');
+  return puente;
+}
 
 const puedeEditar = (rol?: string) => {
   const r = (rol ?? '').toLowerCase();
@@ -41,6 +111,103 @@ const puedeEditar = (rol?: string) => {
 };
 
 const HABILITADO = ['contrato_en_elaboracion', 'pendiente_firma_contrato', 'contrato_firmado', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado'];
+
+/**
+ * Las diecisiete cláusulas, en el orden y con el texto de la plantilla 2026.
+ *
+ * Van en una constante y no sueltas en el JSX porque así se leen de corrido y se comparan
+ * contra el formato sin tener que saltarse el marcado.
+ *
+ * Las claves llevan el prefijo `t` —de término fijo— y son nuevas: la plantilla anterior
+ * no guardaba texto editable, así que no hay nada que reutilizar ni con qué chocar.
+ */
+const CLAUSULAS: { k: string; titulo: string; texto: string }[] = [
+  {
+    k: 't1',
+    titulo: 'PRIMERA. OBJETO',
+    texto: 'LA EMPLEADORA contrata los servicios personales de EL/LA TRABAJADOR(A) para desempeñar el cargo de [CARGO], adscrito(a) a [DEPENDENCIA]. EL/LA TRABAJADOR(A) se obliga a poner al servicio de LA EMPLEADORA su capacidad normal de trabajo, conocimientos y experiencia; cumplir las funciones del cargo, el Manual de Funciones y las labores conexas y complementarias compatibles con su formación y nivel de responsabilidad; y atender las órdenes e instrucciones legítimas impartidas por LA EMPLEADORA o por quien ejerza la jefatura correspondiente.',
+  },
+  {
+    k: 't2',
+    titulo: 'SEGUNDA. LUGAR DE TRABAJO',
+    texto: 'EL/LA TRABAJADOR(A) prestará sus servicios principalmente en [SEDE / MUNICIPIO] y en los demás lugares dentro del territorio nacional en los que LA EMPLEADORA desarrolle su objeto y requiera razonablemente su presencia. Los cambios de lugar o traslados deberán respetar la dignidad, los derechos mínimos y las condiciones laborales, y los gastos que legalmente correspondan serán asumidos por LA EMPLEADORA.',
+  },
+  {
+    k: 't3',
+    titulo: 'TERCERA. CARGO, FUNCIONES Y DEPENDENCIA',
+    texto: 'EL/LA TRABAJADOR(A) dependerá jerárquica y funcionalmente de [CARGO DEL JEFE / DIRECCIÓN] o de quien formalmente haga sus veces. La asignación de funciones adicionales procederá cuando sean conexas, complementarias y compatibles con el cargo, sin desconocer derechos mínimos ni generar desmejoras sustanciales.',
+  },
+  {
+    k: 't4',
+    titulo: 'CUARTA. OBLIGACIONES',
+    texto: 'Además de las previstas en la ley, el Reglamento Interno de Trabajo, el Manual de Funciones y las políticas de LA EMPLEADORA, EL/LA TRABAJADOR(A) deberá ejecutar sus actividades con diligencia y buena fe; reportar oportunamente avances, riesgos y novedades; custodiar los documentos, equipos y accesos entregados; guardar reserva sobre la información conocida por razón de su cargo; cumplir las reglas de seguridad de la información, protección de datos y seguridad y salud en el trabajo; y devolver los elementos y documentos cuando sean requeridos o termine el vínculo.',
+  },
+  {
+    k: 't5',
+    titulo: 'QUINTA. ELEMENTOS DE TRABAJO',
+    texto: 'LA EMPLEADORA suministrará los elementos, herramientas y accesos necesarios para el normal desempeño del cargo. EL/LA TRABAJADOR(A) deberá utilizarlos exclusivamente para fines laborales, conservarlos adecuadamente y restituirlos cuando corresponda.',
+  },
+  {
+    k: 't6',
+    titulo: 'SEXTA. REMUNERACIÓN',
+    texto: 'LA EMPLEADORA pagará a EL/LA TRABAJADOR(A) el salario básico mensual indicado en la parte inicial del contrato, en la periodicidad allí señalada. Se efectuarán las deducciones y retenciones legalmente autorizadas. Los auxilios, beneficios o reconocimientos extralegales que no tengan como finalidad remunerar directamente el servicio y que sean expresamente pactados como no salariales no constituirán factor salarial, conforme a la legislación aplicable; la naturaleza de cada pago atenderá a su finalidad real.',
+  },
+  {
+    k: 't7',
+    titulo: 'SÉPTIMA. TRABAJO SUPLEMENTARIO, NOCTURNO, DOMINICAL Y FESTIVO',
+    texto: 'El trabajo suplementario, nocturno, dominical o festivo se reconocerá y remunerará conforme a la normativa vigente. Su ejecución requerirá autorización previa de LA EMPLEADORA, salvo situaciones imprevistas e inaplazables que deberán ser informadas por escrito a la mayor brevedad. LA EMPLEADORA llevará los registros exigidos por la ley.',
+  },
+  {
+    k: 't8',
+    titulo: 'OCTAVA. JORNADA DE TRABAJO',
+    texto: 'La jornada ordinaria máxima será de cuarenta y dos (42) horas semanales, distribuida conforme a la legislación vigente, en los horarios y turnos comunicados por LA EMPLEADORA, garantizando los descansos obligatorios. Los horarios podrán ajustarse razonablemente según las necesidades del servicio y dentro de los límites legales.',
+  },
+  {
+    k: 't9',
+    titulo: 'NOVENA. PERÍODO DE PRUEBA',
+    texto: 'Si las partes acuerdan período de prueba, este deberá constar por escrito y no podrá exceder los límites legales. Cuando el término inicial del contrato sea inferior a un (1) año, el período de prueba no podrá ser superior a la quinta parte del término inicialmente pactado ni exceder de dos (2) meses. Para este contrato se pacta un período de prueba de [NÚMERO DE DÍAS / MESES], contado desde [FECHA]. Durante dicho período cualquiera de las partes podrá terminar el contrato en los términos de la ley.',
+  },
+  {
+    k: 't10',
+    titulo: 'DÉCIMA. DURACIÓN Y PRÓRROGAS',
+    texto: 'El presente contrato se celebra a término fijo por el período comprendido entre [FECHA INICIO] y [FECHA TERMINACIÓN]. El término inicial y todas sus prórrogas, pactadas o automáticas, estarán sujetos al límite máximo y a las reglas vigentes del artículo 46 del Código Sustantivo del Trabajo, modificado por la Ley 2466 de 2025. Si alguna de las partes no desea que opere la prórroga automática deberá comunicarlo por escrito con una antelación no inferior a treinta (30) días respecto de la fecha de vencimiento. En ningún caso la utilización de esta modalidad podrá desconocer los límites legales aplicables.',
+  },
+  {
+    k: 't11',
+    titulo: 'DÉCIMA PRIMERA. SEGURIDAD SOCIAL',
+    texto: 'LA EMPLEADORA afiliará a EL/LA TRABAJADOR(A) al Sistema de Seguridad Social Integral y efectuará los aportes correspondientes, practicando los descuentos legalmente a cargo del trabajador(a).',
+  },
+  {
+    k: 't12',
+    titulo: 'DÉCIMA SEGUNDA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS',
+    texto: 'EL/LA TRABAJADOR(A) deberá actuar con integridad, transparencia y lealtad. Queda prohibido solicitar, recibir, aceptar, ofrecer o entregar pagos, comisiones, beneficios o dádivas indebidas relacionados con proveedores, contratistas, clientes, servidores públicos o terceros. Cualquier consecuencia laboral requerirá la configuración de una causal válida y la observancia del procedimiento aplicable.',
+  },
+  {
+    k: 't13',
+    titulo: 'DÉCIMA TERCERA. CONFIDENCIALIDAD Y SEGURIDAD DE LA INFORMACIÓN',
+    texto: 'EL/LA TRABAJADOR(A) guardará reserva sobre la información confidencial o reservada a la que tenga acceso por razón de sus funciones, incluso después de terminado el vínculo cuando la naturaleza de la información así lo exija. Deberá cumplir las políticas corporativas de seguridad de la información y devolver o eliminar, según instrucción, la información y accesos puestos a su disposición.',
+  },
+  {
+    k: 't14',
+    titulo: 'DÉCIMA CUARTA. PROTECCIÓN DE DATOS PERSONALES',
+    texto: 'EL/LA TRABAJADOR(A) autoriza y se obliga al tratamiento de datos personales en los términos de la ley y de las políticas internas aplicables, exclusivamente para las finalidades legítimas derivadas de la relación laboral y de sus funciones.',
+  },
+  {
+    k: 't15',
+    titulo: 'DÉCIMA QUINTA. TERMINACIÓN',
+    texto: 'El contrato terminará por las causales previstas en la ley. La expiración del plazo fijo pactado producirá la terminación cuando se haya cumplido el preaviso exigido para evitar la prórroga automática. La terminación con justa causa requerirá la existencia de una causal legal o contractual válida y, cuando corresponda, el respeto del debido proceso y del derecho de defensa. Lo anterior se entiende sin perjuicio de las normas de estabilidad laboral reforzada y demás protecciones especiales aplicables.',
+  },
+  {
+    k: 't16',
+    titulo: 'DÉCIMA SEXTA. MODIFICACIONES',
+    texto: 'Cualquier modificación de las condiciones esenciales del presente contrato deberá constar por escrito cuando la ley lo exija o cuando resulte necesario para su adecuada trazabilidad. Las facultades de dirección y subordinación se ejercerán dentro de los límites legales, sin afectar la dignidad ni los derechos mínimos de EL/LA TRABAJADOR(A).',
+  },
+  {
+    k: 't17',
+    titulo: 'DÉCIMA SÉPTIMA. INTEGRIDAD DEL CONTRATO',
+    texto: 'El presente documento, junto con el Reglamento Interno de Trabajo, el Manual de Funciones y las políticas válidamente incorporadas a la relación laboral, contiene las condiciones aplicables al vínculo. La nulidad o ineficacia de una estipulación no afectará las demás, que se interpretarán de conformidad con las normas laborales imperativas.',
+  },
+];
 
 export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSolicitud }) {
   const navigate = useNavigate();
@@ -59,28 +226,33 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
 
   const [f, setF] = useState<TFState>(() => {
     const d = solicitud.data ?? {};
-    const saved = (d.contrato ?? {}) as Partial<TFState>;
+    const saved = (d.contrato ?? {}) as Record<string, unknown> & Partial<TFState>;
     const des = (d.designacionSupervisor ?? {}) as Record<string, string>;
     const acta = (d.actaInicio ?? {}) as Record<string, string>;
-    return {
-      ...EMPTY,
-      ...saved,
-      empleadora: saved.empleadora || d.empresa || '',
-      domicilioEmpleadora: saved.domicilioEmpleadora || '',
-      trabajadora: saved.trabajadora || d.contratista || '',
-      trabajadoraCc: saved.trabajadoraCc || des.contratistaCc || acta.contratistaCc || '',
-      direccionTrabajadora: saved.direccionTrabajadora || acta.direccion || '',
-      salario: saved.salario || d.honorarios || '',
-      periodosPago: saved.periodosPago || d.formaPago || '',
-      fechaIniciacion: saved.fechaIniciacion || acta.fechaInicio || '',
-      fechaTerminacion: saved.fechaTerminacion || acta.fechaFinal || '',
-      inicio: saved.inicio || acta.fechaInicio || '',
-      fin: saved.fin || acta.fechaFinal || '',
-      empleadoraFirmante: saved.empleadoraFirmante || des.funcionarioNombre || '',
+    /*
+     * Lo que ya se escribió en la solicitud y en el acta se trae, que es lo que hacía la
+     * plantilla anterior y ahorra volver a digitarlo. Solo entra donde el hueco sigue
+     * intacto: una vez que alguien escribió en la celda, manda lo escrito.
+     */
+    const delTramite: Partial<TFState> = {
+      trabajador: (d.contratista as string) || '',
+      documento: des.contratistaCc || acta.contratistaCc || '',
+      contacto: acta.direccion || '',
+      salario: (d.honorarios as string) || '',
+      periodoPago: (d.formaPago as string) || '',
+      fechaInicio: acta.fechaInicio || '',
+      fechaTerminacion: acta.fechaFinal || '',
     };
+    const base = { ...EMPTY, ...traerDeLaPlantillaVieja(saved), ...saved };
+    for (const [k, v] of Object.entries(delTramite)) {
+      const clave = k as keyof TFState;
+      if (v && base[clave] === EMPTY[clave]) (base as Record<string, unknown>)[clave] = v;
+    }
+    return { ...base, textos: saved.textos ?? {} };
   });
 
   const set = <K extends keyof TFState>(k: K, v: TFState[K]) => setF((p) => ({ ...p, [k]: v }));
+  const textosCtx = useTextosDocumento(f.textos, setF);
 
   /**
    * Devuelve si se guardó, porque `AccionesFlujo` lo usa para decidir si sigue: la acción
@@ -112,6 +284,8 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
           body { background: #fff !important; }
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; border: none !important; }
+          /* Una cláusula no se parte entre dos hojas si cabe entera. */
+          .bloque { break-inside: avoid; }
         }
       `}</style>
 
@@ -122,7 +296,9 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Contrato · Término Fijo</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">Contrato de trabajo a término fijo · Solicitud N.º {solicitudId}</p>
+            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+              Contrato individual de trabajo a término fijo · Solicitud N.º {solicitudId} · Plantilla 2026
+            </p>
           </div>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -140,206 +316,135 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* La acción de la etapa va donde se decide: el contrato se remite a firma acá.
-            Guardar el documento no mueve el flujo; esto sí. */}
         <AccionesFlujo
           sol={sol} documento="contrato" onCambio={setSol}
           onAntes={editable && habilitada ? handleSave : undefined}
         />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
-            <p className="text-[hsl(var(--canalco-neutral-700))]">El contrato aún no está <b>habilitado</b>.</p>
-            <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">Se genera en la etapa «Contrato en revisión (Jurídica)».</p>
-            <Button variant="link" className="text-[hsl(var(--canalco-primary))] mt-2" onClick={irSolicitud}>Ir a la solicitud</Button>
+            <p className="text-[hsl(var(--canalco-neutral-700))]">Este contrato aún no está <b>habilitado</b>.</p>
+            <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">Se habilita en la etapa de elaboración del contrato.</p>
+            <Button variant="link" className="text-[hsl(var(--canalco-primary))] mt-2" onClick={irSolicitud}>
+              Ir a la solicitud
+            </Button>
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
-            {/* Encabezado */}
-            <div className="grid grid-cols-[130px_1fr_130px] border-b border-[#0a2a52]">
-              <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-12 object-contain" />
+          <TextosDocumento value={textosCtx}>
+          <div className="doc bg-white border border-[hsl(var(--canalco-neutral-300))] text-[12px] text-black shadow-md px-8 py-7">
+
+            {/* Membrete. En el formato es el encabezado de página, que se repite en cada
+                hoja; en el navegador se imprime una vez, arriba. El título va **centrado**
+                en su celda, y las dos columnas guardan la proporción del formato: la del
+                logo mide 2101 twips contra 8207 de la del título, o sea uno a cuatro. */}
+            <table className="w-full border-collapse mb-6">
+              <tbody>
+                <tr>
+                  <td className="border border-[hsl(var(--canalco-neutral-400))] px-4 py-3 w-[20%]">
+                    <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-12 object-contain" />
+                  </td>
+                  <td className="border border-[hsl(var(--canalco-neutral-400))] px-4 text-center">
+                    <p className="font-bold text-[11pt] text-[hsl(var(--canalco-neutral-600))]">
+                      CONTRATO INDIVIDUAL DE TRABAJO A TÉRMINO FIJO
+                    </p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h1 className="text-center font-bold text-[13px] mb-4">
+              CONTRATO INDIVIDUAL DE TRABAJO A TÉRMINO FIJO
+            </h1>
+
+            {/* La parte inicial. Sin recuadro ni sombreado: la plantilla la trae como una
+                lista de dos columnas, con la etiqueta en negrita y sin bordes. */}
+            <table className="w-full text-[12px] mb-4 bloque">
+              <tbody>
+                <Fila label="Nombre del empleador" value={f.empleadora} onChange={(v) => set('empleadora', v)} />
+                <Fila label="NIT" value={f.nit} onChange={(v) => set('nit', v)} />
+                <Fila label="Domicilio del empleador" value={f.domicilioEmpleadora} onChange={(v) => set('domicilioEmpleadora', v)} />
+                <Fila label="Nombre del trabajador(a)" value={f.trabajador} onChange={(v) => set('trabajador', v)} />
+                <Fila label="Documento de identidad" value={f.documento} onChange={(v) => set('documento', v)} />
+                <Fila label="Dirección / correo / celular" value={f.contacto} onChange={(v) => set('contacto', v)} />
+                <Fila label="Cargo" value={f.cargo} onChange={(v) => set('cargo', v)} />
+                <Fila label="Dirección / dependencia" value={f.dependencia} onChange={(v) => set('dependencia', v)} />
+                <Fila label="Salario básico mensual" value={f.salario} onChange={(v) => set('salario', v)} />
+                <Fila label="Período de pago" value={f.periodoPago} onChange={(v) => set('periodoPago', v)} />
+                <Fila label="Fecha de inicio" value={f.fechaInicio} onChange={(v) => set('fechaInicio', v)} />
+                <Fila label="Fecha de terminación pactada" value={f.fechaTerminacion} onChange={(v) => set('fechaTerminacion', v)} />
+                <Fila label="Término inicial" value={f.terminoInicial} onChange={(v) => set('terminoInicial', v)} />
+              </tbody>
+            </table>
+
+            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify">
+              <div className="bloque">
+                <TextoEd
+                  k="t.comparecencia"
+                  plantilla={'COMPARECENCIA. Entre los suscritos, GLORIA LUCÍA ESCALANTE MANZANO, mayor de edad, '
+                    + 'identificada con cédula de ciudadanía No. 66.651.423 expedida en El Cerrito, quien actúa en '
+                    + 'calidad de representante legal de CANALES Y CONTACTOS S.A.S., identificada con NIT '
+                    + '900.456.735-7, quien en adelante se denominará LA EMPLEADORA; y [NOMBRE DEL TRABAJADOR(A)], '
+                    + 'identificado(a) como aparece en la parte inicial, quien en adelante se denominará EL/LA '
+                    + 'TRABAJADOR(A), se celebra el presente contrato individual de trabajo a término fijo, sujeto '
+                    + 'al Código Sustantivo del Trabajo, la legislación vigente y las siguientes cláusulas:'}
+                />
               </div>
-              <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[13px] border-r border-[#0a2a52]">
-                CONTRATO DE TRABAJO A TÉRMINO FIJO
-              </div>
-              <div className="flex items-center justify-center p-1">
-                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
+
+              {CLAUSULAS.map((c) => (
+                <div key={c.k} className="bloque space-y-1">
+                  <p><b>{c.titulo}:</b></p>
+                  <TextoEd k={c.k} plantilla={c.texto} />
+                </div>
+              ))}
+
+              <div className="bloque">
+                <TextoEd
+                  k="t.constancia"
+                  plantilla={'CONSTANCIA: Para constancia se firma en [CIUDAD], a los [DÍA] días del mes de [MES] '
+                    + 'de [AÑO], en dos ejemplares del mismo tenor.'}
+                />
               </div>
             </div>
 
-            <div className="px-8 py-6">
-              {/* Tabla de datos */}
-              <table className="w-full border-collapse text-[12px] mb-5">
-                <tbody>
-                  <Row label="LA EMPLEADORA" value={f.empleadora} onChange={(v) => set('empleadora', v)} />
-                  <Row label="DOMICILIO LA EMPLEADORA" value={f.domicilioEmpleadora} onChange={(v) => set('domicilioEmpleadora', v)} placeholder="Ciudad (Valle)" />
-                  <Row label="LA TRABAJADORA" value={f.trabajadora} onChange={(v) => set('trabajadora', v)} />
-                  <Row label="Identificación" value={f.trabajadoraCc} onChange={(v) => set('trabajadoraCc', v)} placeholder="C.C. ..." />
-                  <Row label="DIRECCIÓN DE LA TRABAJADORA" value={f.direccionTrabajadora} onChange={(v) => set('direccionTrabajadora', v)} placeholder="... (Valle)" />
-                  <Row label="LUGAR Y FECHA DE NACIMIENTO" value={f.lugarFechaNacimiento} onChange={(v) => set('lugarFechaNacimiento', v)} />
-                  <Row label="CARGO A DESEMPEÑAR" value={f.cargo} onChange={(v) => set('cargo', v)} />
-                  <Row label="SALARIO BÁSICO MENSUAL" value={f.salario} onChange={(v) => set('salario', v)} area placeholder="Un ... pesos M/L, más todas sus prestaciones de Ley." />
-                  <Row label="PERIODOS DE PAGO" value={f.periodosPago} onChange={(v) => set('periodosPago', v)} />
-                  <Row label="FECHA DE INICIACIÓN DE LABORES" value={f.fechaIniciacion} onChange={(v) => set('fechaIniciacion', v)} />
-                  <Row label="FECHA DE TERMINACIÓN DE LABORES" value={f.fechaTerminacion} onChange={(v) => set('fechaTerminacion', v)} />
-                </tbody>
-              </table>
-
-              <div className="space-y-3 text-justify leading-relaxed text-[12px]">
-                <p>
-                  Entre las suscritas a saber <b>{f.empleadora || '…'}</b>, mayor de edad, identificada con cédula de ciudadanía No.{' '}
-                  <Inline value={f.empleadoraCc} onChange={(v) => set('empleadoraCc', v)} placeholder="No." />, quien en adelante se
-                  denominará <b>LA EMPLEADORA</b> y por otra parte <b>{f.trabajadora || '…'}</b>, mayor de edad, identificada con cédula
-                  de ciudadanía No. {tx(f.trabajadoraCc)}, actuando en nombre propio y quien en adelante se denominará{' '}
-                  <b>LA TRABAJADORA</b>, hemos convenido celebrar contrato a término fijo, que se regirá por las siguientes cláusulas:
-                </p>
-
-                <Clausula titulo="PRIMERA. OBJETO.">
-                  LA TRABAJADORA se obliga para con LA EMPLEADORA, a incorporar a su servicio toda su capacidad normal de trabajo, de
-                  manera personal y exclusiva en el desempeño normal de sus funciones de{' '}
-                  <Inline value={f.cargo} onChange={(v) => set('cargo', v)} placeholder="cargo" />, y en las anexas y complementarias que
-                  se originen en el mismo cargo, de conformidad con las órdenes e instrucciones que en forma verbal o escrita le imparta
-                  LA EMPLEADORA o sus representantes o estimen necesarias para el desarrollo de sus funciones. Igualmente se obliga a no
-                  prestar directa ni indirectamente servicios laborales a otros empleadores, ni a trabajar por cuenta propia en el mismo
-                  oficio, a no atender en horas de trabajo asuntos u ocupaciones distintas de las que LA EMPLEADORA le encomiende sin la
-                  previa autorización de éste, así como abstenerse de realizar fuera del lugar destinado a su trabajo, salvo y ocasiones
-                  desgastes de su organismo de forma tal que impidan una adecuada prestación del servicio convenido.
-                </Clausula>
-
-                <Clausula titulo="SEGUNDA. JORNADA DE TRABAJO.">
-                  LA TRABAJADORA se compromete a cumplir una jornada de cuarenta y seis (46) horas semanales, en los turnos y dentro de
-                  los horarios que determine LA EMPLEADORA.
-                </Clausula>
-
-                <Clausula titulo="TERCERA. LUGAR DE PRESTACIÓN DEL SERVICIO.">
-                  La labor aquí contratada la desarrollará LA TRABAJADORA en los lugares o sitios que para tal efecto le indique LA
-                  EMPLEADORA. Igualmente, LA TRABAJADORA acepta cualquier orden de traslado que se le imparta para desempeñar otro cargo
-                  o función.
-                </Clausula>
-
-                <Clausula titulo="CUARTA. SALARIO.">
-                  LA EMPLEADORA reconocerá y pagará como retribución por los servicios LA TRABAJADORA, un SALARIO ORDINARIO BÁSICO por la
-                  suma de <Inline value={f.salario} onChange={(v) => set('salario', v)} placeholder="$ ... PESOS M/L" />, pagaderos en dos
-                  fracciones en pagos quincenales, dentro del cual se establece la remuneración de los descansos dominicales y festivos de
-                  que tratan los Capítulos I, II y III del Título VII del Código Sustantivo del Trabajo.
-                </Clausula>
-                <P><b>Parágrafo 1:</b> Toda remuneración variable que llegue a recibir LA TRABAJADORA se entenderá distribuida así: El 82.5% que remunera la labor ordinaria y el 17.5% restante que remunera el descanso en días dominicales y festivos.</P>
-                <P><b>Parágrafo 2:</b> Con base en lo previsto en el Artículo 128 del Código Sustantivo del Trabajo, subrogado por el Artículo 15 de la Ley 50 de 1.990, LA TRABAJADORA y LA EMPLEADORA han convenido que, además de lo previsto legalmente, tampoco tendrán carácter salarial en dinero o en especie para efectos del presente contrato, ni inciden por la razón en la liquidación de prestaciones sociales y demás derechos, los siguientes: a) Eventuales bonos que LA TRABAJADORA pudiese recibir; b) Cualquier tipo de gasto y el respectivo reembolso por cuenta de gastos u otro medio cuando LA TRABAJADORA realice viajes de negocios en asuntos de LA EMPLEADORA (incluye pero no se limita a gastos de transporte, de representación, manutención y alojamiento, sean éstos de carácter permanente, habitual u ocasional); c) Los suministros en especie, tales como la alimentación, habitación o vestuario, lavado de ropas, los servicios de campamento y casinos u otro servicio de cualquier naturaleza que LA EMPLEADORA otorgue o llegue a otorgar en el futuro a LA TRABAJADORA; y, d) En general, los estipendios, bonificaciones, prestaciones sociales, beneficios, auxilios, suministros, gratificaciones y devengos de cualquier naturaleza otorgados por LA EMPLEADORA de acuerdo con sus planes y políticas administrativas internas sin que se tome en cuenta su origen, su finalidad o la periodicidad de su percepción.</P>
-
-                <Clausula titulo="QUINTA. JUSTAS CAUSAS DE TERMINACIÓN.">
-                  Son justas causas para dar por terminado el contrato de trabajo, el incumplimiento a cualquiera de las obligaciones aquí
-                  establecidas, así como las previstas en el Artículo 7º del Decreto 2351 de 1965 y además por parte LA EMPLEADORA las
-                  siguientes faltas que por el efecto se califican como graves: a) La violación grave por parte LA TRABAJADORA de cualquiera
-                  de sus obligaciones legales, contractuales o reglamentarias; b) La no asistencia al trabajo, sin motivos justificados a
-                  juicio de LA EMPLEADORA, por dos veces dentro de un mismo mes calendario; c) La ejecución por parte LA TRABAJADORA de
-                  labores remuneradas al servicio de terceros sin autorización de LA EMPLEADORA; d) Las repetidas desavenencias con
-                  compañeros de trabajo; e) El incumplimiento de las obligaciones de confidencialidad contenidas en la cláusula octava del
-                  presente contrato; f) El hecho que LA TRABAJADORA llegue embriagada al trabajo o ingiera bebidas embriagantes en el sitio
-                  de trabajo, aún por la primera vez; g) El hecho de que LA TRABAJADORA abandone el sitio de trabajo sin permiso de sus
-                  superiores o sin una clara justificación; h) La no asistencia a una sesión completa de la jornada de trabajo, o más, sin
-                  excusa suficiente a juicio de LA EMPLEADORA salvo fuerza mayor o caso fortuito.
-                </Clausula>
-                <P><b>Parágrafo:</b> LA TRABAJADORA declara conocer los siguientes documentos existentes en LA EMPLEADORA y se obliga de manera especial a dar cumplimiento a las obligaciones contenidas en ellos: Reglamento Interno de Trabajo, Política de seguridad y salud en el trabajo. La violación de dichas obligaciones también podrá dar lugar a la terminación del contrato de trabajo con justa causa.</P>
-
-                <Clausula titulo="SEXTA. DURACIÓN Y PERÍODO DE PRUEBA.">
-                  El presente contrato es a Término Fijo, con una duración de{' '}
-                  <Inline value={f.duracion} onChange={(v) => set('duracion', v)} placeholder="un (01) año" /> contado del{' '}
-                  <Inline value={f.inicio} onChange={(v) => set('inicio', v)} placeholder="fecha de inicio" /> al{' '}
-                  <Inline value={f.fin} onChange={(v) => set('fin', v)} placeholder="fecha final" />, ambas fechas inclusive. Por lo tanto,
-                  para este caso, el período de prueba no puede exceder la quinta parte del contrato, lo que equivale a{' '}
-                  <Inline value={f.periodoPrueba} onChange={(v) => set('periodoPrueba', v)} placeholder="60" /> días laborales que
-                  corresponden a período de prueba.
-                </Clausula>
-
-                <Clausula titulo="SÉPTIMA. VIGENCIA Y MODIFICACIÓN.">
-                  El presente contrato reemplaza en su integridad y deja sin efecto alguno cualquier otro contrato verbal o escrito celebrado
-                  entre las partes con anterioridad. En consecuencia, las partes manifiestan que no reconocerán validez a estipulaciones
-                  verbales relacionadas con el presente contrato el cual conformará el acuerdo completo y total acerca de su objeto, de tal
-                  forma que cualquier modificación que sufra el presente contrato deberá hacerse constar por escrito.
-                </Clausula>
-
-                <Clausula titulo="OCTAVA. CONFIDENCIALIDAD.">
-                  LA TRABAJADORA {f.trabajadora || '…'}, guardará absoluta confidencialidad sobre toda la información reservada que maneje y
-                  a la que pudiere tener acceso. LA TRABAJADORA se obliga a conservar, mantener y manejar la reserva y confidencialidad de
-                  toda la información que reciba de los funcionarios, empleados de manera directa o indirecta, en forma verbal, escrita,
-                  gráfica, en medio magnético, electrónico, o bajo cualquier otra forma, que sea entregada con el ánimo de realizar
-                  operaciones propias de su objeto social y/o relativas al objeto del presente Acuerdo, sin que para el efecto sea necesario
-                  que la parte reveladora la califique como confidencial o reservada, en adelante denominada la "Información Confidencial" o
-                  la "información" indistintamente. En dicho sentido, se obliga LA TRABAJADORA a tomar todas las medidas necesarias para que
-                  la información no llegue a manos de terceros ni de la competencia en ninguna circunstancia y se obliga a utilizarla
-                  únicamente para adelantar las tareas que se requieran para llevar a cabo el desarrollo, estructuración y puesta en marcha
-                  de negocios conjuntos, que redunden en beneficios económicos para LA EMPLEADORA, acceso a la información o realizar las
-                  operaciones que tiene disponibles para ello.
-                </Clausula>
-                <P><b>PARÁGRAFO PRIMERO:</b> LA TRABAJADORA se compromete a guardar confidencialidad absoluta, respecto del conocimiento directo o indirecto que, por ocasión de su labor, llegase a tener de la empleadora, filiales, controladas o subordinadas, que guardan estrecha relación comercial, financiera, contable y laboral de LA EMPLEADORA.</P>
-                <P><b>PARÁGRAFO SEGUNDO:</b> LA TRABAJADORA se abstendrá, por sí, por su personal o por terceros, directa o indirectamente, de comportamientos que puedan constituir competencia desleal o actos de esta naturaleza, para con LA EMPLEADORA, sus usuarios o terceros, o conductas contrarias a la confidencialidad exigida por la ley y el Contrato.</P>
-                <P><b>PARÁGRAFO TERCERO:</b> LA TRABAJADORA conoce y acepta desde ya que la divulgación y el uso indebido o no autorizado de la información que conozca o maneje puede causar un perjuicio irreparable a LA EMPLEADORA. Por lo mismo, se compromete a no hacer ningún tipo de uso indebido o no autorizado de la información. Asimismo, se compromete a manejar la información que conozca o maneje con un mayor grado de cuidado de aquel con el cual maneja su propia información confidencial y sus propios secretos industriales. LA TRABAJADORA se compromete a que deberá resarcir a LA EMPLEADORA, por cualquier uso indebido o no autorizado, culpable o no, que ella, sus empleados, socios, subcontratistas, asesores y demás personas puedan llegar a dar a la información que conozca o maneje. Los términos y condiciones aquí contenidos son de obligatorio cumplimiento y aceptación, por parte de quienes sean autorizados para tener acceso a la información o realizar las operaciones que tiene disponibles para ello.</P>
-                <P><b>PARÁGRAFO CUARTO – EXIGENCIA DE INDEMNIZACIÓN:</b> En el evento de violación de este Acuerdo por parte LA TRABAJADORA, dicho evento dará derecho a LA EMPLEADORA, a exigir por los medios judiciales pertinentes, la indemnización de perjuicios, incluyendo dentro de dicha indemnización las costas judiciales y agencias en derecho a que hubiere lugar. En ese caso, LA EMPLEADORA tendrá toda la facultad de demandar y exigir judicialmente la reparación de perjuicios a la parte cumplida. En virtud de lo pactado en esta cláusula y, sin perjuicio del derecho de LA EMPLEADORA, LA TRABAJADORA reconocerá y pagará incondicional e irrevocablemente a LA EMPLEADORA el valor que se estime por la ley para reconocer el perjuicio creado. Así las cosas, LA TRABAJADORA se compromete y acepta expresamente que la presente obligación presta mérito ejecutivo y que, por lo tanto, puede ser ejecutada mediante proceso ejecutivo sin requerimiento o reconvención alguna al que se renuncia expresamente.</P>
-
-                <Clausula titulo="NOVENA. DIRECCIONES Y NOTIFICACIONES.">
-                  En el encabezado de este contrato LA TRABAJADORA ha suministrado y anotado la dirección actual de su residencia
-                  permanente. Toda notificación que LA EMPLEADORA tuviere que hacerle a LA TRABAJADORA debido al desarrollo o terminación
-                  del presente contrato, se entenderá válida y legalmente hecha si se dirige a la dirección de LA TRABAJADORA que figura en
-                  las oficinas de LA EMPLEADORA. En caso de cambio de residencia LA TRABAJADORA está obligada a avisar dicha circunstancia a
-                  LA EMPLEADORA dentro de los cinco (5) días siguientes a dicho cambio, de no hacerlo se entenderá que siguen rigiendo para
-                  todos los efectos legales los datos que posee LA EMPLEADORA.
-                </Clausula>
-
-                <Clausula titulo="DÉCIMA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS.">
-                  LA TRABAJADORA se obliga a desempeñar sus funciones con integridad, ética y lealtad hacia LA EMPLEADORA. En este sentido,
-                  queda estrictamente prohibido solicitar, recibir, aceptar directa o indirectamente cualquier pago, comisión, gratificación,
-                  beneficio, dádiva o cualquier otra retribución de proveedores, contratistas, clientes o cualquier tercero con quien la
-                  empleadora mantenga o pueda mantener relaciones comerciales o contractuales. El incumplimiento de esta disposición
-                  constituirá una falta grave y será causal de terminación inmediata del contrato de trabajo con justa causa, sin perjuicio
-                  de las acciones legales que LA EMPLEADORA pueda ejercer en contra de LA TRABAJADORA por los daños y perjuicios ocasionados.
-                </Clausula>
-
-                <Clausula titulo="DÉCIMA PRIMERA. PROTECCIÓN DE DATOS PERSONALES.">
-                  LA TRABAJADORA en su condición de titular de la información, autoriza a la empleadora para almacenar en sus bases los datos
-                  personales y tener acceso a los mismos en cualquier momento, tanto durante la vigencia de la relación laboral como con
-                  posterioridad a la misma; esta autorización abarca la posibilidad de recolectar y almacenar dichos datos en las bases de
-                  datos y sistemas o software de la institución. LA TRABAJADORA entiende que el tratamiento de sus datos personales por parte
-                  de la empleadora tiene una finalidad legítima de acuerdo con la ley y la Constitución y obedece al manejo interno de los
-                  datos en desarrollo de la relación laboral existente entre las partes y que la información personal será manejada con las
-                  medidas técnicas, humanas y administrativas necesarias para garantizar la seguridad y reserva de la información.
-                </Clausula>
-                <P><b>Parágrafo 1:</b> LA EMPLEADORA ha enterado a LA TRABAJADORA de su derecho a conocer el uso dado a sus datos personales, acceder a ellos, actualizarlos y rectificarlos en cualquier momento. Igualmente, LA EMPLEADORA ha informado sobre el carácter facultativo de la respuesta a las preguntas que versen sobre datos sensibles.</P>
-                <P><b>Parágrafo 2:</b> LA TRABAJADORA se compromete a respetar la legislación en materia de protección de datos, las políticas de privacidad y de seguridad de la información que LA EMPLEADORA ha implementado, como también a: (i) Utilizar los datos de carácter personal a los que tenga acceso única y exclusivamente para cumplir con sus obligaciones para con LA EMPLEADORA; (ii) Cumplir con las medidas de seguridad que LA EMPLEADORA haya implementado para asegurar la confidencialidad, secreto e integridad de los datos de carácter personal a los que tenga acceso, así como no ceder en ningún caso a terceras personas los datos de carácter personal a los que tenga acceso, ni tan siquiera a efectos de su conservación.</P>
-
-                <p className="pt-4">
-                  Para constancia de todo lo anterior, se firma el presente contrato de trabajo en la ciudad de{' '}
-                  <Inline value={f.ciudadFirma} onChange={(v) => set('ciudadFirma', v)} placeholder="ciudad" /> a los{' '}
-                  <Inline value={f.fechaFirma} onChange={(v) => set('fechaFirma', v)} placeholder="00 de mes de 0000" />.
-                </p>
-
-                {/* Firmas */}
-                <div className="grid grid-cols-2 gap-8 pt-12">
-                  <div>
-                    <p className="font-bold mb-8">LA EMPLEADORA</p>
-                    <div className="border-t border-[#0a2a52] pt-1">
-                      <FLine value={f.empleadoraFirmante} onChange={(v) => set('empleadoraFirmante', v)} placeholder="Nombre" bold />
-                      <div className="flex gap-1"><span>C.C.</span><FLine value={f.empleadoraFirmanteCc} onChange={(v) => set('empleadoraFirmanteCc', v)} placeholder="..." /></div>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="font-bold mb-8">LA TRABAJADORA</p>
-                    <div className="border-t border-[#0a2a52] pt-1">
-                      <FLine value={f.trabajadora} onChange={(v) => set('trabajadora', v)} placeholder="Nombre" bold />
-                      <div className="flex gap-1"><span>C.C.</span><FLine value={f.trabajadoraCc} onChange={(v) => set('trabajadoraCc', v)} placeholder="..." /></div>
-                    </div>
-                  </div>
+            {/* Firmas. La empleadora firma con nombre y empresa a secas —es la misma en
+                todos los contratos—; el trabajador sale de la parte inicial. */}
+            <div className="grid grid-cols-2 gap-8 mt-12 text-[12px] bloque">
+              <div>
+                <div className="border-t border-black pt-1">
+                  <p className="font-bold">GLORIA LUCÍA ESCALANTE MANZANO</p>
+                  <p>Representante Legal</p>
+                  <p>CANALES Y CONTACTOS S.A.S.</p>
+                  <p>LA EMPLEADORA</p>
+                </div>
+              </div>
+              <div>
+                <div className="border-t border-black pt-1">
+                  <FLine value={f.trabajador} onChange={(v) => set('trabajador', v)} bold />
+                  <p className="flex items-baseline gap-1">
+                    C.C. <FLine value={f.trabajadorCc} onChange={(v) => set('trabajadorCc', v)} ancho="w-[38%]" /> de{' '}
+                    <FLine value={f.trabajadorLugarCc} onChange={(v) => set('trabajadorLugarCc', v)} ancho="w-[38%]" />
+                  </p>
+                  <p>EL/LA TRABAJADOR(A)</p>
                 </div>
               </div>
             </div>
+
+            {/* La nota de la plantilla: es una instrucción para quien diligencia —«antes de
+                la firma»—, así que se ve en pantalla y no se imprime. Un contrato firmado
+                no puede decir que es una plantilla parametrizable. */}
+            <p className="no-print mt-8 border border-[hsl(var(--canalco-neutral-300))] bg-[hsl(var(--canalco-neutral-100))] px-3 py-2 text-[11px] text-[hsl(var(--canalco-neutral-700))]">
+              Plantilla jurídica parametrizable. Los campos entre corchetes [ ] deben diligenciarse y
+              validarse antes de la firma.
+            </p>
           </div>
           <PieElaboracion />
+          </TextosDocumento>
           </fieldset>
         )}
 
         {habilitada && !editable && (
           <p className="no-print text-center text-xs text-[hsl(var(--canalco-neutral-500))] mt-4">
-            Solo Jurídica puede diligenciar el contrato. Puedes consultarlo e imprimirlo.
+            Solo Jurídica puede diligenciar este contrato. Puedes consultarlo e imprimirlo.
           </p>
         )}
       </main>
@@ -349,50 +454,34 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
 
 /* ── Subcomponentes ─────────────────────────────────────── */
 
-const tx = (v: string) => (v?.trim() ? v : '…');
-
-function Row({ label, value, onChange, area, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; area?: boolean; placeholder?: string;
+/** Un renglón de la parte inicial: etiqueta en negrita y el dato al lado, sin bordes. */
+function Fila({ label, value, onChange }: {
+  label: string; value: string; onChange: (v: string) => void;
 }) {
   return (
     <tr>
-      <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[42%]">{label}</td>
-      <td className="border border-[#0a2a52] px-2 py-1 align-top">
-        {area ? (
-          <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={2}
-            className="w-full bg-transparent outline-none resize-y text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
-        ) : (
-          <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-            className="w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
-        )}
+      <td className="align-top py-0.5 pr-4 w-[34%] font-bold">{label}</td>
+      <td className="align-top py-0.5">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
+        />
       </td>
     </tr>
   );
 }
 
-function Clausula({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return <p className="text-justify"><b>{titulo}</b> {children}</p>;
-}
-
-function P({ children }: { children: React.ReactNode }) {
-  return <p className="text-justify">{children}</p>;
-}
-
-function Inline({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+/** Renglón de un bloque de firma. */
+function FLine({ value, onChange, bold, ancho }: {
+  value: string; onChange: (v: string) => void; bold?: boolean; ancho?: string;
+}) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      size={Math.max((value || placeholder || '').length, 5)}
-      className="bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+      className={(ancho ?? 'w-full') + ' bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
+        + (bold ? 'font-bold' : '')}
     />
-  );
-}
-
-function FLine({ value, onChange, placeholder, bold }: { value: string; onChange: (v: string) => void; placeholder?: string; bold?: boolean }) {
-  return (
-    <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-      className={'w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] ' + (bold ? 'font-bold' : '')} />
   );
 }

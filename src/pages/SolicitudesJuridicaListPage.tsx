@@ -224,8 +224,22 @@ export default function SolicitudesJuridicaListPage() {
                   >
                     <td className="px-4 py-3 font-mono text-[hsl(var(--canalco-neutral-700))]">
                       {meToca(s) && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 align-middle" title="Espera una acción tuya" />}
-                      {/* Un borrador todavía no gastó número: se dice, no se inventa. */}
-                      {s.numero ?? <span className="text-[hsl(var(--canalco-neutral-400))]">borrador</span>}
+                      {/*
+                        Un borrador todavía no gastó número —se asigna la primera vez que
+                        deja de serlo—, así que acá va la raya con que la tabla marca lo
+                        que aún no existe, igual que en Contratista y en SLA. Decía
+                        «borrador», que es la misma palabra que la columna Estado muestra
+                        dos celdas más allá: repetirla no informaba y hacía leer la
+                        columna del número como si fuera texto.
+                      */}
+                      {s.numero ?? (
+                        <span
+                          className="text-[hsl(var(--canalco-neutral-400))]"
+                          title="Sin número: se asigna cuando el borrador se envía"
+                        >
+                          —
+                        </span>
+                      )}
                     </td>
                     {/* El objeto no desaparece: pasa al tooltip, que es donde sirve
                         para distinguir dos contratos del mismo tipo. */}

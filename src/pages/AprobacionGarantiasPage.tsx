@@ -8,55 +8,76 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
 
 /**
- * Acta de Aprobación de Garantías. La levanta Jurídica al revisar las pólizas.
+ * Acta de revisión y aprobación de garantías contractuales, plantilla 2026 (el formato
+ * «11 Acta Revision Aprobacion Garantias»). La levanta Jurídica al revisar las pólizas.
  *
  * Va **después de la Verificación de garantías** y no dentro de ella: la verificación es
  * el papel de trabajo —los ítems Sí/No y la matriz de riesgo, cómo se llegó a la
- * conclusión—; el acta es la conclusión ya firmada, con los datos de cada póliza y su
- * CUMPLE / NO CUMPLE. La lista de chequeo también los pide por separado: «Pólizas» y
- * «Aprobación de pólizas» son dos filas.
+ * conclusión—; el acta es la conclusión ya firmada. La lista de chequeo también los pide
+ * por separado: «Pólizas» y «Aprobación de pólizas» son dos filas.
  *
- * No es una etapa del flujo: se levanta en el mismo momento en que se verifica, así que
- * se habilita en los mismos estados y no mueve la máquina de estados.
+ * No es una etapa del flujo: se levanta en el mismo momento en que se verifica, así que se
+ * habilita en los mismos estados y no mueve la máquina de estados.
  *
- * El acta enumera una garantía por bloque —(i) cumplimiento, (II) responsabilidad civil
- * extracontractual—, cada uno con su aseguradora, sus partes y su cuadro. Por eso los
- * bloques son una lista: cuántas garantías ampare un contrato lo decide la matriz de
- * garantías, no el formato.
+ * Frente a la versión anterior el acta se enderezó: antes era una lista de bloques, uno por
+ * garantía, cada uno con su aseguradora y su cuadro. La plantilla 2026 trae **una póliza
+ * por acta** y, debajo, la tabla de sus amparos —cumplimiento, calidad, salarios, buen
+ * manejo, RCE—, que es como se emiten de verdad: una póliza de cumplimiento ampara varios
+ * riesgos. Un contrato con dos pólizas separadas lleva dos actas.
+ *
+ * Y añade lo que antes no se dejaba escrito: la verificación de autenticidad de la póliza,
+ * las validaciones previas y la decisión motivada.
  *
  * Ruta: `.../juridica/:id/aprobacion-garantias`. Se guarda en data.aprobacionGarantias.
  */
 
-/** Un extremo de la vigencia: el cuadro la parte en día, mes y año. */
-interface Extremo { dia: string; mes: string; anio: string }
-
-interface FilaGarantia {
-  clase: string;
+/** Un renglón de la tabla de amparos: lo exigido contra lo acreditado. */
+interface FilaAmparo {
+  amparo: string;
+  exigencia: string;
   valor: string;
-  vigencia: string;
-  desde: Extremo;
-  hasta: Extremo;
+  vigenciaExigida: string;
+  vigenciaAcreditada: string;
   cumple: string;
-}
-
-interface BloqueGarantia {
-  /** El ordinal del bloque, tal como está escrito en el formato: «(i)», «(II)». */
-  ordinal: string;
-  titulo: string;
-  aseguradora: string;
-  tomador: string;
-  tomadorNit: string;
-  asegurado: string;
-  aseguradoNit: string;
-  filas: FilaGarantia[];
-  /** Consulta de la póliza en FASECOLDA: con eso se verifica que exista. */
-  enlace: string;
+  observaciones: string;
 }
 
 interface AprobacionState {
-  bloques: BloqueGarantia[];
+  /* ── Referencia del contrato ── */
+  contrato: string;
+  contratante: string;
+  contratista: string;
+  objeto: string;
+  valorContractual: string;
+  plazo: string;
+  fechaRevision: string;
+
+  /* ── 1. Datos de la póliza o garantía ── */
+  aseguradora: string;
+  numeroPoliza: string;
+  tipoPoliza: string;
+  tomador: string;
+  asegurado: string;
+  fechaExpedicion: string;
+  autenticidad: string;
+
+  /* ── 2. Verificación de amparos ── */
+  amparos: FilaAmparo[];
+
+  /* ── 3. Validaciones previas ── */
+  vCoherencia: string;
+  vPartes: string;
+  vCuantias: string;
+  vAnexos: string;
+  vAsesor: string;
+  vPendientes: string;
+
+  /* ── 4. Decisión ── */
+  decisionObservaciones: string;
+
   /** Quién firma el acta. La aprueba la Dirección Jurídica. */
   firmanteNombre: string;
   firmanteCargo: string;
@@ -64,91 +85,63 @@ interface AprobacionState {
   textos: Record<string, string>;
 }
 
-const ENLACE_FASECOLDA = 'https://www.fasecolda.com/ramos/cumplimiento/consulta-de-polizas/';
+/** Los seis amparos que la plantilla deja listos. El último es el hueco para otro. */
+const AMPAROS_DEL_FORMATO = [
+  'Cumplimiento',
+  'Calidad del servicio / obra / bienes',
+  'Salarios, prestaciones e indemnizaciones laborales',
+  'Buen manejo / devolución de anticipo',
+  'Responsabilidad civil extracontractual',
+  '[OTRO AMPARO]',
+];
 
-const EMPTY_EXTREMO: Extremo = { dia: 'X', mes: 'X', anio: 'X' };
-
-/** Fila en blanco para «Agregar garantía»: el cuadro nace con sus casillas de vigencia. */
-const nuevaFila = (): FilaGarantia => ({
-  clase: '',
-  valor: '',
-  vigencia: '',
-  desde: { ...EMPTY_EXTREMO },
-  hasta: { ...EMPTY_EXTREMO },
-  cumple: 'CUMPLE',
+const filaAmparo = (amparo: string): FilaAmparo => ({
+  amparo,
+  exigencia: '[PORCENTAJE / CONDICIÓN]',
+  valor: '[$ VALOR]',
+  vigenciaExigida: '[DESDE - HASTA]',
+  vigenciaAcreditada: '[DESDE - HASTA]',
+  cumple: '[SÍ / NO / N.A.]',
+  observaciones: '[OBSERVACIÓN]',
 });
-
-const nuevoBloque = (ordinal: string): BloqueGarantia => ({
-  ordinal,
-  titulo: '',
-  aseguradora: '',
-  tomador: '',
-  tomadorNit: '',
-  asegurado: '',
-  aseguradoNit: '',
-  filas: [nuevaFila()],
-  enlace: ENLACE_FASECOLDA,
-});
-
-/** Ordinal por defecto de un bloque nuevo. Es un valor inicial: se puede reescribir. */
-const ORDINALES = ['(i)', '(II)', '(III)', '(IV)', '(V)', '(VI)'];
 
 /**
  * El acta en blanco, con el texto del formato como **valor** y no como placeholder: el
  * placeholder se ve en pantalla pero no se imprime, y el formato vacío tiene que poder
  * imprimirse para diligenciarlo a mano.
+ *
+ * Los amparos vienen con su exigencia y su vigencia en corchetes, sin porcentajes ni
+ * cuantías: la propia plantilla lo prohíbe en su nota de control interno, porque un valor
+ * por defecto se firma sin mirar si es el que el contrato exigía.
  */
 const EMPTY: AprobacionState = {
-  bloques: [
-    {
-      ordinal: '(i)',
-      titulo: 'DATOS – DE LA GARANTÍA DE CUMPLIMIENTO. No. 45-44-101174811.',
-      aseguradora: 'SEGUROS DEL ESTADO S.A.',
-      tomador: 'XXX.,',
-      tomadorNit: 'XXX., 7',
-      asegurado: 'XXX',
-      aseguradoNit: 'XXXX',
-      filas: [
-        {
-          clase: 'CUMPLIMIENTO DEL CONTRATO',
-          valor: 'Por el 10% del valor total del contrato. Esto es ($XXX).\n\nValor asegurado:\n$ XX',
-          vigencia: 'Por el plazo de ejecución del contrato y tres (3) meses más contados a partir de la fecha de perfeccionamiento del acuerdo contractual.',
-          desde: { ...EMPTY_EXTREMO },
-          hasta: { ...EMPTY_EXTREMO },
-          cumple: 'CUMPLE',
-        },
-        {
-          clase: 'DEVOLUCIÓN DEL PAGO ANTICIPADO',
-          valor: 'En una cien por ciento (100%) del valor entregado en calidad de anticipo. Esto es ($X00).\n\nValor asegurado:\n($X).',
-          vigencia: 'Por el plazo de ejecución del contrato, contada a partir de la fecha de la firma del acta de expansión.',
-          desde: { ...EMPTY_EXTREMO },
-          hasta: { ...EMPTY_EXTREMO },
-          cumple: 'CUMPLE',
-        },
-      ],
-      enlace: ENLACE_FASECOLDA,
-    },
-    {
-      ordinal: '(II)',
-      titulo: 'DATOS – PÓLIZA DE SEGURO DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL No. 45-40-101107521.',
-      aseguradora: 'SEGUROS DEL ESTADO S.A.',
-      tomador: 'CANALES Y CONTACTOS S.A.S',
-      tomadorNit: '900.456.735-7',
-      asegurado: 'LA EMPRESAS PUBLICAS DE JERICÓ S.A. E.S.P.',
-      aseguradoNit: '900.191.468-6',
-      filas: [
-        {
-          clase: 'PÓLIZA DE SEGURO DE RESPONSABILIDAD CIVIL EXTRACONTRACTUAL',
-          valor: '$350.181.000,00\n\nValor asegurado:\n$350.181.000,00',
-          vigencia: 'Por el plazo de duración del contrato y un (01) mes mas.',
-          desde: { ...EMPTY_EXTREMO },
-          hasta: { dia: '3X', mes: 'X', anio: 'X' },
-          cumple: 'CUMPLE',
-        },
-      ],
-      enlace: ENLACE_FASECOLDA,
-    },
-  ],
+  contrato: '[TIPO Y NÚMERO]',
+  contratante: 'CANALES Y CONTACTOS S.A.S. / [OTRA ENTIDAD]',
+  contratista: '[NOMBRE / RAZÓN SOCIAL - NIT/CC]',
+  objeto: '[OBJETO CONTRACTUAL]',
+  valorContractual: '[$ VALOR]',
+  plazo: '[PLAZO / FECHA INICIO - FECHA TERMINACIÓN]',
+  fechaRevision: '[DÍA/MES/AÑO]',
+
+  aseguradora: '[RAZÓN SOCIAL]',
+  numeroPoliza: '[NÚMERO]',
+  tipoPoliza: '[CUMPLIMIENTO / RCE / OTRA]',
+  tomador: '[NOMBRE - NIT/CC]',
+  asegurado: '[NOMBRE - NIT]',
+  fechaExpedicion: '[FECHA]',
+  autenticidad: '[MEDIO / FECHA / RESULTADO / SOPORTE]',
+
+  amparos: AMPAROS_DEL_FORMATO.map(filaAmparo),
+
+  vCoherencia: '[CUMPLE / NO CUMPLE]',
+  vPartes: '[CUMPLE / NO CUMPLE]',
+  vCuantias: '[CUMPLE / NO CUMPLE]',
+  vAnexos: '[CUMPLE / NO CUMPLE / N.A.]',
+  vAsesor: '[NOMBRE / FECHA / SOPORTE / CUMPLE]',
+  vPendientes: '[NINGUNA / DETALLAR]',
+
+  decisionObservaciones: '[DETALLAR O INDICAR “NINGUNA”]',
+
   firmanteNombre: 'MARTA CECILIA RODRÍGUEZ HERRERA',
   firmanteCargo: 'Directora Jurídica',
   textos: {},
@@ -190,9 +183,9 @@ export default function AprobacionGarantiasPage() {
         setF({
           ...EMPTY,
           ...saved,
-          // Un acta guardada sin bloques dejaría la pantalla en blanco y sin forma de
-          // volver al formato: se cae a la plantilla.
-          bloques: saved.bloques?.length ? saved.bloques : EMPTY.bloques,
+          // Un acta guardada sin amparos dejaría la tabla en blanco y sin forma de volver
+          // al formato: se cae a la plantilla.
+          amparos: saved.amparos?.length ? saved.amparos : EMPTY.amparos,
           textos: saved.textos ?? {},
         });
       } catch {
@@ -207,53 +200,8 @@ export default function AprobacionGarantiasPage() {
   const set = <K extends keyof AprobacionState>(k: K, v: AprobacionState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
 
-  /** Cambia un campo de un bloque. */
-  const setBloque = <K extends keyof BloqueGarantia>(i: number, k: K, v: BloqueGarantia[K]) =>
-    setF((p) => ({
-      ...p,
-      bloques: p.bloques.map((b, idx) => (idx === i ? { ...b, [k]: v } : b)),
-    }));
-
-  /** Cambia un campo de una fila del cuadro de un bloque. */
-  const setFila = <K extends keyof FilaGarantia>(i: number, j: number, k: K, v: FilaGarantia[K]) =>
-    setF((p) => ({
-      ...p,
-      bloques: p.bloques.map((b, idx) => (idx !== i ? b : {
-        ...b,
-        filas: b.filas.map((fl, jdx) => (jdx === j ? { ...fl, [k]: v } : fl)),
-      })),
-    }));
-
-  const setVigencia = (i: number, j: number, extremo: 'desde' | 'hasta', campo: keyof Extremo, v: string) =>
-    setF((p) => ({
-      ...p,
-      bloques: p.bloques.map((b, idx) => (idx !== i ? b : {
-        ...b,
-        filas: b.filas.map((fl, jdx) => (jdx !== j ? fl : {
-          ...fl,
-          [extremo]: { ...fl[extremo], [campo]: v },
-        })),
-      })),
-    }));
-
-  const agregarBloque = () =>
-    setF((p) => ({
-      ...p,
-      bloques: [...p.bloques, nuevoBloque(ORDINALES[p.bloques.length] ?? '')],
-    }));
-  const quitarBloque = (i: number) =>
-    setF((p) => ({ ...p, bloques: p.bloques.filter((_, idx) => idx !== i) }));
-
-  const agregarFila = (i: number) =>
-    setF((p) => ({
-      ...p,
-      bloques: p.bloques.map((b, idx) => (idx === i ? { ...b, filas: [...b.filas, nuevaFila()] } : b)),
-    }));
-  const quitarFila = (i: number, j: number) =>
-    setF((p) => ({
-      ...p,
-      bloques: p.bloques.map((b, idx) => (idx === i ? { ...b, filas: b.filas.filter((_, jdx) => jdx !== j) } : b)),
-    }));
+  const setAmparo = <K extends keyof FilaAmparo>(i: number, k: K, v: FilaAmparo[K]) =>
+    setF((p) => ({ ...p, amparos: p.amparos.map((a, j) => (j === i ? { ...a, [k]: v } : a)) }));
 
   const handleSave = async (): Promise<boolean> => {
     setSaving(true);
@@ -286,7 +234,7 @@ export default function AprobacionGarantiasPage() {
           body { background: #fff !important; }
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; border: none !important; }
-          /* Un bloque de garantía no se parte entre dos hojas si cabe entero. */
+          /* Una sección del acta no se parte entre dos hojas si cabe entera. */
           .bloque { break-inside: avoid; }
         }
       `}</style>
@@ -298,8 +246,8 @@ export default function AprobacionGarantiasPage() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
-            <h1 className="text-lg font-bold text-[#16162b]">Acta de Aprobación de Garantías</h1>
-            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId}</p>
+            <h1 className="text-lg font-bold text-[#16162b]">Acta de revisión y aprobación de garantías</h1>
+            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId} · Plantilla 2026</p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -336,194 +284,181 @@ export default function AprobacionGarantiasPage() {
           <TextosDocumento value={textosCtx}>
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-7 space-y-4">
 
-              {/* Título */}
-              <div className="text-center font-bold text-[13px]">
-                <TextoEd k="titulo" plantilla="ACTA DE APROBACIÓN GARANTÍAS" className="text-center" />
+              {/* Membrete */}
+              <div className="flex items-center justify-between">
+                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
+                <h1 className="text-center font-bold text-[13px] leading-snug px-3">
+                  ACTA DE REVISIÓN Y APROBACIÓN DE GARANTÍAS<br />CONTRACTUALES
+                </h1>
+                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
               </div>
 
-              <div className="text-center font-bold text-[12px]">
-                <TextoEd
-                  k="subtitulo"
-                  plantilla="ACTA DE OBRAS DE EXPANSIÓN NO. XXXXX SUSCRITA EL XXXX ENTRE XXXX Y XXXXX"
-                  className="text-center"
-                />
-              </div>
+              <p className="text-[11px] font-bold">NIT 900.456.735-7</p>
 
-              {/* Párrafo de apertura */}
+              {/* Referencia del contrato */}
+              <table className="w-full border-collapse text-[12px] bloque">
+                <tbody>
+                  <Fila label="Contrato / negocio jurídico" value={f.contrato} onChange={(v) => set('contrato', v)} />
+                  <Fila label="Contratante" value={f.contratante} onChange={(v) => set('contratante', v)} />
+                  <Fila label="Contratista / tomador" value={f.contratista} onChange={(v) => set('contratista', v)} />
+                  <Fila label="Objeto" value={f.objeto} onChange={(v) => set('objeto', v)} area />
+                  <Fila label="Valor contractual" value={f.valorContractual} onChange={(v) => set('valorContractual', v)} />
+                  <Fila label="Plazo" value={f.plazo} onChange={(v) => set('plazo', v)} />
+                  <Fila label="Fecha de revisión" value={f.fechaRevision} onChange={(v) => set('fechaRevision', v)} />
+                </tbody>
+              </table>
+
+              {/* Alcance de la revisión */}
               <TextoEd
-                k="apertura"
-                plantilla={
-                  'El día xXXX (X) del mes de X de XX, se procedió a revisar la Garantía de Cumplimiento del contrato '
-                  + 'y devolución del pago anticipado, No. XXXX expedida el X (X) del mes deX de X y Póliza de Seguro de '
-                  + 'Responsabilidad Civil Extracontractual No. XXXX expedida el X (X) del mes deX de, garantías '
-                  + 'que amparan el contrato de XXXXX  No. xx, suscrito el XXX de Xde XXX, cuyo objeto es: "XXXXXX" '
-                  + 'A favor de la: XXXX., por parte de XXX., identificado con NIT No. XXXX, así;'
-                }
+                k="a.alcance"
+                plantilla={'En la fecha indicada se efectúa la revisión documental de las garantías exigidas en el '
+                  + 'contrato de referencia, con el fin de verificar su correspondencia con las condiciones '
+                  + 'contractuales, los amparos requeridos, las cuantías, las vigencias, los asegurados/beneficiarios '
+                  + 'y la identificación de las partes. La aprobación contenida en esta acta se limita a dicha '
+                  + 'verificación documental y contractual.'}
+                className="text-justify leading-relaxed"
               />
 
-              {/* Un bloque por garantía */}
-              {f.bloques.map((b, i) => (
-                <section key={i} className="bloque space-y-2 pt-2">
-                  <div className="flex items-start gap-3">
-                    <input
-                      value={b.ordinal}
-                      onChange={(e) => setBloque(i, 'ordinal', e.target.value)}
-                      className="w-12 bg-transparent outline-none font-bold text-[12px] shrink-0"
-                    />
-                    <textarea
-                      value={b.titulo}
-                      onChange={(e) => setBloque(i, 'titulo', e.target.value)}
-                      rows={1}
-                      className="flex-grow bg-transparent outline-none resize-y font-bold text-[12px] leading-relaxed disabled:opacity-100 disabled:text-black"
-                    />
-                    {f.bloques.length > 1 && (
-                      <button type="button" onClick={() => quitarBloque(i)} title="Quitar esta garantía"
-                        className="no-print text-red-600 hover:text-red-800 shrink-0 mt-0.5">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+              {/* ── 1 ── */}
+              <h2 className="text-center font-bold pt-1">1. DATOS DE LA PÓLIZA O GARANTÍA</h2>
+              <table className="w-full border-collapse text-[12px] bloque">
+                <tbody>
+                  <Fila label="Aseguradora / garante" value={f.aseguradora} onChange={(v) => set('aseguradora', v)} />
+                  <Fila label="No. póliza / garantía" value={f.numeroPoliza} onChange={(v) => set('numeroPoliza', v)} />
+                  <Fila label="Tipo de póliza" value={f.tipoPoliza} onChange={(v) => set('tipoPoliza', v)} />
+                  <Fila label="Tomador" value={f.tomador} onChange={(v) => set('tomador', v)} />
+                  <Fila label="Asegurado / beneficiario" value={f.asegurado} onChange={(v) => set('asegurado', v)} />
+                  <Fila label="Fecha de expedición" value={f.fechaExpedicion} onChange={(v) => set('fechaExpedicion', v)} />
+                  <Fila label="Verificación de autenticidad" value={f.autenticidad} onChange={(v) => set('autenticidad', v)} />
+                </tbody>
+              </table>
 
-                  {/* Partes de la póliza */}
-                  <div className="pl-12 grid grid-cols-[220px_1fr] gap-x-3 gap-y-0.5">
-                    <Dato label="ASEGURADORA:" value={b.aseguradora} onChange={(v) => setBloque(i, 'aseguradora', v)} />
-                    <Dato label="TOMADOR:" value={b.tomador} onChange={(v) => setBloque(i, 'tomador', v)} />
-                    <Dato label="NO. DE IDENTIFICACIÓN: NIT." value={b.tomadorNit} onChange={(v) => setBloque(i, 'tomadorNit', v)} />
-                    <Dato label="ASEGURADO Y BENEFICIARIO:" value={b.asegurado} onChange={(v) => setBloque(i, 'asegurado', v)} area />
-                    <Dato label="No. DE IDENTIFICACIÓN: NIT." value={b.aseguradoNit} onChange={(v) => setBloque(i, 'aseguradoNit', v)} />
-                  </div>
-
-                  {/* Cuadro de la garantía */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-[10px] min-w-[600px]">
-                      <thead>
-                        <tr className="font-bold text-center align-middle">
-                          <th className="border border-black px-1 py-1 w-[15%]">CLASE DE GARANTÍA</th>
-                          <th className="border border-black px-1 py-1 w-[20%]">VALOR ASEGURADO</th>
-                          <th className="border border-black px-1 py-1">VIGENCIA</th>
-                          <th className="border border-black px-1 py-1 w-[13%]">CUMPLE / NO CUMPLE</th>
-                          <th className="border-0 w-6 no-print"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {b.filas.map((fl, j) => (
-                          <tr key={j} className="align-top">
-                            <td className="border border-black px-1 py-1">
-                              <Celda value={fl.clase} onChange={(v) => setFila(i, j, 'clase', v)} />
-                            </td>
-                            <td className="border border-black px-1 py-1">
-                              <Celda value={fl.valor} onChange={(v) => setFila(i, j, 'valor', v)} />
-                            </td>
-                            <td className="border border-black px-1 py-1">
-                              <Celda value={fl.vigencia} onChange={(v) => setFila(i, j, 'vigencia', v)} />
-                              {/* Desde / Hasta: el cuadro parte cada extremo en día, mes y año. */}
-                              <table className="w-full border-collapse mt-1 text-[10px]">
-                                <thead>
-                                  <tr className="font-bold text-center">
-                                    <th className="border border-black px-1 py-0.5" colSpan={3}>Desde</th>
-                                    <th className="border border-black px-1 py-0.5" colSpan={3}>Hasta</th>
-                                  </tr>
-                                  <tr className="font-bold text-center">
-                                    <th className="border border-black px-1 py-0.5">Día</th>
-                                    <th className="border border-black px-1 py-0.5">Mes</th>
-                                    <th className="border border-black px-1 py-0.5">Año</th>
-                                    <th className="border border-black px-1 py-0.5">Día</th>
-                                    <th className="border border-black px-1 py-0.5">Mes</th>
-                                    <th className="border border-black px-1 py-0.5">Año</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <tr className="text-center">
-                                    {(['desde', 'hasta'] as const).flatMap((extremo) => (
-                                      (['dia', 'mes', 'anio'] as const).map((campo) => (
-                                        <td key={`${extremo}.${campo}`} className="border border-black px-0.5 py-0.5">
-                                          <input
-                                            value={fl[extremo][campo]}
-                                            onChange={(e) => setVigencia(i, j, extremo, campo, e.target.value)}
-                                            className="w-full bg-transparent outline-none text-center text-[10px] disabled:opacity-100 disabled:text-black"
-                                          />
-                                        </td>
-                                      ))
-                                    ))}
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </td>
-                            <td className="border border-black px-1 py-1 text-center align-middle">
-                              <input
-                                value={fl.cumple}
-                                onChange={(e) => setFila(i, j, 'cumple', e.target.value)}
-                                className="w-full bg-transparent outline-none text-center text-[10px] font-semibold disabled:opacity-100 disabled:text-black"
-                              />
-                            </td>
-                            <td className="border-0 px-1 no-print align-middle">
-                              {b.filas.length > 1 && (
-                                <button type="button" onClick={() => quitarFila(i, j)} title="Quitar fila"
-                                  className="text-red-600 hover:text-red-800">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <Button type="button" variant="outline" size="sm" onClick={() => agregarFila(i)}
-                    className="no-print h-7 text-[11px] gap-1.5">
+              {/* ── 2 ── */}
+              <h2 className="text-center font-bold pt-1">2. VERIFICACIÓN DE AMPAROS</h2>
+              <div className="bloque">
+                <table className="w-full border-collapse text-[10.5px]">
+                  <thead>
+                    {/* Azul #D9E2F3 con letra negra: el sombreado que trae la plantilla. */}
+                    <tr className="bg-[#d9e2f3] text-center font-bold">
+                      <th className={TH}>Amparo</th>
+                      <th className={TH}>Exigencia contractual</th>
+                      <th className={TH}>Valor asegurado</th>
+                      <th className={TH}>Vigencia exigida</th>
+                      <th className={TH}>Vigencia acreditada</th>
+                      <th className={TH}>Cumple</th>
+                      <th className={TH}>Observaciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {f.amparos.map((a, i) => (
+                      <tr key={i}>
+                        <Celda value={a.amparo} onChange={(v) => setAmparo(i, 'amparo', v)} />
+                        <Celda value={a.exigencia} onChange={(v) => setAmparo(i, 'exigencia', v)} />
+                        <Celda value={a.valor} onChange={(v) => setAmparo(i, 'valor', v)} />
+                        <Celda value={a.vigenciaExigida} onChange={(v) => setAmparo(i, 'vigenciaExigida', v)} />
+                        <Celda value={a.vigenciaAcreditada} onChange={(v) => setAmparo(i, 'vigenciaAcreditada', v)} />
+                        <Celda value={a.cumple} onChange={(v) => setAmparo(i, 'cumple', v)} />
+                        <td className={TD}>
+                          <div className="flex gap-1 items-start">
+                            <textarea
+                              value={a.observaciones}
+                              onChange={(e) => setAmparo(i, 'observaciones', e.target.value)}
+                              rows={2}
+                              className={CAMPO + ' resize-y leading-snug'}
+                            />
+                            {editable && (
+                              <button
+                                type="button"
+                                onClick={() => set('amparos', f.amparos.filter((_, j) => j !== i))}
+                                title="Quitar este amparo"
+                                className="no-print text-[hsl(var(--canalco-neutral-400))] hover:text-red-700 flex-shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={() => set('amparos', [...f.amparos, filaAmparo('')])}
+                    className="no-print flex items-center gap-1 mt-1 text-[11px] text-[#4a4a63] hover:text-[#16162b]"
+                  >
                     <Plus className="w-3.5 h-3.5" /> Agregar amparo
-                  </Button>
+                  </button>
+                )}
+              </div>
 
-                  {/* Consulta de la póliza: es la verificación de que existe. */}
+              {/* La plantilla lo dice en mayúscula sostenida: no debe aparecer en el
+                  documento final. Va `no-print`, que es la única forma de que se cumpla
+                  sola y no dependa de que alguien se acuerde de borrarla. */}
+              <p className="no-print border border-[#0a2a52] bg-[#fff2cc] px-3 py-2 text-[11px] font-bold leading-snug">
+                CONTROL INTERNO DE PARAMETRIZACIÓN - NO DEBE APARECER EN EL DOCUMENTO FINAL: habilitar
+                únicamente los amparos exigidos en el contrato concreto. No fijar porcentajes, cuantías ni
+                vigencias por defecto cuando no estén expresamente definidos en el contrato o en la
+                instrucción aprobada para el caso.
+              </p>
+
+              {/* ── 3 ── */}
+              <h2 className="text-center font-bold pt-1">3. VALIDACIONES PREVIAS</h2>
+              <table className="w-full border-collapse text-[12px] bloque">
+                <tbody>
+                  <Fila label="Coherencia entre contrato y póliza" value={f.vCoherencia} onChange={(v) => set('vCoherencia', v)} />
+                  <Fila label="Datos de contratante, contratista, tomador y asegurado" value={f.vPartes} onChange={(v) => set('vPartes', v)} />
+                  <Fila label="Cuantías y vigencias" value={f.vCuantias} onChange={(v) => set('vCuantias', v)} />
+                  <Fila label="Anexos / modificaciones / prórrogas reflejadas en la póliza" value={f.vAnexos} onChange={(v) => set('vAnexos', v)} />
+                  <Fila label="Validación del asesor de seguros" value={f.vAsesor} onChange={(v) => set('vAsesor', v)} />
+                  <Fila label="Observaciones pendientes" value={f.vPendientes} onChange={(v) => set('vPendientes', v)} area />
+                </tbody>
+              </table>
+
+              {/* ── 4 ── */}
+              <h2 className="text-center font-bold pt-1">4. DECISIÓN</h2>
+              <TextoEd
+                k="a.decision"
+                plantilla={'Con fundamento en la revisión anterior, se deja constancia de que las garantías '
+                  + '[CUMPLEN / NO CUMPLEN] con las condiciones exigidas para el contrato de referencia. En '
+                  + 'consecuencia, [SE APRUEBAN / NO SE APRUEBAN] para efectos contractuales. Si el inicio de la '
+                  + 'ejecución se encuentra condicionado a la aprobación de garantías, no deberá suscribirse el '
+                  + 'acta de inicio ni autorizarse la ejecución hasta que la aprobación se encuentre '
+                  + 'perfeccionada y documentada.'}
+                className="text-justify leading-relaxed"
+              />
+              {/* Renglón corrido, sin negrita: en la plantilla es un párrafo más de la
+                  decisión, no un rótulo de ficha. */}
+              <p className="leading-relaxed">
+                Observaciones / condiciones de la aprobación:{' '}
+                <input
+                  value={f.decisionObservaciones}
+                  onChange={(e) => set('decisionObservaciones', e.target.value)}
+                  className="w-[55%] bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
+                />
+              </p>
+
+              {/* Firma */}
+              <div className="pt-12 text-[12px] bloque">
+                <div className="w-[62%] border-t border-black pt-1">
                   <input
-                    value={b.enlace}
-                    onChange={(e) => setBloque(i, 'enlace', e.target.value)}
-                    className="w-full bg-transparent outline-none text-[11px] text-[#0563c1] underline disabled:opacity-100"
+                    value={f.firmanteNombre}
+                    onChange={(e) => set('firmanteNombre', e.target.value)}
+                    className="w-full bg-transparent outline-none font-bold text-[12px] disabled:opacity-100 disabled:text-black"
                   />
-                </section>
-              ))}
-
-              <div className="no-print">
-                <Button type="button" variant="outline" size="sm" onClick={agregarBloque} className="h-8 text-[12px] gap-1.5">
-                  <Plus className="w-4 h-4" /> Agregar garantía
-                </Button>
+                  <input
+                    value={f.firmanteCargo}
+                    onChange={(e) => set('firmanteCargo', e.target.value)}
+                    className="w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
+                  />
+                </div>
               </div>
 
-              {/* Aprobación y constancia */}
-              <TextoEd
-                k="aprobacion"
-                plantilla={
-                  'Una vez verificado los requisitos de vigencias y cuantía exigidos por XXX., en atención al Artículo '
-                  + '23 de la Ley 1150 de 2007, que modificó el Artículo 41 dela Ley 80 de 1993, SE APRUEBAN, la '
-                  + 'Garantía de Cumplimiento del contrato y devolución del pago anticipado, No. XXXX expedida el X '
-                  + '(X) del mes deX de X y Póliza de Seguro de Responsabilidad Civil Extracontractual No. XXXX '
-                  + 'expedida el X (X) del mes deX de, garantías que amparan el contrato de XXXXX  No. 02-2026, '
-                  + 'suscrito el XXX de Xde XXX.,'
-                }
-              />
-
-              <TextoEd
-                k="constancia"
-                plantilla="La presente constancia se expide a los XXXXdías (X) del mes de X ee xxx (202x)."
-              />
-
-              {/* Firma. El acta la aprueba la Dirección Jurídica. */}
-              <div className="pt-12">
-                <input
-                  value={f.firmanteNombre}
-                  onChange={(e) => set('firmanteNombre', e.target.value)}
-                  className="w-full max-w-[320px] bg-transparent outline-none font-bold text-[12px] disabled:opacity-100 disabled:text-black"
-                />
-                <input
-                  value={f.firmanteCargo}
-                  onChange={(e) => set('firmanteCargo', e.target.value)}
-                  className="w-full max-w-[320px] bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
-                />
-              </div>
+              <PieMembrete />
             </div>
-
-            <PieElaboracion />
+            {/* La plantilla pide «Revisó», a secas: quien aprueba ya firmó arriba. */}
+            <PieElaboracion etiqueta="Revisó" />
           </TextosDocumento>
           </fieldset>
         )}
@@ -540,43 +475,45 @@ export default function AprobacionGarantiasPage() {
 
 /* ── Subcomponentes ─────────────────────────────────────── */
 
-/** Fila «ETIQUETA: valor» de los datos de la póliza. */
-function Dato({ label, value, onChange, area }: {
-  label: string; value: string; onChange: (v: string) => void; area?: boolean;
-}) {
+const TH = 'border border-[#0a2a52] px-1.5 py-1 align-middle';
+const TD = 'border border-[#0a2a52] px-1.5 py-1 align-top';
+const CAMPO = 'w-full bg-transparent outline-none text-[10.5px] disabled:opacity-100 disabled:text-black';
+
+/** Una celda de la tabla de amparos. */
+function Celda({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <>
-      <span className="font-bold text-[12px]">{label}</span>
-      {area ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={1}
-          className="w-full bg-transparent outline-none resize-y text-[12px] leading-snug disabled:opacity-100 disabled:text-black"
-        />
-      ) : (
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
-        />
-      )}
-    </>
+    <td className={TD}>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2}
+        className={CAMPO + ' resize-y leading-snug'} />
+    </td>
   );
 }
 
 /**
- * Celda de texto del cuadro. Va con `textarea` y no con `input` porque el formato parte
- * el contenido en varias líneas —el valor asegurado lleva su propio renglón— y un
- * `input` las perdería al pegar el texto.
+ * Una fila de las fichas: etiqueta a la izquierda, dato a la derecha.
+ *
+ * La columna de etiquetas va sombreada en #E7E6E6, que es como la trae la plantilla en sus
+ * tres tablas —la de referencia, la de la póliza y la de validaciones—.
  */
-function Celda({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function Fila({ label, value, onChange, area, filas = 2 }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  area?: boolean;
+  filas?: number;
+}) {
+  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black ';
   return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      rows={value.split('\n').length || 1}
-      className="w-full bg-transparent outline-none resize-y text-[10px] leading-snug disabled:opacity-100 disabled:text-black"
-    />
+    <tr>
+      <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[40%] font-bold">{label}</td>
+      <td className="border border-[#0a2a52] px-2 py-1 align-top">
+        {area ? (
+          <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={filas}
+            className={comun + 'resize-y leading-snug'} />
+        ) : (
+          <input value={value} onChange={(e) => onChange(e.target.value)} className={comun} />
+        )}
+      </td>
+    </tr>
   );
 }

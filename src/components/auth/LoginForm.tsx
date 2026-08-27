@@ -45,13 +45,13 @@ export function LoginForm() {
     try {
       clearError();
 
-      await login({
+      const usuario = await login({
         email: data.email,
         password: data.password,
       });
 
-      // Navigate to dashboard on success
-      navigate('/dashboard');
+      // Quien entra con la clave temporal debe fijar la suya antes de operar.
+      navigate(usuario.debeCambiarPassword ? '/cambiar-password' : '/dashboard');
     } catch (err) {
       // Error is handled by AuthContext and displayed below
       console.error('Login error:', err);

@@ -5,45 +5,120 @@ import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
+import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
-import { TextosDocumento, useTextosDocumento, ClausulaEd } from '@/components/juridica/textoEditable';
 
 /**
- * Plantilla de contrato para el tipo "Término Indefinido" (contrato laboral, GJ-002-F).
- * Empleador/empleado, salario, jornada de 44h, período de prueba y prestaciones de ley.
- * Recibe la solicitud ya cargada. Se guarda en data.contrato.
+ * Contrato individual de trabajo a término indefinido, plantilla 2026 (el formato
+ * «14 Plantilla Contrato Indefinido Ajustada_2026»).
  *
- * **Las cláusulas se pueden reescribir**, igual que en el contrato de prestación de
- * servicios: la plantilla vive en el código y en la base solo se guarda lo que alguien
- * haya cambiado (ver `textoEditable`). Un contrato laboral se negocia —el período de
- * prueba, el horario, la exclusividad— y hasta ahora la única salida era imprimir y
- * corregir a mano, con lo que el sistema dejaba de tener el texto que de verdad se firmó.
+ * Ojo con el archivo de origen: en la carpeta de plantillas hay **dos** con ese nombre. El
+ * que se sigue acá es el genérico —el que trae `[CARGO]`, `[DIRECCIÓN / ÁREA]`, «el jefe
+ * inmediato» y las faltas graves redactadas para cualquier cargo—. El otro es un contrato
+ * ya diligenciado para una abogada: dice «la Directora XXXXX» y sus faltas graves son las
+ * de un cargo jurídico. Partir de ese habría dejado el oficio de una persona metido en
+ * todos los contratos indefinidos de la empresa.
+ *
+ * Es el más largo de los laborales: **veintidós cláusulas y once parágrafos**. Frente a los
+ * otros dos contratos de trabajo añade lo que solo tiene sentido en un vínculo sin plazo:
+ * propiedad intelectual con cesión de derechos patrimoniales, confidencialidad que sigue
+ * viva después de terminado, declaraciones de inhabilidades y conflictos de interés,
+ * tratamiento de datos y prevención de lavado de activos.
+ *
+ * Y trae una lista de **faltas graves** en el parágrafo primero que no está en los otros:
+ * ocho conductas tipificadas, cada una con la advertencia de que se valoran con debido
+ * proceso, derecho de defensa y proporcionalidad. Esa última frase es la que evita que la
+ * lista se lea como una causal automática de despido.
  */
 
 interface TIState {
-  empleador: string; empleadorNit: string; domicilioEmpleador: string;
-  representanteLegal: string; representanteCc: string;
-  empleado: string; empleadoCc: string; ciudadExpedicion: string;
-  empleadoDireccion: string; empleadoCorreo: string; empleadoCelular: string;
-  lugarFechaNacimiento: string;
-  cargo: string; salario: string; periodosPago: string; fechaIniciacion: string;
-  ciudadFirma: string; fechaFirma: string;
-  /** Solo los bloques reescritos, por clave. Lo no tocado sigue saliendo de la plantilla. */
+  /* ── Control interno: no sale en la versión firmable ── */
+  ciJornada: string;
+  ciPeriodoPrueba: string;
+  ciRevisionRit: string;
+
+  /* ── Datos de la vinculación ── */
+  empleador: string;
+  nit: string;
+  representanteLegal: string;
+  representanteCc: string;
+  domicilioEmpleador: string;
+  empleado: string;
+  contacto: string;
+  nacimiento: string;
+  cargo: string;
+  dependencia: string;
+  jefeInmediato: string;
+  salario: string;
+  periodicidadPago: string;
+  fechaInicio: string;
+  horario: string;
+  periodoPrueba: string;
+
+  /* ── Firma del empleado ── */
+  empleadoCc: string;
+  empleadoLugarCc: string;
+
+  /** Texto de las cláusulas que Jurídica reescribió, por clave. Vacío = plantilla. */
   textos: Record<string, string>;
 }
 
+/**
+ * Los huecos van como valores y no como `placeholder`: un placeholder se ve en pantalla
+ * pero no se imprime, y el formato en blanco tiene que poder imprimirse para diligenciarlo
+ * a mano. Se escriben en la convención de la plantilla —corchetes en mayúscula—.
+ */
 const EMPTY: TIState = {
-  empleador: '', empleadorNit: '', domicilioEmpleador: '',
-  representanteLegal: '', representanteCc: '',
-  empleado: '', empleadoCc: '', ciudadExpedicion: '',
-  empleadoDireccion: '', empleadoCorreo: '', empleadoCelular: '',
-  lugarFechaNacimiento: '',
-  cargo: '', salario: '', periodosPago: 'Mensuales', fechaIniciacion: '',
-  ciudadFirma: '', fechaFirma: '',
+  ciJornada: '42 horas semanales, sin perjuicio de excepciones legales aplicables al cargo',
+  ciPeriodoPrueba: 'DOS (2) MESES. VALIDAR VÍNCULOS LABORALES SUCESIVOS ANTES DE GENERAR.',
+  ciRevisionRit: '[CONFIRMADA / PENDIENTE]',
+
+  // El empleador es siempre el mismo: va escrito, no en blanco.
+  empleador: 'CANALES Y CONTACTOS S.A.S.',
+  nit: '900.456.735-7',
+  representanteLegal: 'GLORIA LUCÍA ESCALANTE MANZANO',
+  representanteCc: 'C.C. 66.651.423 expedida en El Cerrito, Valle del Cauca',
+  domicilioEmpleador: 'Calle 13A No. 101-60, Ciudad Jardín, Cali, Valle del Cauca',
+  empleado: '[NOMBRE COMPLETO] - C.C. [NÚMERO] de [LUGAR]',
+  contacto: '[DIRECCIÓN] / [CORREO] / [TELÉFONO]',
+  nacimiento: '[LUGAR / FECHA / NACIONALIDAD]',
+  cargo: '[CARGO]',
+  dependencia: '[DIRECCIÓN / ÁREA]',
+  jefeInmediato: '[CARGO / NOMBRE SI APLICA]',
+  salario: '[VALOR EN LETRAS] PESOS M/CTE ($[VALOR])',
+  periodicidadPago: '[MENSUAL / QUINCENAL, SEGÚN POLÍTICA]',
+  fechaInicio: '[DÍA] de [MES] de [AÑO]',
+  horario: '[HORARIO CORPORATIVO APLICABLE / TURNOS]',
+  periodoPrueba: 'DOS (2) MESES',
+
+  empleadoCc: '[NÚMERO]',
+  empleadoLugarCc: '[LUGAR]',
+
   textos: {},
 };
+
+/**
+ * Lo guardado con la plantilla vieja, traído a la nueva.
+ *
+ * La ficha anterior separaba nombre y cédula del empleado en dos campos; la de 2026 los
+ * junta en una celda —«[NOMBRE COMPLETO] - C.C. [NÚMERO] de [LUGAR]»—. Sin este puente, un
+ * contrato a medio diligenciar se abriría en blanco. Lo que la plantilla vieja tenía y esta
+ * no **no se borra**: sigue en `data.contrato`, solo deja de leerse.
+ */
+function traerDeLaPlantillaVieja(saved: Record<string, unknown>): Partial<TIState> {
+  const texto = (k: string) => (typeof saved[k] === 'string' ? (saved[k] as string).trim() : '');
+  const puente: Partial<TIState> = {};
+  if (!saved.empleado) {
+    const nombre = texto('empleado') || texto('trabajadora') || texto('trabajador');
+    const cc = texto('empleadoCc') || texto('trabajadoraCc');
+    if (nombre) puente.empleado = cc ? `${nombre} - C.C. ${cc}` : nombre;
+  }
+  if (!saved.contacto && texto('empleadoDireccion')) puente.contacto = texto('empleadoDireccion');
+  if (!saved.nacimiento && texto('empleadoFechaNacimiento')) puente.nacimiento = texto('empleadoFechaNacimiento');
+  return puente;
+}
 
 const puedeEditar = (rol?: string) => {
   const r = (rol ?? '').toLowerCase();
@@ -53,204 +128,202 @@ const puedeEditar = (rol?: string) => {
 const HABILITADO = ['contrato_en_elaboracion', 'pendiente_firma_contrato', 'contrato_firmado', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado'];
 
 /**
- * El articulado, como datos.
+ * Las veintidós cláusulas y sus once parágrafos, en el orden y con el texto de 2026.
  *
- * Va en una lista y no suelto en el JSX para que se vea de un golpe el orden de las
- * cláusulas y sus parágrafos, que es lo que hay que cotejar contra el formato impreso.
- * Los parágrafos son bloques del mismo tipo: en el papel se ven igual y se reescriben
- * igual, y separarlos en dos componentes solo obligaba a mantener dos.
+ * `parrafos` es una lista porque hay cláusulas que en el formato ocupan más de un párrafo
+ * —la décima tercera, la décima quinta y la décima octava— y partirlas es lo que permite
+ * que Jurídica reescriba uno sin tocar los otros.
  *
- * Recibe el formulario porque tres bloques nombran el cargo o al empleado. Esos llegan
- * con el dato **ya interpolado**: se rearman solos mientras nadie los toque y se congelan
- * en cuanto alguien reescribe el bloque.
+ * Las claves llevan el prefijo `i` —de indefinido— y son nuevas: la plantilla anterior no
+ * guardaba texto editable, así que no hay nada que reutilizar ni con qué chocar.
  */
-const articulado = (f: TIState): { k: string; titulo: string; texto: string }[] => {
-  const cargo = f.cargo.trim() || 'el cargo indicado';
-  const empleado = f.empleado.trim() || '…';
-
-  return [
-    {
-      k: 'c1',
-      titulo: 'PRIMERA. OBJETO.',
-      texto: `LA EMPLEADORA contrata los servicios personales de EL EMPLEADO y éste se obliga a: a) A poner al servicio de LA EMPLEADORA toda su capacidad normal de trabajo, en el desempeño como ${cargo} y de las funciones propias del oficio mencionado, descritas en su manual de funciones, en el perfil de cargo, y en labores anexas y complementarias del mismo, de conformidad con las órdenes e instrucciones que le imparta LA EMPLEADORA directamente o a través de sus representantes; b) A prestar sus servicios en forma exclusiva a LA EMPLEADORA; es decir, a no prestar directa o indirectamente servicios laborales a otros EMPLEADORES, ni a trabajar por cuenta propia en el mismo oficio, durante la vigencia del contrato; c) Guardar absoluta reserva sobre los hechos, documentos físicos y/o electrónicos, informaciones y en general, sobre todos los asuntos y materias que llegue a su conocimiento por causa o con ocasión de este contrato de trabajo.`,
-    },
-    {
-      k: 'c1.p1',
-      titulo: 'PARÁGRAFO PRIMERO:',
-      texto: 'Las partes desde ya acuerdan que serán calificadas como faltas graves, además de las consignadas en la Codificación laboral: La realización de labores ajenas a la empresa y el incumplimiento de las funciones que interrumpan la operación de la empresa.',
-    },
-    {
-      k: 'c2',
-      titulo: 'SEGUNDA. LUGAR.',
-      texto: 'La labor aquí contratada la prestará EL EMPLEADO vinculado a favor de LA EMPLEADORA con su capacidad normal de trabajo, la cual se desarrollará en todos los lugares o sitios donde LA EMPLEADORA adelante su objeto o actividad, cualquiera sea el mismo dentro del territorio nacional o fuera de él, situación que conoce EL EMPLEADO y desde luego acepta al celebrar este contrato. Para tales fines bastará que LA EMPLEADORA le indique el lugar de trabajo. Igualmente, EL EMPLEADO acepta cualquier orden de traslado o cambio que se le imparta para desempeñar su mismo cargo, otro cargo o funciones, en la misma empresa, establecimiento o fuera de ellos, declarando que está en disponibilidad de hacerlo.',
-    },
-    {
-      k: 'c2.p1',
-      titulo: 'PARÁGRAFO:',
-      texto: 'La jornada laboral la determinará LA EMPLEADORA pudiendo hacer las modificaciones y ajustes de acuerdo con las necesidades de producción, servicios o cualquiera otra que tenga LA EMPLEADORA. Así como los descansos que LA EMPLEADORA voluntariamente conceda.',
-    },
-    {
-      k: 'c3',
-      titulo: 'TERCERA. FUNCIONES.',
-      texto: `LA EMPLEADORA contrata a EL EMPLEADO para desempeñarse como ${cargo}, desempeñando las funciones que se encuentran descritas en su manual de funciones o perfil de cargo.`,
-    },
-    {
-      k: 'c4',
-      titulo: 'CUARTA. OBLIGACIONES DEL CONTRATADO.',
-      texto: 'EL EMPLEADO por su parte, prestará su fuerza laboral con fidelidad y entrega, cumpliendo con las funciones propias de su cargo, las órdenes e instrucciones que le imparta LA EMPLEADORA o sus representantes, al igual que no laborar por cuenta propia o a otro EMPLEADOR en el mismo oficio, mientras esté vigente este contrato. Asimismo, dará cumplimiento a todos los reglamentos y políticas internas de la empresa.',
-    },
-    {
-      k: 'c5',
-      titulo: 'QUINTA. ELEMENTOS DE TRABAJO.',
-      texto: 'Corresponde a LA EMPLEADORA suministrar los elementos necesarios para el normal desempeño de las funciones del cargo contratado.',
-    },
-    {
-      k: 'c6',
-      titulo: 'SEXTA. REMUNERACIÓN.',
-      texto: 'LA EMPLEADORA pagará a EL EMPLEADO por la prestación de sus servicios el salario indicado, pagadero en las oportunidades señaladas arriba. EL EMPLEADO autoriza a LA EMPLEADORA para que su salario le sea consignado en una entidad del sistema financiero o pago mediante cualquier otro sistema de pago que decida LA EMPLEADORA, aclarando que EL EMPLEADO pagará directamente a la entidad financiera los gastos de operación de su cuenta personal. En ese salario quedan incluidos los descansos obligatorios de ley, así como los descansos que LA EMPLEADORA voluntariamente conceda.',
-    },
-    {
-      k: 'c6.p1',
-      titulo: 'PARÁGRAFO PRIMERO:',
-      texto: 'Dentro del salario ordinario se encuentra incluida la remuneración de los descansos en dominicales y festivos de que tratan los Capítulos I y II del Título VII del Código Sustantivo del Trabajo.',
-    },
-    {
-      k: 'c6.p2',
-      titulo: 'PARÁGRAFO SEGUNDO:',
-      texto: 'Las partes expresamente acuerdan que en los casos en que se le reconozcan a EL EMPLEADO beneficios diferentes al salario ordinario, por concepto de alimentación, comunicación, habitación o vivienda, transporte o vestuario, bonificaciones ocasionales o cualquier otra que medie durante la vigencia del contrato de trabajo en dinero o en especie, se considerarán tales beneficios o reconocimientos como no salariales y por lo tanto no se tendrán en cuenta como factor salarial para la liquidación de acreencias laborales, ni para el pago de aportes parafiscales, y cotizaciones a la seguridad social, de conformidad con los Arts. 15 y 16 de la ley 50/90 en concordancia con el artículo 17 de la ley 344/96.',
-    },
-    {
-      k: 'c7',
-      titulo: 'SÉPTIMA.',
-      texto: 'Todo trabajo suplementario o en horas extras y todo trabajo en domingo o festivo en los que legalmente deba concederse descanso, se remunerará conforme a la ley, así como los correspondientes recargos nocturnos. Para el reconocimiento y el pago del trabajo suplementario, dominical o festivo LA EMPLEADORA o su representante deben autorizarlo previamente por escrito. Cuando la necesidad de este trabajo se presente de manera imprevista o inaplazable, deberá ejecutarse y darse cuenta de él, por escrito, a la mayor brevedad, a LA EMPLEADORA o sus representantes. EL EMPLEADO, en consecuencia, no reconocerá ningún trabajo suplementario o en días de descanso legalmente obligatorio que no haya sido autorizado previamente o avisado inmediatamente, como queda dicho.',
-    },
-    {
-      k: 'c8',
-      titulo: 'OCTAVA. JORNADA DE TRABAJO.',
-      texto: 'EL EMPLEADO se obliga para con LA EMPLEADORA a prestar sus servicios dentro de los horarios y turnos establecidos por ella. La jornada de trabajo que rige el presente contrato es jornada máxima legal establecida en la normatividad laboral vigente de 44 horas semanales.',
-    },
-    {
-      k: 'c8.p1',
-      titulo: 'PARÁGRAFO PRIMERO:',
-      texto: 'El horario de trabajo será de lunes a viernes 7:00 a.m. a 12:00 p.m. y de 1:00 p.m. a 4:30 p.m., sábados de 7:00 a.m. a 12:00 p.m.',
-    },
-    {
-      k: 'c9',
-      titulo: 'NOVENA. PERIODO DE PRUEBA.',
-      texto: 'Las partes acuerdan un período de prueba de dos (2) meses, contados a partir de la fecha de inicio y, por consiguiente, cualquiera de las partes podrá terminar el contrato unilateralmente, en cualquier momento durante dicho período, de conformidad con el artículo 80 del Código Sustantivo del Trabajo, modificado por el art. 3° del decreto 617 de 1954.',
-    },
-    {
-      k: 'c10',
-      titulo: 'DÉCIMA. DURACIÓN DEL CONTRATO.',
-      texto: 'Expresamente las partes convienen que la duración del presente contrato es a TÉRMINO INDEFINIDO. Se podrá dar por terminado según lo estipulado en la cláusula primera - parágrafo primero, cláusula novena y cláusula décima segunda del presente contrato de trabajo.',
-    },
-    {
-      k: 'c11',
-      titulo: 'DÉCIMA PRIMERA. AFILIACIÓN Y PAGO A SEGURIDAD SOCIAL.',
-      texto: 'Es obligación de LA EMPLEADORA afiliar a EL EMPLEADO a la seguridad social como es salud, pensión y riesgos profesionales, autorizando EL EMPLEADO el descuento en su salario de los valores que le corresponda aportar en la proporción establecida por la ley.',
-    },
-    {
-      k: 'c12',
-      titulo: 'DÉCIMA SEGUNDA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS.',
-      texto: 'EL EMPLEADO se obliga a desempeñar sus funciones con integridad, ética y lealtad hacia CANALES Y CONTACTOS S.A.S. En este sentido, queda estrictamente prohibido solicitar, recibir, aceptar directa o indirectamente cualquier pago, comisión, gratificación, beneficio, dádiva o cualquier otra retribución de proveedores, contratistas, clientes o cualquier tercero con quien la empresa mantenga o pueda mantener relaciones comerciales o contractuales. El incumplimiento de esta disposición constituirá una falta grave y será causal de terminación inmediata del contrato de trabajo con justa causa, sin perjuicio de las acciones legales que CANALES Y CONTACTOS S.A.S pueda ejercer en contra de EL EMPLEADO por los daños o perjuicios ocasionados.',
-    },
-    {
-      k: 'c13',
-      titulo: 'DÉCIMA TERCERA. TERMINACIÓN UNILATERAL.',
-      texto: 'El presente contrato queda sujeto a las disposiciones legales que regulan las relaciones entre EMPLEADORES y EMPLEADOS y al reglamento interno de trabajo de CANALES Y CONTACTOS S.A.S., el cual se dará a conocer al empleado y se dejará constancia de su conocimiento. De manera específica, las partes acuerdan que LA EMPLEADORA podrá terminar unilateralmente el presente contrato con justa causa y sin indemnización de perjuicios, cuando el Empleado incurra en alguna de las conductas previstas en la Ley como justa causa y cuando EL EMPLEADO transgreda los acuerdos aquí establecidos. Son justas causas para dar por terminado unilateralmente este contrato, por cualquiera de las partes, las enumeradas en los Arts. 62 y 63 del C.S.T. modificados por el Art. 7 del Decreto 2351 de 1965 y, además, por parte de LA EMPLEADORA, las faltas que para el efecto se califican como graves en reglamentos y demás documentos que contengan reglamentaciones, órdenes, instrucciones o prohibiciones de carácter general o particular, pactos, convenciones colectivas, laudos arbitrales y las que expresamente convengan calificar así en escritos que formarán parte integrante del presente contrato. Expresamente se califican en este acto como faltas graves la violación a las obligaciones y prohibiciones contenidas en la cláusula primera del presente contrato.',
-    },
-    {
-      k: 'c14',
-      titulo: 'DÉCIMA CUARTA.',
-      texto: 'EL EMPLEADO responde por las herramientas, elementos de trabajo, de propiedad de LA EMPLEADORA, las cuales le son entregados en perfecto estado y en tal virtud, deberá responder por ellos, en caso de hurto o daños sin causa justificada.',
-    },
-    {
-      k: 'c14.p1',
-      titulo: 'PARÁGRAFO:',
-      texto: 'Cuando por causa emanada directa o indirectamente de la relación contractual, existan relaciones económicas a cargo de EL EMPLEADO y a favor de LA EMPLEADORA como, por ejemplo: préstamos económicos, anticipos para gastos y que estos se encuentren sin justificar por parte del Empleado, conforme a las políticas de LA EMPLEADORA, El Empleado autoriza desde ya el descuento de dichos valores.',
-    },
-    {
-      k: 'c15',
-      titulo: 'DÉCIMA QUINTA. PROPIEDAD INTELECTUAL.',
-      texto: 'El empleado reconoce y acepta que todas las invenciones, desarrollos, mejoras, diseños, metodologías, procedimientos, software, documentación, obras, descubrimientos o cualquier otro resultado derivado de su trabajo dentro de la empresa, ya sea de forma individual o en colaboración con otros, y que se realicen durante la vigencia de su relación laboral con CANALES Y CONTACTOS S.A.S, serán de exclusiva propiedad de la empresa. Asimismo, EL EMPLEADO reconoce de manera irrevocable y sin necesidad de compensación adicional todos los derechos de propiedad intelectual, incluyendo, pero sin limitarse a, derechos de autor, patentes, marcas, diseños industriales y secretos comerciales, que puedan derivarse de dichas invenciones o desarrollos. EL EMPLEADO se compromete a cooperar con la empresa para formalizar cualquier documento necesario para la protección de estos derechos, incluyendo registros de propiedad intelectual, patentes u otros mecanismos legales aplicables. Esta obligación se mantiene incluso después de la terminación de la relación laboral, en la medida en que sea razonablemente necesario para garantizar la titularidad de la empresa sobre dichas invenciones o desarrollos.',
-    },
-    {
-      k: 'c16',
-      titulo: 'DÉCIMA SEXTA. MODIFICACIÓN DE LAS CONDICIONES LABORALES.',
-      texto: 'EL EMPLEADO acepta desde ahora expresamente todas las modificaciones de las condiciones laborales determinadas por LA EMPLEADORA en ejercicio de su poder subordinante, tales como los turnos y jornadas de trabajo, el lugar de prestación de servicio, el cargo y oficio y/o funciones y la forma de remuneración, siempre que tales modificaciones no impliquen desmejoras que afecten su dignidad o sus derechos mínimos, de conformidad con lo dispuesto por el Art. 23 del C.S.T. modificado por el Art. 1° de la Ley 50/90. Los gastos que se originen con el traslado de lugar de prestación del servicio serán cubiertos por LA EMPLEADORA, de conformidad con el numeral 8° del Art. 57 del C.S.T.',
-    },
-    {
-      k: 'c17',
-      titulo: 'DÉCIMA SÉPTIMA. DIRECCIÓN DE EL EMPLEADO.',
-      texto: 'EL EMPLEADO para todos los efectos legales indica la dirección anotada en el parágrafo 1 del Artículo 29 de la Ley 789/02, norma que modificó el 65 del C.S.T.; se compromete a informar por escrito y de manera inmediata a LA EMPLEADORA cualquier cambio en su dirección de residencia, teniéndose en todo caso como suya, la última dirección registrada en su hoja de vida.',
-    },
-    {
-      k: 'c18',
-      titulo: 'DÉCIMA OCTAVA. CONFIDENCIALIDAD.',
-      texto: `EL EMPLEADO ${empleado}, guardará absoluta confidencialidad sobre toda la información reservada que maneje y a la que pudiere tener acceso. EL EMPLEADO se obliga a conservar, mantener y manejar la reserva y confidencialidad de toda la información que reciba de los funcionarios, empleados o asesores de LA COMPAÑÍA, de manera directa o indirecta, en forma verbal, escrita, gráfica, en medio magnético, electrónico, o bajo cualquier otra forma, que sea entregada con el ánimo de realizar operaciones propias de su objeto social y/o relativas al objeto del presente Acuerdo, sin que para el efecto sea necesario que la parte reveladora la califique como confidencial o reservada, en adelante denominada la "Información Confidencial" o la "información" indistintamente. En dicho sentido, se obliga EL EMPLEADO a tomar todas las medidas necesarias para que la información no llegue a manos de terceros ni de la competencia en ninguna circunstancia y se obliga a utilizarla únicamente para adelantar las tareas que se requieran para llevar a cabo el desarrollo, estructuración y puesta en marcha de negocios conjuntos, que redunden en beneficios económicos para LA COMPAÑÍA. Al suscribir el presente, EL EMPLEADO está obligado a responder legalmente por cualquier perjuicio que pueda surgir como resultado del incumplimiento de cualquiera de los compromisos contenidos en la presente cláusula. Las obligaciones señaladas continuarán vigentes aún después del vencimiento o terminación del ACUERDO. Asimismo, se obliga EL EMPLEADO a: 1) No utilizar para su propio beneficio la Información Confidencial en caso de no concretarse ninguna operación por escrito entre las partes; 2) No divulgar a terceros la Información Confidencial; 3) No realizar, o requerir que terceros realicen desarrollos o negocios a partir de la Información Confidencial, que resulten real o potencialmente en competencia con los productos y/o bienes y/o servicios comercializados o desarrollados por LA COMPAÑÍA.`,
-    },
-    {
-      k: 'c18.p1',
-      titulo: 'PARÁGRAFO PRIMERO:',
-      texto: 'EL EMPLEADO se compromete a guardar confidencialidad absoluta, respecto del conocimiento directo o indirecto que, por ocasión de su labor, llegase a tener de las empresas filiales, controladas o subordinadas, que guardan estrecha relación comercial, financiera, contable y laboral de su EMPLEADOR.',
-    },
-    {
-      k: 'c18.p2',
-      titulo: 'PARÁGRAFO SEGUNDO:',
-      texto: 'EL EMPLEADO se abstendrá, por sí, por su personal o por terceros, directa o indirectamente, de comportamientos que puedan constituir competencia desleal o actos de esta naturaleza, para con LA COMPAÑÍA, sus usuarios o terceros, o conductas contrarias a la confidencialidad exigida por la ley y el Contrato.',
-    },
-    {
-      k: 'c18.p3',
-      titulo: 'PARÁGRAFO TERCERO:',
-      texto: 'EL EMPLEADO conoce y acepta desde ya que la divulgación y el uso indebido o no autorizado de la información que conozca o maneje puede causar un perjuicio irreparable a LA COMPAÑÍA. Por lo mismo, se compromete a no hacer ningún tipo de uso indebido o no autorizado de la información. Asimismo, se compromete a manejar la información que conozca o maneje con un mayor grado de cuidado de aquel con el cual maneja su propia información confidencial y sus propios secretos industriales. EL EMPLEADO es consciente de que deberá resarcir a LA COMPAÑÍA, por cualquier uso indebido o no autorizado, culpable o no, que él, sus empleados, socios, subcontratistas, asesores y demás personas puedan llegar a dar a la información que conozca o maneje. Los términos y condiciones aquí contenidos son de obligatorio cumplimiento y aceptación, por parte de quienes sean autorizados para tener acceso a la información o realizar las operaciones que tiene disponibles para ello.',
-    },
-    {
-      k: 'c18.p4',
-      titulo: 'PARÁGRAFO CUARTO – EXIGENCIA DE INDEMNIZACIÓN:',
-      texto: 'En el evento de violación del presente Acuerdo por parte EL EMPLEADO, dicho evento dará derecho a LA COMPAÑÍA, a exigir por los medios judiciales pertinentes, la indemnización de perjuicios, incluyendo dentro de dicha indemnización las costas judiciales y agencias en derecho a que hubiere lugar. En ese caso, LA COMPAÑÍA tendrá toda la facultad de demandar y exigir judicialmente la reparación de perjuicios a la parte cumplida. En virtud de lo pactado en esta cláusula y, sin perjuicio del derecho de LA COMPAÑÍA a la indemnización de todos los daños, EL EMPLEADO reconocerá y pagará incondicional e irrevocablemente a LA COMPAÑÍA el valor que se estime por la ley para reconocer el perjuicio creado. Así las cosas, EL EMPLEADO reconoce y acepta expresamente que la presente obligación presta mérito ejecutivo y que, por lo tanto, puede ser ejecutada mediante proceso ejecutivo sin requerimiento o reconvención alguna al que se renuncia expresamente.',
-    },
-    {
-      k: 'c18.p5',
-      titulo: 'PARÁGRAFO QUINTO – MODIFICACIONES:',
-      texto: 'Cualquier modificación a los términos y condiciones del presente ACUERDO, deberá constar por escrito mediante otrosí suscrito por ambas partes, el cual hará parte integral de este documento.',
-    },
-    {
-      k: 'c19',
-      titulo: 'DÉCIMA NOVENA. DECLARACIÓN DE SEGURIDAD.',
-      texto: 'EL EMPLEADO manifiesta que no se encuentra inmerso en lista Clinton, OFAC o cualquier otra antiterrorista, en procesos penales, políticos ilícitos, disciplinarios, fiscales, sancionatorios, concursales o de insolvencia de persona natural no comerciante, no es deudor de alimentos conforme a la ley 311 de 1996, que su patrimonio y recursos han sido producto de una labor lícita, que él, sus parientes hasta 4º de consanguinidad, 2º de afinidad y 1° civil no se encuentran bajo inhabilidad, incompatibilidad y/o conflicto de intereses con LA EMPLEADORA y sus accionistas o socios.',
-    },
-    {
-      k: 'c20',
-      titulo: 'VIGÉSIMA. AUTORIZACIÓN PARA TRATAMIENTO DE DATOS.',
-      texto: 'EL EMPLEADO autoriza de conformidad con las leyes 1266 de 2008 y 1581 de 2012 de manera irrevocable a LA EMPLEADORA y/o a la persona que ésta delegue, para que, con fines estadísticos, de control, supervisión y de información comercial, consulte y reporte a la Central de Información de la Asociación Bancaria y de Entidades Financieras de Colombia CIFIN, DATACRÉDITO y a cualquier otra entidad que maneje bases de datos con los mismos fines en Colombia o en otros países, el comportamiento CREDITICIO con el sistema financiero y el retardo o incumplimiento de las obligaciones que se deriven de este contrato.',
-    },
-    {
-      k: 'c21',
-      titulo: 'VIGÉSIMA PRIMERA. PREVENCIÓN DE LAVADO DE ACTIVOS Y FINANCIACIÓN DEL TERRORISMO.',
-      texto: 'EL EMPLEADO se obliga con LA EMPLEADORA a implementar las medidas tendientes a evitar que sus operaciones puedan ser utilizadas como instrumentos para el ocultamiento, manejo, inversión o aprovechamiento en cualquier forma de dinero u otros bienes provenientes de actividades ilícitas o para dar apariencia de legalidad a estas actividades. En tal sentido, LA EMPLEADORA podrá dar por terminado de manera unilateral e inmediata la relación existente, sin que haya lugar al pago de indemnización alguna, cuando EL EMPLEADO, sus auxiliares o socios lleguen a ser: i) condenados por el delito de lavado de activos, sus delitos fuente, delitos contra la administración pública, financiación del terrorismo o administración de recursos relacionados con actividades terroristas; ii) sancionados administrativamente por violaciones a cualquier norma anticorrupción; iii) incluidos en listas administradas por cualquier autoridad nacional o extranjera para el control de lavado de activos, financiación del terrorismo o corrupción; iv) vinculados a cualquier investigación, proceso judicial o administrativo por la presunta comisión de tales delitos o infracciones.',
-    },
-    {
-      k: 'c22',
-      titulo: 'VIGÉSIMA SEGUNDA.',
-      texto: 'EL EMPLEADO declara que ha leído el presente Contrato de Trabajo y manifiesta que está de acuerdo con él en su integridad. Asimismo, EL EMPLEADO declara conocer el Reglamento de Trabajo y el Manual de Funciones, los cuales hacen parte integrante del Contrato de Trabajo.',
-    },
-    {
-      k: 'c22.p1',
-      titulo: 'PARÁGRAFO:',
-      texto: 'El presente Contrato de Trabajo se rige íntegramente por las disposiciones contenidas en el Código Sustantivo del Trabajo, la Ley 50 de 1990, la Ley 789 de 2002 y demás disposiciones concordantes.',
-    },
-  ];
-};
+const BLOQUES: { k: string; titulo: string; parrafos: string[] }[] = [
+  {
+    k: 'i1',
+    titulo: 'PRIMERA. OBJETO',
+    parrafos: ['LA EMPLEADORA contrata los servicios personales de EL EMPLEADO(A) para desempeñar el cargo de [CARGO], adscrito(a) a la [DIRECCIÓN / ÁREA]. EL EMPLEADO(A) se obliga a: a) poner al servicio de LA EMPLEADORA toda su capacidad normal de trabajo, sus conocimientos y experiencia, en el desarrollo de las funciones propias del cargo, las descritas en el Manual de Funciones y el perfil de cargo, y las labores conexas y complementarias que le sean asignadas; b) cumplir las órdenes e instrucciones impartidas por LA EMPLEADORA, el jefe inmediato o quien formalmente haga sus veces; c) prestar sus servicios con diligencia, lealtad, buena fe y responsabilidad; d) guardar reserva sobre los hechos, documentos físicos o electrónicos, datos, información y asuntos que conozca por causa o con ocasión de la relación laboral; y e) abstenerse de desarrollar, durante la jornada laboral o utilizando recursos de LA EMPLEADORA, actividades ajenas a sus funciones, así como actividades que generen conflicto de interés, salvo autorización previa y escrita.'],
+  },
+  {
+    k: 'i1.p1',
+    titulo: 'PARÁGRAFO PRIMERO',
+    parrafos: ['Sin perjuicio de las faltas previstas en la ley y en el Reglamento Interno de Trabajo, se califican como faltas graves, atendiendo en cada caso su naturaleza, impacto y circunstancias: a) alterar, falsificar, ocultar, destruir, sustraer o utilizar indebidamente documentos, soportes, registros, datos o información de LA EMPLEADORA o de terceros relacionados con ella; b) revelar, extraer, copiar o utilizar sin autorización información confidencial o reservada; c) comprometer, obligar o representar a LA EMPLEADORA frente a terceros sin competencia, delegación o autorización; d) utilizar indebidamente bienes, recursos, sistemas, claves, accesos o herramientas de LA EMPLEADORA, especialmente cuando ello genere un riesgo o perjuicio relevante; e) solicitar, recibir, ofrecer o aceptar pagos, beneficios o ventajas indebidas relacionados con el ejercicio de sus funciones; f) incurrir en actos de violencia, acoso, discriminación, amenaza o irrespeto grave en el entorno laboral; g) incumplir de manera grave o reiterada las instrucciones legítimas impartidas, las obligaciones de seguridad y salud en el trabajo, seguridad de la información, protección de datos, ética o cumplimiento; y h) omitir injustificadamente obligaciones esenciales del cargo cuando ello genere o pueda generar una afectación grave para LA EMPLEADORA. La valoración de estas conductas y las consecuencias que correspondan se efectuarán con observancia del debido proceso, el derecho de defensa y el principio de proporcionalidad.'],
+  },
+  {
+    k: 'i2',
+    titulo: 'SEGUNDA. LUGAR DE TRABAJO',
+    parrafos: ['EL EMPLEADO(A) prestará sus servicios principalmente en la sede de CANALES Y CONTACTOS S.A.S. ubicada en Cali, Valle del Cauca, y en los demás lugares dentro del territorio nacional en los que LA EMPLEADORA desarrolle su objeto o actividad y requiera su presencia. LA EMPLEADORA podrá disponer cambios razonables del lugar de prestación del servicio o traslados, de acuerdo con las necesidades empresariales, siempre que no impliquen desmejora de las condiciones laborales, afectación de la dignidad de EL EMPLEADO(A) ni desconocimiento de sus derechos mínimos. Los gastos de traslado a que haya lugar serán reconocidos de conformidad con la ley y las políticas internas aplicables.'],
+  },
+  {
+    k: 'i2.p',
+    titulo: 'PARÁGRAFO',
+    parrafos: ['La jornada y el horario de trabajo se regirán por lo dispuesto en la cláusula octava. LA EMPLEADORA podrá efectuar ajustes razonables en su distribución, de conformidad con las necesidades del servicio y dentro de los límites legales.'],
+  },
+  {
+    k: 'i3',
+    titulo: 'TERCERA. CARGO, FUNCIONES Y DEPENDENCIA',
+    parrafos: ['EL EMPLEADO(A) desempeñará el cargo y estará adscrito(a) a la dependencia indicados en los datos de vinculación. Dependerá jerárquica y funcionalmente del jefe inmediato allí señalado, o de quien formalmente haga sus veces. Ejercerá las funciones descritas en el Manual de Funciones y el perfil del cargo, así como las labores conexas, complementarias y compatibles con su formación, experiencia y nivel de responsabilidad que le sean asignadas.'],
+  },
+  {
+    k: 'i3.p1',
+    titulo: 'PARÁGRAFO PRIMERO',
+    parrafos: ['EL EMPLEADO(A) deberá actuar dentro de las funciones, atribuciones y niveles de autorización propios de su cargo. No podrá comprometer a LA EMPLEADORA frente a terceros, asumir obligaciones en su nombre, disponer de recursos, suscribir documentos, impartir decisiones vinculantes o ejercer representación sin contar con la competencia, delegación, poder o autorización correspondiente. Las actuaciones que, por su naturaleza o por las políticas internas, requieran aprobación previa deberán someterse al visto bueno del jefe inmediato o de la instancia competente.'],
+  },
+  {
+    k: 'i3.p2',
+    titulo: 'PARÁGRAFO SEGUNDO',
+    parrafos: ['El jefe inmediato podrá distribuir o redistribuir las actividades entre los integrantes del área o dependencia, de acuerdo con las necesidades del servicio, las prioridades institucionales, las cargas de trabajo y las competencias de cada cargo, siempre que las actividades asignadas sean compatibles con las funciones, formación, experiencia y nivel de responsabilidad de EL EMPLEADO(A).'],
+  },
+  {
+    k: 'i4',
+    titulo: 'CUARTA. OBLIGACIONES DEL EMPLEADO(A)',
+    parrafos: ['Además de las previstas en la ley, el Reglamento Interno de Trabajo, el Manual de Funciones y las políticas de LA EMPLEADORA, son obligaciones de EL EMPLEADO(A): a) ejecutar con diligencia las actividades asignadas; b) cumplir las instrucciones del jefe inmediato y reportar oportunamente avances, riesgos, novedades y vencimientos; c) mantener actualizados los controles, matrices, informes y registros a su cargo; d) elaborar y entregar oportunamente los documentos y productos requeridos, sometiéndolos a revisión y visto bueno; e) proteger, organizar y conservar los expedientes y archivos físicos y digitales; f) asistir a reuniones, comités, capacitaciones y actividades relacionadas con su cargo; g) cumplir las políticas de seguridad de la información, protección de datos, ética, prevención de riesgos y seguridad y salud en el trabajo; h) custodiar y devolver los elementos, accesos y documentos entregados; e i) cumplir las demás funciones compatibles con su cargo que le sean asignadas por el jefe inmediato.'],
+  },
+  {
+    k: 'i5',
+    titulo: 'QUINTA. ELEMENTOS DE TRABAJO',
+    parrafos: ['Corresponde a LA EMPLEADORA suministrar los elementos, herramientas, accesos y recursos necesarios para el normal desempeño de las funciones del cargo, sin perjuicio del deber de EL EMPLEADO(A) de cuidarlos, utilizarlos exclusivamente para fines laborales y devolverlos cuando sean requeridos o al finalizar la relación laboral.'],
+  },
+  {
+    k: 'i6',
+    titulo: 'SEXTA. REMUNERACIÓN',
+    parrafos: ['LA EMPLEADORA pagará a EL EMPLEADO(A), por la prestación de sus servicios, el salario básico mensual indicado en la parte inicial del presente contrato, pagadero con la periodicidad indicada en los datos de vinculación. EL EMPLEADO(A) autoriza que el salario sea consignado en una cuenta de una entidad del sistema financiero o pagado mediante otro medio legalmente autorizado. En el salario ordinario se encuentra incluida la remuneración de los descansos obligatorios de ley.'],
+  },
+  {
+    k: 'i6.p1',
+    titulo: 'PARÁGRAFO PRIMERO',
+    parrafos: ['LA EMPLEADORA efectuará las deducciones y retenciones legalmente autorizadas, incluyendo los aportes a cargo de EL EMPLEADO(A) al Sistema de Seguridad Social Integral. Los gastos propios de la cuenta bancaria personal serán asumidos por su titular, salvo disposición legal o acuerdo escrito en contrario.'],
+  },
+  {
+    k: 'i6.p2',
+    titulo: 'PARÁGRAFO SEGUNDO',
+    parrafos: ['Los auxilios, beneficios o reconocimientos extralegales que no tengan como finalidad remunerar directamente el servicio y que sean expresamente pactados como no salariales no constituirán factor salarial, de conformidad con la legislación aplicable. La naturaleza de cada pago atenderá a su finalidad real y a las disposiciones legales vigentes.'],
+  },
+  {
+    k: 'i7',
+    titulo: 'SÉPTIMA. TRABAJO SUPLEMENTARIO, NOCTURNO, DOMINICAL Y FESTIVO',
+    parrafos: ['El trabajo suplementario o en horas extras, nocturno, dominical o festivo se remunerará con los recargos y condiciones establecidos en la ley. Para su ejecución deberá mediar autorización previa y escrita de LA EMPLEADORA o del jefe inmediato. Cuando la necesidad se presente de manera imprevista e inaplazable, EL EMPLEADO(A) deberá informar por escrito a la mayor brevedad. LA EMPLEADORA llevará el registro correspondiente y reconocerá el trabajo efectivamente ejecutado y debidamente comprobado, conforme a la ley.'],
+  },
+  {
+    k: 'i8',
+    titulo: 'OCTAVA. JORNADA DE TRABAJO',
+    parrafos: ['EL EMPLEADO(A) prestará sus servicios dentro de los horarios y turnos establecidos por LA EMPLEADORA, con una jornada ordinaria máxima de cuarenta y dos (42) horas semanales, distribuida de conformidad con la legislación laboral vigente. La distribución diaria podrá organizarse bajo la modalidad de jornada flexible, sin exceder los límites legales ni afectar los descansos obligatorios.'],
+  },
+  {
+    k: 'i8.p1',
+    titulo: 'PARÁGRAFO PRIMERO',
+    parrafos: ['El horario ordinario será el indicado en los datos de vinculación y deberá corresponder a la jornada legal y a la modalidad aplicable al cargo. Podrá ajustarse razonablemente, previa comunicación a EL EMPLEADO(A), de acuerdo con las necesidades del servicio y dentro de los límites legales.'],
+  },
+  {
+    k: 'i9',
+    titulo: 'NOVENA. PERÍODO DE PRUEBA',
+    parrafos: ['Las partes acuerdan expresamente un período de prueba de dos (2) meses, contados a partir de la fecha de iniciación de labores indicada en los datos de vinculación, de conformidad con las disposiciones legales aplicables. Durante este período cualquiera de las partes podrá dar por terminado unilateralmente el contrato en los términos previstos por la ley. La presente cláusula constituye la estipulación escrita del período de prueba.'],
+  },
+  {
+    k: 'i10',
+    titulo: 'DÉCIMA. DURACIÓN DEL CONTRATO',
+    parrafos: ['La duración del presente contrato es a TÉRMINO INDEFINIDO. Podrá terminarse por cualquiera de las causales previstas en la ley, en el presente contrato, en el Reglamento Interno de Trabajo y en las demás disposiciones aplicables, con observancia de los procedimientos y garantías que correspondan.'],
+  },
+  {
+    k: 'i11',
+    titulo: 'DÉCIMA PRIMERA. AFILIACIÓN Y PAGO AL SISTEMA DE SEGURIDAD SOCIAL INTEGRAL',
+    parrafos: ['LA EMPLEADORA afiliará a EL EMPLEADO(A) a los sistemas de salud, pensiones y riesgos laborales y efectuará los aportes correspondientes. EL EMPLEADO(A) autoriza el descuento de los valores que legalmente estén a su cargo.'],
+  },
+  {
+    k: 'i12',
+    titulo: 'DÉCIMA SEGUNDA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS',
+    parrafos: ['EL EMPLEADO(A) se obliga a desempeñar sus funciones con integridad, ética, transparencia y lealtad hacia CANALES Y CONTACTOS S.A.S. Queda estrictamente prohibido solicitar, recibir, aceptar, ofrecer o entregar, directa o indirectamente, pagos, comisiones, gratificaciones, beneficios, dádivas o cualquier retribución indebida de proveedores, contratistas, clientes, servidores públicos o terceros con quienes LA EMPLEADORA mantenga o pueda mantener relaciones. El incumplimiento comprobado de esta obligación constituirá falta grave y podrá dar lugar a la terminación del contrato con justa causa, previo cumplimiento del procedimiento laboral y disciplinario aplicable, sin perjuicio de las acciones legales y del resarcimiento de los perjuicios debidamente acreditados.'],
+  },
+  {
+    k: 'i13',
+    titulo: 'DÉCIMA TERCERA. TERMINACIÓN UNILATERAL',
+    parrafos: [
+      'El presente contrato se encuentra sujeto a las disposiciones legales que regulan las relaciones laborales y al Reglamento Interno de Trabajo de CANALES Y CONTACTOS S.A.S., el cual será puesto en conocimiento de EL EMPLEADO(A). LA EMPLEADORA podrá terminar unilateralmente el contrato con justa causa cuando se configure una causal legal o contractual válida, garantizando el debido proceso y el derecho de defensa cuando resulten aplicables.',
+      'Son justas causas para terminar unilateralmente el contrato las previstas en el Código Sustantivo del Trabajo y demás normas aplicables. También podrán constituir faltas graves las conductas expresamente calificadas como tales en este contrato, en el Reglamento Interno de Trabajo, en el Manual de Funciones y en las políticas válidamente adoptadas, siempre que la conducta se encuentre debidamente comprobada y su gravedad, reiteración, impacto y circunstancias justifiquen la medida.',
+    ],
+  },
+  {
+    k: 'i14',
+    titulo: 'DÉCIMA CUARTA. RESPONSABILIDAD SOBRE ELEMENTOS DE TRABAJO',
+    parrafos: ['EL EMPLEADO(A) deberá cuidar y utilizar adecuadamente las herramientas, equipos, documentos, claves, accesos y demás elementos entregados por LA EMPLEADORA. Responderá por las pérdidas o daños que le sean imputables a título de dolo o culpa, previa verificación de los hechos, garantía del derecho de defensa y determinación de la responsabilidad correspondiente. No habrá responsabilidad automática por hurto, caso fortuito, fuerza mayor o deterioro normal por el uso.'],
+  },
+  {
+    k: 'i14.p',
+    titulo: 'PARÁGRAFO',
+    parrafos: ['Cuando existan obligaciones económicas legalmente exigibles a cargo de EL EMPLEADO(A), cualquier descuento de salarios, prestaciones o liquidación deberá contar con autorización previa, expresa y escrita otorgada para el caso concreto, o con orden judicial, y deberá respetar los límites legales. La entrega de anticipos para gastos se sujetará a las políticas internas de legalización y soportes.'],
+  },
+  {
+    k: 'i15',
+    titulo: 'DÉCIMA QUINTA. PROPIEDAD INTELECTUAL',
+    parrafos: [
+      'Los documentos, conceptos, bases de datos, informes, metodologías, procedimientos, diseños, desarrollos, software, obras y demás resultados elaborados por EL EMPLEADO(A) en cumplimiento de sus funciones, utilizando recursos de LA EMPLEADORA o siguiendo sus instrucciones, pertenecerán a CANALES Y CONTACTOS S.A.S. en la medida permitida por la ley.',
+      'EL EMPLEADO(A) transfiere a LA EMPLEADORA, en los términos permitidos por la legislación aplicable, los derechos patrimoniales de autor y demás derechos susceptibles de cesión sobre tales resultados, para todos los territorios, medios y modalidades de explotación, por el término máximo de protección legal. Los derechos morales permanecerán en cabeza de sus titulares conforme a la ley.',
+      'EL EMPLEADO(A) se obliga a suscribir los documentos y prestar la colaboración razonablemente necesaria para formalizar, registrar o proteger los derechos de LA EMPLEADORA. Esta obligación continuará después de la terminación del contrato en cuanto resulte necesario para acreditar o proteger la titularidad correspondiente.',
+    ],
+  },
+  {
+    k: 'i16',
+    titulo: 'DÉCIMA SEXTA. MODIFICACIÓN DE LAS CONDICIONES LABORALES',
+    parrafos: ['En ejercicio de su facultad subordinante, LA EMPLEADORA podrá efectuar modificaciones razonables respecto del horario, lugar de prestación del servicio, distribución de funciones y organización del trabajo, de acuerdo con las necesidades empresariales, siempre que sean compatibles con el cargo y no impliquen desmejora salarial o profesional, afectación de la dignidad, desconocimiento de derechos mínimos ni perjuicios graves para EL EMPLEADO(A). La remuneración no podrá ser reducida unilateralmente. Los gastos derivados de traslados se asumirán conforme a la ley.'],
+  },
+  {
+    k: 'i17',
+    titulo: 'DÉCIMA SÉPTIMA. DIRECCIÓN Y DATOS DE CONTACTO DEL EMPLEADO(A)',
+    parrafos: ['EL EMPLEADO(A) se obliga a informar por escrito y de manera oportuna cualquier cambio en su dirección de residencia, correo electrónico, número telefónico u otros datos de contacto. Para efectos laborales se tendrá como válida la última información registrada en su hoja de vida o comunicada formalmente a LA EMPLEADORA.'],
+  },
+  {
+    k: 'i18',
+    titulo: 'DÉCIMA OCTAVA. CONFIDENCIALIDAD Y RESERVA',
+    parrafos: [
+      'Se considera información confidencial o reservada toda información corporativa, jurídica, contractual, financiera, contable, comercial, técnica, operativa, laboral, personal o estratégica de LA EMPLEADORA, sus vinculadas, clientes, proveedores, contratistas, municipios y terceros, conocida por EL EMPLEADO(A) con ocasión de sus funciones, independientemente del medio en que se encuentre y de que haya sido marcada o no como confidencial.',
+      'EL EMPLEADO(A) se obliga a: a) utilizar la información únicamente para el cumplimiento de sus funciones; b) abstenerse de divulgarla, copiarla, extraerla, almacenarla en dispositivos o cuentas personales, remitirla a terceros o utilizarla en beneficio propio o ajeno sin autorización; c) adoptar medidas razonables de seguridad; d) informar de inmediato cualquier pérdida, acceso no autorizado, incidente o requerimiento de autoridad; e) cumplir las políticas de seguridad de la información y protección de datos; y f) devolver o eliminar, según las instrucciones de LA EMPLEADORA, los documentos, archivos, copias, accesos y soportes al finalizar el vínculo o cuando sean requeridos.',
+    ],
+  },
+  {
+    k: 'i18.p1',
+    titulo: 'PARÁGRAFO PRIMERO',
+    parrafos: ['No se considerará incumplimiento la revelación de información que sea de dominio público sin intervención de EL EMPLEADO(A), que hubiera sido obtenida legítimamente de un tercero o que deba entregarse por mandato legal o de autoridad competente. En este último caso, EL EMPLEADO(A) deberá informar previamente a LA EMPLEADORA cuando la ley lo permita y limitar la revelación a lo estrictamente requerido.'],
+  },
+  {
+    k: 'i18.p2',
+    titulo: 'PARÁGRAFO SEGUNDO',
+    parrafos: ['Las obligaciones de confidencialidad permanecerán vigentes después de la terminación del contrato mientras la información conserve su carácter reservado o durante el término exigido por la ley. Su incumplimiento podrá constituir falta grave y dar lugar a las acciones disciplinarias o legales correspondientes y a la reparación de los perjuicios debidamente demostrados, con respeto del debido proceso.'],
+  },
+  {
+    k: 'i19',
+    titulo: 'DÉCIMA NOVENA. DECLARACIONES, INHABILIDADES Y CONFLICTOS DE INTERÉS',
+    parrafos: ['EL EMPLEADO(A) declara que, a la fecha de suscripción del contrato, no conoce la existencia de inhabilidades, incompatibilidades o conflictos de interés que le impidan desempeñar el cargo, que los recursos que maneja o utiliza provienen de actividades lícitas y que la información suministrada a LA EMPLEADORA es veraz. Se obliga a informar oportunamente cualquier situación sobreviniente que pueda afectar su idoneidad, independencia, integridad o el cumplimiento de sus funciones. Esta declaración se limita a hechos propios o que razonablemente sean de su conocimiento y no implica garantizar la situación jurídica de familiares o terceros.'],
+  },
+  {
+    k: 'i20',
+    titulo: 'VIGÉSIMA. TRATAMIENTO DE DATOS PERSONALES',
+    parrafos: ['EL EMPLEADO(A) autoriza a LA EMPLEADORA, de manera previa, expresa e informada, para recolectar, almacenar, usar, circular, actualizar, transmitir, transferir y, cuando proceda, suprimir sus datos personales para fines relacionados con la selección, vinculación, administración de personal, nómina, seguridad social, seguridad y salud en el trabajo, formación, evaluación, control de acceso, seguridad de la información, cumplimiento legal y gestión documental. EL EMPLEADO(A) podrá ejercer los derechos de conocer, actualizar, rectificar, solicitar prueba de la autorización, presentar consultas o reclamos, solicitar la supresión y revocar la autorización cuando legalmente proceda, de conformidad con la política de tratamiento de datos de LA EMPLEADORA y las normas aplicables.'],
+  },
+  {
+    k: 'i21',
+    titulo: 'VIGÉSIMA PRIMERA. PREVENCIÓN DEL LAVADO DE ACTIVOS, FINANCIACIÓN DEL TERRORISMO, CORRUPCIÓN Y SOBORNO',
+    parrafos: ['EL EMPLEADO(A) se obliga a cumplir las políticas y procedimientos adoptados por LA EMPLEADORA para prevenir el lavado de activos, la financiación del terrorismo, la proliferación de armas, la corrupción, el soborno y demás riesgos de cumplimiento; a abstenerse de participar en operaciones ilícitas; a suministrar información veraz; a declarar y gestionar conflictos de interés; y a reportar oportunamente las operaciones, hechos o señales de alerta que conozca con ocasión de sus funciones. El incumplimiento grave y comprobado podrá dar lugar a las medidas disciplinarias o a la terminación del contrato con justa causa, con observancia del debido proceso y sin que la sola existencia de una investigación constituya automáticamente una causal de terminación.'],
+  },
+  {
+    k: 'i22',
+    titulo: 'VIGÉSIMA SEGUNDA. INTEGRIDAD Y CONOCIMIENTO DE DOCUMENTOS INTERNOS',
+    parrafos: ['EL EMPLEADO(A) declara que ha leído el presente contrato y manifiesta estar de acuerdo con su contenido. Asimismo, declara conocer o se obliga a conocer el Reglamento Interno de Trabajo, el Manual de Funciones, el perfil de cargo, las políticas y procedimientos internos que le sean comunicados, los cuales harán parte integral de la relación laboral en cuanto sean compatibles con la ley y con el presente contrato.'],
+  },
+  {
+    k: 'i22.p',
+    titulo: 'PARÁGRAFO',
+    parrafos: ['El presente contrato se rige por el Código Sustantivo del Trabajo, la Ley 50 de 1990, la Ley 789 de 2002, las normas que las modifiquen, adicionen o sustituyan y las demás disposiciones laborales aplicables. Si alguna estipulación resulta inválida o ineficaz, las restantes conservarán su vigencia y deberán interpretarse de manera compatible con la legislación laboral.'],
+  },
+];
 
 export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud: GcSolicitud }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const solicitudId = solicitud.solicitudId;
+
   /*
-   * La solicitud se guarda en estado propio porque la acción de la etapa la cambia:
-   * al remitir el contrato a firma, `AccionesFlujo` devuelve la solicitud recargada y
-   * con ella se repintan las pestañas y el propio panel. Leyendo siempre la prop, la
-   * pantalla se quedaría mostrando la etapa anterior hasta que alguien recargara.
+   * La solicitud se guarda en estado propio porque la acción de la etapa la cambia: al
+   * remitir el contrato a firma, `AccionesFlujo` devuelve la solicitud recargada y con ella
+   * se repintan las pestañas y el propio panel.
    */
   const [sol, setSol] = useState(solicitud);
   const editable = puedeEditar(user?.nombreRol);
@@ -259,32 +332,31 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
 
   const [f, setF] = useState<TIState>(() => {
     const d = solicitud.data ?? {};
-    const saved = (d.contrato ?? {}) as Partial<TIState>;
-    const des = (d.designacionSupervisor ?? {}) as Record<string, string>;
+    const saved = (d.contrato ?? {}) as Record<string, unknown> & Partial<TIState>;
     const acta = (d.actaInicio ?? {}) as Record<string, string>;
-    return {
-      ...EMPTY,
-      ...saved,
-      empleador: saved.empleador || d.empresa || '',
-      representanteLegal: saved.representanteLegal || des.funcionarioNombre || '',
-      empleado: saved.empleado || d.contratista || '',
-      empleadoCc: saved.empleadoCc || des.contratistaCc || acta.contratistaCc || '',
-      empleadoDireccion: saved.empleadoDireccion || acta.direccion || '',
-      empleadoCorreo: saved.empleadoCorreo || acta.correo || '',
-      empleadoCelular: saved.empleadoCelular || acta.celular || '',
-      salario: saved.salario || d.honorarios || '',
-      fechaIniciacion: saved.fechaIniciacion || acta.fechaInicio || '',
-      textos: saved.textos ?? {},
+    /*
+     * Lo que ya se escribió en la solicitud y en el acta se trae. Solo entra donde el hueco
+     * sigue intacto: una vez que alguien escribió en la celda, manda lo escrito.
+     */
+    const delTramite: Partial<TIState> = {
+      salario: (d.honorarios as string) || '',
+      fechaInicio: acta.fechaInicio || '',
     };
+    const base = { ...EMPTY, ...traerDeLaPlantillaVieja(saved), ...saved };
+    for (const [k, v] of Object.entries(delTramite)) {
+      const clave = k as keyof TIState;
+      if (v && base[clave] === EMPTY[clave]) (base as Record<string, unknown>)[clave] = v;
+    }
+    return { ...base, textos: saved.textos ?? {} };
   });
 
   const set = <K extends keyof TIState>(k: K, v: TIState[K]) => setF((p) => ({ ...p, [k]: v }));
   const textosCtx = useTextosDocumento(f.textos, setF);
 
   /**
-   * Devuelve si se guardó, porque `AccionesFlujo` lo usa para decidir si sigue: la acción
-   * afirma lo que el documento dice, y remitir a firma un contrato que no se alcanzó a
-   * guardar adelantaría el trámite sobre un texto que nadie escribió.
+   * Devuelve si se guardó, porque `AccionesFlujo` lo usa para decidir si sigue: remitir a
+   * firma un contrato que no se alcanzó a guardar adelantaría el trámite sobre un texto
+   * que nadie escribió.
    */
   const handleSave = async (): Promise<boolean> => {
     setSaving(true);
@@ -311,6 +383,8 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
           body { background: #fff !important; }
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; border: none !important; }
+          /* Una cláusula no se parte entre dos hojas si cabe entera. */
+          .bloque { break-inside: avoid; }
         }
       `}</style>
 
@@ -320,8 +394,10 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">
-            <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Contrato · Término Indefinido</h1>
-            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">Formato GJ-002-F · Solicitud N.º {solicitudId}</p>
+            <h1 className="text-lg font-bold text-[hsl(var(--canalco-neutral-900))]">Contrato · Término indefinido</h1>
+            <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
+              Contrato individual de trabajo a término indefinido · Solicitud N.º {solicitudId} · Plantilla 2026
+            </p>
           </div>
           <Button variant="outline" onClick={() => window.print()} className="gap-2">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -339,131 +415,154 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* La acción de la etapa va donde se decide: el contrato se remite a firma acá.
-            Guardar el documento no mueve el flujo; esto sí. */}
         <AccionesFlujo
           sol={sol} documento="contrato" onCambio={setSol}
           onAntes={editable && habilitada ? handleSave : undefined}
         />
         {!habilitada ? (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl p-8 text-center">
-            <p className="text-[hsl(var(--canalco-neutral-700))]">El contrato aún no está <b>habilitado</b>.</p>
-            <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">Se genera en la etapa «Contrato en revisión (Jurídica)».</p>
-            <Button variant="link" className="text-[hsl(var(--canalco-primary))] mt-2" onClick={irSolicitud}>Ir a la solicitud</Button>
+            <p className="text-[hsl(var(--canalco-neutral-700))]">Este contrato aún no está <b>habilitado</b>.</p>
+            <p className="text-sm text-[hsl(var(--canalco-neutral-500))] mt-1">Se habilita en la etapa de elaboración del contrato.</p>
+            <Button variant="link" className="text-[hsl(var(--canalco-primary))] mt-2" onClick={irSolicitud}>
+              Ir a la solicitud
+            </Button>
           </div>
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
           <TextosDocumento value={textosCtx}>
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
-            {/* Encabezado */}
-            <div className="grid grid-cols-[130px_1fr_170px] border-b border-[#0a2a52]">
-              <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-12 object-contain" />
+          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-6">
+
+            {/* Membrete */}
+            <div className="flex items-center justify-between mb-3">
+              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
+              <div className="text-center px-3">
+                <h1 className="font-bold text-[13px]">CONTRATO INDIVIDUAL DE TRABAJO</h1>
+                <p className="font-bold text-[12px]">A TÉRMINO INDEFINIDO</p>
               </div>
-              <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[13px] border-r border-[#0a2a52]">
-                CONTRATO A TÉRMINO INDEFINIDO
+              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
+            </div>
+
+            <p className="text-[11px] font-bold mb-4">NIT 900.456.735-7</p>
+
+            {/* La plantilla lo dice en su propio título: no se muestra en la versión
+                firmable. Va `no-print`, que es la única forma de que la instrucción se
+                cumpla sola y no dependa de que alguien se acuerde de borrarlo. */}
+            <table className="no-print w-full border-collapse text-[12px] mb-4">
+              <tbody>
+                <tr>
+                  <td className="border border-[#0a2a52] bg-[#fff2cc] px-2 py-1.5 align-middle w-[34%] font-bold text-[11px]">
+                    CONTROL INTERNO - NO MOSTRAR EN VERSIÓN FIRMABLE
+                  </td>
+                  <td className="border border-[#0a2a52] px-2 py-1.5 align-top text-[11px] leading-snug">
+                    Diligenciar cargo, dependencia, salario, horario y responsable jerárquico. Para este formato
+                    el período de prueba se pacta expresamente por DOS (2) MESES y consta por escrito en la
+                    cláusula novena. Antes de generar el contrato debe validarse si ya existió un vínculo laboral
+                    con el mismo empleado(a); si existe, deberá verificarse si legalmente procede pactar período
+                    de prueba.
+                  </td>
+                </tr>
+                <Fila label="Jornada máxima" value={f.ciJornada} onChange={(v) => set('ciJornada', v)} area />
+                <Fila label="Período de prueba" value={f.ciPeriodoPrueba} onChange={(v) => set('ciPeriodoPrueba', v)} area />
+                <Fila label="Revisión de RIT y manual de funciones" value={f.ciRevisionRit} onChange={(v) => set('ciRevisionRit', v)} />
+                <tr>
+                  <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[34%] font-bold">Texto contractual</td>
+                  <td className="border border-[#0a2a52] px-2 py-1 align-top text-[11px] leading-snug">
+                    Conservar las cláusulas jurídicas de esta versión. PMO parametriza únicamente los campos
+                    variables y conservar la denominación EL EMPLEADO(A) en toda la versión contractual.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h2 className="text-center font-bold my-3">DATOS DE LA VINCULACIÓN</h2>
+
+            <table className="w-full border-collapse text-[12px] bloque">
+              <tbody>
+                <Fila label="Empleador" value={f.empleador} onChange={(v) => set('empleador', v)} />
+                <Fila label="NIT" value={f.nit} onChange={(v) => set('nit', v)} />
+                <Fila label="Representante legal" value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} />
+                <Fila label="Identificación representante legal" value={f.representanteCc} onChange={(v) => set('representanteCc', v)} />
+                <Fila label="Domicilio empleador" value={f.domicilioEmpleador} onChange={(v) => set('domicilioEmpleador', v)} />
+                <Fila label="Empleado(a)" value={f.empleado} onChange={(v) => set('empleado', v)} />
+                <Fila label="Dirección / correo / celular" value={f.contacto} onChange={(v) => set('contacto', v)} />
+                <Fila label="Lugar y fecha de nacimiento" value={f.nacimiento} onChange={(v) => set('nacimiento', v)} />
+                <Fila label="Cargo" value={f.cargo} onChange={(v) => set('cargo', v)} />
+                <Fila label="Dependencia" value={f.dependencia} onChange={(v) => set('dependencia', v)} />
+                <Fila label="Jefe inmediato" value={f.jefeInmediato} onChange={(v) => set('jefeInmediato', v)} />
+                <Fila label="Salario básico mensual" value={f.salario} onChange={(v) => set('salario', v)} />
+                <Fila label="Periodicidad de pago" value={f.periodicidadPago} onChange={(v) => set('periodicidadPago', v)} />
+                <Fila label="Fecha de inicio" value={f.fechaInicio} onChange={(v) => set('fechaInicio', v)} />
+                <Fila label="Horario ordinario" value={f.horario} onChange={(v) => set('horario', v)} />
+                <Fila label="Período de prueba" value={f.periodoPrueba} onChange={(v) => set('periodoPrueba', v)} />
+              </tbody>
+            </table>
+
+            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
+              <div className="bloque">
+                <TextoEd
+                  k="i.comparecencia"
+                  plantilla={'Entre los suscritos a saber, GLORIA LUCÍA ESCALANTE MANZANO, mayor de edad, '
+                    + 'identificada con cédula de ciudadanía No. 66.651.423 expedida en El Cerrito, quien actúa '
+                    + 'en calidad de representante legal de CANALES Y CONTACTOS S.A.S., identificada con NIT No. '
+                    + '900.456.735-7, y para efectos del presente contrato se denominará LA EMPLEADORA; y, por '
+                    + 'otra parte, [NOMBRE COMPLETO], mayor de edad, identificado(a) con cédula de ciudadanía No. '
+                    + '[NÚMERO] expedida en [LUGAR], quien actúa en nombre propio y para efectos del presente '
+                    + 'contrato se denominará EL EMPLEADO(A), hemos convenido celebrar el presente contrato '
+                    + 'individual de trabajo a término indefinido, que se regirá por las siguientes cláusulas:'}
+                />
               </div>
-              <div className="grid grid-rows-[auto_1fr]">
-                <div className="flex items-center justify-center p-1 border-b border-[#0a2a52]">
-                  <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-9 object-contain" />
+
+              {BLOQUES.map((b) => (
+                <div key={b.k} className="bloque space-y-1">
+                  <p><b>{b.titulo}:</b></p>
+                  {b.parrafos.map((texto, i) => (
+                    <TextoEd key={i} k={b.parrafos.length > 1 ? `${b.k}.${i + 1}` : b.k} plantilla={texto} />
+                  ))}
                 </div>
-                <div className="grid grid-cols-[auto_1fr] text-[10px]">
-                  <CodeCell label="CÓDIGO:" value="GJ-002-F" />
-                  <CodeCell label="FECHA:" value="14/04/2026" />
-                  <CodeCell label="VERSIÓN:" value="2" last />
-                </div>
+              ))}
+
+              <div className="bloque">
+                <TextoEd
+                  k="i.constancia"
+                  plantilla={'Para constancia se firma en Santiago de Cali, Valle del Cauca, el día XX (XX) de '
+                    + 'XXX de dos mil XXX (202X), en dos ejemplares del mismo tenor y valor, uno de los cuales '
+                    + 'recibe EL EMPLEADO(A).'}
+                />
               </div>
             </div>
 
-            <div className="px-8 py-6">
-              {/* Tabla de datos */}
-              <table className="w-full border-collapse text-[12px] mb-5">
-                <tbody>
-                  <Row label="Nombre del empleador" value={f.empleador} onChange={(v) => set('empleador', v)} />
-                  <Row label="Domicilio del empleador" value={f.domicilioEmpleador} onChange={(v) => set('domicilioEmpleador', v)} />
-                  <Row label="Nombre del empleado" value={f.empleado} onChange={(v) => set('empleado', v)} />
-                  <Row label="Dirección" value={f.empleadoDireccion} onChange={(v) => set('empleadoDireccion', v)} />
-                  <Row label="Correo electrónico" value={f.empleadoCorreo} onChange={(v) => set('empleadoCorreo', v)} />
-                  <Row label="No. de celular" value={f.empleadoCelular} onChange={(v) => set('empleadoCelular', v)} />
-                  <Row label="Lugar, fecha de nacimiento y nacionalidad" value={f.lugarFechaNacimiento} onChange={(v) => set('lugarFechaNacimiento', v)} />
-                  <Row label="Cargo a desempeñar" value={f.cargo} onChange={(v) => set('cargo', v)} />
-                  <Row label="Salario básico mensual" value={f.salario} onChange={(v) => set('salario', v)} placeholder="... pesos M/L ($ /L)" />
-                  <Row label="Periodos de pago" value={f.periodosPago} onChange={(v) => set('periodosPago', v)} />
-                  <Row label="Fecha de iniciación de labores" value={f.fechaIniciacion} onChange={(v) => set('fechaIniciacion', v)} />
-                </tbody>
-              </table>
-
-              <div className="space-y-3 text-justify leading-relaxed text-[12px]">
-                {/*
-                  La comparecencia se queda con casillas y no pasa a texto reescribible: el
-                  NIT, las cédulas y la ciudad de expedición no tienen otro sitio donde
-                  capturarse, y disolverlos en un párrafo los volvería texto suelto que nada
-                  más puede leer.
-
-                  Pero **todos** los datos se escriben acá, incluidos los cuatro que antes
-                  salían impresos desde la tabla y el bloque de firmas. Verlos como texto
-                  fijo en medio de un párrafo que sí se deja escribir hacía pensar que el
-                  documento estaba trabado; y el nombre del representante legal y la cédula
-                  del empleado ni siquiera tenían casilla en esta página. Como es el mismo
-                  estado, escribirlos acá los actualiza también arriba y en las firmas.
-                */}
-                <p>
-                  Entre los suscritos a saber{' '}
-                  <Inline value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} placeholder="representante legal" bold />, identificada con la cédula de ciudadanía No.{' '}
-                  <Inline value={f.representanteCc} onChange={(v) => set('representanteCc', v)} placeholder="No." />, actuando en calidad de
-                  representante legal de{' '}
-                  <Inline value={f.empleador} onChange={(v) => set('empleador', v)} placeholder="empresa empleadora" bold />, identificado con NIT No.{' '}
-                  <Inline value={f.empleadorNit} onChange={(v) => set('empleadorNit', v)} placeholder="NIT" />, quien en adelante se
-                  denominará <b>LA EMPLEADORA</b> y por otra parte{' '}
-                  <Inline value={f.empleado} onChange={(v) => set('empleado', v)} placeholder="nombre del empleado" bold />, mayor de edad, identificado con cédula de
-                  ciudadanía No.{' '}
-                  <Inline value={f.empleadoCc} onChange={(v) => set('empleadoCc', v)} placeholder="cédula" /> expedida en la ciudad de{' '}
-                  <Inline value={f.ciudadExpedicion} onChange={(v) => set('ciudadExpedicion', v)} placeholder="ciudad" />, actuando en
-                  nombre propio y quien en adelante se denominará <b>EL EMPLEADO</b>, hemos convenido celebrar contrato a término
-                  indefinido, que se regirá por las siguientes cláusulas:
-                </p>
-
-                {/* El articulado: cada cláusula y cada parágrafo se pueden reescribir. */}
-                {articulado(f).map((c) => (
-                  <ClausulaEd key={c.k} k={c.k} titulo={c.titulo} texto={c.texto} />
-                ))}
-
-                <p className="pt-4">
-                  Para constancia se firma en <Inline value={f.ciudadFirma} onChange={(v) => set('ciudadFirma', v)} placeholder="ciudad" />, el día{' '}
-                  <Inline value={f.fechaFirma} onChange={(v) => set('fechaFirma', v)} placeholder="00 de mes de 0000" /> en dos o más
-                  ejemplares del mismo tenor y valor, un ejemplar de los cuales recibe EL EMPLEADO en este acto, en la ciudad y fecha ya
-                  indicados.
-                </p>
-
-                {/* Firmas */}
-                <div className="grid grid-cols-2 gap-8 pt-12">
-                  <div>
-                    <div className="border-t border-[#0a2a52] pt-1">
-                      <FLine value={f.empleador} onChange={(v) => set('empleador', v)} placeholder="Empresa empleadora" bold />
-                      <FLine value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} placeholder="Representante legal" bold />
-                      <div>Representante Legal</div>
-                      <div className="font-bold">LA EMPLEADORA</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="border-t border-[#0a2a52] pt-1">
-                      <FLine value={f.empleado} onChange={(v) => set('empleado', v)} placeholder="Nombre del empleado" bold />
-                      <div className="flex gap-1"><span>C.C.</span><FLine value={f.empleadoCc} onChange={(v) => set('empleadoCc', v)} placeholder="..." /></div>
-                      <div className="font-bold">EL EMPLEADO</div>
-                    </div>
-                  </div>
+            {/* Firmas. La empleadora firma con nombre y empresa a secas —es la misma en
+                todos los contratos—; el empleado sale de los datos de vinculación. */}
+            <div className="grid grid-cols-2 gap-8 mt-12 text-[12px] bloque">
+              <div>
+                <div className="border-t border-black pt-1">
+                  <p className="font-bold">GLORIA LUCÍA ESCALANTE MANZANO</p>
+                  <p>Representante Legal</p>
+                  <p>CANALES Y CONTACTOS S.A.S.</p>
+                  <p>LA EMPLEADORA</p>
+                </div>
+              </div>
+              <div>
+                <div className="border-t border-black pt-1">
+                  <FLine value={f.empleado} onChange={(v) => set('empleado', v)} bold />
+                  <p className="flex items-baseline gap-1">
+                    C.C. <FLine value={f.empleadoCc} onChange={(v) => set('empleadoCc', v)} ancho="w-[38%]" /> de{' '}
+                    <FLine value={f.empleadoLugarCc} onChange={(v) => set('empleadoLugarCc', v)} ancho="w-[38%]" />
+                  </p>
+                  <p>EL EMPLEADO(A)</p>
                 </div>
               </div>
             </div>
           </div>
-          <PieElaboracion />
+          {/* «Revisó y aprobó», como la plantilla. */}
+          <PieElaboracion etiqueta="Revisó y aprobó" />
           </TextosDocumento>
           </fieldset>
         )}
 
         {habilitada && !editable && (
           <p className="no-print text-center text-xs text-[hsl(var(--canalco-neutral-500))] mt-4">
-            Solo Jurídica puede diligenciar el contrato. Puedes consultarlo e imprimirlo.
+            Solo Jurídica puede diligenciar este contrato. Puedes consultarlo e imprimirlo.
           </p>
         )}
       </main>
@@ -473,57 +572,47 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
 
 /* ── Subcomponentes ─────────────────────────────────────── */
 
-function CodeCell({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  return (
-    <>
-      <div className={'px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] ' + (last ? '' : 'border-b border-[#0a2a52]')}>{label}</div>
-      <div className={'px-2 py-1 text-center border-l border-[#0a2a52] ' + (last ? '' : 'border-b border-[#0a2a52]')}>{value}</div>
-    </>
-  );
-}
-
-function Row({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+/**
+ * Una fila de la ficha: etiqueta a la izquierda, dato a la derecha.
+ *
+ * La etiqueta va **siempre en negrita**. En el .docx cinco de las diecinueve celdas grises
+ * quedaron sin negrita —Empleador, NIT, Representante legal, su identificación y
+ * Empleado(a)—, pero es un descuido del archivo, no una distinción: son las mismas
+ * etiquetas de la misma tabla, y en las otras cinco plantillas 2026 van todas en negrita.
+ */
+function Fila({ label, value, onChange, area, filas = 2 }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  area?: boolean;
+  filas?: number;
 }) {
+  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black ';
   return (
     <tr>
-      <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[42%]">{label}</td>
+      <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[34%] font-bold">{label}</td>
       <td className="border border-[#0a2a52] px-2 py-1 align-top">
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-          className="w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
+        {area ? (
+          <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={filas}
+            className={comun + 'resize-y leading-snug'} />
+        ) : (
+          <input value={value} onChange={(e) => onChange(e.target.value)} className={comun} />
+        )}
       </td>
     </tr>
   );
 }
 
-/**
- * Casilla que va dentro de un párrafo y se lee como parte de él.
- *
- * `bold` es para los nombres de las partes: en el formato van en negrita, y una casilla
- * que se ve distinta de lo que reemplaza rompe la lectura del documento.
- */
-function Inline({ value, onChange, placeholder, bold }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; bold?: boolean;
+/** Renglón de un bloque de firma. */
+function FLine({ value, onChange, bold, ancho }: {
+  value: string; onChange: (v: string) => void; bold?: boolean; ancho?: string;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      size={Math.max((value || placeholder || '').length, 5)}
-      className={
-        'bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] '
-        + 'focus:border-[hsl(var(--canalco-primary))] text-[12px] placeholder:italic '
-        + 'placeholder:text-[hsl(var(--canalco-neutral-400))] placeholder:font-normal '
-        + (bold ? 'font-bold' : '')
-      }
+      className={(ancho ?? 'w-full') + ' bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
+        + (bold ? 'font-bold' : '')}
     />
-  );
-}
-
-function FLine({ value, onChange, placeholder, bold }: { value: string; onChange: (v: string) => void; placeholder?: string; bold?: boolean }) {
-  return (
-    <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-      className={'w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] ' + (bold ? 'font-bold' : '')} />
   );
 }

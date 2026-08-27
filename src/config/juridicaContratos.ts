@@ -121,6 +121,27 @@ export const TIPOS_CONTRATO: TipoContrato[] = [
     },
   },
   {
+    key: 'obra-todo-costo',
+    nombre: 'Obra a todo costo',
+    /*
+     * La hoja BASE DE DATOS del formato «19. Listado de Chequeo contratos» todavía no trae
+     * una fila para este tipo, así que la lista es **la misma de «Prestación de servicios»**
+     * —el otro contrato con un tercero, con pólizas, supervisión y acta de recibido—, más
+     * los documentos que la propia plantilla del contrato declara integrantes: anexo
+     * técnico, presupuesto, cronograma y planos. Cuando Jurídica defina la fila propia,
+     * se reemplaza acá.
+     */
+    secciones: {
+      documentos: ['Solicitud Cotización', 'Propuesta', 'Cotización', 'Cédula', 'Rut (actualizado)', 'Certificado bancario'],
+      antecedentes: ['Procuraduría', 'Contraloría', 'Policía Nacional', 'Medidas Correctivas-Policía Nacional', 'Procesos Judiciales-Rama Judicial', 'Consulta Registro Unico Tributario (RUES)', 'Estado de la cédula-Registraduría Nacional del estado civil', 'Concepto de Verificación de Antecedentes.'],
+      tecnicos: ['Anexo técnico', 'Presupuesto', 'Cronograma', 'Planos y especificaciones', 'Certificaciones trabajo en alturas', 'Certificaciones trabajo con alta tensión', 'Otras certificaciones', 'Afiliación al sistema de seguridad social (ARL,EPS,AFP,CCF).'],
+      contractual: ['Contrato firmado.', 'Pólizas', 'Aprobación de pólizas'],
+      ejecucion: ['Designación del supervisor', 'Acta de inicio', 'Informes de supervisión para pagos', 'Acta de recibido de la obra y/o producto final.'],
+      expGeneral: ['Certificado de existencia y representación (cuando aplique)', 'Certificado de matrícula mercantil (Persona Natural)-cuando aplique'],
+      expEspecificos: ['Contratos ejecutados por el contratista, relacionados con el objeto a contratar'],
+    },
+  },
+  {
     key: 'prestacion-de-servicios',
     nombre: 'Prestación de servicios',
     secciones: {

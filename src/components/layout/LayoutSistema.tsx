@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import * as Icons from 'lucide-react';
-import { ChevronsLeft, ChevronsRight, Home, Lock, LogOut } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, Home, KeyRound, Lock, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { modulesService, type Module } from '@/services/modules.service';
 import {
@@ -81,7 +81,22 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
   });
 
   // Sin sesión no hay barra: el login se pinta a pantalla completa.
-  const oculta = location.pathname === '/login' || location.pathname === '/';
+  const oculta =
+    location.pathname === '/login' ||
+    location.pathname === '/' ||
+    location.pathname === '/cambiar-password';
+
+  // Con la contraseña temporal sin cambiar, el sistema no se abre: cualquier
+  // ruta desvía a la pantalla de cambio hasta que el usuario fije la suya.
+  useEffect(() => {
+    if (
+      user?.debeCambiarPassword &&
+      location.pathname !== '/cambiar-password' &&
+      location.pathname !== '/login'
+    ) {
+      navigate('/cambiar-password', { replace: true });
+    }
+  }, [user?.debeCambiarPassword, location.pathname, navigate]);
 
   useEffect(() => {
     if (oculta || !user) return;
@@ -149,31 +164,31 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
   const clase = (activo: boolean, acceso: boolean) =>
     'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors text-left '
     + (!acceso
-      ? 'text-[#5a5a78] cursor-not-allowed'
+      ? 'text-[hsl(var(--nav-text-off))] cursor-not-allowed'
       : activo
-        ? 'bg-[#ffe81a] text-[#16162b]'
-        : 'text-[#b9b9ce] hover:bg-[#23233d] hover:text-white');
+        ? 'bg-[hsl(var(--nav-accent))] text-[hsl(var(--nav-surface))]'
+        : 'text-[hsl(var(--nav-text))] hover:bg-[hsl(var(--nav-surface-raised))] hover:text-white');
 
   // Plegada: una franja con la marca y el botón de abrir, nada más.
   if (!abierta) {
     return (
       <div className="min-h-screen flex bg-white">
-        <nav className="no-print hidden lg:flex flex-col items-center gap-3 w-12 shrink-0 bg-[#16162b] py-4 h-screen sticky top-0">
-          <span className="w-9 h-9 rounded-lg bg-[#ffe81a] text-[#16162b] text-[13px] font-extrabold tracking-tight flex items-center justify-center flex-none">
+        <nav className="no-print hidden lg:flex flex-col items-center gap-3 w-12 shrink-0 bg-[hsl(var(--nav-surface))] py-4 h-screen sticky top-0">
+          <span className="w-9 h-9 rounded-lg bg-[hsl(var(--nav-accent))] text-[hsl(var(--nav-surface))] text-[13px] font-extrabold tracking-tight flex items-center justify-center flex-none">
             SGE
           </span>
           <button
             onClick={alternar}
             title="Mostrar el menú"
             aria-label="Mostrar el menú"
-            className="p-1.5 rounded-lg text-[#b9b9ce] hover:bg-[#23233d] hover:text-white transition-colors"
+            className="p-1.5 rounded-lg text-[hsl(var(--nav-text))] hover:bg-[hsl(var(--nav-surface-raised))] hover:text-white transition-colors"
           >
             <ChevronsRight className="w-4 h-4" />
           </button>
           {/* Plegada sigue diciendo quién está, con el nombre en el `title`: es lo que
               se consulta cuando se comparte un equipo. */}
           <span
-            className="mt-auto w-8 h-8 rounded-full bg-[#23233d] text-[#ffe81a] text-[11px] font-bold flex items-center justify-center flex-none"
+            className="mt-auto w-8 h-8 rounded-full bg-[hsl(var(--nav-surface-raised))] text-[hsl(var(--nav-accent-soft))] text-[11px] font-bold flex items-center justify-center flex-none"
             title={`${user?.nombre ?? 'Usuario'} · ${user?.nombreRol ?? 'Sin rol'}`}
           >
             {iniciales(user?.nombre)}
@@ -186,11 +201,11 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-white">
-      <nav className="no-print hidden lg:flex flex-col w-60 shrink-0 bg-[#16162b] py-4 px-2 h-screen sticky top-0">
+      <nav className="no-print hidden lg:flex flex-col w-60 shrink-0 bg-[hsl(var(--nav-surface))] py-4 px-2 h-screen sticky top-0">
         <div className="mb-4 pl-3 pr-1 flex items-center gap-2.5">
           {/* El cuadro amarillo con la sigla: la marca de la barra. Va cuadrado y con
               la sigla ajustada, que con tres letras ya no cabe al tamaño del texto. */}
-          <span className="w-9 h-9 rounded-lg bg-[#ffe81a] text-[#16162b] text-[13px] font-extrabold tracking-tight flex items-center justify-center flex-none">
+          <span className="w-9 h-9 rounded-lg bg-[hsl(var(--nav-accent))] text-[hsl(var(--nav-surface))] text-[13px] font-extrabold tracking-tight flex items-center justify-center flex-none">
             SGE
           </span>
           {/* Solo el nombre del sistema: quién eres va abajo, junto a cerrar sesión,
@@ -202,7 +217,7 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
             onClick={alternar}
             title="Ocultar el menú"
             aria-label="Ocultar el menú"
-            className="p-1.5 rounded-lg text-[#b9b9ce] hover:bg-[#23233d] hover:text-white transition-colors flex-none self-start"
+            className="p-1.5 rounded-lg text-[hsl(var(--nav-text))] hover:bg-[hsl(var(--nav-surface-raised))] hover:text-white transition-colors flex-none self-start"
           >
             <ChevronsLeft className="w-4 h-4" />
           </button>
@@ -237,26 +252,32 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
           })}
         </div>
 
-        <div className="pt-3 mt-3 border-t border-[#2b2b47]">
+        <div className="pt-3 mt-3 border-t border-[hsl(var(--nav-border))]">
           {/* Quién eres: el nombre manda y el rol va debajo, porque el rol es lo que
               decide qué se ve en la barra y conviene tenerlo a la vista. Los dos con
               `title`, que un nombre largo se corta. */}
           <div className="flex items-center gap-2.5 px-3 py-2 mb-1">
-            <span className="w-8 h-8 rounded-full bg-[#23233d] text-[#ffe81a] text-[11px] font-bold flex items-center justify-center flex-none">
+            <span className="w-8 h-8 rounded-full bg-[hsl(var(--nav-surface-raised))] text-[hsl(var(--nav-accent-soft))] text-[11px] font-bold flex items-center justify-center flex-none">
               {iniciales(user?.nombre)}
             </span>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-white truncate" title={user?.nombre ?? ''}>
                 {user?.nombre || 'Usuario'}
               </p>
-              <p className="text-[11px] text-[#8b8ba7] truncate" title={user?.nombreRol ?? ''}>
+              <p className="text-[11px] text-[hsl(var(--nav-text-dim))] truncate" title={user?.nombreRol ?? ''}>
                 {user?.nombreRol || 'Sin rol'}
               </p>
             </div>
           </div>
           <button
+            onClick={() => navigate('/cambiar-password')}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-[hsl(var(--nav-text))] hover:bg-[hsl(var(--nav-surface-raised))] hover:text-white transition-colors"
+          >
+            <KeyRound className="w-4 h-4 flex-none" /> Cambiar contraseña
+          </button>
+          <button
             onClick={() => { logout(); navigate('/login'); }}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-[#b9b9ce] hover:bg-[#23233d] hover:text-[#ff8a8a] transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-[hsl(var(--nav-text))] hover:bg-[hsl(var(--nav-surface-raised))] hover:text-[hsl(var(--nav-danger))] transition-colors"
           >
             <LogOut className="w-4 h-4 flex-none" /> Cerrar sesión
           </button>
@@ -288,7 +309,7 @@ function Secciones({ ruta, secciones: dadas }: { ruta: string; secciones: Seccio
   const esActivo = (to: string) => (to.includes('?') ? aqui === to : ruta === to);
 
   return (
-    <div className="mt-1 ml-4 pl-3 border-l border-[#2b2b47] space-y-0.5">
+    <div className="mt-1 ml-4 pl-3 border-l border-[hsl(var(--nav-border))] space-y-0.5">
       {secciones.map((s) => (
         <NavLink
           key={s.to}
@@ -299,8 +320,8 @@ function Secciones({ ruta, secciones: dadas }: { ruta: string; secciones: Seccio
             // La sección activa no repite el amarillo del módulo: dos amarillos en la
             // misma columna competirían. Se marca con el texto en blanco.
             + (esActivo(s.to)
-              ? 'text-white font-semibold bg-[#23233d]'
-              : 'text-[#8b8ba7] hover:text-white hover:bg-[#23233d]')}
+              ? 'text-white font-semibold bg-[hsl(var(--nav-surface-raised))]'
+              : 'text-[hsl(var(--nav-text-dim))] hover:text-white hover:bg-[hsl(var(--nav-surface-raised))]')}
         >
           {s.label}
         </NavLink>

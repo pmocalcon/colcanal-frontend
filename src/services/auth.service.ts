@@ -14,6 +14,7 @@ export interface User {
   rolId: number;
   nombreRol: string;
   permissions?: string[]; // Permisos granulares del JWT
+  debeCambiarPassword?: boolean; // Fuerza cambio en el primer ingreso
 }
 
 export interface LoginResponse {
@@ -94,11 +95,89 @@ export const authService = {
   },
 
   /**
+   * Cambia la contraseña del propio usuario y baja la bandera de cambio
+   * obligatorio en el usuario guardado.
+   */
+  async cambiarPassword(passwordActual: string, passwordNueva: string): Promise<void> {
+    await api.post('/auth/cambiar-password', { passwordActual, passwordNueva });
+    const actual = this.getCurrentUser();
+    if (actual) {
+      const actualizado = { ...actual, debeCambiarPassword: false };
+      localStorage.setItem('user', JSON.stringify(actualizado));
+    }
+  },
+
+  /**
    * Get current user profile
    */
   async getProfile(): Promise<User> {
     const response = await api.get<User>('/auth/profile');
     return response.data;
+  },
+
+  /**
+   * Impersonación (solo pruebas de admin): entra como otro usuario sin su
+   * contraseña. Respalda la sesión del admin para poder volver. El backend
+   * verifica que quien llama sea administrador.
+   */
+  async impersonar(userId: number): Promise<User> {
+    const response = await api.post<LoginResponse & {
+      impersonatedBy: { userId: number; email: string };
+    }>(`/auth/impersonar/${userId}`);
+
+    // Respalda la sesión del admin una sola vez (por si se encadenan saltos).
+    if (!localStorage.getItem('impersonacion')) {
+      localStorage.setItem(
+        'impersonacion',
+        JSON.stringify({
+          adminAccessToken: localStorage.getItem('accessToken'),
+          adminRefreshToken: localStorage.getItem('refreshToken'),
+          adminUser: localStorage.getItem('user'),
+          adminEmail: response.data.impersonatedBy?.email ?? null,
+        }),
+      );
+    }
+
+    const tokenData = decodeToken(response.data.accessToken);
+    const userWithPermissions: User = {
+      ...response.data.user,
+      permissions: tokenData.permissions || [],
+    };
+    localStorage.setItem('accessToken', response.data.accessToken);
+    localStorage.setItem('refreshToken', response.data.refreshToken);
+    localStorage.setItem('user', JSON.stringify(userWithPermissions));
+    return userWithPermissions;
+  },
+
+  /** Restaura la sesión del administrador tras impersonar. */
+  salirImpersonacion(): User | null {
+    const raw = localStorage.getItem('impersonacion');
+    if (!raw) return null;
+    try {
+      const b = JSON.parse(raw) as {
+        adminAccessToken: string | null;
+        adminRefreshToken: string | null;
+        adminUser: string | null;
+      };
+      if (b.adminAccessToken) localStorage.setItem('accessToken', b.adminAccessToken);
+      if (b.adminRefreshToken) localStorage.setItem('refreshToken', b.adminRefreshToken);
+      if (b.adminUser) localStorage.setItem('user', b.adminUser);
+    } catch {
+      // Respaldo corrupto: se descarta y el usuario tendrá que reingresar.
+    }
+    localStorage.removeItem('impersonacion');
+    return this.getCurrentUser();
+  },
+
+  /** El correo del admin real mientras se impersona; null si no se impersona. */
+  getImpersonadorEmail(): string | null {
+    const raw = localStorage.getItem('impersonacion');
+    if (!raw) return null;
+    try {
+      return (JSON.parse(raw) as { adminEmail: string | null }).adminEmail;
+    } catch {
+      return null;
+    }
   },
 
   /**
@@ -108,6 +187,7 @@ export const authService = {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('impersonacion');
   },
 
   /**

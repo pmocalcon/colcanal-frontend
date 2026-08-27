@@ -155,6 +155,31 @@ export interface BulkAuthorizationResponse {
 
 // ============ SERVICIO ============
 
+export interface CredencialEstado {
+  userId: number;
+  nombre: string;
+  email: string;
+  cargo: string;
+  nombreRol: string | null;
+  activo: boolean;
+  estadoClave: 'temporal' | 'personal' | 'exenta';
+  exenta: boolean;
+  bloqueada: boolean;
+  ultimoAcceso: string | null;
+}
+
+export interface PasswordTemporal {
+  userId: number;
+  email: string;
+  nombre: string;
+  passwordTemporal: string;
+}
+
+export interface RestablecerLoteResp {
+  restablecidas: PasswordTemporal[];
+  omitidas: Array<{ email: string; motivo: string }>;
+}
+
 export const usersService = {
   // ============ CRUD USUARIOS ============
 
@@ -417,6 +442,28 @@ export const usersService = {
   async deleteAuthorization(authorizationId: number): Promise<{ message: string }> {
     const response = await api.delete<{ message: string }>(
       `/users/authorizations/${authorizationId}`
+    );
+    return response.data;
+  },
+
+  // ============ PANEL DE CREDENCIALES ============
+
+  async getCredencialesEstado(): Promise<CredencialEstado[]> {
+    const response = await api.get<CredencialEstado[]>('/users/credenciales/estado');
+    return response.data;
+  },
+
+  async restablecerPassword(userId: number): Promise<PasswordTemporal> {
+    const response = await api.post<PasswordTemporal>(
+      `/users/${userId}/restablecer-password`,
+    );
+    return response.data;
+  },
+
+  async restablecerLote(userIds: number[]): Promise<RestablecerLoteResp> {
+    const response = await api.post<RestablecerLoteResp>(
+      '/users/credenciales/restablecer-lote',
+      { userIds },
     );
     return response.data;
   },

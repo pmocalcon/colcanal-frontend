@@ -74,6 +74,7 @@ import ChecklistContratoPage from './pages/ChecklistContratoPage'
 import RequisicionPersonalPage from './pages/RequisicionPersonalPage'
 import { LayoutSistema } from './components/layout/LayoutSistema'
 import DesignacionSupervisorPage from './pages/DesignacionSupervisorPage'
+import ConstanciaAntecedentesPage from './pages/ConstanciaAntecedentesPage'
 import VerificacionGarantiasPage from './pages/VerificacionGarantiasPage'
 import AprobacionGarantiasPage from './pages/AprobacionGarantiasPage'
 import GestionFormatosHomePage from './pages/GestionFormatosHomePage'
@@ -109,16 +110,21 @@ import CuentasCompaniasPage from './pages/CuentasCompaniasPage'
 import SolicitudesContableListPage from './pages/SolicitudesContableListPage'
 import SolicitudAnticipoPage from './pages/SolicitudAnticipoPage'
 import LegalizacionAnticipoPage from './pages/LegalizacionAnticipoPage'
+import CambiarPasswordPage from './pages/CambiarPasswordPage'
+import CredencialesPage from './pages/CredencialesPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { ImpersonationBanner } from './components/ImpersonationBanner'
 
 export default function App() {
   return (
     <AuthProvider>
       <Toaster position="top-right" richColors />
       <BrowserRouter>
+        <ImpersonationBanner />
         <LayoutSistema>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/cambiar-password" element={<CambiarPasswordPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/dashboard/dashboard" element={<DashboardModulePage />} />
           <Route path="/dashboard/compras" element={<ComprasPage />} />
@@ -154,6 +160,7 @@ export default function App() {
           <Route path="/dashboard/materiales/lista" element={<MaterialesListPage />} />
           {/* Administración de Usuarios */}
           <Route path="/dashboard/usuarios" element={<AdminUsuariosPage />} />
+          <Route path="/dashboard/usuarios/credenciales" element={<CredencialesPage />} />
           <Route path="/dashboard/usuarios/crear" element={<CrearUsuarioPage />} />
           <Route path="/dashboard/usuarios/:id" element={<DetalleUsuarioPage />} />
           {/* Proveedores */}
@@ -371,6 +378,7 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica/:id" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/requisicion-personal" element={<RequisicionPersonalPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/chequeo" element={<ChecklistContratoPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/:id/antecedentes" element={<ConstanciaAntecedentesPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/verificacion-garantias" element={<VerificacionGarantiasPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/aprobacion-garantias" element={<AprobacionGarantiasPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/designacion-supervisor" element={<DesignacionSupervisorPage />} />

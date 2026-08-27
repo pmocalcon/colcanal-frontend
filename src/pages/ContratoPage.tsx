@@ -11,6 +11,7 @@ import ContratoTerminoFijoDoc from './ContratoTerminoFijoDoc';
 import ContratoTerminoIndefinidoDoc from './ContratoTerminoIndefinidoDoc';
 import ContratoObraLaborDoc from './ContratoObraLaborDoc';
 import ContratoPrestacionDoc from './ContratoPrestacionDoc';
+import ContratoObraTodoCostoDoc from './ContratoObraTodoCostoDoc';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
@@ -169,6 +170,11 @@ export default function ContratoPage() {
   }
   if (sol?.data?.tipoContrato === 'obra-labor') {
     return <ContratoObraLaborDoc solicitud={sol} />;
+  }
+  // «Obra a todo costo» es un contrato de obra con un tercero: el precio comprende todos
+  // los costos y el alcance vive en un anexo técnico. No es laboral ni de servicios.
+  if (sol?.data?.tipoContrato === 'obra-todo-costo') {
+    return <ContratoObraTodoCostoDoc solicitud={sol} />;
   }
   // «Prestación de servicios» contrata a una sociedad —NIT, representante legal,
   // certificado de existencia— y tiene su propio formato. No lo comparte con

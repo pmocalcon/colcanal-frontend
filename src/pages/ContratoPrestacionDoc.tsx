@@ -9,182 +9,122 @@ import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/jurid
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
 
 /**
  * Plantilla de contrato para el tipo «Prestación de servicios».
  *
- * No es una pestaña aparte: es el contrato, y se muestra cuando la solicitud es de ese
- * tipo, igual que Término Fijo o de Obra Labor tienen la suya. La reparte `ContratoPage`
- * y se guarda en `data.contrato`, como todas.
+ * Sigue la **plantilla marco con garantías contractuales, ajustada 2026** (el formato
+ * «08 Plantilla Contrato PS Con Poliza»), que reemplazó a la versión anterior de veintidós
+ * cláusulas. No es una pestaña aparte: es el contrato, y se muestra cuando la solicitud es
+ * de ese tipo, igual que Término Fijo o de Obra Labor tienen la suya. La reparte
+ * `ContratoPage` y se guarda en `data.contrato`, como todas.
  *
- * Aquí la contratista es una **sociedad**: el documento pide su NIT, su representante
- * legal y el certificado de existencia. Por eso no sirve para «Prestación de servicios
- * Profesionales», donde se contrata a una persona natural.
+ * Lo que cambia respecto de la versión vieja, y es la razón de ser de la plantilla marco:
+ * **todo lo variable vive en la ficha particular de arriba y las cláusulas la referencian**
+ * en vez de repetir las cifras. Antes el valor aparecía en la ficha y otra vez en la
+ * cláusula segunda, y el plazo en la ficha y otra vez en la tercera; cuando se corregía uno
+ * y no el otro, el contrato se contradecía a sí mismo. Ahora la segunda dice «los indicados
+ * en la ficha particular» y solo hay un lugar donde equivocarse.
  *
- * Empieza con la ficha de datos de las dos partes —el bloque de la contratante viene
- * lleno, porque siempre es el mismo— y sigue con las veintidós cláusulas.
+ * Por lo mismo desaparecieron las listas numeradas de obligaciones y de causales: la
+ * plantilla las volvió redacción corrida, con las específicas «definidas para el caso».
  */
 
 interface ContratoState {
-  contratista: string;
-  // Contratante: los datos de la empresa, que no cambian de un contrato a otro.
+  /* ── Control interno: no sale en la versión firmable ── */
+  ciGarantias: string;
+  ciTerminacionAnticipada: string;
+  ciRevisionJuridica: string;
+
+  /* ── Ficha particular ── */
   contratante: string;
-  contratanteNit: string;
   contratanteRepLegal: string;
-  contratanteRepCc: string;
-  contratanteDireccion: string;
-  contratanteTelefono: string;
-  contratanteCorreo: string;
-  // Contratista
+  contratista: string;
   contratistaNit: string;
   contratistaRepLegal: string;
-  contratistaRepCc: string;
-  contratistaDireccion: string;
-  contratistaTelefono: string;
-  contratistaCorreo: string;
-  // Condiciones
+  /** Dirección, correo y teléfono en una sola celda, como los pide la ficha. */
+  contratistaContacto: string;
   objeto: string;
   valor: string;
   formaPago: string;
   plazo: string;
   inicio: string;
   terminacion: string;
-  /** Las dos listas de la cláusula cuarta. Se agregan y se quitan puntos. */
-  obligacionesGenerales: string[];
-  obligacionesEspecificas: string[];
-  /** Las de la contratante, en la cláusula quinta. */
-  obligacionesContratante: string[];
-  /** Las causales de terminación anticipada, en la séptima. */
-  causalesTerminacion: string[];
-  /** Cuándo procede pedir la supresión de datos, en la décima quinta. */
-  causalesSupresion: string[];
-  /** Cuándo puede negarse, en su parágrafo. */
-  negativasSupresion: string[];
-  // Cuadro de garantías de la vigésima segunda.
-  aseguradoNombre: string;
-  aseguradoNit: string;
-  amparos: { amparo: string; valor: string; vigencia: string }[];
-  tomador: string;
-  tomadorNit: string;
-  infoPoliza: string;
+  supervisor: string;
+
+  /**
+   * Si el contrato pactó la terminación anticipada por decisión de la contratante.
+   *
+   * Es el módulo opcional de la plantilla y va apagado por defecto, que es lo que la
+   * plantilla exige: la facultad solo existe si las partes la acordaron expresamente y
+   * quedó escrita en la cláusula séptima. Encenderla acá la imprime dentro de esa
+   * cláusula; apagada, ni se imprime ni se puede invocar después.
+   */
+  terminacionAnticipada: boolean;
+
+  /* ── Garantías de la vigésima segunda ── */
+  amparos: { amparo: string; valor: string; vigencia: string; observaciones: string }[];
+
   /** Texto que Jurídica reescribió, por clave. Vacío = plantilla. */
   textos: Record<string, string>;
 }
 
 /**
- * La ficha va con el contenido del formato, tal cual: los datos de la contratante escritos
- * —son los mismos en todos los contratos— y los de la contratista con los huecos en la
- * convención del documento.
- *
- * Van como valores y no como `placeholder`: un placeholder se ve en pantalla pero no se
- * imprime, y el formato en blanco tiene que poder imprimirse para diligenciarlo a mano.
+ * Los huecos van como valores y no como `placeholder`: un placeholder se ve en pantalla
+ * pero no se imprime, y el formato en blanco tiene que poder imprimirse para diligenciarlo
+ * a mano. Se escriben en la convención de la plantilla —corchetes en mayúscula— para que a
+ * simple vista se distinga lo que falta de lo que ya se diligenció.
  */
 const EMPTY: ContratoState = {
-  contratista: 'xxx',
-  contratante: 'CANALES Y CONTACTOS S.A.S.',
-  contratanteNit: '900.456.735-7',
-  contratanteRepLegal: 'GLORIA LUCIA ESCALANTE MANZANO',
-  contratanteRepCc: 'C.C. 66.651.423 de El Cerrito- Valle',
-  contratanteDireccion: 'Calle 13A No. 101-60, Ciudad Jardín, Cali, Valle del Cauca',
-  contratanteTelefono: '(2) 5246612 – Celular: 3228501970',
-  contratanteCorreo: 'gerencia.canalesycontactos@gmail.com\ndirector.juridico@alumbrados.co\ntalentohumano@alumbrados.co',
-  contratistaNit: 'xx',
-  contratistaRepLegal: 'xx',
-  contratistaRepCc: 'xx',
-  contratistaDireccion: 'xxx',
-  contratistaTelefono: 'xxx',
-  contratistaCorreo: 'xxx',
-  objeto: 'LA CONTRATISTA deberá prestar sus servicios profesionales a CANALES Y CONTACTOS S.A.S, teniendo como objetivo principal xxxx',
-  valor: 'Valor antes de IVA: $xxx M/CTE. IVA del 19%: $xxx M/CTE. Valor total incluido IVA: $xxx M/CTE.',
-  formaPago: 'xxx (x) pagos mensuales vencidos, cada uno por $xxx M/CTE, más IVA del 19% por $xxx M/CTE, para un total mensual incluido IVA de $xxx M/CTE.',
-  plazo: 'xx (x) meses',
-  inicio: 'xxx',
-  terminacion: 'xxx',
-  obligacionesGenerales: ['', '', '', '', ''],
-  obligacionesEspecificas: [''],
-  obligacionesContratante: ['', '', ''],
-  causalesTerminacion: ['', '', ''],
-  causalesSupresion: ['', '', '', ''],
-  negativasSupresion: ['', '', ''],
-  // La asegurada es siempre la contratante; los amparos y sus porcentajes vienen del
-  // formato y solo se completa el valor en pesos.
-  aseguradoNombre: 'CANALES Y CONTACTOS S.A.S.',
-  aseguradoNit: 'Nit: 900.456.735-7',
+  ciGarantias: '[DEFINIR AMPAROS / % O VALOR / VIGENCIAS SEGÚN RIESGO Y APROBACIÓN JURÍDICA]',
+  ciTerminacionAnticipada: '[NO APLICA / APLICA - PREAVISO ___ DÍAS, EXPRESAMENTE PACTADO]',
+  ciRevisionJuridica: '[NOMBRE / FECHA / APROBADO]',
+
+  // La contratante es siempre la misma: va escrita, no en blanco.
+  contratante: 'CANALES Y CONTACTOS S.A.S. - NIT 900.456.735-7',
+  contratanteRepLegal: 'GLORIA LUCÍA ESCALANTE MANZANO - C.C. 66.651.423 de El Cerrito',
+  contratista: '[NOMBRE / RAZÓN SOCIAL]',
+  contratistaNit: '[NÚMERO]',
+  contratistaRepLegal: '[NOMBRE / IDENTIFICACIÓN / NO APLICA]',
+  contratistaContacto: '[DIRECCIÓN / CORREO / TELÉFONO]',
+  objeto: '[DESCRIPCIÓN PRECISA DEL SERVICIO]',
+  valor: '[VALOR EN LETRAS] PESOS M/CTE ($[VALOR]) [IVA INCLUIDO / MÁS IVA / NO APLICA]',
+  formaPago: '[PAGOS / PERIODICIDAD / HITOS / REQUISITOS]',
+  plazo: '[NÚMERO] DÍAS / MESES',
+  inicio: '[FECHA / SUJETO A APROBACIÓN DE GARANTÍAS Y/O ACTA DE INICIO]',
+  terminacion: '[FECHA / REGLA DE CÁLCULO]',
+  supervisor: '[NOMBRE / CARGO / POR DESIGNAR]',
+
+  terminacionAnticipada: false,
+
+  // Tres renglones, como la plantilla. Sin amparos ni porcentajes por defecto: la propia
+  // plantilla lo prohíbe, porque fijarlos invita a firmarlos sin mirar el riesgo.
   amparos: [
-    {
-      amparo: 'CUMPLIMIENTO DEL CONTRATO',
-      valor: '10 % del valor antes de IVA: $xx M/CTE.',
-      vigencia: 'Por el plazo de ejecución del Contrato y seis (6) meses más, contados a partir de la fecha de inicio de ejecución.',
-    },
-    {
-      amparo: 'PAGO DE SALARIOS, PRESTACIONES SOCIALES LEGALES E INDEMNIZACIONES LABORALES',
-      valor: '5 % del valor antes de IVA: $xxx M/CTE.',
-      vigencia: 'Por el plazo de ejecución del Contrato y tres (3) años más, contados a partir de la fecha de inicio de ejecución.',
-    },
+    { amparo: '[AMPARO 1]', valor: '[% / $]', vigencia: '[PLAZO + EXTENSIÓN]', observaciones: '[CONDICIÓN]' },
+    { amparo: '[AMPARO 2]', valor: '[% / $]', vigencia: '[PLAZO + EXTENSIÓN]', observaciones: '[CONDICIÓN]' },
+    { amparo: '[AMPARO 3 / NO APLICA]', valor: '[% / $]', vigencia: '[VIGENCIA]', observaciones: '[CONDICIÓN]' },
   ],
-  tomador: 'xxx',
-  tomadorNit: 'NIT xxx',
-  infoPoliza: 'Número y año del contrato\nObjeto del contrato\nFirma de LA CONTRATISTA',
+
   textos: {},
 };
 
-/** Los tres casos en que la supresión puede negarse. */
-const NEGATIVA_SUPRESION = [
-  'El titular tenga un deber legal o contractual de permanecer en la base de datos.',
-  'La eliminación de datos obstaculice actuaciones judiciales o administrativas vinculadas a obligaciones fiscales, la investigación y persecución de delitos o la actualización de sanciones administrativas.',
-  'Los datos sean necesarios para proteger los intereses jurídicamente tutelados del titular; para realizar una acción en función del interés público, o para cumplir con una obligación legalmente adquirida por el titular.',
-];
-
-/** Los cuatro supuestos en que procede pedir la supresión de los datos. */
-const SUPRESION = [
-  'Los datos no estén siendo tratados conforme a los principios, deberes y obligaciones previstos en la normativa vigente.',
-  'Los datos hayan dejado de ser necesarios o pertinentes para la finalidad para la cual fueron recolectados.',
-  'Se haya superado el período necesario para el cumplimiento de las finalidades para las cuales fueron recolectados.',
-  'La supresión implique la eliminación total o parcial de la información personal, de acuerdo con lo solicitado por el titular, en los registros, archivos, bases de datos o tratamientos realizados por la Parte correspondiente.',
-];
-
-/** Las tres causales de terminación anticipada del formato. */
-const CAUSALES = [
-  'Por incumplimiento de LA CONTRATISTA del objeto o cualquiera de sus obligaciones del contrato. La terminación se producirá con la evidencia del hecho generador de incumplimiento.',
-  'Por vencimiento del término inicialmente pactado.',
-  'Por mutuo acuerdo.',
-];
-
-/** Las tres obligaciones de la contratante. Son las mismas en todos los contratos. */
-const DE_LA_CONTRATANTE = [
-  'Realizar los pagos de acuerdo con lo establecido en el presente contrato.',
-  'Suministrar oportunamente a LA CONTRATISTA toda la información que sea requerida para la correcta prestación del servicio.',
-  'Suscribir los documentos a que haya lugar.',
-];
-
-/** Las cinco obligaciones generales del formato. La primera queda abierta. */
-const GENERALES = [
-  'xxxx',
-  'Prestar los servicios objeto del presente contrato',
-  'Mantener la reserva de la información y/o documentos que conozca con ocasión de la ejecución del presente contrato.',
-  'Disponer de los recursos que sean necesarios para la correcta ejecución del presente Contrato.',
-  'Las demás obligaciones que sean de la esencia del objeto contratado, así como de aquellas que sean necesarias para el logro de la obligación de medio que caracteriza al objeto contratado.',
-];
-
-/** Las específicas dependen del objeto: el formato no trae ninguna escrita. */
-const ESPECIFICAS = ['xxxx'];
-
 /**
- * La comparecencia va con el texto del formato. Los datos de la contratante están escritos
- * —son siempre los mismos— y los de la contratista quedan como huecos, con la convención
- * del documento, porque la ficha de arriba no alcanza a cubrirlos: aquí van además el
- * domicilio de la sociedad y la constancia del certificado de existencia.
+ * Lo guardado con la plantilla vieja, traído a la nueva.
+ *
+ * La ficha anterior tenía dirección, teléfono y correo de la contratista en tres campos y
+ * la nueva los pide en una sola celda. Un contrato a medio diligenciar perdería esos datos
+ * al abrirlo, así que se juntan. Lo demás que la plantilla vieja tenía y esta no —las
+ * listas de obligaciones, las causales, el cuadro de tomador y asegurado— **no se borra**:
+ * sigue en `data.contrato` en la base, simplemente ya no se lee.
  */
-const COMPARECENCIA =
-  'Entre los suscritos, a saber: CANALES Y CONTACTOS S.A.S. identificada con el NIT. 900.456.735-7, '
-  + 'representada legalmente por GLORIA LUCÍA ESCALANTE MANZANO, identificada con la cédula de ciudadanía '
-  + 'No. 66.651.423 de El Cerrito- Valle, quien para los efectos del presente se denominará "EL CONTRATANTE"; '
-  + 'y xxxx sociedad comercial, constituida de conformidad con las leyes de Colombia, identificada con el '
-  + 'NIT. xxx, con domicilio principal en la ciudad de Bogotá D.C., representada en este acto por xxx, mayor '
-  + 'de edad, domiciliada en la ciudad de Bogotá D.C., identificada con cédula de Ciudadanía No. xxx expedida '
-  + 'en xxx, debidamente facultada para la celebración del presente contrato, todo lo cual se acredita con el '
-  + 'certificado de existencia y representación legal; y que para los efectos de este contrato se denominará '
-  + '"xxxx" o "LA CONTRATISTA".';
+function traerDeLaPlantillaVieja(saved: Record<string, unknown>): Partial<ContratoState> {
+  const texto = (k: string) => (typeof saved[k] === 'string' ? (saved[k] as string).trim() : '');
+  if (saved.contratistaContacto) return {};
+  const partes = [texto('contratistaDireccion'), texto('contratistaCorreo'), texto('contratistaTelefono')]
+    .filter((v) => v && v !== 'xxx' && v !== 'xx');
+  return partes.length > 0 ? { contratistaContacto: partes.join(' · ') } : {};
+}
 
 const puedeEditar = (rol?: string) => {
   const r = (rol ?? '').toLowerCase();
@@ -197,6 +137,153 @@ const HABILITADO = [
   'en_verificacion_garantias', 'en_designacion_supervisor', 'en_acta_inicio', 'finalizado',
 ];
 
+/**
+ * Las veinticuatro cláusulas, en el orden y con el texto de la plantilla 2026.
+ *
+ * Van en una constante y no sueltas en el JSX porque así se leen de corrido y se comparan
+ * contra el formato sin tener que saltarse el marcado. El `k` es la clave con que se guarda
+ * lo que Jurídica reescriba.
+ *
+ * Las claves llevan el prefijo `m` —de plantilla marco— y **no se reutilizaron las de la
+ * plantilla vieja**. La numeración se corrió: la décima séptima era «Notificaciones» y
+ * ahora es «Conservación y devolución de información». Con las mismas claves, un contrato
+ * donde alguien hubiera reescrito la vieja habría mostrado ese texto bajo la cláusula
+ * equivocada, que es peor que perder la edición.
+ */
+const CLAUSULAS: { k: string; titulo: string; texto: string }[] = [
+  {
+    k: 'm1',
+    titulo: 'PRIMERA. OBJETO',
+    texto: 'EL/LA CONTRATISTA se obliga a prestar a LA CONTRATANTE los servicios descritos en la ficha particular y a cumplir las obligaciones y entregables allí previstos, de acuerdo con la propuesta aceptada y los demás documentos incorporados al contrato.',
+  },
+  {
+    k: 'm2',
+    titulo: 'SEGUNDA. VALOR Y FORMA DE PAGO',
+    texto: 'El valor y la forma de pago serán los indicados en la ficha particular. Cada pago se efectuará previa presentación de la factura electrónica o cuenta de cobro, según corresponda, los informes o entregables pactados, el visto bueno o certificación del supervisor cuando aplique, y los soportes de aportes al Sistema de Seguridad Social Integral y parafiscales legalmente exigibles. El IVA se causará únicamente cuando resulte aplicable de acuerdo con la condición tributaria de EL/LA CONTRATISTA. Se practicarán las retenciones y deducciones legalmente procedentes.',
+  },
+  {
+    k: 'm3',
+    titulo: 'TERCERA. PLAZO E INICIO',
+    texto: 'El plazo de ejecución será el indicado en la ficha particular. Cuando se exijan garantías contractuales, EL/LA CONTRATISTA no podrá iniciar actividades hasta que estas hayan sido expedidas, presentadas y aprobadas por escrito. Si se exige acta de inicio, la fecha de inicio será la allí consignada. Las prórrogas deberán constar por escrito.',
+  },
+  {
+    k: 'm4',
+    titulo: 'CUARTA. OBLIGACIONES DE EL/LA CONTRATISTA',
+    texto: 'Además de las obligaciones específicas definidas para el caso, EL/LA CONTRATISTA deberá ejecutar el objeto con diligencia, autonomía técnica y administrativa; entregar oportunamente los productos pactados; suministrar los recursos a su cargo; mantener la reserva de la información; cumplir las obligaciones de seguridad social, tributarias y laborales que le correspondan; atender los requerimientos del supervisor dentro del objeto contractual; y cumplir las demás obligaciones expresamente acordadas por las partes.',
+  },
+  {
+    k: 'm5',
+    titulo: 'QUINTA. OBLIGACIONES DE LA CONTRATANTE',
+    texto: 'LA CONTRATANTE deberá suministrar la información y accesos que contractualmente se encuentren a su cargo, efectuar el seguimiento de la ejecución, formular observaciones a los entregables, tramitar los pagos debidamente causados y suscribir los documentos contractuales que correspondan.',
+  },
+  {
+    k: 'm6',
+    titulo: 'SEXTA. SUPERVISIÓN',
+    texto: 'La supervisión será ejercida por [NOMBRE / CARGO] o por quien sea designado mediante comunicación escrita. El supervisor verificará el cumplimiento del objeto, obligaciones, entregables, plazo, soportes y condiciones de pago, sin sustituir las competencias de las áreas administrativa, financiera, tributaria, de tesorería, seguridad y salud en el trabajo u otras que correspondan. La supervisión no libera a EL/LA CONTRATISTA de responsabilidad por la ejecución integral del contrato.',
+  },
+  {
+    k: 'm7',
+    titulo: 'SÉPTIMA. TERMINACIÓN',
+    texto: 'El contrato terminará por vencimiento del plazo, cumplimiento del objeto, mutuo acuerdo, imposibilidad definitiva de ejecución o por las demás causales legales o expresamente pactadas. Cuando se invoque incumplimiento grave, LA CONTRATANTE documentará los hechos, comunicará el requerimiento correspondiente y permitirá a EL/LA CONTRATISTA pronunciarse antes de adoptar las medidas contractuales procedentes, salvo que exista una regla distinta válidamente pactada o una situación que exija actuación inmediata.',
+  },
+  {
+    k: 'm8',
+    titulo: 'OCTAVA. PARTES INDEPENDIENTES',
+    texto: 'Las partes actúan con autonomía e independencia jurídica, técnica, administrativa y financiera. El presente contrato no genera relación laboral entre LA CONTRATANTE y EL/LA CONTRATISTA ni con el personal que este utilice. Cada parte será responsable de sus obligaciones laborales, de seguridad social, tributarias y demás cargas legales.',
+  },
+  {
+    k: 'm9',
+    titulo: 'NOVENA. CONFIDENCIALIDAD',
+    texto: 'Las partes protegerán la información confidencial o reservada conocida con ocasión del contrato y la utilizarán únicamente para su ejecución. No podrán divulgarla a terceros sin autorización, salvo obligación legal o requerimiento de autoridad competente. Al finalizar el contrato deberán devolver, eliminar o conservar la información conforme a las instrucciones contractuales y a los deberes legales aplicables. La obligación de confidencialidad permanecerá mientras la información conserve su carácter reservado o por el término expresamente pactado.',
+  },
+  {
+    k: 'm10',
+    titulo: 'DÉCIMA. RESPONSABILIDAD E INDEMNIDAD',
+    texto: 'Cada parte responderá por los daños directos, comprobados e imputables que cause por incumplimiento de sus obligaciones. EL/LA CONTRATISTA mantendrá indemne a LA CONTRATANTE frente a reclamaciones atribuibles a incumplimientos laborales, de seguridad social, tributarios, de propiedad intelectual, de protección de datos o daños causados por su personal o dependientes, en los términos legalmente procedentes. Cualquier límite de responsabilidad deberá definirse expresamente para el caso y no podrá extenderse a dolo, culpa grave u obligaciones que legalmente no admitan limitación.',
+  },
+  {
+    k: 'm11',
+    titulo: 'DÉCIMA PRIMERA. PROPIEDAD INTELECTUAL',
+    texto: 'Los derechos preexistentes de cada parte permanecerán en cabeza de su titular. Los entregables elaborados específicamente para LA CONTRATANTE y susceptibles de protección se regirán por el alcance de cesión o licencia definido en el contrato. Salvo pacto distinto, EL/LA CONTRATISTA cede a LA CONTRATANTE los derechos patrimoniales que legalmente pueda ceder sobre los resultados creados específicamente en ejecución del objeto, para las modalidades, territorios y término máximo permitidos por la ley, entendiéndose remunerada la cesión con el valor contractual. Los derechos morales permanecerán en cabeza de sus autores.',
+  },
+  {
+    k: 'm12',
+    titulo: 'DÉCIMA SEGUNDA. INTEGRIDAD Y NO NOVACIÓN',
+    texto: 'El contrato y sus anexos contienen el acuerdo aplicable respecto de su objeto y sustituyen entendimientos previos sobre el mismo asunto. Su celebración no implica renuncia ni extinción de obligaciones anteriores que expresamente deban subsistir.',
+  },
+  {
+    k: 'm13',
+    titulo: 'DÉCIMA TERCERA. DIVISIBILIDAD',
+    texto: 'La invalidez o ineficacia de una estipulación no afectará las demás disposiciones, que conservarán su vigencia en cuanto sea jurídicamente posible.',
+  },
+  {
+    k: 'm14',
+    titulo: 'DÉCIMA CUARTA. TRATAMIENTO DE DATOS PERSONALES',
+    texto: 'Las partes tratarán los datos personales a los que accedan de conformidad con la Ley 1581 de 2012, sus normas reglamentarias, las disposiciones que la modifiquen o sustituyan y las políticas aplicables. El tratamiento se limitará a las finalidades necesarias para la celebración, ejecución, seguimiento, facturación, auditoría, defensa jurídica y cumplimiento de obligaciones legales.',
+  },
+  {
+    k: 'm15',
+    titulo: 'DÉCIMA QUINTA. DERECHOS DE LOS TITULARES',
+    texto: 'Cada parte garantizará, dentro del ámbito de su responsabilidad, el ejercicio de los derechos de los titulares a conocer, actualizar, rectificar, solicitar prueba de la autorización cuando proceda, ser informados sobre el uso de sus datos, presentar consultas o reclamos y solicitar supresión o revocatoria cuando legalmente corresponda.',
+  },
+  {
+    k: 'm16',
+    titulo: 'DÉCIMA SEXTA. SEGURIDAD DE LA INFORMACIÓN E INCIDENTES',
+    texto: 'Las partes adoptarán medidas razonables de seguridad y acceso restringido. Cualquier incidente que pueda comprometer información o datos personales relacionados con el contrato deberá informarse oportunamente a la otra parte, con la información disponible y las medidas de contención adoptadas.',
+  },
+  {
+    k: 'm17',
+    titulo: 'DÉCIMA SÉPTIMA. CONSERVACIÓN Y DEVOLUCIÓN DE INFORMACIÓN',
+    texto: 'Al terminar el contrato, EL/LA CONTRATISTA devolverá o eliminará la información y los accesos de LA CONTRATANTE, salvo aquella que deba conservar por obligación legal o para la defensa de sus derechos, caso en el cual deberá mantenerla protegida y limitada a dicha finalidad.',
+  },
+  {
+    k: 'm18',
+    titulo: 'DÉCIMA OCTAVA. ÉTICA, INTEGRIDAD Y CUMPLIMIENTO',
+    texto: 'EL/LA CONTRATISTA se obliga a actuar con integridad y a abstenerse de ofrecer, solicitar, recibir o entregar pagos, beneficios o dádivas indebidas. Asimismo, deberá informar conflictos de interés y cumplir las políticas de prevención de riesgos de corrupción, soborno, lavado de activos y financiación del terrorismo que le sean comunicadas y resulten aplicables.',
+  },
+  {
+    k: 'm19',
+    titulo: 'DÉCIMA NOVENA. MODIFICACIONES',
+    texto: 'Toda modificación, adición, prórroga o aclaración del contrato deberá constar por escrito y ser suscrita por quienes se encuentren facultados.',
+  },
+  {
+    k: 'm20',
+    titulo: 'VIGÉSIMA. CESIÓN',
+    texto: 'Ninguna parte podrá ceder total o parcialmente su posición contractual sin autorización previa, expresa y escrita de la otra, salvo disposición legal o acuerdo distinto.',
+  },
+  {
+    k: 'm21',
+    titulo: 'VIGÉSIMA PRIMERA. LEGISLACIÓN APLICABLE Y CONTROVERSIAS',
+    texto: 'El contrato se regirá por las leyes de la República de Colombia. Las partes procurarán resolver directamente las diferencias durante [NÚMERO] días calendario desde el requerimiento escrito. Si no existe acuerdo, la controversia será sometida a [JURISDICCIÓN ORDINARIA / CONCILIACIÓN / ARBITRAJE ADMINISTRADO POR ___], según la alternativa expresamente seleccionada para el contrato.',
+  },
+];
+
+/**
+ * Quién firma por la contratante, tal como va en el bloque de firmas.
+ *
+ * No sale de la ficha particular aunque sean los mismos nombres: la ficha los lleva **con
+ * su identificación** —«CANALES Y CONTACTOS S.A.S. - NIT 900.456.735-7», «GLORIA LUCÍA
+ * ESCALANTE MANZANO - C.C. 66.651.423 de El Cerrito»— porque ahí es donde se identifica a
+ * las partes, y sobre una línea de firma eso no va: la plantilla firma con el nombre solo.
+ * Reutilizar las celdas imprimía la cédula y el NIT debajo de la raya.
+ *
+ * Van como constantes, igual que los nombres de `PieElaboracion`, porque son los mismos en
+ * todos los contratos: la representante legal es una sola. Si cambia, se cambia acá una vez.
+ */
+const FIRMA_CONTRATANTE = {
+  nombre: 'GLORIA LUCÍA ESCALANTE MANZANO',
+  cargo: 'Representante Legal',
+  empresa: 'CANALES Y CONTACTOS S.A.S.',
+};
+
+/** El texto del módulo opcional, ya sin el rótulo de «activar solo si...». */
+const TERMINACION_ANTICIPADA =
+  'TERMINACIÓN ANTICIPADA POR DECISIÓN DE LA CONTRATANTE: LA CONTRATANTE podrá dar por '
+  + 'terminado anticipadamente el contrato, sin necesidad de invocar incumplimiento, mediante '
+  + 'comunicación escrita remitida con una antelación mínima de [NÚMERO] días [CALENDARIO / '
+  + 'HÁBILES]. En tal evento se reconocerán únicamente los valores debidamente causados y '
+  + 'acreditados hasta la fecha efectiva de terminación.';
+
 export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSolicitud }) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -208,11 +295,18 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
   const [saving, setSaving] = useState(false);
 
   // Solo lo guardado sobre la plantilla: nada se prellena desde la solicitud. El formato
-  // trae sus propios huecos —«xxx», «xx (x) meses»— y sustituirlos por datos sueltos
-  // dejaría una ficha a medias, con unas celdas diligenciadas y otras no.
+  // trae sus propios huecos —«[NÚMERO]», «[FECHA / REGLA DE CÁLCULO]»— y sustituirlos por
+  // datos sueltos dejaría una ficha a medias, con unas celdas diligenciadas y otras no.
   const [f, setF] = useState<ContratoState>(() => {
-    const saved = (solicitud.data?.contrato ?? {}) as Partial<ContratoState>;
-    return { ...EMPTY, ...saved, textos: saved.textos ?? {} };
+    const saved = (solicitud.data?.contrato ?? {}) as Record<string, unknown> & Partial<ContratoState>;
+    return {
+      ...EMPTY,
+      ...traerDeLaPlantillaVieja(saved),
+      ...saved,
+      // Los amparos de la plantilla vieja no traían observaciones: la columna es nueva.
+      amparos: (saved.amparos ?? EMPTY.amparos).map((a) => ({ observaciones: '', ...a })),
+      textos: saved.textos ?? {},
+    };
   });
 
   const editable = puedeEditar(user?.nombreRol);
@@ -254,7 +348,7 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Contrato de prestación de servicios</h1>
-            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId}</p>
+            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId} · Plantilla marco 2026, con garantías</p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -297,297 +391,165 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
             </div>
 
-            <div className="text-center font-bold leading-snug text-[12.5px] mb-4">
-              <TextoEd
-                k="titulo"
-                plantilla="CONTRATO DE PRESTACIÓN DE SERVICIOS ENTRE CANALES Y CONTACTOS S.A.S. y xxxx"
-                className="text-center"
-              />
+            <div className="text-center font-bold leading-snug text-[12.5px] mb-1">
+              CONTRATO DE PRESTACIÓN DE SERVICIOS
+            </div>
+            {/* Qué plantilla se está usando. Es rótulo interno: un contrato firmado no puede
+                decir «plantilla marco», así que se ve en pantalla y no se imprime. */}
+            <p className="no-print text-center text-[11px] text-[hsl(var(--canalco-neutral-500))] mb-1">
+              PLANTILLA MARCO · CON GARANTÍAS CONTRACTUALES
+            </p>
+            <p className="text-[11px] font-bold mb-4">NIT 900.456.735-7</p>
+
+            {/* ── Control interno ──
+                La plantilla lo dice en su propio título: no se muestra en la versión
+                firmable. Va `no-print` entero, que es la única forma de que la instrucción
+                se cumpla sola y no dependa de que alguien se acuerde de borrarlo. */}
+            <div className="no-print border border-[#0a2a52] mb-5">
+              <p className="bg-[#fff2cc] px-3 py-1.5 text-[11px] font-bold border-b border-[#0a2a52]">
+                CONTROL INTERNO - NO MOSTRAR EN VERSIÓN FIRMABLE
+              </p>
+              <p className="px-3 py-1.5 text-[11px] border-b border-[#0a2a52]">
+                Parametrizar objeto, obligaciones, IVA, supervisor, garantías, solución de controversias y
+                régimen de terminación. No fijar porcentajes ni vigencias de pólizas por defecto.
+              </p>
+              <table className="w-full border-collapse text-[12px]">
+                <tbody>
+                  <Fila label="Garantías" value={f.ciGarantias} onChange={(v) => set('ciGarantias', v)} area />
+                  <Fila label="Terminación anticipada por decisión de la contratante"
+                    value={f.ciTerminacionAnticipada} onChange={(v) => set('ciTerminacionAnticipada', v)} area />
+                  <Fila label="Revisión jurídica" value={f.ciRevisionJuridica} onChange={(v) => set('ciRevisionJuridica', v)} />
+                </tbody>
+              </table>
             </div>
 
+            <h2 className="text-center font-bold my-3">FICHA PARTICULAR DEL CONTRATO</h2>
+
+            {/* Todo lo variable del contrato vive acá; las cláusulas la referencian. */}
             <table className="w-full border-collapse text-[12px]">
               <tbody>
                 <Fila label="Contratante" value={f.contratante} onChange={(v) => set('contratante', v)} bold />
-                <Fila label="Identificación Tributaria" value={f.contratanteNit} onChange={(v) => set('contratanteNit', v)} />
-                <Fila label="Representante Legal" value={f.contratanteRepLegal} onChange={(v) => set('contratanteRepLegal', v)} bold />
-                <Fila label="Identificación" value={f.contratanteRepCc} onChange={(v) => set('contratanteRepCc', v)} />
-                <Fila label="Dirección de domicilio:" value={f.contratanteDireccion} onChange={(v) => set('contratanteDireccion', v)} area />
-                <Fila label="Teléfono:" value={f.contratanteTelefono} onChange={(v) => set('contratanteTelefono', v)} />
-                {/* Son tres correos, uno por renglón: van en un campo que crece. */}
-                <Fila label="Correo Electrónico" value={f.contratanteCorreo} onChange={(v) => set('contratanteCorreo', v)} area filas={3} enlace />
-
-                <Fila label="Contratista" value={f.contratista} onChange={(v) => set('contratista', v)} bold placeholder="xxx" />
-                <Fila label="Identificación Tributaria" value={f.contratistaNit} onChange={(v) => set('contratistaNit', v)} placeholder="xx" />
-                <Fila label="Representante Legal" value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} placeholder="xx" />
-                <Fila label="Identificación" value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="xx" />
-                <Fila label="Dirección de domicilio:" value={f.contratistaDireccion} onChange={(v) => set('contratistaDireccion', v)} placeholder="xxx" />
-                <Fila label="Teléfono:" value={f.contratistaTelefono} onChange={(v) => set('contratistaTelefono', v)} placeholder="xxx" />
-                <Fila label="Correo Electrónico" value={f.contratistaCorreo} onChange={(v) => set('contratistaCorreo', v)} placeholder="xxx" enlace />
-
-                <Fila label="Objeto Del Contrato" value={f.objeto} onChange={(v) => set('objeto', v)} area filas={3}
-                  placeholder="LA CONTRATISTA deberá prestar sus servicios profesionales a CANALES Y CONTACTOS S.A.S, teniendo como objetivo principal xxx" />
-                <Fila label="VALOR TOTAL DEL CONTRATO" value={f.valor} onChange={(v) => set('valor', v)} area filas={3} etiquetaFuerte
-                  placeholder="Valor antes de IVA: $xxx M/CTE. IVA del 19%: $xxx M/CTE. Valor total incluido IVA: $xxx M/CTE." />
-                <Fila label="FORMA DE PAGO" value={f.formaPago} onChange={(v) => set('formaPago', v)} area filas={3} etiquetaFuerte
-                  placeholder="xxx (x) pagos mensuales vencidos, cada uno por $xxx M/CTE, más IVA del 19% por $xxx M/CTE, para un total mensual incluido IVA de $xxx M/CTE." />
-                <Fila label="PLAZO DE EJECUCIÓN" value={f.plazo} onChange={(v) => set('plazo', v)} etiquetaFuerte placeholder="xxx (x) meses" />
-                <Fila label="Inicio" value={f.inicio} onChange={(v) => set('inicio', v)} placeholder="xxx" />
-                <Fila label="Terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)} placeholder="xxx" />
+                <Fila label="Representante legal" value={f.contratanteRepLegal} onChange={(v) => set('contratanteRepLegal', v)} bold />
+                <Fila label="Contratista" value={f.contratista} onChange={(v) => set('contratista', v)} bold />
+                <Fila label="CC / NIT" value={f.contratistaNit} onChange={(v) => set('contratistaNit', v)} />
+                <Fila label="Representante legal" value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} />
+                <Fila label="Dirección y correo" value={f.contratistaContacto} onChange={(v) => set('contratistaContacto', v)} area />
+                <Fila label="Objeto" value={f.objeto} onChange={(v) => set('objeto', v)} area filas={3} />
+                <Fila label="Valor" value={f.valor} onChange={(v) => set('valor', v)} area />
+                <Fila label="Forma de pago" value={f.formaPago} onChange={(v) => set('formaPago', v)} area filas={3} />
+                <Fila label="Plazo" value={f.plazo} onChange={(v) => set('plazo', v)} />
+                <Fila label="Inicio" value={f.inicio} onChange={(v) => set('inicio', v)} area />
+                <Fila label="Terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)} />
+                <Fila label="Supervisor" value={f.supervisor} onChange={(v) => set('supervisor', v)} />
               </tbody>
             </table>
 
-            {/* Comparecencia de las partes */}
+            {/* Comparecencia */}
             <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <TextoEd k="comparecencia" plantilla={COMPARECENCIA} />
-              <TextoEd k="partes" plantilla={'Las partes se denominarán individualmente cada una como una "Parte" y conjuntamente como las "Partes".'} />
-              <TextoEd k="convenio" plantilla={'Las Partes han convenido celebrar el presente Contrato de Prestación de Servicios (en adelante, el "Contrato"), el cual se regirá por las siguientes cláusulas:'} />
-            </div>
-
-            <h2 className="text-center font-bold my-4">CLÁUSULAS</h2>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify">
-              <p><b>PRIMERA. OBJETO:</b></p>
-              <TextoEd k="c1" plantilla="LA CONTRATISTA deberá prestar sus servicios profesionales a CANALES Y CONTACTOS S.A.S, teniendo como objetivo principal xxx" />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>SEGUNDA. VALOR DEL CONTRATO Y FORMA DE PAGO:</b></p>
-              <TextoEd k="c2.valor" plantilla="El valor del presente Contrato, antes de IVA, será de xxxx DE PESOS MONEDA LEGAL ($xxx.000 M/CTE). El IVA, liquidado a la tarifa del diecinueve por ciento (19%), corresponde a la suma de xxxx PESOS MONEDA LEGAL ($xxx M/CTE), para un valor total incluido IVA de xxxx PESOS MONEDA LEGAL ($xxx M/CTE). El valor será pagado a LA CONTRATISTA, mes vencido, en xx (x) pagos mensuales, cada uno por la suma de xxxx PESOS MONEDA LEGAL ($xxx M/CTE), más IVA del diecinueve por ciento (19%) por valor de xxx PESOS MONEDA LEGAL ($xxx M/CTE), para un valor mensual total incluido IVA de xxxx PESOS MONEDA LEGAL ($xxx M/CTE). El IVA se causará y facturará de conformidad con la normativa tributaria vigente y la calidad tributaria de LA CONTRATISTA." />
-              <TextoEd k="c2.soportes" plantilla="Cada pago se efectuará mes vencido, previa presentación de la respectiva factura electrónica de venta y de la certificación de encontrarse al día en el pago de los aportes al Sistema de Seguridad Social Integral y parafiscales a que haya lugar, expedida por el revisor fiscal de LA CONTRATISTA, si está obligada a tenerlo, o en su defecto por su representante legal o contador." />
-              <TextoEd k="c2.factura" plantilla="La factura deberá ser presentada por LA CONTRATISTA dentro de los cinco (5) primeros días calendario de cada mes, y el pago se realizará dentro de la semana siguiente a su radicación, siempre que se encuentren cumplidos los requisitos señalados en el presente documento." />
-              <TextoEd k="c2.descuentos" plantilla="Del valor a pagar se efectuarán los descuentos, retenciones, impuestos y demás deducciones a que haya lugar, de conformidad con la normativa tributaria vigente en Colombia. Todos los pagos se realizarán en pesos colombianos." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>TERCERA. DURACIÓN Y PLAZO DE EJECUCIÓN:</b></p>
-              <TextoEd k="c3.plazo" plantilla="El plazo de ejecución del presente Contrato será de xxx (xx) meses, comprendido entre el xxx (0x) de xx de dos mil xxx (202x) y el xx (3x) de xxx de dos mil xxxx (202x). La ejecución iniciará el xx (0x) de x de dos mil xxxx (202x), previa expedición, presentación y aprobación por parte de LA CONTRATANTE de las garantías exigidas en el presente Contrato. LA CONTRATISTA no podrá iniciar actividades mientras las garantías no se encuentren debidamente aprobadas." />
-              <TextoEd k="c3.prorroga" plantilla="El presente Contrato podrá ser prorrogado de común acuerdo entre las Partes, mediante acuerdo escrito suscrito por sus representantes legalmente autorizados." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>CUARTA. OBLIGACIONES DEL CONTRATISTA:</b></p>
-              <TextoEd k="c4.intro" plantilla="Serán a cargo de LA CONTRATISTA las siguientes obligaciones, conforme a la propuesta presentada por el contratista la cual hará parte integral de este documento en xxx (xx) folios:" />
-
-              <p className="pt-1"><b>A) Obligaciones Generales:</b></p>
-              <ListaNumerada
-                items={f.obligacionesGenerales}
-                onChange={(v) => set('obligacionesGenerales', v)}
-                clave="oblGen"
-                plantillas={GENERALES}
-                editable={editable}
-              />
-
-              <p className="pt-1"><b>B) Obligaciones Específicas:</b></p>
-              <ListaNumerada
-                items={f.obligacionesEspecificas}
-                onChange={(v) => set('obligacionesEspecificas', v)}
-                clave="oblEsp"
-                plantillas={ESPECIFICAS}
-                editable={editable}
+              <TextoEd
+                k="m.comparecencia"
+                plantilla={'Entre los suscritos, CANALES Y CONTACTOS S.A.S., identificada con NIT 900.456.735-7, '
+                  + 'representada legalmente por GLORIA LUCÍA ESCALANTE MANZANO, identificada con cédula de '
+                  + 'ciudadanía No. 66.651.423 expedida en El Cerrito, quien en adelante se denominará LA '
+                  + 'CONTRATANTE, y [NOMBRE / RAZÓN SOCIAL], identificado(a) con [CC/NIT] No. [NÚMERO], '
+                  + '[REPRESENTADO(A) LEGALMENTE POR ___ / QUIEN ACTÚA EN NOMBRE PROPIO], quien en adelante se '
+                  + 'denominará EL/LA CONTRATISTA, hemos convenido celebrar el presente CONTRATO DE PRESTACIÓN '
+                  + 'DE SERVICIOS, regido por las siguientes cláusulas:'}
               />
             </div>
 
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>QUINTA. OBLIGACIONES DE LA CONTRATANTE:</b></p>
-              <TextoEd k="c5.intro" plantilla="Serán obligaciones de LA CONTRATANTE las siguientes:" />
-              <ListaNumerada
-                items={f.obligacionesContratante}
-                onChange={(v) => set('obligacionesContratante', v)}
-                clave="oblCte"
-                plantillas={DE_LA_CONTRATANTE}
+            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-3">
+              {CLAUSULAS.map((c) => (
+                <div key={c.k} className="space-y-1">
+                  <p><b>{c.titulo}:</b></p>
+                  <TextoEd k={c.k} plantilla={c.texto} />
+                  {/* El módulo opcional se imprime dentro de la séptima, que es donde la
+                      plantilla exige que quede incorporado para poder invocarse. */}
+                  {c.k === 'm7' && f.terminacionAnticipada && (
+                    <TextoEd k="m.terminacionAnticipada" plantilla={TERMINACION_ANTICIPADA} />
+                  )}
+                </div>
+              ))}
+
+              <ModuloOpcional
+                activo={f.terminacionAnticipada}
+                onChange={(v) => set('terminacionAnticipada', v)}
                 editable={editable}
               />
-            </div>
 
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>SEXTA. SUPERVISIÓN:</b></p>
-              <TextoEd k="c6.quien" plantilla="La supervisión del presente Contrato será ejercida directamente por la doctora GLORIA LUCÍA ESCALANTE MANZANO, en su calidad de Gerente y Representante Legal de CANALES Y CONTACTOS S.A.S." />
-              <TextoEd k="c6.alcance" plantilla="La supervisora realizará el seguimiento a la ejecución contractual, revisará y aprobará las facturas y demás soportes presentados por LA CONTRATISTA." />
-              <TextoEd k="c6.limites" plantilla="La supervisión no releva a LA CONTRATISTA de la responsabilidad por el cumplimiento integral, correcto y oportuno de sus obligaciones. LA CONTRATANTE podrá modificar la designación de la supervisión mediante comunicación escrita, sin necesidad de suscribir un otrosí." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>SÉPTIMA. TERMINACIÓN:</b></p>
-              <TextoEd k="c7.intro" plantilla="El presente Contrato podrá darse por terminado de manera anticipada por las siguientes causales:" />
-              <ListaNumerada
-                items={f.causalesTerminacion}
-                onChange={(v) => set('causalesTerminacion', v)}
-                clave="causal"
-                plantillas={CAUSALES}
-                editable={editable}
-                etiqueta="causal"
+              {/* La única cláusula que la plantilla centra: abre el bloque de garantías
+                  como un título, no como un renglón más de la lista. */}
+              <p className="text-center font-bold pt-2">VIGÉSIMA SEGUNDA. GARANTÍAS CONTRACTUALES</p>
+              <TextoEd
+                k="m22.intro"
+                plantilla={'EL/LA CONTRATISTA deberá constituir únicamente las garantías expresamente definidas '
+                  + 'para el caso, expedidas por una aseguradora legalmente autorizada para operar en Colombia. '
+                  + 'Las garantías deberán ser presentadas y aprobadas antes del inicio cuando así se haya '
+                  + 'pactado. Los amparos no utilizados deberán eliminarse de la versión final.'}
               />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>OCTAVA. PARTES INDEPENDIENTES:</b></p>
-              <TextoEd k="c8.constancia" plantilla="Se deja expresa constancia de que entre las Partes existe una relación comercial derivada del presente Contrato, siendo cada una de ellas exclusivamente responsable por el cumplimiento de sus obligaciones en materia laboral, civil, mercantil, tributaria, administrativa y, en general, por cualquier otra derivada de la ley." />
-              <TextoEd k="c8.autonomia" plantilla="Cada una de las Partes actuará por su propia cuenta, con absoluta autonomía e independencia técnica, directiva y financiera, y no estarán sometidas a subordinación laboral de la otra Parte." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>NOVENA. CONFIDENCIALIDAD:</b></p>
-              <TextoEd k="c9.alcance" plantilla="Con la suscripción del presente Contrato, las Partes reconocen que toda la información entregada por cada una de ellas es confidencial y de propiedad de quien la entrega. Dicha información se revela única y exclusivamente para el desarrollo del objeto contractual y sólo podrá ser utilizada para los fines previstos en el presente Contrato." />
-              <TextoEd k="c9.divulgacion" plantilla="Las Partes se abstendrán de divulgar a terceros, en cualquier forma o modo, la información confidencial que le suministre la otra Parte y se obligan a tratar dicha información con la más absoluta confidencialidad, salvo que exista autorización previa, expresa y escrita de la parte reveladora caso en el cual sólo se revelará la información respectiva de acuerdo con las instrucciones que para el efecto indique la parte reveladora." />
-              <TextoEd k="c9.proteccion" plantilla="Adicionalmente, las Partes se obligan a mantener la información confidencial debidamente protegida del acceso de terceros, con el fin de no permitir su conocimiento y/o manejo por parte de personas no autorizadas expresamente por la parte que hace la revelación." />
-              <TextoEd k="c9.personal" plantilla="Las Partes se obligan a que las personas que se encuentren bajo su dirección cumplan con las obligaciones establecidas en la presente Cláusula. En consecuencia, de llegarse a acreditar incumplimiento, la parte incumplidora se hace responsable por todos los daños y perjuicios que sufra la Parte afectada en el evento en que las personas que estén a cargo o bajo la dirección violen las obligaciones establecidas en la presente Cláusula." />
-              <TextoEd k="c9.devolucion" plantilla="Al momento de la terminación del presente Contrato, o antes a solicitud de una de las Partes, las Partes deberán devolver toda la información confidencial que se encuentre en su poder, ya sea en medio escrito, magnético, digital y, en general, en cualquier otro sistema tecnológico con capacidad para almacenar información en cualquiera de sus formas." />
-              <TextoEd k="c9.vigencia" plantilla="La información confidencial deberá ser tratada como tal y debidamente resguardada por las Partes durante el término de vigencia del presente Contrato y a partir de la fecha en que ésta le es entregada. Las obligaciones de no revelar, divulgar, exhibir, mostrar, comunicar, utilizar y/o emplear la Información Confidencial en beneficio propio y/o en el de terceros adquiridas por cada Parte no se entenderán extinguidas por el vencimiento del término de duración del presente Contrato y por lo mismo continuarán vigentes por un término de dos (2) años contados a partir de la fecha de terminación del presente Contrato." />
-              <TextoEd k="c9.ordenLegal" plantilla="En el evento en que una de las Partes, en desarrollo o por mandato de una ley, decreto, sentencia y/u orden de autoridad competente en ejercicio de sus funciones legales, se vea obligada a revelar o divulgar la información confidencial que le ha sido entregada por la otra Parte, se obliga a dar aviso por escrito de ello a la otra Parte dentro de los tres (3) días hábiles siguientes a que tenga conocimiento de esta obligación de revelación, para que esta pueda tomar las medidas necesarias para (i) proteger su información confidencial y (ii) atenuar los efectos de tal divulgación." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA. RESPONSABILIDAD E INDEMNIDAD:</b></p>
-              <TextoEd k="c10.indemnidad" plantilla="Cada Parte responderá por los daños directos, comprobados e imputables que cause a la otra Parte o a terceros con ocasión del incumplimiento de sus obligaciones contractuales. La Parte incumplidora mantendrá indemne a la Parte afectada, sus administradores, trabajadores y dependientes frente a reclamaciones, demandas, sanciones, condenas, costos y gastos razonables que tengan origen en dicho incumplimiento." />
-              <TextoEd k="c10.limite" plantilla="Salvo las exclusiones previstas en este párrafo, la responsabilidad total acumulada de LA CONTRATISTA no excederá el valor del Contrato antes de IVA. Esta limitación no será aplicable cuando los daños provengan de dolo o culpa grave; violación de las obligaciones de confidencialidad; infracción de derechos de propiedad intelectual; tratamiento no autorizado o indebido de datos personales; reclamaciones laborales, de seguridad social o tributarias relacionadas con el personal o dependientes de LA CONTRATISTA; pagos indebidos, actos de corrupción o conductas ilícitas; ni respecto de los riesgos cubiertos por las garantías contractuales." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA PRIMERA. PROPIEDAD INTELECTUAL:</b></p>
-              <TextoEd k="c11.preexistentes" plantilla="Los derechos de propiedad intelectual preexistentes de cada Parte continuarán perteneciendo a su respectivo titular y no se entenderán transferidos por la celebración del presente Contrato." />
-              <TextoEd k="c11.resultados" plantilla="Los documentos, conceptos, matrices, bases de datos, diseños, desarrollos, metodologías adaptadas y demás resultados elaborados específicamente por LA CONTRATISTA en ejecución del objeto contractual, y que sean susceptibles de protección, pertenecerán a LA CONTRATANTE. En consecuencia, LA CONTRATISTA cede a título exclusivo a LA CONTRATANTE los derechos patrimoniales de autor que le correspondan sobre dichos resultados, para su reproducción, distribución, comunicación pública, puesta a disposición, adaptación, transformación y demás modalidades de explotación permitidas por la ley, en Colombia y en el exterior, por el término máximo de protección legal. Esta cesión se entiende remunerada con el valor del Contrato. Los derechos morales permanecerán en cabeza de sus autores en los términos de la ley. Cuando los resultados incorporen elementos preexistentes de LA CONTRATISTA, esta otorga a LA CONTRATANTE una licencia no exclusiva, irrevocable y suficiente para utilizar dichos elementos como parte de los resultados contractuales, en Colombia y en el exterior, por el término máximo de protección legal. LA CONTRATISTA garantiza que los resultados entregados no vulneran derechos de terceros y se obliga a suscribir los documentos razonablemente necesarios para formalizar la titularidad o licencia aquí prevista." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA SEGUNDA. INTEGRIDAD Y NO NOVACIÓN:</b></p>
-              <TextoEd k="c12" plantilla="El presente Contrato contiene el acuerdo integral de las Partes respecto de su objeto y sustituye los entendimientos o acuerdos previos, escritos o verbales, relacionados con este mismo objeto y en el período aquí contratado. Su celebración no implica novación, condonación, renuncia o extinción de obligaciones, pagos, responsabilidades, garantías, deberes de confidencialidad o reclamaciones originadas en contratos anteriores y sus modificaciones, las cuales conservarán los efectos jurídicos que les correspondan." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA TERCERA. DIVISIBILIDAD:</b></p>
-              <TextoEd k="c13" plantilla="Si alguna cláusula del presente Contrato es declarada nula, ilegal o ineficaz, las demás estipulaciones continuarán vigentes. La disposición afectada deberá ajustarse, de común acuerdo entre las Partes, en la medida necesaria para adecuarla a la ley aplicable y conservar, en lo posible, su finalidad económica y contractual." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA CUARTA. TRATAMIENTO DE DATOS PERSONALES:</b></p>
-              <TextoEd k="c14" plantilla="Las Partes se obligan a tratar los datos personales a los que accedan con ocasión del presente Contrato de conformidad con la Ley 1581 de 2012, sus normas reglamentarias, las disposiciones que las modifiquen o sustituyan y las políticas de tratamiento de datos personales aplicables. El tratamiento se limitará a las finalidades necesarias para la celebración, ejecución, seguimiento, facturación, auditoría, defensa jurídica y cumplimiento de obligaciones legales derivadas del Contrato. Cada Parte adoptará medidas razonables de seguridad, confidencialidad y acceso restringido, y responderá por el tratamiento que realice en calidad de responsable o encargado, según corresponda." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA QUINTA. DERECHOS DE LOS TITULARES Y SUPRESIÓN DE DATOS:</b></p>
-              <TextoEd k="c15.intro" plantilla="Los titulares de los datos personales podrán conocer, actualizar y rectificar su información; solicitar prueba de la autorización cuando sea procedente; ser informados sobre el uso dado a sus datos; presentar consultas o reclamos; y solicitar la revocatoria de la autorización o la supresión de sus datos, cuando legalmente corresponda. La solicitud de supresión podrá formularse cuando:" />
-              <ListaNumerada
-                items={f.causalesSupresion}
-                onChange={(v) => set('causalesSupresion', v)}
-                clave="supr"
-                plantillas={SUPRESION}
-                editable={editable}
-                etiqueta="causal"
-              />
-
-              <p className="pt-1"><b>PARÁGRAFO.</b></p>
-              <TextoEd k="c15.paragrafo" plantilla="El derecho de supresión no es absoluto y podrá negarse cuando:" />
-              <ListaNumerada
-                items={f.negativasSupresion}
-                onChange={(v) => set('negativasSupresion', v)}
-                clave="negSupr"
-                plantillas={NEGATIVA_SUPRESION}
-                editable={editable}
-                etiqueta="causal"
-              />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA SEXTA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS:</b></p>
-              <TextoEd k="c16" plantilla="LA CONTRATISTA se obliga a desempeñar sus actividades con integridad, ética y lealtad hacia CANALES Y CONTACTOS S.A.S. En este sentido, queda estrictamente prohibido solicitar, recibir o aceptar, directa o indirectamente, cualquier pago, comisión, gratificación, beneficio, dádiva o retribución de proveedores, contratistas, clientes o terceros con quienes la empresa mantenga o pueda mantener relaciones comerciales o contractuales. El incumplimiento de esta disposición constituirá incumplimiento grave y será causal de terminación inmediata del Contrato por incumplimiento contractual, sin perjuicio de las acciones legales y reclamaciones por daños y perjuicios a que haya lugar." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA SÉPTIMA. NOTIFICACIONES:</b></p>
-              <TextoEd k="c17" plantilla="Todas las notificaciones, solicitudes, requerimientos o comunicaciones relacionadas con el presente Contrato deberán realizarse por escrito y enviarse: (i) mediante servicio de correo reconocido; o (ii) por correo electrónico, a las direcciones señaladas a continuación o a aquellas que sean informadas posteriormente por escrito. Las direcciones electrónicas indicadas serán válidas para notificaciones contractuales, legales y judiciales, hasta tanto se comunique su modificación." />
-
-              {/* Los datos de notificación son los mismos de la ficha de arriba y se leen de
-                  allí: con campos propios, un contrato podría acabar notificando a una
-                  dirección y describiendo otra. */}
-              <table className="w-full border-collapse text-[12px] mt-2">
-                <tbody>
-                  <Fila label="Contratista" value={f.contratista} onChange={(v) => set('contratista', v)} bold placeholder="xxx" />
-                  <Fila label="Dirección de domicilio:" value={f.contratistaDireccion} onChange={(v) => set('contratistaDireccion', v)} placeholder="xx" />
-                  <Fila label="Celular:" value={f.contratistaTelefono} onChange={(v) => set('contratistaTelefono', v)} placeholder="xxx" />
-                  <Fila label="Correo Electrónico" value={f.contratistaCorreo} onChange={(v) => set('contratistaCorreo', v)} placeholder="xxx" enlace />
-                </tbody>
-              </table>
-
-              <table className="w-full border-collapse text-[12px] mt-2">
-                <tbody>
-                  <Fila label="Contratante" value={f.contratante} onChange={(v) => set('contratante', v)} bold />
-                  <Fila label="Dirección de domicilio:" value={f.contratanteDireccion} onChange={(v) => set('contratanteDireccion', v)} area />
-                  <Fila label="Teléfono:" value={f.contratanteTelefono} onChange={(v) => set('contratanteTelefono', v)} />
-                  <Fila label="Correo Electrónico" value={f.contratanteCorreo} onChange={(v) => set('contratanteCorreo', v)} area filas={3} enlace />
-                </tbody>
-              </table>
-
-              <TextoEd k="c17.recepcion" plantilla="Todas las notificaciones, requerimientos o cualquier otro tipo de comunicación se entenderán recibidas en la fecha de su recepción por el destinatario si se recibe antes de las 5:00 pm en el lugar de recepción y si dicho día es un día hábil. En caso contrario, las notificaciones, requerimientos o comunicaciones se entenderán recibidas el siguiente día hábil en el lugar de notificación del destinatario." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA OCTAVA. ORIGEN DE INGRESOS:</b></p>
-              <TextoEd k="c18" plantilla="Las Partes declaran que los recursos utilizados en la ejecución del presente Contrato y sus ingresos provienen de actividades lícitas. Igualmente, declaran que no se encuentran incursas en las listas nacionales o internacionales vinculantes de prevención en lavado de activos, financiación del terrorismo o financiación de la proliferación de armas de destrucción masiva. La Parte que incumpla esta declaración responderá por los perjuicios que cause a la otra Parte o a terceros, sin perjuicio de la terminación del Contrato y de las acciones legales a que haya lugar." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>DÉCIMA NOVENA. MODIFICACIONES:</b></p>
-              <TextoEd k="c19" plantilla="El presente Contrato sólo podrá ser modificado, adicionado, prorrogado o aclarado mediante documento escrito suscrito por los representantes legalmente autorizados de ambas Partes." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>VIGÉSIMA. CESIÓN:</b></p>
-              <TextoEd k="c20" plantilla="Ninguna de las Partes podrá ceder total o parcialmente su posición contractual, sus derechos o sus obligaciones derivados del presente Contrato sin la autorización previa, expresa y escrita de la otra Parte." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>VIGÉSIMA PRIMERA. LEGISLACIÓN APLICABLE Y SOLUCIÓN DE CONTROVERSIAS:</b></p>
-              <TextoEd k="c21.ley" plantilla="El presente Contrato se celebra y ejecuta de conformidad con las leyes de la República de Colombia." />
-              <TextoEd k="c21.controversias" plantilla="Las controversias o diferencias que surjan con ocasión de la celebración, interpretación, ejecución, terminación o liquidación del presente Contrato serán sometidas inicialmente a negociación directa entre las Partes durante un término de treinta (30) días calendario, contado desde la recepción del requerimiento escrito formulado por cualquiera de ellas. Vencido dicho término sin que se alcance un acuerdo, la controversia será resuelta por un tribunal de arbitramento integrado por un (1) árbitro, que decidirá en derecho y será administrado por el Centro de Conciliación, Arbitraje y Amigable Composición de la Cámara de Comercio de Cali, de conformidad con su reglamento. El árbitro será designado de común acuerdo por las Partes y, a falta de acuerdo, por el referido Centro. La sede del tribunal será la ciudad de Cali, Valle del Cauca." />
-            </div>
-
-            <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <p><b>VIGÉSIMA SEGUNDA. GARANTÍAS CONTRACTUALES:</b></p>
-              <TextoEd k="c22.intro" plantilla="Para cubrir los riesgos derivados de la celebración y ejecución del presente Contrato, LA CONTRATISTA deberá presentar a LA CONTRATANTE las garantías establecidas en esta cláusula, expedidas por una compañía de seguros legalmente autorizada para operar en Colombia. Las garantías deberán encontrarse expedidas, presentadas y aprobadas antes del inicio de la ejecución. La aprobación escrita de las garantías será requisito para iniciar actividades y efectuar pagos. Las garantías tendrán las siguientes características:" />
 
               <CuadroGarantias f={f} set={set} editable={editable} />
 
-              <TextoEd k="c22.restablecimiento" plantilla="LA CONTRATISTA estará obligada a restablecer el valor de las garantías cuando este se vea reducido por razón de las reclamaciones que efectúe LA CONTRATANTE, así como a ampliarlas en los eventos de adición y/o prórroga del Contrato. El no restablecimiento, ampliación o prórroga de las garantías, según corresponda, constituirá incumplimiento contractual y dará lugar a las acciones contractuales pertinentes." />
-              <TextoEd k="c22.franquicias" plantilla="Las franquicias, coaseguros obligatorios y demás formas de estipulación que impliquen la asunción de parte de la pérdida por LA CONTRATANTE, en calidad de asegurada, no serán admisibles." />
-              <TextoEd k="c22.comprobante" plantilla="LA CONTRATISTA deberá anexar el comprobante de pago de las garantías contractuales." />
+              <TextoEd
+                k="m22.tomador"
+                plantilla={'El tomador será EL/LA CONTRATISTA; el asegurado y beneficiario será CANALES Y '
+                  + 'CONTACTOS S.A.S., salvo que el contrato requiera una estructura distinta. La póliza deberá '
+                  + 'identificar el contrato y su objeto. EL/LA CONTRATISTA deberá ampliar, prorrogar o '
+                  + 'restablecer las garantías cuando la modificación del contrato o una reclamación así lo exijan.'}
+              />
+
+              <p><b>VIGÉSIMA TERCERA. PERFECCIONAMIENTO Y EJECUCIÓN:</b></p>
+              <TextoEd
+                k="m23"
+                plantilla={'El contrato se perfecciona con la firma de las partes. Su ejecución quedará sujeta '
+                  + 'al cumplimiento de las condiciones de inicio definidas en la ficha particular, incluyendo '
+                  + 'la aprobación de garantías cuando se hayan exigido.'}
+              />
+
+              <p><b>VIGÉSIMA CUARTA. NOTIFICACIONES:</b></p>
+              <TextoEd
+                k="m24"
+                plantilla={'Las comunicaciones contractuales se enviarán a las direcciones y correos consignados '
+                  + 'en la ficha particular. Los cambios deberán informarse por escrito.'}
+              />
             </div>
 
-            {/* Suscripción y firmas */}
+            {/* Suscripción */}
             <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-              <TextoEd k="suscripcion" plantilla="Las partes suscriben el presente Contrato en Cali, Valle del Cauca, el xxxx (xx) de xxx de dos mil veintiséis (2026)." />
-              <TextoEd k="inicioEjecucion" plantilla="La ejecución iniciará el xxx (0x) de xxx de dos mil veintiséis (2026), previa expedición, presentación y aprobación de las garantías contractuales exigidas." />
+              <TextoEd
+                k="m.constancia"
+                plantilla="Para constancia, se suscribe en Santiago de Cali, Valle del Cauca, el [DÍA] de [MES] de [AÑO]."
+              />
             </div>
 
-            {/* Quien firma por cada parte sale de la ficha de arriba: es la misma persona y
-                con campos propios el contrato podría nombrar a dos distintas. */}
+            {/* La contratante firma con nombre y empresa a secas —ver FIRMA_CONTRATANTE—.
+                La contratista sí sale de la ficha: es la misma parte que se identificó
+                arriba y con campos propios el contrato podría nombrar a dos distintas. */}
             <div className="grid grid-cols-2 gap-8 mt-10 text-[12px]">
               <div>
-                <p className="font-bold mb-16">Por LA CONTRATANTE</p>
-                <div className="border-t border-black pt-1">
-                  <FLine value={f.contratanteRepLegal} onChange={(v) => set('contratanteRepLegal', v)} placeholder="NOMBRE DE QUIEN FIRMA" bold />
-                  <p>Representante legal</p>
-                  <FLine value={f.contratante} onChange={(v) => set('contratante', v)} placeholder="EMPRESA CONTRATANTE" bold />
+                <div className="border-t border-black pt-1 mt-16">
+                  <p className="font-bold">{FIRMA_CONTRATANTE.nombre}</p>
+                  <p>{FIRMA_CONTRATANTE.cargo}</p>
+                  <p>{FIRMA_CONTRATANTE.empresa}</p>
+                  <p>LA CONTRATANTE</p>
                 </div>
               </div>
               <div>
-                <p className="font-bold mb-16">Por LA CONTRATISTA</p>
-                <div className="border-t border-black pt-1">
-                  <FLine value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} placeholder="xxx" bold />
-                  <FLine value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="C.C. xxx" />
-                  <p>Representante legal</p>
-                  <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="xxx" bold />
+                <div className="border-t border-black pt-1 mt-16">
+                  <FLine value={f.contratista} onChange={(v) => set('contratista', v)} bold />
+                  <FLine value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} />
+                  <p>EL/LA CONTRATISTA</p>
                 </div>
               </div>
             </div>
 
-            {/* Membrete del pie */}
-            <div className="mt-10 pt-3 text-center text-[9.5px] leading-snug text-[#0a2a52]">
-              <p>Calle 13A N.º 101 - 60 B/ Ciudad Jardín Cali, Valle del Cauca</p>
-              <p className="underline">gestiondocumental@alumbrados.co</p>
-              <p>PBX: (602) 5246612 Ext. 111 &nbsp; Línea nacional 3009108536</p>
-            </div>
+            {/* El mismo pie que los demás documentos del trámite, y del mismo sitio: acá
+                estaba copiado literal y habría quedado diciendo otra dirección. */}
+            <PieMembrete />
           </div>
-          <PieElaboracion />
+          {/* La plantilla 2026 pide «Revisó y aprobó», no «Proyectó y revisó»: acá Jurídica
+              autoriza el contrato, que es una responsabilidad distinta de redactarlo. */}
+          <PieElaboracion etiqueta="Revisó y aprobó" />
           </TextosDocumento>
           </fieldset>
         )}
@@ -605,12 +567,48 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
 /* ── Subcomponentes ─────────────────────────────────────── */
 
 /**
- * El cuadro de garantías de la vigésima segunda: característica y condición, con la tabla
- * de amparos anidada en una de las filas, como en el formato.
+ * El módulo opcional de terminación anticipada por decisión de la contratante.
  *
- * Los amparos se pueden agregar y quitar porque no siempre son los dos: un contrato con
- * anticipo lleva además el de buen manejo, y uno sin personal a cargo puede no llevar el
- * de salarios.
+ * Es un interruptor y no un texto más porque la plantilla lo condiciona: la facultad solo
+ * existe si las partes la acordaron **expresamente** y quedó incorporada a la cláusula
+ * séptima de la versión firmable. Si no quedó, después no se puede usar la plantilla de
+ * terminación unilateral por conveniencia —y eso es justo lo que se descubre tarde—.
+ *
+ * Encendido, el texto se imprime dentro de la séptima. Apagado, no se imprime; el
+ * recuadro que queda en pantalla es el recordatorio de que hay que decidirlo.
+ */
+function ModuloOpcional({ activo, onChange, editable }: {
+  activo: boolean; onChange: (v: boolean) => void; editable: boolean;
+}) {
+  return (
+    <div className={'no-print border rounded px-3 py-2 my-3 text-[11px] '
+      + (activo ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-[#c9c9d8] bg-[#f6f6fa] text-[#4a4a63]')}>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={activo}
+          disabled={!editable}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 flex-shrink-0"
+        />
+        <span>
+          <b>Módulo opcional · terminación anticipada por decisión de la contratante.</b>{' '}
+          {activo
+            ? 'Queda incorporado a la cláusula séptima y se imprime con el contrato.'
+            : 'Actívalo solo si las partes lo acordaron expresamente. Si no queda en el contrato firmado, '
+              + 'después no se puede terminar por conveniencia.'}
+        </span>
+      </label>
+    </div>
+  );
+}
+
+/**
+ * El cuadro de amparos de la vigésima segunda.
+ *
+ * Los amparos se agregan y se quitan porque cuáles van depende del riesgo de cada
+ * contrato; la plantilla deja tres renglones de ejemplo y advierte que los no utilizados
+ * hay que eliminarlos de la versión final.
  */
 function CuadroGarantias({ f, set, editable }: {
   f: ContratoState;
@@ -619,90 +617,63 @@ function CuadroGarantias({ f, set, editable }: {
 }) {
   const celda = 'border border-[#0a2a52] px-2 py-1 align-top';
   const campo = 'w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] disabled:opacity-100 disabled:text-black';
-  const cambiar = (i: number, k: 'amparo' | 'valor' | 'vigencia', v: string) =>
+  const cambiar = (i: number, k: 'amparo' | 'valor' | 'vigencia' | 'observaciones', v: string) =>
     set('amparos', f.amparos.map((a, j) => (j === i ? { ...a, [k]: v } : a)));
 
   return (
-    <table className="w-full border-collapse text-[12px] my-3">
-      <thead>
-        <tr className="bg-[#595959] text-white text-left">
-          <th className={`${celda} w-[24%]`}>Característica</th>
-          <th className={celda}>Condición</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td className={celda}>Asegurado</td>
-          <td className={celda}>
-            <input value={f.aseguradoNombre} onChange={(e) => set('aseguradoNombre', e.target.value)} className={`${campo} font-bold`} />
-            <input value={f.aseguradoNit} onChange={(e) => set('aseguradoNit', e.target.value)} className={`${campo} font-bold underline`} />
-          </td>
-        </tr>
-        <tr>
-          <td className={celda}>Amparos, vigencia y valores asegurados</td>
-          <td className={celda}>
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="text-[#548235] text-left">
-                  <th className={celda}>AMPARO</th>
-                  <th className={`${celda} w-[26%]`}>% / VALOR ASEGURADO</th>
-                  <th className={`${celda} w-[34%]`}>VIGENCIA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {f.amparos.map((a, i) => (
-                  <tr key={i}>
-                    <td className={celda}>
-                      <textarea value={a.amparo} onChange={(e) => cambiar(i, 'amparo', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
-                    </td>
-                    <td className={celda}>
-                      <textarea value={a.valor} onChange={(e) => cambiar(i, 'valor', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
-                    </td>
-                    <td className={celda}>
-                      <div className="flex gap-1 items-start">
-                        <textarea value={a.vigencia} onChange={(e) => cambiar(i, 'vigencia', e.target.value)} rows={3} className={`${campo} resize-y leading-snug`} />
-                        {editable && (
-                          <button
-                            type="button"
-                            onClick={() => set('amparos', f.amparos.filter((_, j) => j !== i))}
-                            title="Quitar este amparo"
-                            className="no-print text-[hsl(var(--canalco-neutral-400))] hover:text-red-700 flex-shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {editable && (
-              <button
-                type="button"
-                onClick={() => set('amparos', [...f.amparos, { amparo: '', valor: '', vigencia: '' }])}
-                className="no-print flex items-center gap-1 mt-1 text-[11px] text-[#4a4a63] hover:text-[#16162b]"
-              >
-                <Plus className="w-3.5 h-3.5" /> Agregar amparo
-              </button>
-            )}
-          </td>
-        </tr>
-        <tr>
-          <td className={celda}>Tomador</td>
-          <td className={celda}>
-            <input value={f.tomador} onChange={(e) => set('tomador', e.target.value)} placeholder="xxx" className={`${campo} font-bold`} />
-            <input value={f.tomadorNit} onChange={(e) => set('tomadorNit', e.target.value)} placeholder="NIT xxx" className={campo} />
-          </td>
-        </tr>
-        <tr>
-          <td className={celda}>Información necesaria dentro de la póliza</td>
-          <td className={celda}>
-            <textarea value={f.infoPoliza} onChange={(e) => set('infoPoliza', e.target.value)} rows={3} className={`${campo} resize-y leading-snug`} />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div className="my-3">
+      <table className="w-full border-collapse text-[12px]">
+        <thead>
+          {/* Verde #D9EAD3 con letra negra: es el sombreado que trae la plantilla. El gris
+              oscuro con letra blanca venía del cuadro de la versión anterior. */}
+          <tr className="bg-[#d9ead3] text-left">
+            <th className={celda}>AMPARO</th>
+            <th className={`${celda} w-[18%]`}>% / VALOR ASEGURADO</th>
+            <th className={`${celda} w-[26%]`}>VIGENCIA</th>
+            <th className={`${celda} w-[22%]`}>OBSERVACIONES</th>
+          </tr>
+        </thead>
+        <tbody>
+          {f.amparos.map((a, i) => (
+            <tr key={i}>
+              <td className={celda}>
+                <textarea value={a.amparo} onChange={(e) => cambiar(i, 'amparo', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
+              </td>
+              <td className={celda}>
+                <textarea value={a.valor} onChange={(e) => cambiar(i, 'valor', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
+              </td>
+              <td className={celda}>
+                <textarea value={a.vigencia} onChange={(e) => cambiar(i, 'vigencia', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
+              </td>
+              <td className={celda}>
+                <div className="flex gap-1 items-start">
+                  <textarea value={a.observaciones} onChange={(e) => cambiar(i, 'observaciones', e.target.value)} rows={2} className={`${campo} resize-y leading-snug`} />
+                  {editable && (
+                    <button
+                      type="button"
+                      onClick={() => set('amparos', f.amparos.filter((_, j) => j !== i))}
+                      title="Quitar este amparo"
+                      className="no-print text-[hsl(var(--canalco-neutral-400))] hover:text-red-700 flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {editable && (
+        <button
+          type="button"
+          onClick={() => set('amparos', [...f.amparos, { amparo: '', valor: '', vigencia: '', observaciones: '' }])}
+          className="no-print flex items-center gap-1 mt-1 text-[11px] text-[#4a4a63] hover:text-[#16162b]"
+        >
+          <Plus className="w-3.5 h-3.5" /> Agregar amparo
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -722,59 +693,11 @@ function FLine({ value, onChange, placeholder, bold }: {
 }
 
 /**
- * Lista numerada de obligaciones. Cada punto se edita por separado y se pueden agregar o
- * quitar: cuántas obligaciones tiene un contrato depende de lo que se contrató, y las
- * específicas cambian por completo de uno a otro.
- *
- * La clave del texto guardado lleva el número, no el índice: con el índice, quitar un punto
- * correría todos los de abajo y cada uno heredaría el texto del siguiente.
- */
-function ListaNumerada({ items, onChange, clave, plantillas, editable, etiqueta = 'obligación' }: {
-  items: string[];
-  onChange: (v: string[]) => void;
-  clave: string;
-  plantillas: string[];
-  editable: boolean;
-  etiqueta?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      {items.map((_, i) => (
-        <div key={i} className="flex gap-3 items-start pl-6">
-          <span className="w-5 flex-shrink-0">{i + 1}.</span>
-          <div className="flex-grow min-w-0">
-            <TextoEd k={`${clave}${i + 1}`} plantilla={plantillas[i] ?? ''} />
-          </div>
-          {editable && (
-            <button
-              type="button"
-              onClick={() => onChange(items.filter((_, j) => j !== i))}
-              title={`Quitar esta ${etiqueta}`}
-              className="no-print text-[hsl(var(--canalco-neutral-400))] hover:text-red-700 flex-shrink-0"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      ))}
-      {editable && (
-        <button
-          type="button"
-          onClick={() => onChange([...items, ''])}
-          className="no-print flex items-center gap-1 pl-6 text-[11px] text-[#4a4a63] hover:text-[#16162b]"
-        >
-          <Plus className="w-3.5 h-3.5" /> Agregar {etiqueta}
-        </button>
-      )}
-    </div>
-  );
-}
-
-/**
  * Una fila de la ficha: etiqueta a la izquierda, dato a la derecha. `bold` es del dato
- * —las partes van en negrita en el formato— y `etiquetaFuerte`, de la etiqueta.
+ * —las partes van en negrita en el formato—; la etiqueta va siempre en negrita, porque en
+ * la plantilla las dieciséis celdas grises lo están, sin excepción.
  */
-function Fila({ label, value, onChange, area, filas = 2, placeholder, bold, etiquetaFuerte, enlace }: {
+function Fila({ label, value, onChange, area, filas = 2, placeholder, bold, enlace }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -782,7 +705,6 @@ function Fila({ label, value, onChange, area, filas = 2, placeholder, bold, etiq
   filas?: number;
   placeholder?: string;
   bold?: boolean;
-  etiquetaFuerte?: boolean;
   enlace?: boolean;
 }) {
   const comun = 'w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] disabled:opacity-100 '
@@ -790,7 +712,9 @@ function Fila({ label, value, onChange, area, filas = 2, placeholder, bold, etiq
     + (bold ? 'font-bold ' : '');
   return (
     <tr>
-      <td className={'border border-[#0a2a52] px-2 py-1 align-top w-[36%] ' + (etiquetaFuerte ? 'font-bold' : '')}>{label}</td>
+      {/* Sombreado #E7E6E6: en la plantilla la columna de etiquetas va gris en las dos
+          fichas, la de control interno y la particular. */}
+      <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[36%] font-bold">{label}</td>
       <td className="border border-[#0a2a52] px-2 py-1 align-top">
         {area ? (
           <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={filas}

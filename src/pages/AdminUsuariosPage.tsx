@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Plus,
+  KeyRound,
   Search,
   Edit2,
   UserCheck,
@@ -538,6 +539,13 @@ export default function AdminUsuariosPage() {
               </div>
             </div>
 
+            <Button
+              variant="outline"
+              onClick={() => navigate('/dashboard/usuarios/credenciales')}
+            >
+              <KeyRound className="w-4 h-4 mr-2" />
+              Credenciales
+            </Button>
             <Button
               onClick={() => navigate('/dashboard/usuarios/crear')}
               className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"

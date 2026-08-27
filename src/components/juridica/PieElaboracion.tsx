@@ -23,14 +23,19 @@ const REVISO = { nombre: 'Marta Cecilia Rodríguez Herrera', cargo: 'Directora J
  * `etiqueta` cambia el verbo de esa línea. No es un capricho de redacción: «proyectó y
  * revisó» dice que Jurídica escribió el documento, y «revisó y aprobó» que lo autorizó. El
  * otrosí usa la segunda porque su modelo así lo exige, y son responsabilidades distintas.
+ *
+ * `sinRevision` quita esa línea. Es lo que la constancia de antecedentes marca como
+ * «[SI APLICA]»: hay verificaciones que Jurídica no revisa. Imprimir el corchete sería
+ * dejar un hueco sin llenar en un documento firmado, y borrar la línea a mano se olvida;
+ * así se decide al diligenciar y el papel sale limpio en los dos casos.
  */
-export function PieElaboracion({ className, soloRevision, etiqueta }: {
-  className?: string; soloRevision?: boolean; etiqueta?: string;
+export function PieElaboracion({ className, soloRevision, sinRevision, etiqueta }: {
+  className?: string; soloRevision?: boolean; sinRevision?: boolean; etiqueta?: string;
 }) {
   return (
     <div className={'px-8 pt-3 text-[10px] text-black space-y-0.5 ' + (className ?? '')}>
       {!soloRevision && <p>Elaboró: {ELABORO.nombre} - {ELABORO.cargo}</p>}
-      <p>{etiqueta ?? 'Proyectó y revisó'}: {REVISO.nombre} – {REVISO.cargo}</p>
+      {!sinRevision && <p>{etiqueta ?? 'Proyectó y revisó'}: {REVISO.nombre} – {REVISO.cargo}</p>}
     </div>
   );
 }
