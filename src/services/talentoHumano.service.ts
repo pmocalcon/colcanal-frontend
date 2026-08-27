@@ -19,10 +19,22 @@ export interface ThPersona {
   nombre: string;
   cargo: string | null;
   area: string | null;
+  /** La fecha, no la edad: la edad la calcula el backend al leerla. */
+  fechaNacimiento: string | null;
+  correo: string | null;
+  sexo: string | null;
+  estadoCivil: string | null;
+  hijos: number | null;
   operacionFge: string | null;
   centroCosto: string | null;
   tipoGasto: string | null;
   fechaIngreso: string | null;
+  /** Solo tiene valor en término fijo y prestación de servicios: un indefinido no vence. */
+  fechaVencimientoContrato: string | null;
+  /** Nulo es «sin revisar», que no es lo mismo que «sin firmar». */
+  contratoFirmado: boolean | null;
+  /** Otrosí y modificatorios. */
+  otroSi: string | null;
   escalafon: string | null;
   formacionProfesional: string | null;
   /** Los numéricos llegan como texto: Postgres devuelve `numeric` así. */
@@ -30,11 +42,47 @@ export interface ThPersona {
   auxilioTransporte: string | null;
   auxilioRodamiento: string | null;
   totalSalarios: string | null;
+  /** Cuota mensual de la póliza funeraria. Es un descuento: no suma al total de salarios. */
+  polizaFuneraria: string | null;
+  /** "SI" / "NO" / vacío para que lo decida el IBC del mes. Solo dice si aplica, no cuánto. */
+  fspModo: string | null;
+  /** Si se le descuenta el 4 % de salud y el 4 % de pensión. Por defecto, sí. */
+  aportaSalud: boolean;
+  aportaPension: boolean;
+  /** Cuándo dejó de trabajar. Solo aplica cuando el estado es INACTIVO. */
+  fechaSalida: string | null;
+  tipoId: string | null;
+  nombres: string | null;
+  apellidos: string | null;
+  /** Cuenta para el pago de la nómina. */
+  banco: string | null;
+  /** Texto, no número: los números de cuenta empiezan por cero con frecuencia. */
+  cuenta: string | null;
+  /** AHORROS o CORRIENTE. */
+  tipoCuenta: string | null;
   cargaPrestacionalPct: string | null;
   cargaPrestacional: string | null;
   costoTotal: string | null;
   anioVigencia: number | null;
   observaciones: string | null;
+  /** Tarifa ARL. Fracción: 0.0435 es el 4,35 %. */
+  nivelRiesgo: string | null;
+  /** La clase del decreto 1607, de I a V. No es la tarifa. */
+  claseRiesgo: string | null;
+  arl: string | null;
+  eps: string | null;
+  afp: string | null;
+  ccf: string | null;
+  trabajoAltura: string | null;
+  diasVacacionesPendientes: number | null;
+
+  // ── Calculados: llegan del backend y no se editan ──
+  /** Años cumplidos, de la fecha de nacimiento. */
+  edad?: number | null;
+  /** Días de incapacidad registrados este año. */
+  diasIncapacidad?: number;
+  /** Días de permiso este año, contando las horas sueltas como días de ocho. */
+  diasPermiso?: number;
 }
 
 export interface ThIncapacidad {
@@ -89,6 +137,12 @@ export interface ThPrestamoPago {
   anio: number;
   mes: number;
   valor: string;
+  /** "CUOTA" es el descuento pactado; "ABONO" es un pago extraordinario. */
+  tipo: string;
+  /** "NOMINA" se descuenta del pago del mes; "DIRECTO" es por fuera y solo baja el saldo. */
+  medio: string;
+  fecha: string | null;
+  observaciones: string | null;
 }
 
 export interface ThPrestamo {
@@ -198,7 +252,94 @@ export interface ResumenVacaciones {
   diasCompensar: number;
 }
 
+/**
+ * Las cifras que el Gobierno decreta cada año y que la nómina necesita para liquidar.
+ * Una fila por año: la nómina de un periodo usa la del año de ese periodo.
+ */
+export interface ThParametroNomina {
+  parametroId: number;
+  anio: number;
+  smmlv: string;
+  auxilioTransporte: string;
+  observaciones: string | null;
+}
+
+/**
+ * Una entidad financiera y el código con que la identifica el archivo plano que se sube
+ * al portal bancario. El código lo define el banco pagador, no nosotros.
+ */
+export interface ThBanco {
+  bancoId: number;
+  codigo: number;
+  nombre: string;
+  activo: boolean;
+}
+
+/** El documento con el que se le pide a Tesorería que disperse. */
+export interface ThSolicitudPago {
+  solicitudId: number;
+  fecha: string;
+  concepto: string;
+  periodo: string | null;
+  estado: string;
+  observaciones: string | null;
+  creadoPor: string | null;
+}
+
+export interface ThSolicitudPagoResumen extends ThSolicitudPago {
+  lineas: number;
+  total: number;
+}
+
+export interface ThSolicitudPagoLinea {
+  lineaId: number;
+  solicitudId: number;
+  orden: number;
+  personaId: number | null;
+  tipoId: string;
+  identificacion: string;
+  nombre: string;
+  nombres: string | null;
+  apellidos: string | null;
+  proyecto: string | null;
+  valor: string;
+  banco: string | null;
+  bancoCodigo: number | null;
+  tipoCuenta: string | null;
+  cuenta: string | null;
+  observacion: string | null;
+  /** Qué le impide salir en el archivo del banco. Vacío = lista para subir. */
+  faltantes: string[];
+}
+
+export interface ThSolicitudPagoDetalle {
+  solicitud: ThSolicitudPago;
+  lineas: ThSolicitudPagoLinea[];
+  total: number;
+  incompletas: number;
+}
+
+/** Una fila del archivo plano, ya con los códigos que espera el portal. */
+export interface FilaArchivoBanco {
+  tipoId: number;
+  identificacion: string;
+  nombres: string;
+  apellidos: string;
+  codigoBanco: number;
+  tipoProducto: string;
+  numeroProducto: string;
+  valor: number;
+}
+
+export interface ArchivoBanco {
+  solicitud: ThSolicitudPago;
+  filas: FilaArchivoBanco[];
+  total: number;
+  excluidas: Array<{ nombre: string; faltantes: string[] }>;
+}
+
 const BASE = '/talento-humano';
+const PAGOS = '/pagos';
 
 const query = (params: Record<string, string | undefined>) => {
   const q = new URLSearchParams();
@@ -228,6 +369,104 @@ export const talentoHumanoService = {
   /** No borra: marca la persona como INACTIVO. */
   async inactivarPersona(id: number) {
     const { data } = await api.delete<ThPersona>(`${BASE}/personal/${id}`);
+    return data;
+  },
+
+  /** Registra la cuota del mes o un abono extraordinario. Mueve lo descontado y el saldo. */
+  async registrarPago(prestamoId: number, payload: {
+    anio: number; mes: number; valor: number | string;
+    tipo?: string; medio?: string; fecha?: string | null; observaciones?: string | null;
+  }) {
+    const { data } = await api.post<ThPrestamoPago>(`${BASE}/prestamos/${prestamoId}/pagos`, payload);
+    return data;
+  },
+  /** Borra un pago y le devuelve la plata al saldo. */
+  async eliminarPago(prestamoId: number, pagoId: number) {
+    await api.delete(`${BASE}/prestamos/${prestamoId}/pagos/${pagoId}`);
+  },
+
+  // ── Parámetros de nómina ──
+  async listParametros() {
+    const { data } = await api.get<ThParametroNomina[]>(`${BASE}/parametros`);
+    return data;
+  },
+  /** `null` si ese año todavía no se ha cargado. */
+  async getParametros(anio: number) {
+    const { data } = await api.get<ThParametroNomina | null>(`${BASE}/parametros/${anio}`);
+    return data;
+  },
+  async guardarParametros(payload: Partial<ThParametroNomina>) {
+    const { data } = await api.post<ThParametroNomina>(`${BASE}/parametros`, payload);
+    return data;
+  },
+  async borrarParametros(anio: number) {
+    await api.delete(`${BASE}/parametros/${anio}`);
+  },
+
+  // ── Catálogo de bancos ──
+  async listBancos() {
+    const { data } = await api.get<ThBanco[]>(`${BASE}/bancos`);
+    return data;
+  },
+  async guardarBanco(payload: { codigo: number; nombre: string; activo?: boolean }) {
+    const { data } = await api.post<ThBanco>(`${BASE}/bancos`, payload);
+    return data;
+  },
+  async borrarBanco(codigo: number) {
+    await api.delete(`${BASE}/bancos/${codigo}`);
+  },
+
+  // ── Solicitudes de pago ──
+  async listSolicitudesPago() {
+    const { data } = await api.get<ThSolicitudPagoResumen[]>(`${PAGOS}/solicitudes`);
+    return data;
+  },
+  async getSolicitudPago(id: number) {
+    const { data } = await api.get<ThSolicitudPagoDetalle>(`${PAGOS}/solicitudes/${id}`);
+    return data;
+  },
+  async crearSolicitudPago(payload: {
+    fecha?: string;
+    concepto?: string;
+    periodo?: string | null;
+    observaciones?: string | null;
+  }) {
+    const { data } = await api.post<ThSolicitudPagoDetalle>(`${PAGOS}/solicitudes`, payload);
+    return data;
+  },
+  async actualizarSolicitudPago(
+    id: number,
+    payload: { fecha?: string; concepto?: string; estado?: string; observaciones?: string | null },
+  ) {
+    const { data } = await api.patch<ThSolicitudPagoDetalle>(`${PAGOS}/solicitudes/${id}`, payload);
+    return data;
+  },
+  async regenerarSolicitudPago(id: number) {
+    const { data } = await api.post<ThSolicitudPagoDetalle>(`${PAGOS}/solicitudes/${id}/regenerar`, {});
+    return data;
+  },
+  /** Completa lo que faltaba leyendo otra vez las fichas, sin botar lo editado a mano. */
+  async refrescarBancariosSolicitud(id: number) {
+    const { data } = await api.post<ThSolicitudPagoDetalle>(
+      `${PAGOS}/solicitudes/${id}/refrescar-bancarios`, {},
+    );
+    return data;
+  },
+  async guardarLineaPago(id: number, payload: Partial<ThSolicitudPagoLinea> & { lineaId?: number }) {
+    const { data } = await api.post<ThSolicitudPagoDetalle>(`${PAGOS}/solicitudes/${id}/lineas`, payload);
+    return data;
+  },
+  async borrarLineaPago(id: number, lineaId: number) {
+    const { data } = await api.delete<ThSolicitudPagoDetalle>(
+      `${PAGOS}/solicitudes/${id}/lineas/${lineaId}`,
+    );
+    return data;
+  },
+  async borrarSolicitudPago(id: number) {
+    await api.delete(`${PAGOS}/solicitudes/${id}`);
+  },
+  async archivoBanco(id: number) {
+    const { data } = await api.get<ArchivoBanco>(`${PAGOS}/solicitudes/${id}/archivo-banco`);
     return data;
   },
 
@@ -360,3 +599,29 @@ const ROLES = [
 
 export const puedeVerTalentoHumano = (nombreRol?: string): boolean =>
   ROLES.includes((nombreRol ?? '').trim().toLowerCase());
+
+/**
+ * Quién ve **Solicitudes de pago**, que es más cerrado que el resto del módulo.
+ *
+ * Ahí está el archivo que se sube al portal bancario, con la cuenta de cada empleado y lo
+ * que se le gira. Lo ve quien hace el giro —la Coordinación Financiera que recibe la
+ * liquidación— y el PMO, que es quien arma el documento.
+ *
+ * Se compara por rol **y por nombre** porque hay dos usuarias con el rol de Coordinación
+ * Financiera y la nómina es de una sola. Espejo de `PagosAccesoGuard` en el backend, que
+ * es quien de verdad cierra el API: esto solo evita pintar una tarjeta que daría 403.
+ */
+const PAGOS_ROL_FINANCIERO = 'coordinador financiero';
+const PAGOS_NOMBRE_CONTIENE = 'osorio';
+
+export const puedeVerSolicitudesPago = (
+  nombreRol?: string | null,
+  nombre?: string | null,
+): boolean => {
+  const rol = (nombreRol ?? '').trim().toLowerCase();
+  if (rol === 'analista pmo' || rol === 'director pmo') return true;
+  return (
+    rol === PAGOS_ROL_FINANCIERO &&
+    (nombre ?? '').toLowerCase().includes(PAGOS_NOMBRE_CONTIENE)
+  );
+};

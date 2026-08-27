@@ -47,15 +47,21 @@ export default function SolicitudesJuridicaListPage() {
     () =>
       rows
         .filter((s) => (soloPendientes ? meToca(s) : true))
-        .filter((s) => (filtroEstado ? s.estado === filtroEstado : true)),
+        .filter((s) => (filtroEstado ? s.estado === filtroEstado : true))
+        // Del más nuevo al más viejo por su consecutivo. El backend las ordena por fecha
+        // de actualización, y así la columna del número se veía saltada —2, 26, 6, 5, 3—
+        // aunque las filas estuvieran bien ordenadas por otra cosa. Los borradores, que
+        // todavía no tienen número, encabezan: son los que están sin terminar.
+        .slice()
+        .sort((a, b) => (b.numero ?? Infinity) - (a.numero ?? Infinity)),
     [rows, soloPendientes, filtroEstado],
   );
 
   const limpiarFiltros = () => { setSoloPendientes(false); setFiltroEstado(''); };
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
+  const handleDelete = async (e: React.MouseEvent, id: number, numero?: number | null) => {
     e.stopPropagation();
-    if (!window.confirm(`¿Eliminar la solicitud N.º ${id}?`)) return;
+    if (!window.confirm(`¿Eliminar la solicitud N.º ${numero ?? id}?`)) return;
     try {
       await gestionConocimientoService.remove(id);
       toast.success('Solicitud eliminada');
@@ -218,7 +224,8 @@ export default function SolicitudesJuridicaListPage() {
                   >
                     <td className="px-4 py-3 font-mono text-[hsl(var(--canalco-neutral-700))]">
                       {meToca(s) && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 align-middle" title="Espera una acción tuya" />}
-                      {s.solicitudId}
+                      {/* Un borrador todavía no gastó número: se dice, no se inventa. */}
+                      {s.numero ?? <span className="text-[hsl(var(--canalco-neutral-400))]">borrador</span>}
                     </td>
                     {/* El objeto no desaparece: pasa al tooltip, que es donde sirve
                         para distinguir dos contratos del mismo tipo. */}
@@ -257,7 +264,7 @@ export default function SolicitudesJuridicaListPage() {
                           <Pencil className="w-4 h-4" />
                         </Button>
                         {s.estado === 'borrador' && (
-                          <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, s.solicitudId)} title="Eliminar" className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600">
+                          <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, s.solicitudId, s.numero)} title="Eliminar" className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600">
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         )}

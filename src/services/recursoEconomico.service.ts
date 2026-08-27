@@ -81,8 +81,15 @@ export interface FacturaMes {
   manual?: Partial<Record<ConceptoRetencion, number | null>>;
   /** Enlace a la factura electrónica o al correo con que se envió. */
   link?: string;
-  /** Visto bueno de la Directora. Se estampa al marcar la casilla. */
-  visto?: { nombre: string; fecha: string } | null;
+  /**
+   * Visto bueno del director de proyecto.
+   *
+   * No es un «sí»: se estampa cuando el director **digita el valor pago** y coincide con
+   * el que calculó el sistema —el subtotal menos las retenciones—. Por eso guarda
+   * `valor`: sin él no habría cómo saber si el visto sigue siendo sobre la cifra de hoy,
+   * y una factura corregida después de validarla se vería igual que una revisada.
+   */
+  visto?: { nombre: string; rol?: string; fecha: string; valor?: number } | null;
 }
 
 export interface RecursoEconomicoData {
@@ -152,6 +159,47 @@ export const valorPagoFactura = (
 /** Una factura cuenta como diligenciada cuando tiene algún valor. */
 export const facturaDiligenciada = (f: FacturaMes | undefined): boolean =>
   subtotalFactura(f) > 0;
+
+/**
+ * Si el visto bueno del director sigue valiendo para lo que hay hoy en la factura.
+ *
+ * Se compara contra el **valor pago**, que es lo que el director confirma: no basta con
+ * que el subtotal no se haya movido, porque cambiar un porcentaje de retención en
+ * Parámetros mueve lo que se recibe sin tocar lo facturado, y eso también tiene que
+ * volver a revisarse.
+ *
+ * Un visto sin `valor` es de antes de que esto se validara digitando —cuando bastaba
+ * marcar una casilla— y se sigue dando por bueno: invalidar de golpe las facturas ya
+ * revisadas obligaría a rehacer meses cerrados por un cambio nuestro, no de ellas.
+ */
+export const vistoVigente = (
+  f: FacturaMes | undefined,
+  ret: RetencionProyecto | undefined,
+): boolean => {
+  const v = f?.visto;
+  if (!v) return false;
+  if (typeof v.valor !== 'number') return true;
+  return Math.round(v.valor) === Math.round(valorPagoFactura(f, ret));
+};
+
+/**
+ * Qué impide guardar la factura del mes, si algo lo impide.
+ *
+ * Devuelve el motivo y no un booleano porque el botón de guardar tiene que poder decir
+ * por qué está apagado: un botón gris sin explicación se lee como que el sistema se
+ * dañó.
+ */
+export const bloqueoDeFactura = (
+  f: FacturaMes | undefined,
+  ret: RetencionProyecto | undefined,
+): string | null => {
+  if (!facturaDiligenciada(f)) return null;
+  if (!f?.visto) return 'Falta que el director de proyecto valide el valor pago de la factura.';
+  if (!vistoVigente(f, ret)) {
+    return 'La factura cambió después de validarla. El director tiene que volver a confirmar el valor pago.';
+  }
+  return null;
+};
 
 export interface EmpresaRecurso {
   companyId: number;
@@ -238,6 +286,27 @@ export const recursoEconomicoService = {
 
   async save(payload: RecursoEconomicoData): Promise<RecursoEconomicoData> {
     const { data } = await api.put<{ data: RecursoEconomicoData }>(BASE, { data: payload });
+    return data?.data ?? {};
+  },
+
+  /**
+   * El visto bueno de una factura, por su propio endpoint.
+   *
+   * El director de proyecto no puede guardar el módulo —el `PUT` es del PMO—, así que su
+   * visto no puede ir como un cambio más del bloque. Manda el municipio, el mes y el valor
+   * que leyó; el nombre de quien firma lo pone el servidor con quien está conectado.
+   */
+  async validarFactura(periodo: string, companyId: number, valor: number): Promise<RecursoEconomicoData> {
+    const { data } = await api.post<{ data: RecursoEconomicoData }>(`${BASE}/factura/visto`, {
+      periodo, companyId, valor,
+    });
+    return data?.data ?? {};
+  },
+
+  async quitarVistoFactura(periodo: string, companyId: number): Promise<RecursoEconomicoData> {
+    const { data } = await api.delete<{ data: RecursoEconomicoData }>(`${BASE}/factura/visto`, {
+      params: { periodo, companyId },
+    });
     return data?.data ?? {};
   },
 };

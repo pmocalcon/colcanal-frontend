@@ -1,14 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Receipt, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Footer } from '@/components/ui/footer';
 import { useAuth } from '@/contexts/AuthContext';
-import { esRolPmo } from '@/utils/rolesPmo';
+import { puedeValidarFactura, esRolPmo } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { useLiquidacionCreg } from '@/hooks/useLiquidacionCreg';
 import { FacturaMunicipio } from '@/components/recursoEconomico/FacturaMunicipio';
-import type { FacturaMes } from '@/services/recursoEconomico.service';
+import { toast } from 'sonner';
+import {
+  bloqueoDeFactura, recursoEconomicoService, type FacturaMes,
+} from '@/services/recursoEconomico.service';
+
+/** El mensaje que manda el backend, que dice más que un «no se pudo». */
+const mensajeDeError = (e: unknown) =>
+  (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
 
 /**
  * Factura de concesión: qué se le facturó a un municipio en el mes y cuánto queda neto.
@@ -33,10 +40,17 @@ const periodoPorDefecto = (): string => {
 export default function FacturaConcesionPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const esPmo = esRolPmo(user?.nombreRol);
+  const puedeEntrar = puedeValidarFactura(user?.nombreRol);
+  /*
+   * El director de proyecto entra solo a validar: ve las cifras, porque tiene que
+   * compararlas contra la factura que tiene en la mano, pero no las mueve ni guarda el
+   * módulo. El backend le tiene cerrado el `PUT`, así que dejarle los campos abiertos
+   * sería ofrecerle un botón que siempre falla.
+   */
+  const soloValidar = !esRolPmo(user?.nombreRol);
 
-  const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar } =
-    useRecursoEconomico(esPmo);
+  const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar, asentar } =
+    useRecursoEconomico(puedeEntrar);
 
   const [periodo, setPeriodo] = useState<string>(periodoPorDefecto);
   const [companyId, setCompanyId] = useState<number | null>(null);
@@ -68,19 +82,55 @@ export default function FacturaConcesionPage() {
     });
   };
 
-  const volver = () => {
-    if (sinGuardar && !window.confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
-    navigate('/dashboard/recurso-economico');
+  /*
+   * Qué impide guardar la factura que está en pantalla.
+   *
+   * Se mira solo la del municipio y mes abiertos, y no todas las del jsonb, porque es la
+   * única que se está tocando: bloquear el botón por una factura de otro mes que quedó a
+   * medias dejaría la pantalla trancada sin nada visible que arreglar.
+   */
+  const bloqueo = useMemo(() => {
+    if (companyId == null) return null;
+    return bloqueoDeFactura(
+      datos.facturas?.[periodo]?.[companyId],
+      datos.retenciones?.[companyId],
+    );
+  }, [datos.facturas, datos.retenciones, periodo, companyId]);
+
+  const validarFactura = async (valor: number) => {
+    if (companyId == null) return;
+    try {
+      asentar(await recursoEconomicoService.validarFactura(periodo, companyId, valor));
+      toast.success('Factura validada');
+    } catch (e) {
+      toast.error(mensajeDeError(e) || 'No se pudo guardar el visto bueno');
+    }
   };
 
-  if (!esPmo) {
+  const quitarVisto = async () => {
+    if (companyId == null) return;
+    try {
+      asentar(await recursoEconomicoService.quitarVistoFactura(periodo, companyId));
+    } catch (e) {
+      toast.error(mensajeDeError(e) || 'No se pudo quitar el visto bueno');
+    }
+  };
+
+  const volver = () => {
+    if (sinGuardar && !window.confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
+    // El director no ve el módulo: devolverlo a su portada lo dejaría en una pantalla
+    // que le dice que no puede entrar.
+    navigate(soloValidar ? '/dashboard' : '/dashboard/recurso-economico');
+  };
+
+  if (!puedeEntrar) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-50))]">
         <div className="text-center max-w-md px-6">
           <h1 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-2">Factura</h1>
           <p className="text-[hsl(var(--canalco-neutral-600))]">
-            Este módulo es del PMO. Si necesitas consultarlo, pídeselo al Analista o al
-            Director de PMO.
+            Esta pantalla es del PMO y de los directores de proyecto. Si necesitas
+            consultarla, pídesela al Analista o al Director de PMO.
           </p>
           <Button className="mt-6" variant="outline" onClick={() => navigate('/dashboard')}>
             Volver
@@ -105,14 +155,16 @@ export default function FacturaConcesionPage() {
               Factura de concesión por municipio y mes de liquidación
             </p>
           </div>
-          <Button
-            onClick={guardar}
-            disabled={saving || !sinGuardar}
-            title={sinGuardar ? 'Guardar los cambios' : 'No hay cambios por guardar'}
-            className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
-          </Button>
+          {!soloValidar && (
+            <Button
+              onClick={guardar}
+              disabled={saving || !sinGuardar || !!bloqueo}
+              title={bloqueo ?? (sinGuardar ? 'Guardar los cambios' : 'No hay cambios por guardar')}
+              className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+            </Button>
+          )}
         </div>
       </header>
 
@@ -123,6 +175,12 @@ export default function FacturaConcesionPage() {
           </div>
         ) : (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-lg">
+            {/* El botón de guardar está arriba y lejos; el motivo tiene que estar acá. */}
+            {bloqueo && !soloValidar && (
+              <div className="mx-4 mt-4 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                No se puede guardar: {bloqueo}
+              </div>
+            )}
             {sinEmpresa.length > 0 && (
               <div className="mx-4 mt-4 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-800">
                 Sin empresa registrada: <strong>{sinEmpresa.join(', ')}</strong>. Esos municipios no
@@ -138,7 +196,11 @@ export default function FacturaConcesionPage() {
               facturas={datos.facturas ?? {}}
               retenciones={datos.retenciones ?? {}}
               revisor={user?.nombre ?? ''}
+              revisorRol={user?.nombreRol ?? undefined}
               onFactura={setFactura}
+              soloValidar={soloValidar}
+              onValidar={validarFactura}
+              onQuitarVisto={quitarVisto}
               liquidacion={liquidacion(periodo)}
               cregCargando={cregCargando}
               cregError={cregError}

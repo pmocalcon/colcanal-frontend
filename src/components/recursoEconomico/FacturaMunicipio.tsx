@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Download, ExternalLink, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   CONCEPTOS_RETENCION, subtotalFactura, retencionFactura, valorPagoFactura,
@@ -240,8 +240,9 @@ function PanelLiquidacion({ liq, cargando, error, mesLabel, factura, onTraer }: 
 
 export function FacturaMunicipio({
   empresas, companyId, setCompanyId, periodo, setPeriodo,
-  facturas, retenciones, revisor, onFactura,
+  facturas, retenciones, revisor, revisorRol, onFactura,
   liquidacion, cregCargando, cregError,
+  soloValidar = false, onValidar, onQuitarVisto,
 }: {
   empresas: EmpresaRecurso[];
   companyId: number | null;
@@ -251,13 +252,29 @@ export function FacturaMunicipio({
   setPeriodo: (p: string) => void;
   facturas: Record<string, Record<string, FacturaMes>>;
   retenciones: Record<string, RetencionProyecto>;
-  /** Quién marca el visto bueno: queda estampado en la constancia. */
+  /** Quién valida: queda estampado en la constancia, con su rol. */
   revisor: string;
+  /** El rol de quien está conectado, para dejar dicho desde dónde se validó. */
+  revisorRol?: string;
   onFactura: (patch: Partial<FacturaMes>) => void;
   /** Lo que la Liquidación CREG cobra este mes, de donde salen AOM e inversión. */
   liquidacion: LiquidacionResultado | null;
   cregCargando: boolean;
   cregError: string | null;
+  /**
+   * El director de proyecto entra a confirmar el valor pago y nada más: ve las cifras
+   * —tiene que verlas para compararlas contra la factura física— pero no las mueve.
+   */
+  soloValidar?: boolean;
+  /**
+   * Cómo se guarda el visto bueno cuando quien valida no puede guardar el módulo.
+   *
+   * El director no tiene el `PUT` del bloque completo, así que su visto va por un endpoint
+   * propio que solo toca ese campo. Si no viene, el visto se guarda como un cambio más y
+   * sale con el botón Guardar: es el camino del PMO.
+   */
+  onValidar?: (valor: number) => Promise<void>;
+  onQuitarVisto?: () => Promise<void>;
 }) {
   const [anio, mes] = periodo.split('-');
   const delMes = facturas[periodo] ?? {};
@@ -332,6 +349,13 @@ export function FacturaMunicipio({
         </p>
       ) : (
         <div className="max-w-2xl space-y-5">
+          {/*
+            Un `fieldset` deshabilitado apaga de una vez todo lo que lleve dentro
+            —campos, botones, el de «traer del CREG»—. Apagarlos uno por uno dejaría que
+            el próximo campo que se agregue nazca editable para el director sin que nadie
+            se dé cuenta.
+          */}
+          <fieldset disabled={soloValidar} className="contents">
           {/* De dónde salen las cifras */}
           <PanelLiquidacion
             liq={liquidacion}
@@ -410,57 +434,207 @@ export function FacturaMunicipio({
           </div>
 
           {/* Constancia */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
-            <label className="block">
-              <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">
-                Enlace a la factura
-              </span>
-              <div className="flex items-center gap-2">
-                <input
-                  className="w-full h-9 px-3 text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
-                  value={f.link ?? ''}
-                  placeholder="factura electrónica o correo de envío"
-                  onChange={(e) => onFactura({ link: e.target.value })}
-                />
-                {f.link?.trim() && (
-                  <a
-                    href={f.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Abrir la factura"
-                    className="text-[hsl(var(--canalco-primary))] shrink-0"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
-              </div>
-            </label>
-
-            {/*
-              Se estampa quién y cuándo, no un simple `true`: el visto bueno es la
-              constancia de una revisión, y sin nombre ni fecha no se puede decir
-              después quién la dio.
-            */}
-            <label className="flex items-center gap-2 h-9 text-sm whitespace-nowrap">
+          <label className="block">
+            <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">
+              Enlace a la factura
+            </span>
+            <div className="flex items-center gap-2">
               <input
-                type="checkbox"
-                checked={!!visto}
-                onChange={(e) => onFactura({
-                  visto: e.target.checked
-                    ? { nombre: revisor, fecha: new Date().toISOString().slice(0, 10) }
-                    : null,
-                })}
-                className="accent-[hsl(var(--canalco-primary))]"
+                className="w-full h-9 px-3 text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
+                value={f.link ?? ''}
+                placeholder="factura electrónica o correo de envío"
+                onChange={(e) => onFactura({ link: e.target.value })}
               />
-              V.º B.º de la Directora
-              {visto && (
-                <span className="text-xs text-[hsl(var(--canalco-neutral-500))]">
-                  · {visto.nombre}, {visto.fecha}
-                </span>
+              {f.link?.trim() && (
+                <a
+                  href={f.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Abrir la factura"
+                  className="text-[hsl(var(--canalco-primary))] shrink-0"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
               )}
-            </label>
-          </div>
+            </div>
+          </label>
+          </fieldset>
+
+          <ValidacionDirector
+            subtotal={subtotal}
+            pago={pago}
+            visto={visto}
+            revisor={revisor}
+            revisorRol={revisorRol}
+            onFactura={onFactura}
+            onValidar={onValidar}
+            onQuitarVisto={onQuitarVisto}
+          />
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * El visto bueno del director de proyecto.
+ *
+ * No es una casilla que se marca: el director **digita el valor pago** y solo coincide si
+ * es el mismo que el sistema armó con el AOM, la inversión y los otros que escribió el
+ * PMO, menos las retenciones de Parámetros. Ahí está el control: si cualquiera de esas
+ * cifras se digitó mal, el valor no cuadra y la factura no se puede guardar.
+ *
+ * Marcar una casilla no habría probado nada —se marca sin mirar—; transcribir la cifra
+ * obliga a tener la factura delante.
+ */
+function ValidacionDirector({
+  subtotal, pago, visto, revisor, revisorRol, onFactura, onValidar, onQuitarVisto,
+}: {
+  /** Solo para saber si ya hay algo que validar. */
+  subtotal: number;
+  /** Lo que el director confirma: el subtotal menos las retenciones. */
+  pago: number;
+  visto: NonNullable<FacturaMes['visto']> | null;
+  revisor: string;
+  revisorRol?: string;
+  onFactura: (patch: Partial<FacturaMes>) => void;
+  onValidar?: (valor: number) => Promise<void>;
+  onQuitarVisto?: () => Promise<void>;
+}) {
+  const [digitado, setDigitado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const vigente = !!visto && (typeof visto.valor !== 'number'
+    || Math.round(visto.valor) === Math.round(pago));
+
+  // Al cambiar de municipio o de mes se limpia: lo escrito era de la factura anterior.
+  useEffect(() => { setDigitado(''); }, [pago, visto?.fecha]);
+
+  const escrito = digitado.trim() === ''
+    ? null
+    : Math.round(Number(digitado.replace(/[^\d]/g, '')));
+  const esNumero = escrito !== null && Number.isFinite(escrito) && escrito > 0;
+  const coincide = esNumero && escrito === Math.round(pago);
+
+  const confirmar = async () => {
+    if (!coincide || guardando) return;
+    if (onValidar) {
+      setGuardando(true);
+      try {
+        await onValidar(Math.round(pago));
+      } finally {
+        setGuardando(false);
+      }
+    } else {
+      onFactura({
+        visto: {
+          nombre: revisor,
+          rol: revisorRol,
+          fecha: new Date().toISOString().slice(0, 10),
+          valor: Math.round(pago),
+        },
+      });
+    }
+    setDigitado('');
+  };
+
+  const quitar = async () => {
+    if (guardando) return;
+    if (onQuitarVisto) {
+      setGuardando(true);
+      try {
+        await onQuitarVisto();
+      } finally {
+        setGuardando(false);
+      }
+    } else {
+      onFactura({ visto: null });
+    }
+  };
+
+  if (subtotal <= 0) {
+    return (
+      <div className="px-4 py-3 rounded-lg border border-dashed border-[hsl(var(--canalco-neutral-300))] text-sm text-[hsl(var(--canalco-neutral-500))]">
+        Escribe primero el AOM y la inversión. El director valida cuando haya algo que validar.
+      </div>
+    );
+  }
+
+  if (vigente) {
+    return (
+      <div className="px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-wrap items-center gap-3">
+        <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+        <div className="flex-grow text-sm">
+          <p className="font-semibold text-emerald-900">Factura validada</p>
+          <p className="text-emerald-800 text-xs">
+            {visto!.nombre}
+            {visto!.rol && ` · ${visto!.rol}`} · {visto!.fecha}
+            {typeof visto!.valor === 'number' && ` · confirmó ${fmtCOP(visto!.valor)}`}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void quitar()}
+          disabled={guardando}
+          className="text-red-700 shrink-0"
+        >
+          Quitar validación
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={
+      'px-4 py-3 rounded-lg border ' +
+      (visto ? 'bg-amber-50 border-amber-300' : 'bg-white border-[hsl(var(--canalco-neutral-300))]')
+    }>
+      {/* Un visto que existe pero no está vigente es una factura corregida después de revisarla. */}
+      {visto && (
+        <p className="text-sm text-amber-900 mb-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            La factura cambió después de que {visto.nombre} la validó
+            {typeof visto.valor === 'number' && ` por ${fmtCOP(visto.valor)}`}. Hay que confirmarla otra vez.
+          </span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block flex-grow min-w-[220px]">
+          <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">
+            Valor pago de la factura
+          </span>
+          <input
+            value={digitado}
+            onChange={(e) => setDigitado(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void confirmar(); }}
+            inputMode="numeric"
+            placeholder="Escríbelo de la factura"
+            className={
+              'w-full h-10 px-3 text-base tabular-nums border rounded-md outline-none ' +
+              (escrito === null
+                ? 'border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))]'
+                : coincide
+                  ? 'border-emerald-500 bg-emerald-50'
+                  : 'border-red-400 bg-red-50')
+            }
+          />
+        </label>
+        <Button onClick={() => void confirmar()} disabled={!coincide || guardando} className="h-10 gap-2">
+          <CheckCircle2 className="w-4 h-4" /> Validar
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-[hsl(var(--canalco-neutral-500))]">
+        Lo que queda después de las retenciones, que es lo que el municipio consigna. Lo digita
+        el director de proyecto; mientras no coincida, la factura no se puede guardar.
+      </p>
+      {escrito !== null && !coincide && (
+        <p className="mt-1 text-sm text-red-800">
+          {esNumero
+            ? 'No coincide con el valor pago. Revisa el AOM, la inversión, los otros y las retenciones.'
+            : 'Escribe solo el número.'}
+        </p>
       )}
     </div>
   );

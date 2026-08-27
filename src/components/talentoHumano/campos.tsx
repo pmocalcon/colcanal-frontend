@@ -6,7 +6,7 @@
  * borde entre dos casillas contiguas se nota de inmediato.
  */
 
-export function Campo({ label, value, onChange, tipo, ancho, paso }: {
+export function Campo({ label, value, onChange, tipo, ancho, paso, nota }: {
   label: string;
   value: string | number;
   onChange: (v: string) => void;
@@ -14,6 +14,8 @@ export function Campo({ label, value, onChange, tipo, ancho, paso }: {
   ancho?: string;
   /** Para los `number`: «any» deja escribir decimales sin que el navegador los rechace. */
   paso?: string;
+  /** Aclaración al pie, para los campos donde el nombre solo no dice qué hace el número. */
+  nota?: string;
 }) {
   return (
     <label className={'block ' + (ancho ?? '')}>
@@ -25,16 +27,57 @@ export function Campo({ label, value, onChange, tipo, ancho, paso }: {
         onChange={(e) => onChange(e.target.value)}
         className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
       />
+      {nota && (
+        <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-400))]">{nota}</span>
+      )}
     </label>
   );
 }
 
-export function Selector({ label, value, opciones, onChange, ancho }: {
+/**
+ * Casilla de sí/no.
+ *
+ * `value` acepta `undefined` a propósito: una persona guardada antes de que existiera la
+ * columna llega sin el dato, y en esos casos vale lo mismo que la base —marcada—. Así
+ * una ficha vieja no aparece de repente como si no cotizara.
+ */
+export function CampoCheck({ label, value, onChange, nota }: {
+  label: string;
+  value: boolean | undefined;
+  onChange: (v: boolean) => void;
+  nota?: string;
+}) {
+  return (
+    <label className="block cursor-pointer">
+      <span className="block text-xs font-semibold text-[hsl(var(--canalco-neutral-600))] mb-1">{label}</span>
+      <span className="flex items-center gap-2 border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm bg-white">
+        <input
+          type="checkbox"
+          checked={value !== false}
+          onChange={(e) => onChange(e.target.checked)}
+          className="w-4 h-4 accent-[hsl(var(--canalco-primary))]"
+        />
+        <span className={value !== false ? '' : 'text-[hsl(var(--canalco-neutral-400))]'}>
+          {value !== false ? 'Sí se le descuenta' : 'No se le descuenta'}
+        </span>
+      </span>
+      {nota && (
+        <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-400))]">{nota}</span>
+      )}
+    </label>
+  );
+}
+
+export function Selector({ label, value, opciones, onChange, ancho, vacio, nota }: {
   label: string;
   value: string;
   opciones: string[];
   onChange: (v: string) => void;
   ancho?: string;
+  /** Qué dice la opción vacía. Por defecto «—»; sirve cuando no elegir significa algo. */
+  vacio?: string;
+  /** Aclaración al pie, para los campos donde el nombre solo no dice qué hace. */
+  nota?: string;
 }) {
   return (
     <label className={'block ' + (ancho ?? '')}>
@@ -44,9 +87,12 @@ export function Selector({ label, value, opciones, onChange, ancho }: {
         onChange={(e) => onChange(e.target.value)}
         className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
       >
-        <option value="">—</option>
+        <option value="">{vacio ?? '—'}</option>
         {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
+      {nota && (
+        <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-400))]">{nota}</span>
+      )}
     </label>
   );
 }

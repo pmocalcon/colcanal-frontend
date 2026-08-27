@@ -18,6 +18,26 @@ export interface ThPersonaConNovedad {
   /** La cuota marcada por Contabilidad como "CUOTA A DESCONTAR" para esta nómina. */
   prestamoCuota: number;
   novedad: NovedadNomina | null;
+  sugerencias: SugerenciasNovedad;
+}
+
+/**
+ * Lo que los formatos ya aprobados aportan a la novedad del periodo: horas extras de las
+ * planillas GTH-016-F, incapacidad de `th_incapacidades` y vacaciones de los GTH-018-F.
+ *
+ * `null` es "ningún formato dice nada de esto", que no es lo mismo que cero. Lo que se
+ * digite a mano manda sobre esto.
+ */
+export interface SugerenciasNovedad {
+  horasExtrasValor: number | null;
+  recargoNocturnoValor: number | null;
+  incapacidadEmpresa: number | null;
+  incapacidadEmpleado: number | null;
+  vacacionesHabiles: number | null;
+  /** La cuota de la póliza funeraria que tiene la persona en su ficha de personal. */
+  serviciosGruporecordar: number | null;
+  /** De dónde salió: "Incapacidades", "Horas extras", "Vacaciones", "Póliza funeraria". */
+  origen: string[];
 }
 
 export interface NovedadNomina {
@@ -100,15 +120,133 @@ export interface ResumenNomina {
   netoPagar: number;
 }
 
+/**
+ * Una persona vista desde la validación: lo que el sistema calculó, lo que le falta a su
+ * ficha y el visto bueno que ya tenga.
+ */
+export interface PersonaValidacion {
+  personaId: number;
+  identificacion: string;
+  nombre: string;
+  cargo: string | null;
+  proyecto: string | null;
+  estado: string | null;
+  banco: string | null;
+  cuenta: string | null;
+  tipoCuenta: string | null;
+  fechaIngreso: string | null;
+  fechaSalida: string | null;
+  salario: string | null;
+  liquidacion: FilaNomina;
+  /** Vacío significa que la ficha está completa. */
+  faltantes: string[];
+  validacion: ValidacionNomina | null;
+  /** true si la nómina cambió después de validarla: el visto bueno quedó viejo. */
+  desactualizada: boolean;
+}
+
+export interface ValidacionNomina {
+  validacionId: number;
+  periodo: string;
+  personaId: number;
+  identificacion: string;
+  nombre: string;
+  netoCalculado: string;
+  netoDigitado: string;
+  validadoPor: string | null;
+  validadoEn: string | null;
+  observaciones: string | null;
+}
+
+export interface EnvioNomina {
+  envioId: number;
+  periodo: string;
+  destinatarios: string | null;
+  empleados: number;
+  totalNeto: string;
+  enviadoPor: string | null;
+  enviadoEn: string | null;
+  correoEnviado: boolean;
+}
+
+/** Lo que quedó anotado en la cartera de préstamos al mandar la liquidación. */
+export interface CuotasEnCartera {
+  /** Cuotas nuevas que se anotaron. */
+  creadas: number;
+  /** Préstamos que ya tenían la cuota de ese mes y se dejaron como estaban. */
+  yaEstaban: number;
+  /** Cuánto sumó lo anotado. */
+  total: number;
+  /** Lo que no se pudo anotar y hay que mirar a mano. */
+  avisos: string[];
+}
+
+export interface EstadoValidacion {
+  periodo: string;
+  total: number;
+  validadas: number;
+  conFaltantes: number;
+  desactualizadas: number;
+  /** Qué impide mandar la liquidación. Vacío = se puede mandar. */
+  bloqueos: string[];
+  envio: EnvioNomina | null;
+  destinatario: string | null;
+  pendientes: Array<{ personaId: number; identificacion: string; nombre: string; motivo: string }>;
+  /** Todas las del periodo, en el orden de la liquidación. Es por donde se navega. */
+  personas: Array<{
+    personaId: number;
+    identificacion: string;
+    nombre: string;
+    cargo: string | null;
+    motivo: string;
+    validada: boolean;
+  }>;
+  /** Solo viene al mandar la liquidación; consultando el estado va en `null`. */
+  cartera: CuotasEnCartera | null;
+}
+
 const BASE = '/nomina';
 
 export const nominaService = {
+  // ── Validación antes de mandar a Financiera ──
+  async estadoValidacion(periodo: string) {
+    const { data } = await api.get<EstadoValidacion>(`${BASE}/validacion/estado`, { params: { periodo } });
+    return data;
+  },
+  /** Devuelve una entrada por contrato: una cédula puede tener varios. */
+  async buscarParaValidar(periodo: string, identificacion: string) {
+    const { data } = await api.get<PersonaValidacion[]>(`${BASE}/validacion/persona`, {
+      params: { periodo, identificacion },
+    });
+    return data;
+  },
+  async validarPersona(payload: {
+    periodo: string; personaId: number; netoDigitado: number; observaciones?: string | null;
+  }) {
+    const { data } = await api.post<PersonaValidacion>(`${BASE}/validacion`, payload);
+    return data;
+  },
+  async quitarValidacion(periodo: string, personaId: number) {
+    await api.delete(`${BASE}/validacion`, { params: { periodo, personaId } });
+  },
+  async enviarLiquidacion(periodo: string) {
+    const { data } = await api.post<EstadoValidacion>(`${BASE}/validacion/enviar`, { periodo });
+    return data;
+  },
+  async anularEnvioLiquidacion(periodo: string) {
+    const { data } = await api.delete<EstadoValidacion>(`${BASE}/validacion/enviar`, { params: { periodo } });
+    return data;
+  },
+
   async listPeriodos() {
     const { data } = await api.get<string[]>(`${BASE}/periodos`);
     return data;
   },
-  async listNovedades(periodo: string) {
-    const { data } = await api.get<ThPersonaConNovedad[]>(`${BASE}/novedades`, { params: { periodo } });
+  /** `smmlv` solo hace falta para el piso legal de la incapacidad del empleado. */
+  async listNovedades(periodo: string, smmlv?: number) {
+    const { data } = await api.get<ThPersonaConNovedad[]>(`${BASE}/novedades`, {
+      params: { periodo, smmlv },
+    });
     return data;
   },
   async guardarNovedad(periodo: string, personaId: number, identificacion: string, nombre: string, campos: CamposNovedad) {

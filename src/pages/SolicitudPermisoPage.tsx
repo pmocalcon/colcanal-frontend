@@ -19,6 +19,7 @@ import {
   puedeEditarAprobacion,
 } from '@/utils/permisoWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
+import { buscarFicha, llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
 
 /**
  * Solicitud de Permiso · formato GTH-009-F (G. de talento humano).
@@ -105,6 +106,7 @@ const FILAS: { key: CampoTexto; label: string; area?: boolean }[] = [
   { key: 'fechaSolicitud', label: 'FECHA DE SOLICITUD:' },
   { key: 'proyecto', label: 'PROYECTO:' },
   { key: 'nombre', label: 'NOMBRE:' },
+  // Al salir de esta casilla se traen nombre, cargo y proyecto de la ficha de personal.
   { key: 'identificacion', label: 'IDENTIFICACIÓN:' },
   { key: 'cargo', label: 'CARGO:' },
   // Va antes del motivo: primero de qué tipo es el permiso y después por qué.
@@ -130,6 +132,24 @@ export default function SolicitudPermisoPage() {
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
   const editaSolicitud = puedeEditarSolicitud(estado ?? null);
   const editaAprobacion = puedeEditarAprobacion(estado ?? null, user?.nombreRol, esCreador);
+
+  /**
+   * Con la cédula llegan el nombre, el cargo y el proyecto de la ficha de personal.
+   *
+   * Al salir de la casilla, no en cada tecla: mientras se escribe, cada dígito sería una
+   * cédula distinta y una consulta más. Y solo llena lo que está en blanco, para no
+   * pisarle a nadie lo que acaba de escribir.
+   */
+  const prellenar = async (cedula: string) => {
+    if (!editaSolicitud) return;
+    const ficha = await buscarFicha(cedula);
+    if (!ficha) return;
+    setF((p) => llenarVacios(p, {
+      nombre: nombreDeFicha(ficha),
+      cargo: ficha.cargo ?? '',
+      proyecto: ficha.empresaProyecto ?? '',
+    }));
+  };
 
   const set = <K extends keyof PermisoState>(k: K, v: PermisoState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -311,6 +331,14 @@ export default function SolicitudPermisoPage() {
                       <input
                         value={f[key]}
                         onChange={(e) => set(key, e.target.value)}
+                        // Solo la cédula trae ficha; en las demás casillas no hay nada que buscar.
+                        onBlur={key === 'identificacion' ? () => void prellenar(f.identificacion) : undefined}
+                        onKeyDown={(e) => {
+                          if (key === 'identificacion' && e.key === 'Enter') {
+                            e.preventDefault();
+                            void prellenar(f.identificacion);
+                          }
+                        }}
                         readOnly={!editaSolicitud}
                         className="w-full bg-transparent outline-none text-[11px]"
                       />

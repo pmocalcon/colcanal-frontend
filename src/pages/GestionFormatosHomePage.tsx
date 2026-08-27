@@ -4,7 +4,8 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
-import { getGestion, rutaFormato } from '@/config/formatosGestion';
+import { getGestion, rutaFormato, puedeVerFormatosDelArea } from '@/config/formatosGestion';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * Portada de una gestión: un formato por tarjeta.
@@ -19,6 +20,7 @@ const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
 
 export default function GestionFormatosHomePage({ gestion }: { gestion: string }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const cfg = getGestion(gestion);
   const [rows, setRows] = useState<GcSolicitud[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,18 @@ export default function GestionFormatosHomePage({ gestion }: { gestion: string }
     );
   }
 
-  const { nombre, subtitulo, Icon: GestionIcon, formatos } = cfg;
+  const { nombre, subtitulo, Icon: GestionIcon, formatos: todosLosFormatos } = cfg;
+
+  /*
+   * Los formatos internos del área solo se le pintan al área y al PMO.
+   *
+   * El PMO va incluido porque es el comodín transversal del sistema —igual que en Recurso
+   * Económico y en Talento Humano—; dejarlo por fuera acá sería la única excepción del
+   * sistema, y la pagaría justo quien tiene que revisar que todo esto funcione.
+   */
+  const formatos = todosLosFormatos.filter(
+    (f) => !f.soloDelArea || puedeVerFormatosDelArea(gestion, user?.nombreRol),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">

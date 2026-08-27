@@ -16,14 +16,21 @@ const ELABORO = { nombre: 'Mayiver Sarria Galíndez', cargo: 'Coordinadora Jurí
 const REVISO = { nombre: 'Marta Cecilia Rodríguez Herrera', cargo: 'Directora Jurídica' };
 
 /**
- * `soloRevision` deja únicamente la línea de quien proyectó y revisó. No todos los formatos
- * llevan las dos: el otrosí, por ejemplo, lo firma quien lo revisa y no distingue autoría.
+ * `soloRevision` deja únicamente la línea de quien revisó. No todos los formatos llevan las
+ * dos: hay documentos donde quien elabora varía y se escribe a mano, y otros que no
+ * distinguen autoría.
+ *
+ * `etiqueta` cambia el verbo de esa línea. No es un capricho de redacción: «proyectó y
+ * revisó» dice que Jurídica escribió el documento, y «revisó y aprobó» que lo autorizó. El
+ * otrosí usa la segunda porque su modelo así lo exige, y son responsabilidades distintas.
  */
-export function PieElaboracion({ className, soloRevision }: { className?: string; soloRevision?: boolean }) {
+export function PieElaboracion({ className, soloRevision, etiqueta }: {
+  className?: string; soloRevision?: boolean; etiqueta?: string;
+}) {
   return (
     <div className={'px-8 pt-3 text-[10px] text-black space-y-0.5 ' + (className ?? '')}>
       {!soloRevision && <p>Elaboró: {ELABORO.nombre} - {ELABORO.cargo}</p>}
-      <p>Proyectó y revisó: {REVISO.nombre} – {REVISO.cargo}</p>
+      <p>{etiqueta ?? 'Proyectó y revisó'}: {REVISO.nombre} – {REVISO.cargo}</p>
     </div>
   );
 }

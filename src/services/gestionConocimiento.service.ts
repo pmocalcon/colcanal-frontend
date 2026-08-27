@@ -26,6 +26,12 @@ export interface GcHistorialEntry {
 
 export interface GcSolicitud {
   solicitudId: number;
+  /**
+   * El consecutivo **dentro del formato**, que es el número con el que se llama al
+   * documento. No es `solicitudId`: ese lo comparten todos los formatos y se gasta en
+   * cada borrador descartado. Va en nulo mientras sea borrador.
+   */
+  numero?: number | null;
   gestion: string;
   formato: string;
   estado: string;
@@ -63,7 +69,41 @@ export interface UpdateSolicitudPayload {
 
 const BASE = '/gestion-conocimiento/solicitudes';
 
+/**
+ * Lo que ya sabemos de una persona, para no volver a digitarlo en cada formato.
+ *
+ * `salario` llega en nulo salvo para quien ya ve la nómina: el prellenado está abierto a
+ * cualquiera con sesión —los formatos los diligencia todo el mundo— y devolverlo siempre
+ * haría de la casilla de la cédula un consultor de sueldos ajenos.
+ */
+export interface FichaFormato {
+  personaId: number;
+  identificacion: string;
+  nombre: string;
+  primerApellido: string;
+  segundoApellido: string;
+  primerNombre: string;
+  segundoNombre: string;
+  tipoId: string | null;
+  estadoCivil: string | null;
+  correo: string | null;
+  cargo: string | null;
+  area: string | null;
+  empresaProyecto: string | null;
+  fechaIngreso: string | null;
+  diasVacacionesPendientes: number | null;
+  salario: string | null;
+}
+
 export const gestionConocimientoService = {
+  /** La ficha de una cédula. Nulo si no está: el formato se sigue llenando a mano. */
+  async fichaDeCedula(identificacion: string): Promise<FichaFormato | null> {
+    const { data } = await api.get<FichaFormato | null>(`${BASE}/ficha`, {
+      params: { identificacion },
+    });
+    return data ?? null;
+  },
+
   async create(payload: CreateSolicitudPayload): Promise<GcSolicitud> {
     const { data } = await api.post<GcSolicitud>(BASE, payload);
     return data;

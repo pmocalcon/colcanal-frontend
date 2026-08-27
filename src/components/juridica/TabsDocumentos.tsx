@@ -1,6 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import type { GcSolicitud } from '@/services/gestionConocimiento.service';
-import { DOCUMENTO_LABEL, type DocumentoJuridica, type JuridicaEstado } from '@/utils/juridicaWorkflow';
+import {
+  DOCUMENTO_LABEL, estadoAlcanzo, type DocumentoJuridica, type JuridicaEstado,
+} from '@/utils/juridicaWorkflow';
+import { tipoRequisicionDe } from '@/config/juridicaContratos';
 
 /**
  * Pestañas de los documentos de una solicitud de G. jurídica.
@@ -36,6 +39,26 @@ interface Tab {
 
 const en = (estado: string, estados: JuridicaEstado[]) => estados.includes(estado as JuridicaEstado);
 
+/**
+ * Los documentos que solo existen en el trámite de servicios.
+ *
+ * Una requisición de personal termina en el contrato: lo que viene después —garantías,
+ * designación de supervisor, acta de inicio y otrosíes— pertenece al contrato con un
+ * tercero. A un empleado no se le exige póliza, no se le designa supervisor de contrato ni
+ * se le firma un acta de inicio de obra.
+ *
+ * Se **ocultan** en vez de apagarse. Una pestaña apagada dice «todavía no» e invita a
+ * esperar; acá lo que hay que decir es «no aplica a este trámite», y para eso la pestaña
+ * sobra.
+ */
+const DOCS_SOLO_SERVICIOS = new Set<TabDoc>([
+  'verificacion-garantias',
+  'aprobacion-garantias',
+  'designacion-supervisor',
+  'acta-inicio',
+  'otrosi',
+]);
+
 /** Los documentos con su etapa mínima, en el orden en que se diligencian. */
 export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
   const estado = sol?.estado ?? 'borrador';
@@ -62,7 +85,15 @@ export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
   const tab = (key: TabDoc, habilitado: boolean, motivo: string): Tab =>
     ({ key, label: DOCUMENTO_LABEL[key], habilitado, motivo });
 
-  return [
+  /*
+   * Manda lo elegido en el selector de la solicitud y, mientras nadie elija, lo que se
+   * deduce del tipo de contrato. Es la misma regla con que la solicitud decide qué formato
+   * imprime, y por eso sale de `tipoRequisicionDe` y no de una copia: si las pestañas
+   * dijeran «servicios» y el papel «GTH-001-F», una de las dos estaría mintiendo.
+   */
+  const tipoReq = tipoRequisicionDe(sol?.data?.tipoRequisicion, sol?.data?.tipoContrato);
+
+  const todas: Tab[] = [
     tab('solicitud', true, ''),
     tab('chequeo', chequeo,
       'Se habilita cuando la solicitud se remite a Administrativa'),
@@ -94,6 +125,20 @@ export function tabsDeLaSolicitud(sol: GcSolicitud | null): Tab[] {
       en(estado, ['en_acta_inicio', 'finalizado']),
       'Se habilita cuando el contrato ya está en ejecución (desde el acta de inicio)'),
   ];
+
+  /*
+   * Se ocultan solo mientras el trámite no haya pasado del contrato.
+   *
+   * Una requisición de personal firmada de hoy en adelante termina ahí y nunca llega a esas
+   * etapas. Pero las que ya venían corriendo por pólizas cuando se cerró el flujo sí están
+   * en ellas, y esconderles la pestaña las dejaría trancadas sin manera de terminar: la
+   * acción de la etapa vive dentro del documento que se estaría ocultando.
+   */
+  const yaPasoDelContrato = estadoAlcanzo(estado, 'en_solicitud_polizas');
+
+  return tipoReq === 'personal' && !yaPasoDelContrato
+    ? todas.filter((t) => !DOCS_SOLO_SERVICIOS.has(t.key))
+    : todas;
 }
 
 interface Props {

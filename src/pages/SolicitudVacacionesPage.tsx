@@ -18,6 +18,9 @@ import {
   esEditable,
 } from '@/utils/vacacionesWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
+import {
+  buscarFicha, llenarVacios, nombreDeFicha, tipoDocumentoDeFicha,
+} from '@/utils/prellenarFormato';
 
 /**
  * Solicitud de Vacaciones · formato GTH-018-F (G. de talento humano).
@@ -162,6 +165,28 @@ export default function SolicitudVacacionesPage() {
   const estado = (sol?.estado as VacacionesEstado | undefined) ?? undefined;
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
   const locked = !esEditable(estado ?? null);
+
+  /**
+   * Con el documento llegan el nombre, el cargo, el área y la fecha de ingreso.
+   *
+   * También los días pendientes, que en este formato los diligencia Talento Humano en el
+   * bloque de abajo: se proponen desde la ficha para no tener que buscarlos aparte. Como
+   * todo lo demás, solo si la casilla está en blanco.
+   */
+  const prellenar = async (documento: string) => {
+    if (locked) return;
+    const ficha = await buscarFicha(documento);
+    if (!ficha) return;
+    setF((p) => llenarVacios(p, {
+      nombres: nombreDeFicha(ficha),
+      tipoDocumento: tipoDocumentoDeFicha(ficha.tipoId) === 'TI' ? 'TI' : 'CC',
+      cargo: ficha.cargo ?? '',
+      areaCargo: ficha.area ?? '',
+      fechaIngreso: ficha.fechaIngreso ?? '',
+      rhDiasPendientes:
+        ficha.diasVacacionesPendientes == null ? '' : String(ficha.diasVacacionesPendientes),
+    }));
+  };
 
   const set = <K extends keyof VacacionesState>(k: K, v: VacacionesState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -379,9 +404,12 @@ export default function SolicitudVacacionesPage() {
                 ))}
               </div>
             }>
+              {/* Al salir de esta casilla se trae el resto del encabezado de la ficha. */}
               <input
                 value={f.documento}
                 onChange={(e) => set('documento', e.target.value)}
+                onBlur={() => void prellenar(f.documento)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void prellenar(f.documento); } }}
                 readOnly={locked}
                 className="w-full bg-transparent outline-none text-[11px]"
               />

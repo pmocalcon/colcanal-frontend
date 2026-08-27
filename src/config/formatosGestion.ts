@@ -1,5 +1,6 @@
 import {
-  Banknote, CalendarClock, Clock4, FileSignature, FileX2, Gavel, Plane, Scale, Users,
+  Banknote, CalendarClock, Clock4, FileQuestion, FileSignature, FileX2, Forward, Gavel, Hourglass,
+  MailCheck, Plane, Scale, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -41,12 +42,39 @@ export const FORMATO_CONTRATACION = 'GTH-002-F';
  */
 export const FORMATO_TERMINACION = 'ACTA-TERMINACION';
 export const FORMATO_TUTELA = 'CONTESTACION-TUTELA';
+export const FORMATO_PODER = 'PODER-TUTELA';
+export const FORMATO_REQUERIMIENTO = 'REQUERIMIENTO-ACLARACION';
+export const FORMATO_RESPUESTA_PETICION = 'RESPUESTA-PETICION';
+export const FORMATO_REMISION = 'REMISION-COMPETENCIA';
+export const FORMATO_PLAZO = 'PLAZO-ADICIONAL';
 
 // ── G. de talento humano ──
 export const FORMATO_PRESTAMO = 'GTH-007-F';
 export const FORMATO_PERMISO = 'GTH-009-F';
 export const FORMATO_VACACIONES = 'GTH-018-F';
 export const FORMATO_HORAS_EXTRAS = 'GTH-016-F';
+
+/**
+ * Los roles del área dueña de cada gestión, para los formatos marcados `soloDelArea`.
+ *
+ * Va por gestión y no como una lista suelta porque el día que otra gestión tenga formatos
+ * internos —Talento Humano los va a tener— la respuesta no puede ser la misma.
+ */
+const ROLES_DEL_AREA: Record<string, readonly string[]> = {
+  juridica: ['Director Jurídico', 'Coordinador Jurídico', 'Analista Jurídico'],
+};
+
+/** El PMO es el comodín transversal del sistema, igual que en el resto de los módulos. */
+const ROLES_PMO_FORMATOS = ['Analista PMO', 'Director PMO'];
+
+/** Si a este rol se le muestran los formatos internos de esa gestión. */
+export const puedeVerFormatosDelArea = (
+  gestion: string,
+  nombreRol?: string | null,
+): boolean => {
+  const rol = (nombreRol ?? '').trim();
+  return (ROLES_DEL_AREA[gestion] ?? []).includes(rol) || ROLES_PMO_FORMATOS.includes(rol);
+};
 
 /** Columna del listado: cómo se titula y de dónde sale. */
 export interface ColumnaListado {
@@ -71,6 +99,20 @@ export interface FormatoDoc {
   columnas?: ColumnaListado[];
   /** Cómo se nombra un registro suyo en los botones y los vacíos. */
   singular?: string;
+  /**
+   * El formato es **de trabajo interno del área** y no se le pinta en la portada al resto
+   * de la empresa.
+   *
+   * No es lo mismo que un formato que cualquiera diligencia: el trámite de contratación
+   * lo inicia quien necesita contratar, desde cualquier área, mientras que una
+   * contestación de tutela o un poder los redacta la Dirección Jurídica y a nadie más le
+   * sirven —ni le corresponden—.
+   *
+   * Esconder la tarjeta no es la restricción de fondo: lo que cada quien alcanza a ver ya
+   * lo recorta el servidor en el listado. Esto es para que la portada muestre lo que a
+   * cada uno le sirve, en vez de ocho tarjetas de las que siete no puede usar.
+   */
+  soloDelArea?: boolean;
   /**
    * Cómo se rotula y colorea el estado en el listado. Solo la llevan los formatos con
    * flujo de aprobación; con ella, el listado genérico les pinta la columna «Estado» y
@@ -104,6 +146,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
       },
       {
         slug: 'terminacion',
+        soloDelArea: true,
         formato: FORMATO_TERMINACION,
         nombre: 'Terminación anticipada',
         descripcion: 'Acta de terminación anticipada de mutuo acuerdo a un contrato de prestación de servicios',
@@ -116,14 +159,81 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
       },
       {
         slug: 'tutela',
+        soloDelArea: true,
         formato: FORMATO_TUTELA,
         nombre: 'Contestación de tutela',
-        descripcion: 'Contestación de la acción de tutela y solicitud de desvinculación de la representada',
+        descripcion: 'Modelo especial de la Dirección Jurídica: contestación de la acción de tutela y solicitud de desvinculación, con módulos de defensa que se activan según el expediente',
         Icon: Gavel,
         singular: 'contestación',
         columnas: [
           { label: 'Radicado', campo: 'radicado' },
           { label: 'Accionante', campo: 'accionante' },
+        ],
+      },
+      {
+        slug: 'poder',
+        soloDelArea: true,
+        formato: FORMATO_PODER,
+        nombre: 'Poder especial para tutela',
+        descripcion: 'Poder que confiere el representante legal a la apoderada para contestar la acción de tutela y ejercer la defensa judicial',
+        Icon: ScrollText,
+        singular: 'poder',
+        columnas: [
+          { label: 'Radicado', campo: 'radicado' },
+          { label: 'Poderdante', campo: 'repLegal' },
+        ],
+      },
+      {
+        slug: 'requerimiento',
+        soloDelArea: true,
+        formato: FORMATO_REQUERIMIENTO,
+        nombre: 'Requerimiento de aclaración',
+        descripcion: 'Devolución de un derecho de petición cuya finalidad u objeto no se comprende, para que el peticionario lo aclare (artículo 19 de la Ley 1755 de 2015)',
+        Icon: FileQuestion,
+        singular: 'requerimiento',
+        columnas: [
+          { label: 'Radicado', campo: 'radicado' },
+          { label: 'Peticionario', campo: 'peticionario' },
+        ],
+      },
+      {
+        slug: 'respuesta-peticion',
+        soloDelArea: true,
+        formato: FORMATO_RESPUESTA_PETICION,
+        nombre: 'Respuesta a derecho de petición',
+        descripcion: 'Respuesta de fondo a un derecho de petición: antecedentes, consideraciones y pronunciamiento sobre cada solicitud formulada',
+        Icon: MailCheck,
+        singular: 'respuesta',
+        columnas: [
+          { label: 'Radicado', campo: 'radicado' },
+          { label: 'Peticionario', campo: 'peticionario' },
+        ],
+      },
+      {
+        slug: 'remision',
+        soloDelArea: true,
+        formato: FORMATO_REMISION,
+        nombre: 'Remisión por competencia',
+        descripcion: 'Traslado de un derecho de petición a la autoridad competente, con aviso al peticionario (artículo 21 del CPACA)',
+        Icon: Forward,
+        singular: 'remisión',
+        columnas: [
+          { label: 'Radicado', campo: 'radicado' },
+          { label: 'Autoridad competente', campo: 'autoridad' },
+        ],
+      },
+      {
+        slug: 'plazo-adicional',
+        soloDelArea: true,
+        formato: FORMATO_PLAZO,
+        nombre: 'Plazo adicional para responder',
+        descripcion: 'Aviso al peticionario, antes de que venza el término, de que la respuesta se demora: motivos y fecha cierta en que se resolverá (parágrafo del artículo 14 de la Ley 1755 de 2015)',
+        Icon: Hourglass,
+        singular: 'comunicación',
+        columnas: [
+          { label: 'Radicado', campo: 'radicado' },
+          { label: 'Peticionario', campo: 'peticionario' },
+          { label: 'Nueva fecha máxima', campo: 'nuevaFecha' },
         ],
       },
     ],

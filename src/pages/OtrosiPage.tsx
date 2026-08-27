@@ -9,6 +9,8 @@ import { getTipo } from '@/config/juridicaContratos';
 import { TextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
 
 /**
  * Otrosí al contrato. Se firma **después** del acta de inicio, sobre un contrato que ya
@@ -26,9 +28,62 @@ import { PieElaboracion } from '@/components/juridica/PieElaboracion';
  * Ruta: `.../juridica/:id/otrosi`.
  */
 
+/**
+ * Los módulos del otrosí: qué se está modificando.
+ *
+ * El modelo es modular a propósito y su control lo dice: «activar solo los módulos que
+ * correspondan al caso». Un otrosí que solo prorroga no debe llevar una cláusula de valor
+ * en blanco, porque una cláusula vacía en un documento firmado no se lee como «no aplica»
+ * sino como un descuido.
+ *
+ * `adicion` y `formaPago` alimentan la misma cláusula —así la trae el modelo, «modificación
+ * del valor y forma de pago»— pero se activan por separado: se puede adicionar sin cambiar
+ * la forma de pago, y al revés.
+ */
+const MODULOS_OTROSI = [
+  { clave: 'prorroga', label: 'Prórroga del plazo' },
+  { clave: 'adicion', label: 'Adición del valor' },
+  { clave: 'formaPago', label: 'Forma de pago' },
+  { clave: 'obligaciones', label: 'Obligaciones' },
+  { clave: 'otra', label: 'Otra modificación' },
+];
+
+/** Los ordinales de las cláusulas. Se asignan por posición: ver el cálculo en el render. */
+const ORDINAL_CLAUSULA = [
+  'PRIMERA', 'SEGUNDA', 'TERCERA', 'CUARTA', 'QUINTA',
+  'SEXTA', 'SÉPTIMA', 'OCTAVA', 'NOVENA', 'DÉCIMA',
+];
+
 interface Otrosi {
   /** Número de este otrosí dentro del contrato: «02». Sale en el título y en el cuerpo. */
   numero: string;
+
+  // ── Control interno de parametrización, no se imprime ──
+  /** Claves de `MODULOS_OTROSI` activas. */
+  modulos: string[];
+  contratoFuente: string;
+  validacionJuridica: string;
+  /**
+   * El submódulo de la cláusula de obligaciones para los contratos de apoyo a la Dirección
+   * Jurídica. Va aparte porque no es una modificación más: es un régimen de reparto y visto
+   * bueno previo que solo aplica a esos contratos.
+   */
+  apoyoJuridico: boolean;
+
+  // ── Identificación del contrato ──
+  contratanteNit: string;
+  contratoPrincipal: string;
+  fechaContrato: string;
+  objeto: string;
+  valorVigente: string;
+  plazoVigente: string;
+  otrosiesAnteriores: string;
+  garantias: string;
+  /** Desde cuándo produce efectos lo modificado. */
+  fechaEfectos: string;
+  /** Quién lo elaboró. Quien revisa y aprueba es siempre Jurídica. */
+  elaboro: string;
+
   tipologia: string;
   contratante: string;
   /** Quien firma por la contratante, y la contratista con su identificación. */
@@ -36,11 +91,15 @@ interface Otrosi {
   firmanteCargo: string;
   contratista: string;
   contratistaCc: string;
-  /** Las filas de la tabla de la cláusula primera, tal como vienen en el formato. */
+  /**
+   * El cuadro de valores de la versión anterior del formato. El modelo nuevo redacta el
+   * valor en prosa y ya no lo lleva, pero los campos se conservan para no borrar las cifras
+   * de los otrosíes guardados con él: si un documento viejo se vuelve a guardar, lo que
+   * decía sigue ahí.
+   */
   valorInicial: string;
   valorOtrosi01: string;
   valorOtrosi02: string;
-  /** Total acumulado. Se escribe a mano: son cifras en letras y en números, no una suma. */
   valorAcumulado: string;
   antecedentes: string[];
   /** Las obligaciones numeradas de la cláusula tercera. */
@@ -54,6 +113,24 @@ const ANTECEDENTE_NUEVO = '';
 
 const nuevoOtrosi = (numero: string, base: Partial<Otrosi>): Otrosi => ({
   numero,
+
+  // Nace sin módulos: los enciende Jurídica contra el contrato, como pide el control.
+  modulos: [],
+  contratoFuente: '[NÚMERO / FECHA / CLÁUSULAS A MODIFICAR]',
+  validacionJuridica: '[NOMBRE / FECHA / APROBADO]',
+  apoyoJuridico: false,
+
+  contratanteNit: '900.456.735-7',
+  contratoPrincipal: '[NÚMERO / IDENTIFICACIÓN]',
+  fechaContrato: '[FECHA]',
+  objeto: '',
+  valorVigente: '[VALOR EN LETRAS] PESOS M/CTE ($[VALOR]) [IVA INCLUIDO / MÁS IVA / NO APLICA]',
+  plazoVigente: '[FECHA INICIAL] a [FECHA FINAL]',
+  otrosiesAnteriores: 'No aplica',
+  garantias: 'No aplican al contrato',
+  fechaEfectos: '[FECHA]',
+  elaboro: '',
+
   tipologia: '',
   contratante: '',
   firmanteNombre: '',
@@ -116,6 +193,37 @@ export default function OtrosiPage() {
 
   const set = <K extends keyof Otrosi>(k: K, v: Otrosi[K]) =>
     setLista((l) => l.map((o, i) => (i === idx ? { ...o, [k]: v } : o)));
+
+  const alternarModulo = (clave: string) =>
+    setLista((l) => l.map((o, i) => (i === idx
+      ? {
+        ...o,
+        modulos: (o.modulos ?? []).includes(clave)
+          ? (o.modulos ?? []).filter((x) => x !== clave)
+          : [...(o.modulos ?? []), clave],
+      }
+      : o)));
+
+  /*
+   * Qué cláusulas van y con qué ordinal.
+   *
+   * El ordinal se calcula por posición y no se guarda: el modelo está hecho para omitir las
+   * que no apliquen, y un otrosí que solo prorroga tiene que llamar «PRIMERA» a su cláusula
+   * de plazo. Numerarlas fijo dejaría un documento firmado que empieza en la SEGUNDA.
+   *
+   * Garantías, aplicación y vigencia van siempre y cierran la lista: no son modificaciones
+   * sino el marco de lo modificado.
+   */
+  const activos = f?.modulos ?? [];
+  const modulares: string[] = [];
+  if (activos.includes('adicion') || activos.includes('formaPago')) modulares.push('valor');
+  if (activos.includes('prorroga')) modulares.push('plazo');
+  if (activos.includes('obligaciones')) modulares.push('obligaciones');
+  const extras = activos.includes('otra') ? (f?.clausulas?.length ?? 0) : 0;
+  const ordinal = (i: number) => ORDINAL_CLAUSULA[i] ?? `N.º ${i + 1}`;
+  const ordinalDe = (clave: string) => ordinal(modulares.indexOf(clave));
+  /** Dónde empiezan las tres cláusulas fijas del cierre. */
+  const inicioFijas = modulares.length + extras;
 
   // El contexto de textos se arma a mano y no con `useTextosDocumento` porque el estado no
   // es un documento sino una lista: lo que se reescribe pertenece al otrosí abierto.
@@ -181,8 +289,9 @@ export default function OtrosiPage() {
       await gestionConocimientoService.saveDocumento(solicitudId!, 'otrosies', { lista });
       toast.success(lista.length === 1 ? 'Otrosí guardado' : 'Otrosíes guardados');
       return true;
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo guardar');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || 'No se pudo guardar');
       return false;
     } finally {
       setSaving(false);
@@ -286,38 +395,131 @@ export default function OtrosiPage() {
             <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
             <TextosDocumento value={textosCtx}>
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-10 py-8">
-              {/* Membrete */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex flex-col items-center">
-                  <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-                  <span className="text-[11px] font-bold mt-1">900.456.735-7</span>
-                </div>
-                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-              </div>
+              <MembreteOficio
+                titulo="OTROSÍ AL CONTRATO DE PRESTACIÓN DE SERVICIOS"
+                subtitulo="MODELO MODULAR - SIN GARANTÍAS CONTRACTUALES"
+              />
 
-              {/* Título */}
-              <div className="text-center font-bold leading-snug text-[12.5px] mb-5">
-                <div className="flex items-center justify-center gap-1">
-                  <span>OTROSÍ No.</span>
+              <BloqueControl
+                titulo="CONTROL INTERNO — NO SE IMPRIME"
+                nota={
+                  <>
+                    Este modelo es <strong>sin garantías</strong>: úsalo solo si el contrato fuente
+                    no las exige, o si Jurídica validó expresamente que la modificación no obliga a
+                    constituirlas. Enciende únicamente los módulos que correspondan al caso.
+                  </>
+                }
+              >
+                <label className="flex items-center gap-2 text-[12px]">
+                  <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Otrosí N.º</span>
                   <input
                     value={f.numero}
                     onChange={(e) => set('numero', e.target.value)}
                     placeholder="02"
-                    className="w-12 bg-transparent outline-none text-center font-bold border-b border-dotted border-transparent hover:border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+                    className="w-24 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
                   />
+                </label>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-[#4a4a63] mb-1.5">
+                    Módulos a activar · {activos.length} de {MODULOS_OTROSI.length}
+                  </p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
+                    {MODULOS_OTROSI.map((m) => (
+                      <label key={m.clave} className="flex items-center gap-2 text-[11.5px] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={activos.includes(m.clave)}
+                          onChange={() => alternarModulo(m.clave)}
+                          className="shrink-0"
+                        />
+                        <span>{m.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <TextoEd
-                  k="titulo"
-                  plantilla={`CONTRATO DE ${(f.tipologia || delContrato.tipologia).toUpperCase()} SUSCRITO ENTRE ${tx(f.contratante || delContrato.contratante).toUpperCase()} Y ${tx(f.contratista || delContrato.contratista).toUpperCase()}`}
-                  className="text-center"
-                />
-              </div>
+
+                {/* Solo tiene sentido ofrecerlo si se están modificando las obligaciones. */}
+                {activos.includes('obligaciones') && (
+                  <label className="flex items-start gap-2 text-[11.5px] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!f.apoyoJuridico}
+                      onChange={(e) => set('apoyoJuridico', e.target.checked)}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span>
+                      Contrato de apoyo a la Dirección Jurídica
+                      <span className="block text-[10.5px] text-[#8a6d00]">
+                        Agrega el régimen de reparto y visto bueno previo. Actívalo únicamente si el
+                        contrato es de esa clase.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                <label className="flex items-center gap-2 text-[12px]">
+                  <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Contrato fuente</span>
+                  <input
+                    value={f.contratoFuente ?? ''}
+                    onChange={(e) => set('contratoFuente', e.target.value)}
+                    className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                  />
+                </label>
+
+                <label className="flex items-center gap-2 text-[12px]">
+                  <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Validación jurídica</span>
+                  <input
+                    value={f.validacionJuridica ?? ''}
+                    onChange={(e) => set('validacionJuridica', e.target.value)}
+                    className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                  />
+                </label>
+              </BloqueControl>
+
+              {/* Identificación del contrato */}
+              <h2 className="text-center font-bold my-4">IDENTIFICACIÓN DEL CONTRATO</h2>
+
+              <table className="w-full border-collapse text-[12px] mb-4">
+                <tbody>
+                  <FilaId label="Contratante">
+                    <Celda value={f.contratante || delContrato.contratante} onChange={(v) => set('contratante', v)} placeholder="Razón social" />
+                    <span className="shrink-0">- NIT</span>
+                    <Celda value={f.contratanteNit ?? ''} onChange={(v) => set('contratanteNit', v)} />
+                  </FilaId>
+                  <FilaId label="Contratista">
+                    <Celda value={f.contratista || delContrato.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre / razón social" />
+                    <span className="shrink-0">-</span>
+                    <Celda value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="CC / NIT" />
+                  </FilaId>
+                  <FilaId label="Contrato principal">
+                    <Celda value={f.contratoPrincipal ?? ''} onChange={(v) => set('contratoPrincipal', v)} />
+                    <span className="shrink-0">suscrito el</span>
+                    <Celda value={f.fechaContrato ?? ''} onChange={(v) => set('fechaContrato', v)} />
+                  </FilaId>
+                  <FilaId label="Objeto">
+                    <Celda value={f.objeto || delContrato.objeto} onChange={(v) => set('objeto', v)} placeholder="Objeto contractual" />
+                  </FilaId>
+                  <FilaId label="Valor vigente antes del otrosí">
+                    <Celda value={f.valorVigente ?? ''} onChange={(v) => set('valorVigente', v)} />
+                  </FilaId>
+                  <FilaId label="Plazo vigente antes del otrosí">
+                    <Celda value={f.plazoVigente ?? ''} onChange={(v) => set('plazoVigente', v)} />
+                  </FilaId>
+                  <FilaId label="Otrosíes anteriores">
+                    <Celda value={f.otrosiesAnteriores ?? ''} onChange={(v) => set('otrosiesAnteriores', v)} />
+                  </FilaId>
+                  <FilaId label="Garantías">
+                    <Celda value={f.garantias ?? ''} onChange={(v) => set('garantias', v)} />
+                  </FilaId>
+                </tbody>
+              </table>
 
               {/* Comparecencia */}
-              <div className="leading-relaxed text-[12.5px]">
+              <div className="leading-relaxed text-[12.5px] text-justify">
                 <TextoEd
-                  k="comparecencia"
-                  plantilla={`Entre los suscritos a saber, GLORIA LUCÍA ESCALANTE MANZANO, mayor de edad, identificada con cédula de ciudadanía No. 66.651.423 expedida en El Cerrito, actuando en calidad de representante legal de ${tx(f.contratante || delContrato.contratante)}, identificada con NIT No. 900.456.735-7, quien en lo sucesivo y para efectos de este documento se denominará LA CONTRATANTE, y, por otra parte, ${tx(f.contratista || delContrato.contratista)}, identificada con cédula de ciudadanía No. xxx expedida en xxx, quien para efectos de este documento se denominará LA CONTRATISTA, hemos convenido celebrar el presente Otrosí No. ${f.numero || 'xx'} al contrato suscrito el día xx (0x) de xxx de 20xx, de conformidad con los siguientes:`}
+                  k="v2.comparecencia"
+                  plantilla={`Entre los suscritos, GLORIA LUCÍA ESCALANTE MANZANO, identificada con cédula de ciudadanía No. 66.651.423 expedida en El Cerrito, actuando en calidad de representante legal de ${tx(f.contratante || delContrato.contratante)}, identificada con NIT ${tx(f.contratanteNit)}, quien en adelante se denominará LA CONTRATANTE, y ${tx(f.contratista || delContrato.contratista)}, identificado(a) con ${tx(f.contratistaCc)}, quien en adelante se denominará EL/LA CONTRATISTA, hemos convenido celebrar el presente Otrosí No. ${f.numero || 'xx'} al contrato identificado anteriormente, previas las siguientes:`}
                 />
               </div>
 
@@ -326,135 +528,163 @@ export default function OtrosiPage() {
               <ListaLiteral
                 items={f.antecedentes}
                 onChange={(v) => set('antecedentes', v)}
-                clave="ant"
+                clave="v2.ant"
                 editable={editable}
                 plantillas={PLANTILLAS_ANTECEDENTE}
                 etiqueta="antecedente"
               />
 
-              {/* Puente hacia las cláusulas */}
-              <div className="leading-relaxed text-[12.5px] mt-4">
-                <TextoEd
-                  k="puente"
-                  plantilla={`Con fundamento en las anteriores consideraciones, las partes acuerdan modificar el contrato de ${(f.tipologia || delContrato.tipologia).toLowerCase()} y el Otrosí No. 01, en los términos que se establecen a continuación:`}
-                />
-              </div>
-
               <h2 className="text-center font-bold my-4">II.&nbsp;&nbsp;&nbsp;CLÁUSULAS</h2>
 
-              {/* Primera: valor y forma de pago. */}
-              <div className="space-y-3 leading-relaxed text-[12.5px] text-justify">
-                <p>
-                  <b>CLÁUSULA PRIMERA. MODIFICACIÓN DEL VALOR DEL CONTRATO Y FORMA DE PAGO:</b>
+              {modulares.length === 0 && (
+                <p className="no-print text-[11.5px] text-[#8a8aa0] italic mb-2">
+                  Sin módulos activos. Enciende arriba, en el control interno, lo que este otrosí
+                  modifica. Las cláusulas de garantías, aplicación y vigencia van siempre.
                 </p>
-                <TextoEd k="c1.intro" plantilla="Modifíquese la cláusula segunda del contrato, correspondiente al valor y forma de pago, la cual quedará así:" />
+              )}
 
-                <p><b>VALOR TOTAL DEL CONTRATO:</b></p>
-                {/* La cifra va en letras y en números; la tabla solo lleva el número. Se
-                    escribe aquí a mano en vez de interpolar el total, que llenaría los dos
-                    huecos con lo mismo. */}
-                <TextoEd k="c1.valor" plantilla="El valor total acumulado del contrato será la suma de xxx PESOS MONEDA LEGAL ($xxx M/CTE), discriminado así:" />
+              {/* Valor y forma de pago. Se enciende con «adición» o con «forma de pago». */}
+              {modulares.includes('valor') && (
+                <div className="space-y-3 leading-relaxed text-[12.5px] text-justify">
+                  <p><b>CLÁUSULA {ordinalDe('valor')}. MODIFICACIÓN DEL VALOR Y FORMA DE PAGO:</b></p>
 
-                <TablaValores f={f} set={set} />
+                  {activos.includes('adicion') && (
+                    <TextoEd
+                      k="v2.c.valor"
+                      plantilla="El valor total acumulado del contrato será de [VALOR EN LETRAS] PESOS M/CTE ($[VALOR]) [IVA INCLUIDO / MÁS IVA / NO APLICA]. El valor adicionado mediante el presente Otrosí corresponde a [VALOR EN LETRAS] PESOS M/CTE ($[VALOR])."
+                    />
+                  )}
 
-                <p><b>FORMA DE PAGO DEL VALOR ADICIONADO MEDIANTE EL PRESENTE OTROSÍ No. x:</b></p>
-                <TextoEd
-                  k="c1.formaPago"
-                  plantilla="El valor adicionado mediante el presente Otrosí No. x, equivalente a xxx PESOS MONEDA LEGAL ($xxx M/CTE), será cancelado en xxx (x) pagos: (i) un primer pago proporcional por valor de xxx PESOS MONEDA LEGAL ($xxx M/CTE), correspondiente al período comprendido entre el xx (0x) y el xx (xx) de x de 202x, liquidado sobre una base de treinta (30) días; y (ii) cuatro (4) pagos mensuales iguales, cada uno por valor de xxxx PESOS MONEDA LEGAL ($xxxx M/CTE), correspondientes a los meses de xxxx de 202x."
-                />
-                <TextoEd k="c1.condiciones" plantilla="Cada pago se efectuará mes vencido, previa presentación de la respectiva cuenta de cobro o factura, el informe de actividades, la certificación de cumplimiento expedida por el supervisor del contrato y la acreditación del pago de los aportes al Sistema de Seguridad Social Integral correspondientes al período objeto de cobro, de conformidad con la normativa aplicable." />
-                <TextoEd k="c1.radicacion" plantilla="La cuenta de cobro o factura deberá ser presentada por LA CONTRATISTA dentro de los cinco (5) primeros días calendario de cada mes, y el pago se realizará dentro de los cinco (5) días hábiles siguientes a su radicación, siempre que se encuentren cumplidos los requisitos señalados en el presente documento." />
-                <TextoEd k="c1.descuentos" plantilla="Del valor a pagar se efectuarán los descuentos, retenciones, impuestos y demás deducciones a que haya lugar, de conformidad con la normativa tributaria vigente en Colombia. Todos los pagos se realizarán en pesos colombianos." />
-              </div>
+                  {activos.includes('formaPago') && (
+                    <>
+                      <TextoEd
+                        k="v2.c.formaPago"
+                        plantilla="La forma de pago del valor adicionado será: [FORMA DE PAGO / PERIODOS / VALORES / REQUISITOS]."
+                      />
+                      <TextoEd
+                        k="v2.c.requisitos"
+                        plantilla="Los pagos se efectuarán previa presentación de [FACTURA / CUENTA DE COBRO], informe o entregable correspondiente, certificación o visto bueno del supervisor cuando aplique y acreditación de los aportes al Sistema de Seguridad Social Integral exigibles al período objeto de cobro. Se efectuarán las retenciones y deducciones legalmente procedentes."
+                      />
+                    </>
+                  )}
+                </div>
+              )}
 
-              {/* Segunda: plazo de ejecución. */}
-              <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-                <p><b>CLÁUSULA SEGUNDA. MODIFICACIÓN DEL PLAZO DE EJECUCIÓN:</b></p>
-                <TextoEd k="c2.intro" plantilla="Modifíquese la cláusula tercera del contrato, correspondiente a la duración, la cual quedará así:" />
+              {/* Prórroga del plazo. */}
+              {modulares.includes('plazo') && (
+                <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
+                  <p><b>CLÁUSULA {ordinalDe('plazo')}. MODIFICACIÓN DEL PLAZO:</b></p>
+                  <TextoEd
+                    k="v2.c.plazo"
+                    plantilla="El plazo total de ejecución quedará comprendido entre el [FECHA INICIAL] y el [FECHA FINAL]. La prórroga acordada mediante este Otrosí inicia el [FECHA] y finaliza el [FECHA]. Cualquier prórroga posterior deberá constar por escrito y ser suscrita por quienes se encuentren facultados."
+                  />
+                </div>
+              )}
 
-                <p><b>DURACIÓN:</b></p>
-                <TextoEd k="c2.duracion" plantilla="El plazo total de ejecución del contrato estará comprendido entre el xx (xx) de agosto de 202x y el xxx (xx) de xxx de 202x." />
-                <TextoEd k="c2.prorroga" plantilla="La prórroga pactada mediante el presente Otrosí No. xxx inicia el xxx (0x) de x de 202x y finaliza el xxx (x) de xxx de 202x." />
-                <TextoEd k="c2.futuras" plantilla="El contrato podrá ser prorrogado nuevamente de común acuerdo entre las partes, siempre que medie documento escrito suscrito por ambas partes." />
-              </div>
+              {/* Obligaciones, con su submódulo de apoyo jurídico. */}
+              {modulares.includes('obligaciones') && (
+                <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
+                  <p><b>CLÁUSULA {ordinalDe('obligaciones')}. MODIFICACIÓN DE OBLIGACIONES:</b></p>
+                  <TextoEd
+                    k="v2.c.oblIntro"
+                    plantilla="A partir del [FECHA], las obligaciones de EL/LA CONTRATISTA serán las siguientes:"
+                  />
 
-              {/* Tercera: obligaciones de la contratista. */}
-              <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-                <p><b>CLÁUSULA TERCERA:</b></p>
-                <TextoEd k="c3.intro" plantilla={`Modifíquese la cláusula CUARTA del contrato de ${(f.tipologia || delContrato.tipologia).toLowerCase()}, la cual quedará así:`} />
+                  <ListaLiteral
+                    items={f.obligaciones}
+                    onChange={(v) => set('obligaciones', v)}
+                    clave="v2.obl"
+                    marca="numero"
+                    editable={editable}
+                    plantillas={PLANTILLAS_OBLIGACION}
+                    etiqueta="obligación"
+                  />
 
-                <p><b>CUARTA. OBLIGACIONES DE LA CONTRATISTA:</b></p>
-                <TextoEd k="c3.encabezado" plantilla={ENCABEZADO_OBLIGACIONES} />
+                  {/* El régimen de apoyo jurídico no es una obligación más de la lista:
+                      cambia quién decide y qué necesita visto bueno antes de salir. Por eso
+                      va como bloque aparte y solo cuando el contrato es de esa clase. */}
+                  {f.apoyoJuridico && (
+                    <div className="pt-1 space-y-2">
+                      <p><b>MÓDULO OPCIONAL - CONTRATOS DE APOYO A LA DIRECCIÓN JURÍDICA</b></p>
+                      <TextoEd
+                        k="v2.c.apoyo"
+                        plantilla="Los asuntos serán asignados mediante reparto por la Directora Jurídica o quien formalmente haga sus veces. Todo concepto, proyecto, informe, respuesta, memorial, recurso, comunicación o documento elaborado deberá someterse a revisión y visto bueno previo antes de su firma, radicación, remisión o presentación a terceros. La asignación de un asunto no confiere facultades autónomas de decisión, aprobación o representación, salvo poder o autorización formal para la actuación específica."
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
-                <ListaLiteral
-                  items={f.obligaciones}
-                  onChange={(v) => set('obligaciones', v)}
-                  clave="obl"
-                  marca="numero"
+              {/* Las demás modificaciones, cuando el caso trae alguna que no encaja arriba. */}
+              {activos.includes('otra') && (
+                <Clausulas
+                  items={f.clausulas}
+                  onChange={(v) => set('clausulas', v)}
                   editable={editable}
-                  plantillas={PLANTILLAS_OBLIGACION}
-                  etiqueta="obligación"
+                  desde={modulares.length}
                 />
+              )}
 
-                {/* El parágrafo cierra la tercera: aclara que el reparto no es exclusivo
-                    ni le da a la contratista facultades frente a terceros. */}
-                <p className="pt-1"><b>PARÁGRAFO.</b></p>
-                <TextoEd k="c3.paragrafo" plantilla={PARAGRAFO_OBLIGACIONES} />
-              </div>
-
-              {/* Cuarta: a qué período se aplica lo modificado. */}
+              {/* Las tres que van siempre. La de garantías es la que sostiene que este
+                  modelo se puede usar: si el contrato principal sí las exige, lo dice y
+                  advierte que la plantilla no sirve sin el ajuste y la aprobación previa. */}
               <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-                <p><b>CLÁUSULA CUARTA: APLICACIÓN DE LAS MODIFICACIONES:</b></p>
+                <p><b>CLÁUSULA {ordinal(inicioFijas)}. GARANTÍAS:</b></p>
                 <TextoEd
-                  k="c4.aplicacion"
-                  plantilla="Las condiciones económicas, operativas y temporales establecidas en el presente Otrosí No. 0xx serán aplicables al período comprendido entre el xx (0xx) de xx de 202x y el xxx (x) de xx de 202x."
+                  k="v2.c.garantias"
+                  plantilla="Las partes dejan constancia de que, conforme al contrato fuente y a la validación jurídica efectuada para el presente caso, no se exige constitución de garantía contractual para la ejecución de este Otrosí. Si el contrato principal sí exige garantías o la modificación altera riesgos que deban ser amparados, esta plantilla no deberá utilizarse sin el ajuste correspondiente y la aprobación previa de la garantía."
                 />
               </div>
 
-              {/* Quinta: lo que no se tocó sigue vigente. */}
               <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
-                <p><b>CLÁUSULA QUINTA: VIGENCIA DE LAS DEMÁS ESTIPULACIONES:</b></p>
+                <p><b>CLÁUSULA {ordinal(inicioFijas + 1)}. APLICACIÓN DE LAS MODIFICACIONES:</b></p>
                 <TextoEd
-                  k="c5.vigencia"
-                  plantilla="Las demás cláusulas, obligaciones, condiciones y estipulaciones contenidas en el contrato principal y en el Otrosí No. xx continuarán vigentes en su integridad y conservarán plena fuerza obligatoria entre las partes, en todo aquello que no haya sido expresamente modificado mediante el presente Otrosí No. xxx. Las modificaciones aquí contenidas regirán a partir del xxx (0x) de xx de 202x."
+                  k="v2.c.aplicacion"
+                  plantilla={`Las modificaciones contenidas en el presente Otrosí producirán efectos a partir del ${tx(f.fechaEfectos)}, salvo que en una cláusula específica se establezca una fecha distinta.`}
                 />
               </div>
 
-              {/* Las demás cláusulas cambian en cada otrosí, así que no tienen plantilla. */}
-              <Clausulas
-                items={f.clausulas}
-                onChange={(v) => set('clausulas', v)}
-                editable={editable}
-              />
+              <div className="space-y-3 leading-relaxed text-[12.5px] text-justify mt-5">
+                <p><b>CLÁUSULA {ordinal(inicioFijas + 2)}. VIGENCIA DE LAS DEMÁS ESTIPULACIONES:</b></p>
+                <TextoEd
+                  k="v2.c.vigencia"
+                  plantilla="Las cláusulas y condiciones del contrato principal y de sus modificatorios anteriores que no hayan sido expresamente modificadas mediante el presente Otrosí conservan plena vigencia y fuerza obligatoria."
+                />
+              </div>
 
               {/* Suscripción y firmas */}
               <div className="leading-relaxed text-[12.5px] text-justify mt-5">
-                <TextoEd k="suscripcion" plantilla="Para constancia, se suscribe en Santiago de Cali, Valle del Cauca, el día xxx (0x) de xxx de dos mil xx (202x)." />
+                <TextoEd k="v2.suscripcion" plantilla="Para constancia, se suscribe en Santiago de Cali, Valle del Cauca, el [DÍA] de [MES] de [AÑO]." />
               </div>
 
-              <div className="grid grid-cols-2 gap-8 mt-8 text-[12px]">
-                <div>
-                  <p className="font-bold mb-16">LA CONTRATANTE</p>
+              <div className="grid grid-cols-2 gap-10 mt-16 text-[12px]">
+                <div className="border-t border-[#0a2a52] pt-1 space-y-0.5">
                   <FLine value={f.firmanteNombre} onChange={(v) => set('firmanteNombre', v)} placeholder="NOMBRE DE QUIEN FIRMA" bold />
                   <FLine value={f.firmanteCargo} onChange={(v) => set('firmanteCargo', v)} placeholder="Representante Legal" />
-                  <FLine value={f.contratante} onChange={(v) => set('contratante', v)} placeholder="EMPRESA CONTRATANTE" bold />
+                  <FLine value={f.contratante} onChange={(v) => set('contratante', v)} placeholder="EMPRESA CONTRATANTE" />
+                  <p className="font-bold">LA CONTRATANTE</p>
                 </div>
-                <div>
-                  <p className="font-bold mb-16">LA CONTRATISTA</p>
-                  <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="NOMBRE DE LA CONTRATISTA" bold />
-                  <FLine value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="C.C. xxxx, xx" />
+                <div className="border-t border-[#0a2a52] pt-1 space-y-0.5">
+                  <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="NOMBRE / RAZÓN SOCIAL" bold />
+                  <FLine value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="CC / NIT" />
+                  <p className="font-bold">EL/LA CONTRATISTA</p>
                 </div>
               </div>
 
-              {/* Membrete del pie */}
-              <div className="mt-10 pt-3 text-center text-[9.5px] leading-snug text-[#0a2a52]">
-                <p>Calle 13A N.º 101 - 60 B/ Ciudad Jardín Cali, Valle del Cauca</p>
-                <p className="underline">gestiondocumental@alumbrados.co</p>
-                <p>PBX: (602) 5246612 Ext. 111 &nbsp; Línea nacional 3009108536</p>
-              </div>
+              <PieMembrete />
             </div>
-            {/* El otrosí no distingue autoría: lo firma quien lo revisa. */}
-            <PieElaboracion soloRevision />
+            {/* Quien elabora varía; Jurídica revisa y aprueba. El modelo distingue las dos
+                cosas, y aprobar no es lo mismo que haber redactado. */}
+            <div className="px-8 pt-3 text-[10px] text-black">
+              <span>Elaboró: </span>
+              <input
+                value={f.elaboro ?? ''}
+                onChange={(e) => set('elaboro', e.target.value)}
+                placeholder="Nombre - Cargo"
+                className="bg-transparent outline-none text-[10px] w-64 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+              />
+            </div>
+            <PieElaboracion soloRevision etiqueta="Revisó y aprobó" className="pt-0" />
             </TextosDocumento>
             </fieldset>
           </>
@@ -488,39 +718,6 @@ const PLANTILLAS_ANTECEDENTE = [
   'Conforme a lo anterior, y teniendo en cuenta que la cláusula tercera del contrato prevé que este podrá ser prorrogado de común acuerdo entre las partes mediante documento escrito, las partes manifiestan su voluntad de celebrar el presente Otrosí No. 02 con el fin de: (i) prorrogar el plazo de ejecución desde el seis (06) de agosto de 2026 hasta el treinta y uno (31) de diciembre de 2026; (ii) adicionar su valor en la suma de xxx PESOS MONEDA LEGAL ($xxx M/CTE); y (iii) precisar y actualizar las obligaciones específicas de LA CONTRATISTA, las cuales se ejecutarán únicamente respecto de los asuntos y actividades que le sean asignados mediante reparto por la Directora Jurídica y cuyos productos deberán contar con su revisión y visto bueno previo.',
 ];
 
-/**
- * El encabezado de la cláusula de obligaciones. Es un solo párrafo largo y va aparte de la
- * lista numerada porque no es una obligación más: fija de quién reciben el reparto, qué
- * pasa por la Dirección Jurídica y qué municipios comprende «las UTAP».
- */
-const ENCABEZADO_OBLIGACIONES =
-  'Las obligaciones que se relacionan a continuación serán ejecutadas por LA CONTRATISTA '
-  + 'únicamente respecto de los asuntos y actividades que le sean asignados previamente mediante '
-  + 'reparto de la Directora xxxxx de CANALES Y CONTACTOS S.A.S. o por quien formalmente haga sus veces, '
-  + 'de acuerdo con la distribución interna de cargas de trabajo. Todo concepto, proyecto, revisión, '
-  + 'informe, presentación, comunicación, respuesta, memorial, recurso, actuación o documento elaborado '
-  + 'por LA CONTRATISTA deberá someterse a revisión y contar con el visto bueno previo y expreso de la '
-  + 'Directora Jurídica antes de su firma, radicación, remisión, presentación o comunicación a terceros. '
-  + 'LA CONTRATISTA no podrá asumir, reasignar, suscribir, radicar, remitir o presentar asuntos o '
-  + 'documentos por iniciativa propia, salvo autorización previa y expresa de la Directora Jurídica. '
-  + 'Para efectos de esta cláusula, la expresión "las UTAP" comprende las UTAP Guacarí, El Cerrito, '
-  + 'Quimbaya, Circasia, Puerto Asís, Jericó, Ciudad Bolívar, Pueblorico, Tarso y Santa Bárbara.';
-
-/**
- * El parágrafo de la cláusula de obligaciones. Es la salvaguarda del contrato: deja escrito
- * que el reparto no vuelve exclusiva la asignación ni convierte la relación en laboral.
- */
-const PARAGRAFO_OBLIGACIONES =
-  'La relación de actividades y municipios prevista en esta cláusula no implica asignación '
-  + 'exclusiva a LA CONTRATISTA. La Directora Jurídica podrá distribuir o redistribuir los asuntos '
-  + 'y actividades entre LA CONTRATISTA y los demás integrantes del área jurídica, de acuerdo con '
-  + 'las necesidades del servicio, las cargas de trabajo y las prioridades institucionales. El reparto '
-  + 'no confiere a LA CONTRATISTA facultades de decisión, aprobación, representación, suscripción, '
-  + 'radicación o actuación frente a terceros, las cuales requerirán autorización y visto bueno previo '
-  + 'de la Directora Jurídica. Estas reglas corresponden a mecanismos de coordinación, distribución y '
-  + 'control de calidad de los productos contractuales y no modifican la naturaleza civil del contrato '
-  + 'ni la autonomía técnica propia de LA CONTRATISTA.';
-
 /** Las seis obligaciones del formato. La primera queda abierta: cambia en cada contrato. */
 const PLANTILLAS_OBLIGACION = [
   'Apoyar xxxxxx',
@@ -534,6 +731,35 @@ const PLANTILLAS_OBLIGACION = [
 /* ── Subcomponentes ─────────────────────────────────────── */
 
 /** Renglón de un bloque de firma. */
+/**
+ * Fila de la tabla de identificación. Los hijos son las celdas del valor: van varias
+ * cuando el modelo junta dos datos en el mismo renglón —«razón social - NIT»— pero se
+ * guardan por separado, porque el texto del otrosí los cita cada uno por su lado.
+ */
+function FilaId({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <tr>
+      <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[34%]">{label}</td>
+      <td className="border border-[#0a2a52] px-2 py-1 align-top">
+        <div className="flex items-baseline gap-1">{children}</div>
+      </td>
+    </tr>
+  );
+}
+
+function Celda({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="flex-grow min-w-0 bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+    />
+  );
+}
+
 function FLine({ value, onChange, placeholder, bold }: {
   value: string; onChange: (v: string) => void; placeholder?: string; bold?: boolean;
 }) {
@@ -598,68 +824,20 @@ function ListaLiteral({ items, onChange, clave, editable, plantillas, etiqueta, 
   );
 }
 
+
 /**
- * La tabla de valores de la cláusula primera, con las filas del formato. Los conceptos son
- * fijos —no se arman desde la lista de otrosíes— y solo se escriben los valores.
+ * Las modificaciones que no encajan en ningún módulo. No tienen plantilla porque lo que se
+ * modifica cambia en cada otrosí; la numeración sí se pone sola.
  *
- * El total tampoco se suma solo: las celdas llevan cifras escritas a mano, a veces con el
- * valor en letras, y una suma sobre texto libre acertaría casi siempre y se equivocaría en
- * silencio el resto de las veces, en el renglón que fija cuánto se paga.
+ * `desde` es cuántas cláusulas modulares quedaron antes. Antes era fijo —estas empezaban
+ * siempre en la QUINTA— y con los módulos dejó de serlo: en un otrosí que solo prorroga,
+ * la primera de estas es la SEGUNDA.
  */
-function TablaValores({ f, set }: {
-  f: Otrosi;
-  set: <K extends keyof Otrosi>(k: K, v: Otrosi[K]) => void;
-}) {
-  const celda = 'border border-[#0a2a52] px-2 py-1';
-  const campo = 'w-full bg-transparent outline-none text-center text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] disabled:opacity-100 disabled:text-black';
-  return (
-    <table className="w-full border-collapse text-[12px] my-3">
-      <thead>
-        <tr className="bg-[#dce6f1] font-bold">
-          <th className={celda}>Concepto</th>
-          <th className={`${celda} w-[28%]`}>Valor</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td className={`${celda} text-center`}>Valor inicial del contrato</td>
-          <td className={celda}>
-            <input value={f.valorInicial} onChange={(e) => set('valorInicial', e.target.value)} placeholder="x" className={campo} />
-          </td>
-        </tr>
-        <tr>
-          <td className={`${celda} text-center`}>Valor adicionado mediante Otrosí No. 01</td>
-          <td className={celda}>
-            <input value={f.valorOtrosi01} onChange={(e) => set('valorOtrosi01', e.target.value)} placeholder="x" className={campo} />
-          </td>
-        </tr>
-        <tr>
-          <td className={`${celda} text-center`}>Valor adicionado mediante Otrosí No. 02</td>
-          <td className={celda}>
-            <input value={f.valorOtrosi02} onChange={(e) => set('valorOtrosi02', e.target.value)} placeholder="x" className={campo} />
-          </td>
-        </tr>
-        <tr className="font-bold">
-          <td className={`${celda} text-center`}>VALOR TOTAL ACUMULADO DEL CONTRATO</td>
-          <td className={celda}>
-            <input value={f.valorAcumulado} onChange={(e) => set('valorAcumulado', e.target.value)} placeholder="$ x" className={`${campo} font-bold`} />
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-/**
- * Las cláusulas que siguen a la cuarta. No tienen plantilla porque lo que se modifica
- * cambia en cada otrosí; la numeración sí se pone sola, para que no queden dos «QUINTA».
- */
-const ORDINALES = ['QUINTA', 'SEXTA', 'SÉPTIMA', 'OCTAVA', 'NOVENA', 'DÉCIMA'];
-
-function Clausulas({ items, onChange, editable }: {
+function Clausulas({ items, onChange, editable, desde }: {
   items: { titulo: string; texto: string }[];
   onChange: (v: { titulo: string; texto: string }[]) => void;
   editable: boolean;
+  desde: number;
 }) {
   const cambiar = (i: number, campo: 'titulo' | 'texto', valor: string) =>
     onChange(items.map((c, j) => (j === i ? { ...c, [campo]: valor } : c)));
@@ -672,7 +850,7 @@ function Clausulas({ items, onChange, editable }: {
             <input
               value={c.titulo}
               onChange={(e) => cambiar(i, 'titulo', e.target.value)}
-              placeholder={`CLÁUSULA ${ORDINALES[i] ?? `N.º ${i + 5}`}. TÍTULO DE LA MODIFICACIÓN:`}
+              placeholder={`CLÁUSULA ${ORDINAL_CLAUSULA[desde + i] ?? `N.º ${desde + i + 1}`}. TÍTULO DE LA MODIFICACIÓN:`}
               className="w-full bg-transparent outline-none font-bold [font-size:inherit] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] disabled:opacity-100 disabled:text-black"
             />
             <textarea

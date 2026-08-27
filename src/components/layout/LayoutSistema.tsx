@@ -15,7 +15,7 @@ import {
   SUBMODULOS_COMPRAS, SUBMODULOS_CREG, SUBMODULOS_OBRAS, accesoCompras, accesoObras,
 } from '@/config/submodulos';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
-import { esRolPmo } from '@/utils/rolesPmo';
+import { puedeVerRecursoEconomico } from '@/utils/rolesPmo';
 import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 /**
@@ -102,7 +102,7 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       // pedir. Gestión del conocimiento sí es para todos.
       .filter((f) => {
         if (f.slug === 'talento-humano') return puedeVerTalentoHumano(user?.nombreRol);
-        if (f.slug === 'recurso-economico') return esRolPmo(user?.nombreRol);
+        if (f.slug === 'recurso-economico') return puedeVerRecursoEconomico(user?.nombreRol);
         return true;
       })
       .map((f) => ({ ...f, acceso: true }));

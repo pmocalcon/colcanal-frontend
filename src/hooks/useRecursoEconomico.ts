@@ -65,5 +65,18 @@ export function useRecursoEconomico(activo: boolean) {
     }
   }, [datos]);
 
-  return { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar };
+  /**
+   * Deja el módulo como quedó después de una escritura que no pasó por `guardar`.
+   *
+   * La usa el visto bueno del director, que se guarda por su propio endpoint: como el
+   * servidor devuelve el bloque completo ya escrito, se toma tal cual y queda sin cambios
+   * pendientes. Tocar solo `datos` habría dejado la pantalla diciendo que hay algo por
+   * guardar cuando ya está guardado.
+   */
+  const asentar = useCallback((fresco: RecursoEconomicoData) => {
+    setDatos(fresco);
+    setGuardado(fresco);
+  }, []);
+
+  return { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar, asentar };
 }

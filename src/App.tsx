@@ -80,6 +80,11 @@ import GestionFormatosHomePage from './pages/GestionFormatosHomePage'
 import FormatoListPage from './pages/FormatoListPage'
 import ActaTerminacionPage from './pages/ActaTerminacionPage'
 import ContestacionTutelaPage from './pages/ContestacionTutelaPage'
+import PoderTutelaPage from './pages/PoderTutelaPage'
+import RequerimientoAclaracionPage from './pages/RequerimientoAclaracionPage'
+import RespuestaPeticionPage from './pages/RespuestaPeticionPage'
+import RemisionCompetenciaPage from './pages/RemisionCompetenciaPage'
+import ComunicacionPlazoPage from './pages/ComunicacionPlazoPage'
 import SolicitudPrestamoPage from './pages/SolicitudPrestamoPage'
 import SolicitudPermisoPage from './pages/SolicitudPermisoPage'
 import SolicitudVacacionesPage from './pages/SolicitudVacacionesPage'
@@ -92,6 +97,9 @@ import AusentismosPage from './pages/AusentismosPage'
 import HorasExtrasListPage from './pages/HorasExtrasListPage'
 import VacacionesListPage from './pages/VacacionesListPage'
 import NominaPage from './pages/NominaPage'
+import ParametrosNominaPage from './pages/ParametrosNominaPage'
+import SolicitudesPagoPage from './pages/SolicitudesPagoPage'
+import SolicitudPagoPage from './pages/SolicitudPagoPage'
 import ActaInicioPage from './pages/ActaInicioPage'
 import OtrosiPage from './pages/OtrosiPage'
 import ContratoPage from './pages/ContratoPage'
@@ -336,6 +344,9 @@ export default function App() {
           <Route path="/dashboard/talento-humano/horas-extras" element={<HorasExtrasListPage />} />
           <Route path="/dashboard/talento-humano/vacaciones" element={<VacacionesListPage />} />
           <Route path="/dashboard/talento-humano/nomina" element={<NominaPage />} />
+          <Route path="/dashboard/talento-humano/parametros" element={<ParametrosNominaPage />} />
+          <Route path="/dashboard/talento-humano/pagos" element={<SolicitudesPagoPage />} />
+          <Route path="/dashboard/talento-humano/pagos/:id" element={<SolicitudPagoPage />} />
           <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />
           {/* La gestión abre en su portada de formatos; el trámite de contratación pasa a
               vivir bajo /contratos. Los segmentos fijos ganan sobre /:id (React Router los
@@ -346,6 +357,16 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica/terminacion/:id" element={<ActaTerminacionPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela" element={<FormatoListPage gestion="juridica" slug="tutela" />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela/:id" element={<ContestacionTutelaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/poder" element={<FormatoListPage gestion="juridica" slug="poder" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/poder/:id" element={<PoderTutelaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/requerimiento" element={<FormatoListPage gestion="juridica" slug="requerimiento" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/requerimiento/:id" element={<RequerimientoAclaracionPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/respuesta-peticion" element={<FormatoListPage gestion="juridica" slug="respuesta-peticion" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/respuesta-peticion/:id" element={<RespuestaPeticionPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/remision" element={<FormatoListPage gestion="juridica" slug="remision" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/remision/:id" element={<RemisionCompetenciaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/plazo-adicional" element={<FormatoListPage gestion="juridica" slug="plazo-adicional" />} />
+          <Route path="/dashboard/gestion-conocimiento/juridica/plazo-adicional/:id" element={<ComunicacionPlazoPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/nueva" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id" element={<SolicitudPrestacionServiciosPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/:id/requisicion-personal" element={<RequisicionPersonalPage />} />

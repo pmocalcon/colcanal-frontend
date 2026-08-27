@@ -3,8 +3,12 @@
  * acciones disponibles por rol/estado y SLA en días hábiles. Espeja la máquina de
  * estados del backend (prestamo-workflow.ts).
  *
- * Los pasos son las tres firmas del propio formato: el empleado envía, Dirección
- * Administrativa firma y Gerencia aprueba fijando el valor del bloque 3.
+ * Los pasos son las tres firmas del propio formato, en el orden en que se recogen: el
+ * empleado envía, **Gerencia autoriza** fijando el valor del bloque 3, y Dirección
+ * Administrativa y Financiera firma y pacta el desembolso.
+ *
+ * Gerencia va primero porque es quien decide si se presta y por cuánto: ese valor es el
+ * que Administrativa necesita para armar las cuotas.
  *
  * @see rolesPmo — el PMO (Analista y Director) puede ejecutar cualquier paso.
  */
@@ -25,13 +29,14 @@ interface EstadoMeta {
 
 export const PRESTAMO_ESTADOS: Record<PrestamoEstado, EstadoMeta> = {
   borrador: { label: 'Borrador', sla: null, tone: 'gray' },
+  pendiente_gerencia: { label: 'Pendiente de autorización de Gerencia', sla: 2, tone: 'blue' },
   pendiente_administrativa: { label: 'Pendiente de firma de Dirección Administrativa', sla: 2, tone: 'amber' },
-  pendiente_gerencia: { label: 'Pendiente de aprobación de Gerencia', sla: 2, tone: 'blue' },
   aprobado: { label: 'Aprobado', sla: null, tone: 'green' },
 };
 
 const ROLES_ADMINISTRATIVA = ['Director Financiero y Administrativo'];
-const ROLES_GERENCIA = ['Gerencia']; // Dra. Gloria
+/** Por rol, como en todo el sistema. Hoy lo tienen dos usuarias. */
+const ROLES_GERENCIA = ['Gerencia'];
 
 export interface PrestamoTransicion {
   accion: string;
@@ -45,11 +50,11 @@ export interface PrestamoTransicion {
 }
 
 export const PRESTAMO_TRANSICIONES: PrestamoTransicion[] = [
-  { accion: 'enviar', from: 'borrador', to: 'pendiente_administrativa', roles: [], soloCreador: true, label: 'Enviar a Dirección Administrativa', tone: 'primary' },
-  { accion: 'aprobar_administrativa', from: 'pendiente_administrativa', to: 'pendiente_gerencia', roles: ROLES_ADMINISTRATIVA, label: 'Firmar y enviar a Gerencia', tone: 'primary' },
-  { accion: 'rechazar_administrativa', from: 'pendiente_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver al empleado', tone: 'danger' },
-  { accion: 'aprobar_gerencia', from: 'pendiente_gerencia', to: 'aprobado', roles: ROLES_GERENCIA, label: 'Aprobar el préstamo', tone: 'primary' },
+  { accion: 'enviar', from: 'borrador', to: 'pendiente_gerencia', roles: [], soloCreador: true, label: 'Enviar a Gerencia', tone: 'primary' },
+  { accion: 'aprobar_gerencia', from: 'pendiente_gerencia', to: 'pendiente_administrativa', roles: ROLES_GERENCIA, label: 'Autorizar y pasar a Dirección Administrativa', tone: 'primary' },
   { accion: 'rechazar_gerencia', from: 'pendiente_gerencia', to: 'borrador', roles: ROLES_GERENCIA, requiereMotivo: true, label: 'Rechazar la solicitud', tone: 'danger' },
+  { accion: 'aprobar_administrativa', from: 'pendiente_administrativa', to: 'aprobado', roles: ROLES_ADMINISTRATIVA, label: 'Firmar y aprobar el préstamo', tone: 'primary' },
+  { accion: 'rechazar_administrativa', from: 'pendiente_administrativa', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, label: 'Devolver al empleado', tone: 'danger' },
 ];
 
 /** Acciones que el usuario (por su rol) puede ejecutar sobre un préstamo en cierto estado. */

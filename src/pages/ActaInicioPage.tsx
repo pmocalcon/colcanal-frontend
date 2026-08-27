@@ -10,55 +10,121 @@ import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/jurid
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
 
 /**
- * Formato GJ-006-F · "Acta de inicio para contrato por prestación de servicios,
- * alquiler o suministro" (fase 2 de G. jurídica). La diligencia Jurídica.
- * Reutiliza datos del contrato (solicitud) y de la designación de supervisor, y el texto
- * se puede reescribir. Ruta: `.../juridica/:id/acta-inicio`. Se guarda en data.actaInicio.
+ * "Acta de inicio" del contrato de prestación de servicios, alquiler, suministro u otro
+ * (fase 2 de G. jurídica). La diligencia Jurídica.
+ *
+ * La firman quien supervisa por parte de la contratante y la contratista. El supervisor es
+ * un campo propio y no se deduce del representante legal: desde que la designación admite
+ * nombrar a un tercero, quien supervisa puede no ser quien representa a la empresa, y el
+ * acta lo tiene que decir con el nombre de quien de verdad va a firmarla.
+ *
+ * Reutiliza datos del contrato (solicitud) y de la designación de supervisor, y el texto se
+ * puede reescribir. Ruta: `.../juridica/:id/acta-inicio`. Se guarda en data.actaInicio.
  */
 
 interface ActaState {
-  // Encabezado / título
-  contratante: string; identTributaria: string; tipologia: string; contratista: string;
+  // ── Control interno de parametrización, no se imprime ──
+  codigoDocumental: string;
+  version: string;
   /**
-   * Representante legal de la contratante. No hay un campo aparte para el supervisor
-   * porque el formato no lo tiene: en la tabla figura como representante legal y al pie
-   * firma como «La Supervisora». Son la misma persona y con dos campos podrían discrepar.
+   * Si el contrato exige garantías como condición de inicio.
+   *
+   * Manda sobre el texto: apagado, el acta afirma que el contrato no las exige y no queda
+   * ninguna referencia a su aprobación. El modelo lo pide expresamente, y con razón —un
+   * acta que diga «las garantías fueron aprobadas» donde no había garantías es una
+   * constancia falsa sobre un requisito de inicio.
    */
+  exigeGarantias: boolean;
+
+  // ── La contratante ──
+  contratante: string; identTributaria: string;
   representanteLegal: string; representanteCc: string;
-  /** La contratista puede ser una empresa: identificación propia y representante legal. */
-  contratistaCc: string;
+
+  tipologia: string;
+
+  // ── La contratista ──
+  contratista: string; contratistaCc: string;
   contratistaRepLegal: string; contratistaRepCc: string;
   direccion: string; celular: string; correo: string;
+
   objeto: string;
   valor: string; formaPago: string;
   plazo: string;
+
+  /** Quien supervisa. Sale de la designación; puede no ser el representante legal. */
+  supervisorNombre: string; supervisorId: string; supervisorCargo: string;
+
+  garantias: string;
+  /** Fecha del acta de aprobación de garantías, cuando el contrato las exige. */
   aprobacionGarantias: string;
+
   inicio: string; terminacion: string;
-  /** Ciudad de la reunión de inicio. Solo aparece dentro del párrafo de apertura. */
+
+  /** Dónde y cuándo se reunieron las partes. Solo aparece en el párrafo de apertura. */
   ciudadReunion: string;
-  // Fechas
+  fechaReunion: string;
+  /** Qué requisitos de inicio se dan por cumplidos. */
+  requisitos: string;
+
+  // Constancia de inicio
   fechaInicio: string; plazoCorto: string; fechaFinal: string;
+
+  /** Quién la elaboró. Quien la revisa es siempre Jurídica y va en `PieElaboracion`. */
+  elaboro: string;
+
   /** Texto del acta que Jurídica reescribió, por clave. Vacío = plantilla. */
   textos: Record<string, string>;
 }
 
 const EMPTY: ActaState = {
-  contratante: '', identTributaria: '', tipologia: '', contratista: '',
+  codigoDocumental: '[ASIGNAR / VALIDAR POR GESTIÓN DOCUMENTAL]',
+  version: '[VERSIÓN]',
+  exigeGarantias: true,
+
+  contratante: '', identTributaria: '',
   representanteLegal: '', representanteCc: '',
-  contratistaCc: '',
+
+  tipologia: '',
+
+  contratista: '', contratistaCc: '',
   contratistaRepLegal: '', contratistaRepCc: '',
   direccion: '', celular: '', correo: '',
+
   objeto: '',
   valor: '', formaPago: '',
   plazo: '',
+
+  supervisorNombre: '', supervisorId: '', supervisorCargo: '',
+
+  garantias: '',
   aprobacionGarantias: '',
+
   inicio: '', terminacion: '',
+
   ciudadReunion: '',
+  fechaReunion: '',
+  requisitos: '',
+
   fechaInicio: '', plazoCorto: '', fechaFinal: '',
+
+  elaboro: '',
   textos: {},
 };
+
+/**
+ * Las claves de `textos` de esta versión del formato van con prefijo `v2.`.
+ *
+ * Los párrafos cambiaron de redacción y de estructura —donde había uno solo ahora hay
+ * tres—, pero conservan el mismo papel dentro del acta. Reusar las claves viejas haría que
+ * un acta que hubiera reescrito «apertura» heredara ese párrafo en un lugar donde ahora
+ * dice otra cosa. Con prefijo propio, lo guardado antes se queda quieto y esta versión
+ * arranca de su plantilla.
+ */
+const claveTexto = (clave: string) => `v2.${clave}`;
 
 const puedeEditar = (rol?: string) => {
   const r = (rol ?? '').toLowerCase();
@@ -93,10 +159,29 @@ export default function ActaInicioPage() {
         setSol(data);
         const d = data.data ?? {};
         const saved = (d.actaInicio ?? {}) as Partial<ActaState>;
-        const des = (d.designacionSupervisor ?? {}) as Record<string, string>;
+        /*
+         * Lo que el acta hereda de la designación. Se enumera en vez de leerlo suelto para
+         * que se vea de una qué campos cruzan de un documento al otro: los de más abajo son
+         * de versiones anteriores de la designación y solo sirven para no perder datos.
+         */
+        const des = (d.designacionSupervisor ?? {}) as {
+          mismaPersona?: boolean;
+          firmanteNombre?: string; firmanteCc?: string; firmanteCargo?: string;
+          supervisorNombre?: string; supervisorId?: string; supervisorCargo?: string;
+          contratanteNit?: string; contratistaNit?: string;
+          garantias?: string; inicio?: string; terminacion?: string;
+          aprobacionGarantias?: string; supervisorCiudad?: string;
+        };
         // `viejoSup` son los campos del acta anterior, que tenía supervisor aparte del
         // representante legal. Se leen para que un acta ya guardada no pierda la firma.
         const viejoSup = (d.actaInicio ?? {}) as Record<string, string>;
+        /*
+         * De la designación: si allá se marcó que quien designa ejerce la supervisión, el
+         * supervisor es el firmante; si no, es la persona designada. Leerlo mal pondría a
+         * firmar el acta a alguien que no supervisa.
+         */
+        const supDesignado = des.mismaPersona ? des.firmanteNombre : des.supervisorNombre;
+        const supCargo = des.mismaPersona ? des.firmanteCargo : des.supervisorCargo;
         // Prellenado: primero lo guardado del acta; luego el contrato (solicitud) y la designación.
         setF({
           ...EMPTY,
@@ -111,9 +196,18 @@ export default function ActaInicioPage() {
           plazoCorto: saved.plazoCorto || d.duracion || '',
           // De la designación de supervisor (mismo contrato):
           identTributaria: saved.identTributaria || des.contratanteNit || '',
-          representanteLegal: saved.representanteLegal || viejoSup.supervisorNombre || des.firmanteNombre || '',
-          representanteCc: saved.representanteCc || viejoSup.supervisorCc || des.firmanteCc || '',
+          representanteLegal: saved.representanteLegal || des.firmanteNombre || '',
+          representanteCc: saved.representanteCc || des.firmanteCc || '',
           contratistaCc: saved.contratistaCc || des.contratistaNit || '',
+          /*
+           * Las actas anteriores no tenían supervisor propio: figuraba como representante
+           * legal y firmaba como «La Supervisora». Ese nombre se hereda para que un acta ya
+           * guardada siga mostrando a quien la firmó.
+           */
+          supervisorNombre: saved.supervisorNombre || supDesignado || viejoSup.supervisorNombre || saved.representanteLegal || des.firmanteNombre || '',
+          supervisorId: saved.supervisorId || des.supervisorId || viejoSup.supervisorCc || saved.representanteCc || des.firmanteCc || '',
+          supervisorCargo: saved.supervisorCargo || supCargo || '',
+          garantias: saved.garantias || des.garantias || '',
           aprobacionGarantias: saved.aprobacionGarantias || des.aprobacionGarantias || '',
           inicio: saved.inicio || des.inicio || '',
           terminacion: saved.terminacion || des.terminacion || '',
@@ -136,8 +230,9 @@ export default function ActaInicioPage() {
       await gestionConocimientoService.saveDocumento(solicitudId!, 'actaInicio', f);
       toast.success('Acta de inicio guardada');
       return true;
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo guardar');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || 'No se pudo guardar');
       return false;
     } finally {
       setSaving(false);
@@ -172,7 +267,7 @@ export default function ActaInicioPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Acta de Inicio</h1>
-            <p className="text-xs text-[#4a4a63]">Formato GJ-006-F · Solicitud N.º {solicitudId}</p>
+            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId}</p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -208,76 +303,151 @@ export default function ActaInicioPage() {
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
           <TextosDocumento value={textosCtx}>
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
-            {/* Encabezado */}
-            <div className="grid grid-cols-[150px_1fr_190px] border-b border-[#0a2a52]">
-              <div className="flex flex-col items-center justify-center p-2 border-r border-[#0a2a52]">
-                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-12 object-contain" />
-                <span className="text-[11px] font-bold mt-1">{f.identTributaria || '—'}</span>
-              </div>
-              <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[12px] border-r border-[#0a2a52]">
-                ACTA DE INICIO PARA CONTRATO POR PRESTACIÓN DE SERVICIOS, ALQUILER O SUMINISTRO
-              </div>
-              <div className="grid grid-cols-[auto_1fr] text-[11px] content-start">
-                <CodeCell label="CÓDIGO:" value="GJ-006-F" />
-                <CodeCell label="FECHA:" value="27/04/2023" />
-                <CodeCell label="VERSIÓN:" value="1" last />
-              </div>
-            </div>
+          <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            {/* Título del acta. Se arma con la tabla de abajo mientras nadie lo toque. */}
-            <div className="text-center font-bold px-6 py-4 leading-snug border-b border-[#0a2a52] text-[12px]">
-              <TextoEd
-                k="titulo"
-                plantilla={
-                  'ACTA DE INICIO\n' +
-                  `CONTRATO DE ${(f.tipologia || 'prestación de servicios').toUpperCase()}\n` +
-                  // La contratista va primero, como en el formato.
-                  `SUSCRITO ENTRE ${tx(f.contratista).toUpperCase()} Y ${tx(f.contratante).toUpperCase()}`
-                }
-                className="text-center"
-              />
-            </div>
+            <MembreteOficio
+              titulo="ACTA DE INICIO"
+              subtitulo="PRESTACIÓN DE SERVICIOS / ALQUILER / SUMINISTRO / OTRO"
+            />
+
+            <BloqueControl
+              titulo="CONTROL INTERNO DE PARAMETRIZACIÓN — NO SE IMPRIME"
+              nota="El tipo contractual, el supervisor, las garantías y la fecha final se llenan según el contrato concreto. Revísalos contra él antes de imprimir."
+            >
+              <label className="flex items-center gap-2 text-[12px]">
+                <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Código documental</span>
+                <input
+                  value={f.codigoDocumental}
+                  onChange={(e) => set('codigoDocumental', e.target.value)}
+                  className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 text-[12px]">
+                <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Versión</span>
+                <input
+                  value={f.version}
+                  onChange={(e) => set('version', e.target.value)}
+                  className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                />
+              </label>
+
+              {/* La regla del modelo: sin garantías, ninguna referencia a su aprobación. */}
+              <label className="flex items-start gap-2 text-[11.5px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={f.exigeGarantias}
+                  onChange={(e) => set('exigeGarantias', e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>
+                  El contrato exige garantías como condición de inicio
+                  <span className="block text-[10.5px] text-[#8a6d00]">
+                    Si lo apagas, el acta afirma que no las exige y desaparece toda referencia a
+                    su aprobación.
+                  </span>
+                </span>
+              </label>
+            </BloqueControl>
 
             {/* Tabla de datos del contrato */}
+            <h3 className="font-bold text-center pt-2">INFORMACIÓN DEL CONTRATO</h3>
+
             <table className="w-full border-collapse text-[12px]">
               <tbody>
-                <Row label="ENTIDAD CONTRATANTE" value={f.contratante} onChange={(v) => set('contratante', v)} />
-                <Row label="IDENTIFICACIÓN TRIBUTARIA" value={f.identTributaria} onChange={(v) => set('identTributaria', v)} placeholder="NIT" />
-                <Row label="REPRESENTANTE LEGAL" value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} />
-                <Row label="IDENTIFICACIÓN" value={f.representanteCc} onChange={(v) => set('representanteCc', v)} placeholder="C.C. 000.000.000 de ..." />
-                <Row label="CONTRATISTA" value={f.contratista} onChange={(v) => set('contratista', v)} />
-                <Row label="IDENTIFICACIÓN" value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="NIT 000.000.000-0" />
-                <Row label="REPRESENTANTE LEGAL" value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} />
-                <Row label="IDENTIFICACIÓN" value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="C.C. 00.000.000 expedida en ..." />
-                <Row label="DIRECCIÓN DEL DOMICILIO" value={f.direccion} onChange={(v) => set('direccion', v)} />
-                <Row label="CELULAR" value={f.celular} onChange={(v) => set('celular', v)} />
-                <Row label="CORREO ELECTRÓNICO" value={f.correo} onChange={(v) => set('correo', v)} />
-                <Row label="OBJETO DEL CONTRATO" value={f.objeto} onChange={(v) => set('objeto', v)} area />
-                <Row label="VALOR TOTAL DEL CONTRATO Y FORMA DE PAGO" value={f.valor} onChange={(v) => set('valor', v)} area
-                  extra={<Sub label="Forma de pago" value={f.formaPago} onChange={(v) => set('formaPago', v)} />} />
-                <Row label="PLAZO DE EJECUCIÓN" value={f.plazo} onChange={(v) => set('plazo', v)} area />
-                <Row label="APROBACIÓN DE GARANTÍAS" value={f.aprobacionGarantias} onChange={(v) => set('aprobacionGarantias', v)} area
-                  placeholder="Garantía de Cumplimiento No. ..., Póliza de RCE No. ..., aprobadas el ..." />
-                {/* En minúscula porque así van en el formato, no por descuido. */}
-                <Row label="Inicio" value={f.inicio} onChange={(v) => set('inicio', v)}
-                  placeholder="00 de mes de 0000" />
-                <Row label="Terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)}
-                  placeholder="00 de mes de 0000" />
+                <Row label="Entidad contratante" value={f.contratante} onChange={(v) => set('contratante', v)} />
+                <Row label="NIT" value={f.identTributaria} onChange={(v) => set('identTributaria', v)} placeholder="900.000.000-0" />
+                <RowDoble
+                  label="Representante legal"
+                  a={f.representanteLegal} onA={(v) => set('representanteLegal', v)} phA="Nombre completo"
+                  b={f.representanteCc} onB={(v) => set('representanteCc', v)} phB="C.C. 00.000.000 de …"
+                />
+                <Row label="Tipo de contrato" value={f.tipologia} onChange={(v) => set('tipologia', v)}
+                  placeholder="Prestación de servicios / alquiler / suministro / otro" />
+                <Row label="Contratista" value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre o razón social" />
+                <Row label="CC / NIT" value={f.contratistaCc} onChange={(v) => set('contratistaCc', v)} placeholder="000.000.000-0" />
+                <RowDoble
+                  label="Representante legal, si aplica"
+                  a={f.contratistaRepLegal} onA={(v) => set('contratistaRepLegal', v)} phA="Nombre / No aplica"
+                  b={f.contratistaRepCc} onB={(v) => set('contratistaRepCc', v)} phB="Identificación"
+                />
+                <Row label="Domicilio" value={f.direccion} onChange={(v) => set('direccion', v)} placeholder="Dirección / ciudad" />
+                <Row label="Teléfono" value={f.celular} onChange={(v) => set('celular', v)} />
+                <Row label="Correo electrónico" value={f.correo} onChange={(v) => set('correo', v)} />
+                <Row label="Objeto" value={f.objeto} onChange={(v) => set('objeto', v)} area />
+                <Row label="Valor total" value={f.valor} onChange={(v) => set('valor', v)} area
+                  placeholder="$0 M/CTE, IVA incluido / más IVA / no aplica" />
+                <Row label="Forma de pago" value={f.formaPago} onChange={(v) => set('formaPago', v)} area />
+                <Row label="Plazo de ejecución" value={f.plazo} onChange={(v) => set('plazo', v)}
+                  placeholder="0 (cero) días / meses" />
+                <RowDoble
+                  label="Supervisor"
+                  a={f.supervisorNombre} onA={(v) => set('supervisorNombre', v)} phA="Nombre completo"
+                  b={f.supervisorCargo} onB={(v) => set('supervisorCargo', v)} phB="Cargo"
+                />
+                {/*
+                  La fila de garantías la manda la casilla del control: apagada, el acta no
+                  puede insinuar que hubo una aprobación que nunca existió.
+                */}
+                <Row
+                  label="Garantías"
+                  value={f.exigeGarantias ? f.garantias : 'No aplican'}
+                  onChange={(v) => set('garantias', v)}
+                  area={f.exigeGarantias}
+                  soloLectura={!f.exigeGarantias}
+                  placeholder="Aplican · acta de aprobación de fecha 00/00/0000"
+                />
+                <Row label="Fecha de inicio" value={f.inicio} onChange={(v) => set('inicio', v)} placeholder="00 de mes de 0000" />
+                <Row label="Fecha de terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)} placeholder="00 de mes de 0000" />
               </tbody>
             </table>
 
-            {/* Reunión de inicio. Clave nueva y no `reunion`: esa la usaba el formato
-                anterior con otra redacción —y otros datos— y un acta que la hubiera
-                reescrito heredaría aquí el párrafo equivocado. */}
-            <div className="px-6 py-4 leading-relaxed text-[12.5px] border-t border-[#0a2a52]">
+            {/* La reunión de inicio */}
+            <div className="leading-relaxed text-[12.5px] space-y-3 pt-2">
               <TextoEd
-                k="apertura"
-                plantilla={`En ${tx(f.ciudadReunion)}, a los … días del mes de … de dos mil … (…), se reunieron la doctora ${tx(f.representanteLegal).toUpperCase()}, identificada con cédula de ciudadanía No. ${tx(f.representanteCc)}, en calidad de supervisora del contrato por parte de ${tx(f.contratante)}, y la señora ${tx(f.contratistaRepLegal).toUpperCase()}, identificada con cédula de ciudadanía No. ${tx(f.contratistaRepCc)}, actuando como representante legal de ${tx(f.contratista)}, en calidad de contratista. Una vez verificada la expedición, presentación y aprobación de las garantías contractuales exigidas, efectuada el ${tx(f.aprobacionGarantias)}, las partes acuerdan dar inicio a la ejecución del contrato a partir del ${tx(f.inicio)}, de conformidad con el cronograma y las condiciones contractuales pactadas.`}
+                k={claveTexto('apertura')}
+                plantilla={
+                  `En ${tx(f.ciudadReunion)}, a los ${tx(f.fechaReunion)}, se reunieron `
+                  + `${tx(f.supervisorNombre).toUpperCase()}, identificado(a) con ${tx(f.supervisorId)}, `
+                  + `en calidad de supervisor(a) del contrato por parte de ${tx(f.contratante)}, y `
+                  + `${tx(f.contratistaRepLegal).toUpperCase()}, identificado(a) con `
+                  + `${tx(f.contratistaRepCc)}, actuando en calidad de representante legal de `
+                  + `${tx(f.contratista)}.`
+                }
+              />
+
+              {/*
+                La constancia de requisitos. La frase de garantías es la que cambia con la
+                casilla: son dos afirmaciones opuestas sobre un requisito de inicio, no dos
+                formas de decir lo mismo.
+              */}
+              <TextoEd
+                k={claveTexto('requisitos')}
+                plantilla={
+                  `Verificados los requisitos previstos contractualmente para iniciar la `
+                  + `ejecución, las partes dejan constancia de que ${tx(f.requisitos)}. `
+                  + (f.exigeGarantias
+                    ? `Las garantías exigidas fueron expedidas, presentadas y aprobadas mediante `
+                      + `acta de fecha ${tx(f.aprobacionGarantias)}.`
+                    : 'El contrato no exige garantías como condición de inicio.')
+                }
+              />
+
+              <TextoEd
+                k={claveTexto('acuerdo')}
+                plantilla={
+                  `En consecuencia, se acuerda dar inicio a la ejecución del contrato a partir del `
+                  + `${tx(f.fechaInicio || f.inicio)}. El plazo de ${tx(f.plazoCorto || f.plazo)} se `
+                  + `contará de conformidad con lo pactado en el contrato y finalizará el `
+                  + `${tx(f.fechaFinal || f.terminacion)}, salvo modificación posterior formalmente `
+                  + `suscrita por las partes cuando corresponda.`
+                }
               />
             </div>
 
-            {/* Fechas */}
+            {/* Constancia de inicio */}
+            <h3 className="font-bold text-center pt-2">CONSTANCIA DE INICIO</h3>
+
             <table className="w-full border-collapse text-[12px]">
               <thead>
                 <tr className="bg-[hsl(var(--canalco-neutral-100))]">
@@ -304,26 +474,40 @@ export default function ActaInicioPage() {
               </tbody>
             </table>
 
-            {/* Firmas. La supervisora es la representante legal de la contratante —el
-                formato no tiene fila de supervisor—, y por la contratista firma su
-                representante legal, con el nombre de la empresa debajo. */}
-            <div className="grid grid-cols-2 gap-8 px-6 pt-16 pb-4">
+            <TextoEd
+              k={claveTexto('noModifica')}
+              plantilla="La suscripción de la presente acta no modifica el contrato ni autoriza actividades, valores, plazos o condiciones diferentes de las expresamente pactadas. Cualquier modificación deberá formalizarse por el mecanismo contractual correspondiente."
+            />
+
+            {/* Firmas: quien supervisa por la contratante y la contratista. */}
+            <div className="grid grid-cols-2 gap-10 pt-16">
               <Firma>
-                <FLine value={f.representanteLegal} onChange={(v) => set('representanteLegal', v)} placeholder="NOMBRE DE LA SUPERVISORA" bold />
-                <FLine value={f.representanteCc} onChange={(v) => set('representanteCc', v)} placeholder="Cédula. No. 00.000.000 de ..." />
-                <div className="font-bold">La Supervisora</div>
+                <FLine value={f.supervisorNombre} onChange={(v) => set('supervisorNombre', v)} placeholder="NOMBRE DEL SUPERVISOR" bold />
+                <FLine value={f.supervisorCargo} onChange={(v) => set('supervisorCargo', v)} placeholder="Cargo" />
+                <div>Supervisor(a)</div>
+                <FLine value={f.contratante} onChange={(v) => set('contratante', v)} placeholder="ENTIDAD CONTRATANTE" bold />
               </Firma>
               <Firma>
-                <FLine value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} placeholder="NOMBRE DE QUIEN FIRMA" bold />
-                <FLine value={f.contratistaRepCc} onChange={(v) => set('contratistaRepCc', v)} placeholder="C.C. 00.000.000 expedida en ..." />
-                <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="NOMBRE DE LA CONTRATISTA" bold />
-                <div>Representante Legal</div>
-                <div className="font-bold">La Contratista</div>
+                <FLine value={f.contratistaRepLegal} onChange={(v) => set('contratistaRepLegal', v)} placeholder="NOMBRE DEL CONTRATISTA / REPRESENTANTE" bold />
+                <FLine value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Cargo / razón social" />
+                <div className="font-bold">EL/LA CONTRATISTA</div>
               </Firma>
             </div>
 
+            <PieMembrete />
           </div>
-          <PieElaboracion />
+
+          {/* Quien elabora varía; quien revisa es siempre la Dirección Jurídica. */}
+          <div className="px-8 pt-3 text-[10px] text-black">
+            <span>Elaboró: </span>
+            <input
+              value={f.elaboro}
+              onChange={(e) => set('elaboro', e.target.value)}
+              placeholder="Nombre - Cargo"
+              className="bg-transparent outline-none text-[10px] w-64 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+            />
+          </div>
+          <PieElaboracion soloRevision className="pt-0" />
           </TextosDocumento>
           </fieldset>
         )}
@@ -340,43 +524,50 @@ export default function ActaInicioPage() {
 
 /* ── Subcomponentes ─────────────────────────────────────── */
 
-function CodeCell({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  return (
-    <>
-      <div className={'px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] ' + (last ? '' : 'border-b border-[#0a2a52]')}>{label}</div>
-      <div className={'px-2 py-1 text-center border-l border-[#0a2a52] ' + (last ? '' : 'border-b border-[#0a2a52]')}>{value}</div>
-    </>
-  );
-}
-
-function Row({ label, value, onChange, area, placeholder, extra }: {
-  label: string; value: string; onChange: (v: string) => void; area?: boolean; placeholder?: string; extra?: React.ReactNode;
+function Row({ label, value, onChange, area, placeholder, soloLectura }: {
+  label: string; value: string; onChange: (v: string) => void;
+  area?: boolean; placeholder?: string; soloLectura?: boolean;
 }) {
   return (
     <tr>
       <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[34%]">{label}</td>
       <td className="border border-[#0a2a52] px-2 py-1 align-top">
-        {area ? (
+        {soloLectura ? (
+          <span>{value}</span>
+        ) : area ? (
           <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={2}
             className="w-full bg-transparent outline-none resize-y text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
         ) : (
           <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
             className="w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
         )}
-        {extra}
       </td>
     </tr>
   );
 }
 
-function Sub({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+/**
+ * Fila con dos datos en la misma celda —«Nombre - Identificación»—, como los junta el
+ * modelo. Se guardan aparte porque el texto del acta los cita por separado.
+ */
+function RowDoble({ label, a, onA, phA, b, onB, phB }: {
+  label: string;
+  a: string; onA: (v: string) => void; phA?: string;
+  b: string; onB: (v: string) => void; phB?: string;
+}) {
   return (
-    <div className="mt-1 pt-1 border-t border-dotted border-[hsl(var(--canalco-neutral-300))]">
-      <span className="font-semibold">{label}: </span>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2}
-        placeholder="Detalle de la forma de pago"
-        className="w-full bg-transparent outline-none resize-y text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
-    </div>
+    <tr>
+      <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[34%]">{label}</td>
+      <td className="border border-[#0a2a52] px-2 py-1 align-top">
+        <div className="flex items-baseline gap-1">
+          <input value={a} onChange={(e) => onA(e.target.value)} placeholder={phA}
+            className="flex-grow min-w-0 bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
+          <span className="shrink-0">-</span>
+          <input value={b} onChange={(e) => onB(e.target.value)} placeholder={phB}
+            className="flex-grow min-w-0 bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
+        </div>
+      </td>
+    </tr>
   );
 }
 

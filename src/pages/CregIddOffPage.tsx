@@ -7,8 +7,12 @@ import {
   horasFuera,
   indiceDisponibilidad,
   HORAS_OPERACION_DIA,
+  topeDeMunicipio,
+  zonaDeFalla,
+  excesoSobreTope,
   type IddOffFalla,
   type IddOffMes,
+  type ZonaFalla,
 } from '@/services/creg.service';
 import { masterDataService } from '@/services/master-data.service';
 import type { Company, Project } from '@/services/master-data.service';
@@ -221,6 +225,23 @@ export default function CregIddOffPage() {
   };
 
   const totalHoras = useMemo(() => fallas.reduce((a, f) => a + horasFuera(f, sumaMediaNoche), 0), [fallas, sumaMediaNoche]);
+
+  /**
+   * El tope de atención del municipio, que sale de la empresa o del proyecto según el
+   * caso. Solo sirve para marcar: el índice sigue contando las horas reales.
+   */
+  const tope = useMemo(
+    () => topeDeMunicipio(
+      [selectedCompany?.name, projects.find((p) => p.projectId === selectedProjectId)?.name]
+        .filter(Boolean).join(' '),
+    ),
+    [selectedCompany, projects, selectedProjectId],
+  );
+
+  const fueraDeTope = useMemo(
+    () => (tope ? fallas.filter((f) => (excesoSobreTope(f, tope, sumaMediaNoche) ?? 0) > 0) : []),
+    [fallas, tope, sumaMediaNoche],
+  );
   const totalWiHssi = useMemo(() => fallas.reduce((a, f) => a + wiHssi(f, sumaMediaNoche), 0), [fallas, sumaMediaNoche]);
   const id = useMemo(() => indiceDisponibilidad(fallas, mes.wt, mes.t, sumaMediaNoche), [fallas, mes.wt, mes.t, sumaMediaNoche]);
 
@@ -504,6 +525,40 @@ export default function CregIddOffPage() {
               </div>
             </div>
 
+            {/*
+              El tope no entra al cálculo: el índice cuenta las horas reales que la
+              luminaria estuvo apagada. Esto es el compromiso de atención del contrato y
+              está para ver cuáles fallas se salieron de él.
+            */}
+            {tope && (
+              <div
+                className={
+                  'mb-4 rounded-lg border px-4 py-2.5 text-sm ' +
+                  (fueraDeTope.length
+                    ? 'bg-red-50 border-red-300 text-red-900'
+                    : 'bg-[hsl(var(--canalco-neutral-100))] border-[hsl(var(--canalco-neutral-300))] text-[hsl(var(--canalco-neutral-700))]')
+                }
+              >
+                <span className="font-semibold">
+                  Tope de atención en {tope.municipio}: {tope.urbano} h urbano · {tope.rural} h rural
+                </span>
+                {!tope.ruralPactado && (
+                  <span className="text-xs opacity-80">
+                    {' '}— el contrato no especifica la zona rural; se aplica el mismo tope urbano
+                  </span>
+                )}
+                <span className="mx-2 opacity-40">|</span>
+                {fueraDeTope.length ? (
+                  <span>
+                    <strong>{fueraDeTope.length}</strong> de {fallas.length} fallas se pasaron del tope
+                    (van en rojo). <span className="opacity-80">El índice no cambia por esto.</span>
+                  </span>
+                ) : (
+                  <span>Todas las fallas se atendieron dentro del tope.</span>
+                )}
+              </div>
+            )}
+
             {/* Tabla de fallas */}
             <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
               <div className="bg-[hsl(var(--canalco-primary))]/10 px-4 py-2.5 border-b border-[hsl(var(--canalco-neutral-300))] flex items-center justify-between">
@@ -543,6 +598,7 @@ export default function CregIddOffPage() {
                         <Th>Tecnología</Th>
                         <Th className="text-left">Localización</Th>
                         <Th className="text-left">Barrio</Th>
+                        <Th title="Se propone según la localización (V., VRD, VEREDA, CGTO = rural). Se puede corregir.">Zona</Th>
                         <Th>Fecha inicial</Th>
                         <Th>Fecha final</Th>
                         <Th title={sumaMediaNoche ? `(final − inicial + 1) × ${HORAS_OPERACION_DIA}` : `(final − inicial) × ${HORAS_OPERACION_DIA}`}>Horas</Th>
@@ -551,8 +607,18 @@ export default function CregIddOffPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {fallas.map((f, i) => (
-                        <tr key={f.id} className={i % 2 ? 'bg-[hsl(var(--canalco-neutral-50))]' : 'bg-white'}>
+                      {fallas.map((f, i) => {
+                        const exceso = excesoSobreTope(f, tope, sumaMediaNoche) ?? 0;
+                        const limite = tope ? (zonaDeFalla(f) === 'rural' ? tope.rural : tope.urbano) : null;
+                        return (
+                        <tr
+                          key={f.id}
+                          className={
+                            exceso > 0
+                              ? 'bg-red-50'
+                              : i % 2 ? 'bg-[hsl(var(--canalco-neutral-50))]' : 'bg-white'
+                          }
+                        >
                           <Td className="text-center text-[hsl(var(--canalco-neutral-500))]">{i + 1}</Td>
                           <Td><Cell value={f.codigo ?? ''} onChange={(v) => setFalla(f.id, { codigo: v })} /></Td>
                           <Td><CellNum value={f.potencia} onChange={(v) => setFalla(f.id, { potencia: v })} /></Td>
@@ -560,10 +626,40 @@ export default function CregIddOffPage() {
                           <Td><Cell value={f.tecnologia ?? ''} onChange={(v) => setFalla(f.id, { tecnologia: v })} /></Td>
                           <Td><Cell value={f.localizacion ?? ''} onChange={(v) => setFalla(f.id, { localizacion: v })} className="text-left" /></Td>
                           <Td><Cell value={f.barrio ?? ''} onChange={(v) => setFalla(f.id, { barrio: v })} className="text-left" /></Td>
+                          <Td>
+                            <select
+                              value={zonaDeFalla(f)}
+                              onChange={(e) => setFalla(f.id, { zona: e.target.value as ZonaFalla })}
+                              title={f.zona ? 'Escogida a mano' : 'Deducida de la localización'}
+                              className={
+                                'w-full bg-transparent text-xs text-center outline-none cursor-pointer ' +
+                                (f.zona ? '' : 'text-[hsl(var(--canalco-neutral-500))] italic')
+                              }
+                            >
+                              <option value="urbano">Urbano</option>
+                              <option value="rural">Rural</option>
+                            </select>
+                          </Td>
                           <Td><CellDate value={f.fechaInicial ?? ''} onChange={(v) => setFalla(f.id, { fechaInicial: v })} /></Td>
                           <Td><CellDate value={f.fechaFinal ?? ''} onChange={(v) => setFalla(f.id, { fechaFinal: v })} /></Td>
                           {/* Calculada: (final − inicial [+1 si suma media noche]) × 12. No se escribe. */}
-                          <Td className="text-center tabular-nums text-[hsl(var(--canalco-neutral-600))]">{fmtNum(horasFuera(f, sumaMediaNoche), 0)}</Td>
+                          <Td
+                            className={
+                              'text-center tabular-nums ' +
+                              (exceso > 0
+                                ? 'text-red-700 font-semibold'
+                                : 'text-[hsl(var(--canalco-neutral-600))]')
+                            }
+                            title={
+                              limite == null
+                                ? 'Este municipio no tiene tope de atención cargado'
+                                : exceso > 0
+                                  ? `Se pasó ${fmtNum(exceso, 0)} h del tope de ${limite} h (${zonaDeFalla(f)})`
+                                  : `Dentro del tope de ${limite} h (${zonaDeFalla(f)})`
+                            }
+                          >
+                            {fmtNum(horasFuera(f, sumaMediaNoche), 0)}
+                          </Td>
                           <Td className="text-right tabular-nums font-semibold bg-[hsl(var(--canalco-primary))]/5">{fmtNum(wiHssi(f, sumaMediaNoche))}</Td>
                           <Td className="text-center">
                             <button onClick={() => removeFalla(f.id)} className="text-[hsl(var(--canalco-neutral-400))] hover:text-red-600 transition-colors" title="Eliminar">
@@ -571,11 +667,12 @@ export default function CregIddOffPage() {
                             </button>
                           </Td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr className="bg-[hsl(var(--canalco-neutral-200))] font-semibold border-t-2 border-[hsl(var(--canalco-neutral-300))]">
-                        <Td colSpan={9} className="text-right pr-3">TOTAL HORAS FUERA DE SERVICIO</Td>
+                        <Td colSpan={10} className="text-right pr-3">TOTAL HORAS FUERA DE SERVICIO</Td>
                         <Td className="text-right tabular-nums">{fmtNum(totalHoras, 0)}</Td>
                         <Td className="text-right tabular-nums bg-[hsl(var(--canalco-primary))]/20">{fmtNum(totalWiHssi)}</Td>
                         <Td />

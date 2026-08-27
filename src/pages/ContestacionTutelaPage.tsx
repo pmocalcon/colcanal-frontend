@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
@@ -8,10 +8,20 @@ import { gestionConocimientoService } from '@/services/gestionConocimiento.servi
 import { FORMATO_TUTELA } from '@/config/formatosGestion';
 import { TextosDocumento, useTextosDocumento, TextoEd, AutoTextarea } from '@/components/juridica/textoEditable';
 import { masterDataService, type Company } from '@/services/master-data.service';
-import { getActaConfig, hasActaConfig } from '@/config/actas';
+import { getActaConfig, hasActaConfig, datoContratista } from '@/config/actas';
+import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
+import {
+  MODULOS_DEFENSA, TIPOS_DEFENSA, moduloPorClave,
+  SOLICITUDES_MODELO, PRUEBAS_MODELO,
+} from '@/config/tutelaModulos';
+import {
+  Campo, Guia, BloqueControl, ListaNumerada, EncabezadoJudicial, type DatosJudiciales,
+} from '@/components/juridica/camposDocumento';
 
 /**
- * Contestación de la acción de tutela y solicitud de desvinculación.
+ * Contestación de la acción de tutela y solicitud de desvinculación —modelo especial de
+ * uso exclusivo de Dirección Jurídica.
  *
  * Formato suelto de G. jurídica: no pertenece a ningún trámite de contratación. Lo firma
  * la Directora Jurídica como **apoderada judicial** de la empresa accionada, y va dirigido
@@ -20,10 +30,19 @@ import { getActaConfig, hasActaConfig } from '@/config/actas';
  * El membrete depende de la empresa representada: cada UTAP tiene el suyo. Por eso la
  * empresa se escoge de la lista de contratantes y no se escribe suelta.
  *
+ * Los argumentos de la sección III **no van quemados**: son módulos que Jurídica activa
+ * según el expediente, y el formato nace sin ninguno. El modelo lo exige en su bloque de
+ * control, y con razón: la versión anterior traía como plantilla los argumentos de un
+ * expediente tributario concreto —con su número de contrato de energía adentro—, de modo
+ * que toda contestación nueva arrancaba afirmando hechos de otro proceso.
+ *
+ * El bloque de control lleva `no-print`: se diligencia en pantalla y no viaja al despacho.
+ * Lo mismo las notas que explican cómo llenar cada sección.
+ *
  * Ruta: `.../juridica/tutela/:id`.
  */
 
-interface TutelaState {
+interface TutelaState extends DatosJudiciales {
   /**
    * La representada. Manda el membrete: cada UTAP tiene su logo.
    *
@@ -34,28 +53,41 @@ interface TutelaState {
   empresa: string;
   empresaNit: string;
   empresaRepLegal: string;
+  /** Sede y correo de la representada: van en el pie, bajo la dirección de Cali. */
+  empresaSede: string;
+  empresaCorreo: string;
 
-  fecha: string;
+  /**
+   * El tipo de defensa del bloque de control. **Solo documenta y sugiere**: el escrito lo
+   * arman los módulos activos, no este campo. Si decidiera por sí solo qué se imprime, un
+   * cambio de criterio a mitad de redacción borraría argumentos ya trabajados.
+   */
+  tipoDefensa: string;
 
-  // ── El despacho ──
-  juezNombre: string;
-  juezDespacho: string;
-  juezCorreo: string;
-
-  // ── Identificación del proceso ──
-  radicado: string;
-  accionante: string;
-  accionados: string;
-  vinculada: string;
+  // El despacho y las partes viven en `DatosJudiciales`: son los mismos del poder especial.
 
   // ── La apoderada ──
   apoderada: string;
   apoderadaCc: string;
   apoderadaCcLugar: string;
   apoderadaTp: string;
+  apoderadaCorreo: string;
 
   /** Cuándo se recibieron el auto admisorio y los anexos: fija el término. */
   recibidos: string;
+
+  /** II. Qué se responde a cada pretensión de la tutela. */
+  pretensiones: string;
+
+  /** IV. El resumen de la posición, después de los fundamentos. */
+  oposicion: string;
+
+  /** V y VI. Listas numeradas; se agregan y quitan renglones como en los hechos. */
+  solicitudes: string[];
+  pruebas: string[];
+
+  /** VII. Dónde recibe notificaciones la representada; la apoderada las recibe siempre igual. */
+  notificacionesRepresentada: string;
 
   /**
    * Los hechos de la tutela, con la respuesta a cada uno.
@@ -79,7 +111,11 @@ interface Hecho {
 }
 
 interface Fundamento {
-  numero: string;
+  /**
+   * De qué módulo del catálogo salió, para no poder activarlo dos veces y para marcarlo en
+   * el panel. Los fundamentos escritos a mano no lo llevan.
+   */
+  modulo?: string;
   titulo: string;
   cuerpo: string;
   /**
@@ -97,6 +133,16 @@ interface Fundamento {
 
 const letra = (i: number) => `${String.fromCharCode(97 + i)})`;
 
+/**
+ * El número del fundamento —3.1, 3.2…— se calcula por posición y no se guarda, al revés
+ * que los ordinales de los hechos.
+ *
+ * Un hecho conserva su ordinal porque así quedó citado en la tutela que se contesta: es
+ * ajeno. La numeración de los módulos, en cambio, es interna del escrito, y el modelo está
+ * hecho para borrar los que no apliquen; guardarla dejaría un 3.1 seguido de un 3.3.
+ */
+const numeroFundamento = (i: number) => `3.${i + 1}.`;
+
 const ORDINALES = [
   'PRIMERO', 'SEGUNDO', 'TERCERO', 'CUARTO', 'QUINTO', 'SEXTO',
   'SÉPTIMO', 'OCTAVO', 'NOVENO', 'DÉCIMO',
@@ -110,135 +156,58 @@ const ORDINALES = [
 const EMPTY: TutelaState = {
   empresaId: null,
   empresa: '',
-  empresaNit: 'xxx',
-  empresaRepLegal: 'xxx',
+  empresaNit: '[NIT]',
+  empresaRepLegal: '[NOMBRE DEL REPRESENTANTE LEGAL]',
+  empresaSede: '[DIRECCIÓN / MUNICIPIO]',
+  empresaCorreo: '[CORREO DE LA UTAP]',
 
-  fecha: 'Fecha',
+  tipoDefensa: '',
 
-  juezNombre: 'xxxx',
-  juezDespacho: 'Juez xxxx',
-  juezCorreo: 'correo',
+  ciudad: '[CIUDAD]',
+  fecha: '[FECHA]',
 
-  radicado: 'xxx',
-  accionante: 'xxx',
-  accionados: 'xxx',
-  vinculada: 'xxx',
+  juezNombre: '[NOMBRE DEL JUEZ]',
+  juezDespacho: '[DESPACHO JUDICIAL]',
+  juezCorreo: '[CORREO DEL DESPACHO]',
+
+  radicado: '[RADICADO]',
+  accionante: '[NOMBRE / CALIDAD]',
+  accionados: '[ENTIDADES / PERSONAS]',
+  vinculada: '[ENTIDADES / PERSONAS / NO APLICA]',
 
   apoderada: 'MARTA CECILIA RODRÍGUEZ HERRERA',
-  apoderadaCc: '24.805.393',
+  apoderadaCc: '24.605.393',
   apoderadaCcLugar: 'Circasia (Quindío)',
   apoderadaTp: '206.594',
+  apoderadaCorreo: 'director.juridico@alumbrados.co',
 
-  recibidos: 'xxxx',
+  recibidos: 'el [FECHA Y HORA]',
 
   hechos: [
-    { ordinal: 'PRIMERO', hecho: '"xxxx', respuesta: 'xxx' },
-    { ordinal: 'SEGUNDO', hecho: '"xxxx "', respuesta: 'xxx' },
-    { ordinal: 'TERCERO', hecho: '"xxx', respuesta: 'xxx' },
+    { ordinal: 'PRIMERO', hecho: '[TRANSCRIBIR O RESUMIR FIELMENTE EL HECHO]', respuesta: '[PRONUNCIAMIENTO CONCRETO Y SOPORTE]' },
+    { ordinal: 'SEGUNDO', hecho: '[TRANSCRIBIR O RESUMIR FIELMENTE EL HECHO]', respuesta: '[PRONUNCIAMIENTO CONCRETO Y SOPORTE]' },
+    { ordinal: 'TERCERO', hecho: '[TRANSCRIBIR O RESUMIR FIELMENTE EL HECHO]', respuesta: '[PRONUNCIAMIENTO CONCRETO Y SOPORTE]' },
   ],
 
-  fundamentos: [
-    {
-      numero: '2.1.',
-      titulo: 'No se acreditó la radicación o recepción de la petición ante la xxxx',
-      cuerpo:
-        'Para atribuir una vulneración del derecho fundamental de petición es indispensable '
-        + 'demostrar, siquiera sumariamente, que la solicitud fue presentada ante el sujeto al que '
-        + 'se reprocha la omisión y la fecha cierta de su recepción. La Corte Constitucional ha '
-        + 'reiterado que el peticionario debe aportar prueba de la presentación de la solicitud; '
-        + 'solo a partir de esa demostración se traslada al destinatario la carga de acreditar que '
-        + 'respondió oportunamente. Si no se prueba la presentación, no existe el presupuesto del '
-        + 'cual pueda derivarse el deber de responder (sentencias T-997 de 2005, T-878 de 2008 y '
-        + 'T-370 de 2025).\n\n'
-        + 'En el expediente se observa un radicado expedido por xxxxx, pero no una constancia de '
-        + 'recepción por parte de la xx. En consecuencia, no puede imputarse a mi representada una '
-        + 'omisión anterior al xxxx, fecha en la cual conoció la petición por conducto del Juzgado.',
-      items: [],
-      cierre: '',
-    },
-    {
-      numero: '2.2.',
-      titulo: 'Falta de legitimación en la causa por pasiva y ausencia de competencia material y tributaria de la Unión Temporal',
-      cuerpo:
-        'La legitimación en la causa por pasiva exige que la entidad o el particular accionado '
-        + 'tenga aptitud jurídica para responder por la vulneración alegada y que exista una '
-        + 'relación directa entre sus funciones, su conducta y la presunta afectación del derecho '
-        + 'fundamental. Así lo ha precisado la Corte Constitucional, entre otras, en la Sentencia '
-        + 'T-262 de 2024.\n\n'
-        + 'En el presente asunto no existe conducta omisiva atribuible a la xxxxx, porque la '
-        + 'petición no fue recibida en sus canales oficiales antes de la presentación de la tutela. '
-        + 'Adicionalmente, mi representada actúa como concesionario encargado de ejecutar '
-        + 'actividades de operación y mantenimiento del sistema de alumbrado público, dentro del '
-        + 'alcance previsto en el respectivo contrato. Esta condición contractual no la convierte '
-        + 'en autoridad tributaria municipal ni le transfiere facultades para administrar, '
-        + 'determinar, liquidar, reliquidar, modificar, exonerar, suspender, devolver, compensar o '
-        + 'extinguir obligaciones correspondientes al impuesto de alumbrado público.\n\n'
-        + 'El impuesto de alumbrado público es un tributo de carácter territorial cuya titularidad '
-        + 'corresponde al Municipio de xxxx. La adopción y determinación de sus elementos se '
-        + 'encuentra sometida al acuerdo municipal vigente y la aplicación de tales disposiciones, '
-        + 'así como la decisión de situaciones particulares y concretas, corresponde al Municipio, '
-        + 'por conducto de la Secretaría de Hacienda o de la dependencia que tenga asignada la '
-        + 'administración tributaria.\n\n'
-        + 'En consecuencia, la Unión Temporal carece de competencia para:',
-      items: [
-        'Determinar si la Asociación accionante ostenta o no la calidad de sujeto pasivo del impuesto de alumbrado público.',
-        'Interpretar con efectos vinculantes el hecho generador, la base gravable, la tarifa o los demás elementos de la obligación tributaria.',
-        'Liquidar o reliquidar el impuesto correspondiente al contrato de energía No. 8495056.',
-        'Declarar exenciones, exclusiones, tratamientos preferenciales o situaciones de no sujeción.',
-        'Ordenar la suspensión, eliminación, devolución, compensación o modificación de los valores facturados.',
-        'Modificar la información tributaria utilizada para efectuar el cobro.',
-        'Ordenar a Empresas Públicas de Medellín E.S.P. - EPM la corrección o ajuste de la facturación.',
-        'Resolver definitivamente la controversia relacionada con la legalidad o procedencia del cobro.',
-      ],
-      cierre:
-        'El hecho de que el impuesto sea incluido y recaudado a través de la factura del servicio '
-        + 'público domiciliario de energía eléctrica no modifica su naturaleza tributaria ni '
-        + 'convierte al comercializador de energía o al operador encargado de la operación y '
-        + 'mantenimiento del sistema de alumbrado público en autoridad competente para definir la '
-        + 'existencia, legalidad o cuantía de la obligación. La actividad material de facturación o '
-        + 'recaudo no equivale al ejercicio de facultades de determinación tributaria.\n\n'
-        + 'En relación con la solicitud de visita técnica y con la información sobre la existencia '
-        + 'de luminarias o infraestructura, la Unión Temporal podrá prestar el apoyo técnico que le '
-        + 'sea requerido por el Municipio, siempre que dicha actividad se encuentre comprendida '
-        + 'dentro de sus obligaciones contractuales. Sin embargo, una eventual inspección, informe '
-        + 'o concepto técnico no la faculta para decidir las consecuencias tributarias de los '
-        + 'hallazgos, pues la determinación de la procedencia, suspensión o modificación del '
-        + 'impuesto continúa siendo competencia de la autoridad municipal.\n\n'
-        + 'Por tanto, aun cuando la Unión Temporal pueda suministrar información técnica o apoyar '
-        + 'verificaciones solicitadas por el Municipio, no está jurídicamente facultada para emitir '
-        + 'una decisión de fondo frente a las solicitudes tributarias formuladas por el accionante. '
-        + 'En consecuencia, carece de legitimación en la causa por pasiva respecto de las '
-        + 'pretensiones encaminadas a obtener la liquidación, reliquidación, exoneración, '
-        + 'suspensión o modificación del impuesto de alumbrado público.',
-    },
-    {
-      numero: '2.3.',
-      titulo: 'Remisión diligente por competencia e información al peticionario',
-      cuerpo:
-        'Sin admitir que existiera una omisión previa, una vez la Unión Temporal conoció la '
-        + 'petición actuó de manera inmediata, atendiendo los principios de eficacia, colaboración '
-        + 'y celeridad y, en lo pertinente, las reglas de los artículos 21 y 32 de la Ley 1755 de '
-        + '2015:',
-      items: [
-        'El 4 de agosto de 2026, mediante oficio No. xxxx.',
-        'En la misma fecha, mediante oficio No. xxxxque, la solicitud había sido remitida a la autoridad municipal competente.',
-        'La comunicación al peticionario fue enviada al correo electrónico indicado por él, y se adjuntó copia del oficio remisorio.',
-      ],
-      cierre:
-        'El artículo 21 de la Ley 1755 de 2015 establece que quien carece de competencia debe '
-        + 'informar al interesado y remitir la petición al competente dentro de los cinco días '
-        + 'siguientes a su recepción. La actuación de la Unión Temporal se realizó al día hábil '
-        + 'siguiente a aquel en que conoció efectivamente la solicitud.\n\n'
-        + 'De esta manera, la Unión Temporal cumplió integralmente la única actuación que '
-        + 'eventualmente podía exigírsele frente a una petición cuyo contenido excedía su '
-        + 'competencia: identificar a la autoridad competente, remitirle la solicitud con sus '
-        + 'anexos e informar de esa actuación al interesado.\n\n'
-        + 'No era jurídicamente exigible que mi representada emitiera una respuesta material sobre '
-        + 'la liquidación, reliquidación, suspensión, exoneración, devolución o modificación del '
-        + 'impuesto, pues hacerlo habría implicado ejercer atribuciones tributarias que no le han '
-        + 'sido conferidas por la ley, el acuerdo municipal ni el contrato de concesión.',
-    },
-  ],
+  pretensiones:
+    '[IDENTIFICAR CADA PRETENSIÓN Y SEÑALAR SI LA ENTIDAD SE OPONE, NO TIENE COMPETENCIA, YA '
+    + 'LA SATISFIZO O ADOPTA OTRA POSICIÓN, SIN EXTENDER ARGUMENTOS QUE NO SEAN NECESARIOS].',
+
+  /*
+   * Sin ningún módulo activo, y es lo correcto: el bloque de control del modelo prohíbe que
+   * el formato genere argumentos por su cuenta. Los enciende Jurídica contra el expediente,
+   * desde el catálogo de `tutelaModulos.ts`.
+   */
+  fundamentos: [],
+
+  oposicion:
+    '[RESUMIR EN UNO O DOS PÁRRAFOS LA POSICIÓN DE LA REPRESENTADA FRENTE A LAS PRETENSIONES. '
+    + 'EVITAR REPETIR EXTENSAMENTE LOS FUNDAMENTOS YA EXPUESTOS].',
+
+  solicitudes: [...SOLICITUDES_MODELO],
+  pruebas: [...PRUEBAS_MODELO],
+
+  notificacionesRepresentada: '[CORREO INSTITUCIONAL / DIRECCIÓN / OTRO MEDIO]',
 
   textos: {},
 };
@@ -284,16 +253,74 @@ export default function ContestacionTutelaPage() {
       ...p,
       fundamentos: p.fundamentos.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)),
     }));
+  /*
+   * Nace con su texto guía como valor y no en blanco: vacío se ve como un «3.1.» suelto que
+   * parece un error de pintado, y además no se podría imprimir para trabajarlo a mano.
+   */
   const agregarFundamento = () =>
     setF((p) => ({
       ...p,
       fundamentos: [
         ...p.fundamentos,
-        { numero: `2.${p.fundamentos.length + 1}.`, titulo: '', cuerpo: '', items: [], cierre: '' },
+        {
+          titulo: '[TÍTULO DEL ARGUMENTO]',
+          cuerpo: '[DESARROLLAR EL ARGUMENTO CON SU FUNDAMENTO NORMATIVO Y EL SOPORTE DEL EXPEDIENTE].',
+          items: [],
+          cierre: '',
+        },
       ],
     }));
   const quitarFundamento = (i: number) =>
     setF((p) => ({ ...p, fundamentos: p.fundamentos.filter((_, idx) => idx !== i) }));
+
+  const moduloActivo = (clave: string) => f.fundamentos.some((x) => x.modulo === clave);
+
+  /** El módulo que propone el tipo de defensa escogido, si ese tipo tiene uno. */
+  const sugerido = moduloPorClave(
+    TIPOS_DEFENSA.find((t) => t.valor === f.tipoDefensa)?.sugiere ?? '',
+  );
+
+  /**
+   * Enciende o apaga un módulo del catálogo.
+   *
+   * Al apagarlo se pierde lo que se hubiera escrito encima, y por eso el panel pregunta
+   * antes: el módulo se activa para redactarlo, no para leerlo, y a los diez minutos ya no
+   * es el texto del catálogo sino el argumento del caso.
+   */
+  const alternarModulo = (clave: string) => {
+    if (moduloActivo(clave)) {
+      const m = moduloPorClave(clave);
+      const escrito = f.fundamentos.find((x) => x.modulo === clave);
+      const tocado = escrito && m
+        && (escrito.cuerpo !== m.cuerpo || escrito.cierre !== m.cierre || escrito.items.length > 0);
+      if (tocado && !confirm(`Quitar «${m!.titulo}». Se pierde lo que hayas escrito en él. ¿Seguir?`)) return;
+      setF((p) => ({ ...p, fundamentos: p.fundamentos.filter((x) => x.modulo !== clave) }));
+      return;
+    }
+    const m = moduloPorClave(clave);
+    if (!m) return;
+    setF((p) => ({
+      ...p,
+      fundamentos: [
+        ...p.fundamentos,
+        {
+          modulo: m.clave,
+          titulo: `${m.titulo} ${m.marca}`,
+          cuerpo: m.cuerpo,
+          items: [...m.items],
+          cierre: m.cierre,
+        },
+      ],
+    }));
+  };
+
+  /** Las listas de solicitudes y pruebas: mismo renglón numerado, distinta clave. */
+  const setLista = (k: 'solicitudes' | 'pruebas', i: number, v: string) =>
+    setF((p) => ({ ...p, [k]: p[k].map((x, idx) => (idx === i ? v : x)) }));
+  const agregarLinea = (k: 'solicitudes' | 'pruebas') =>
+    setF((p) => ({ ...p, [k]: [...p[k], ''] }));
+  const quitarLinea = (k: 'solicitudes' | 'pruebas', i: number) =>
+    setF((p) => ({ ...p, [k]: p[k].filter((_, idx) => idx !== i) }));
 
   /** Los literales a), b)… de un fundamento. */
   const mapItems = (i: number, fn: (items: string[]) => string[]) =>
@@ -321,7 +348,14 @@ export default function ContestacionTutelaPage() {
           // Un documento guardado sin listas dejaría la sección en blanco y sin forma de
           // volver al formato: se cae a la plantilla.
           hechos: saved.hechos?.length ? saved.hechos : EMPTY.hechos,
-          fundamentos: saved.fundamentos?.length ? saved.fundamentos : EMPTY.fundamentos,
+          solicitudes: saved.solicitudes?.length ? saved.solicitudes : EMPTY.solicitudes,
+          pruebas: saved.pruebas?.length ? saved.pruebas : EMPTY.pruebas,
+          /*
+           * Los fundamentos **no** se caen a la plantilla: acá vacío quiere decir «Jurídica
+           * todavía no ha escogido módulos», que es como nace el formato. Rellenarlo le
+           * volvería a meter argumentos que nadie activó, justo lo que el modelo prohíbe.
+           */
+          fundamentos: saved.fundamentos ?? [],
           textos: saved.textos ?? {},
         });
       } catch {
@@ -351,10 +385,28 @@ export default function ContestacionTutelaPage() {
     ? getActaConfig(f.empresaId!).logoUrl
     : '/assets/images/logo-alumbrado.png';
 
+  /**
+   * Escoger la representada arrastra sus datos: el NIT y la sede salen del mismo registro
+   * que el logo.
+   *
+   * A mano acabarían diciendo cosas distintas de una contestación a otra, y el NIT de la
+   * representada en un escrito judicial no es un campo cualquiera. Solo se copia lo que el
+   * registro sabe con certeza —`datoContratista` calla cuando las configuraciones de esa
+   * empresa discrepan—; lo demás se deja como estaba, para llenarlo a mano.
+   */
   const escogerEmpresa = (id: string) => {
     if (!id) { setF((p) => ({ ...p, empresaId: null, empresa: '' })); return; }
-    const c = empresas.find((x) => x.companyId === Number(id));
-    setF((p) => ({ ...p, empresaId: Number(id), empresa: c?.name ?? p.empresa }));
+    const companyId = Number(id);
+    const c = empresas.find((x) => x.companyId === companyId);
+    const nit = datoContratista(companyId, 'conNit');
+    const sede = datoContratista(companyId, 'conDireccion');
+    setF((p) => ({
+      ...p,
+      empresaId: companyId,
+      empresa: c?.name ?? p.empresa,
+      empresaNit: nit ?? p.empresaNit,
+      empresaSede: sede ?? p.empresaSede,
+    }));
   };
 
   const handleSave = async () => {
@@ -454,38 +506,96 @@ export default function ContestacionTutelaPage() {
             {/* Membrete */}
             <div className="flex items-start justify-between gap-4">
               <img src={logoUrl} alt={f.empresa || 'Alumbrado Público'} className="h-14 object-contain" />
-              <p className="text-right text-[11px] font-semibold max-w-[45%]">
-                {f.empresa || <span className="italic text-[#8a8aa0]">Escoge la empresa representada</span>}
-              </p>
-            </div>
-
-            {/* Fecha y destinatario */}
-            <div className="pt-6 space-y-3">
-              <Linea value={f.fecha} onChange={(v) => set('fecha', v)} />
-              <div className="space-y-0.5">
-                <p>Doctor</p>
-                <Linea value={f.juezNombre} onChange={(v) => set('juezNombre', v)} bold />
-                <Linea value={f.juezDespacho} onChange={(v) => set('juezDespacho', v)} />
-                <Linea value={f.juezCorreo} onChange={(v) => set('juezCorreo', v)} />
-                <p>E. S. D.</p>
+              <div className="text-right text-[11px] font-semibold max-w-[45%]">
+                <p>
+                  {f.empresa || (
+                    <span className="italic font-normal text-[#8a8aa0]">Escoge la empresa representada</span>
+                  )}
+                </p>
+                <p>NIT {f.empresaNit}</p>
               </div>
             </div>
 
-            {/* Identificación del proceso */}
-            <div className="pt-4 grid grid-cols-[120px_1fr] gap-x-3 gap-y-0.5">
-              <Dato label="Radicado:" value={f.radicado} onChange={(v) => set('radicado', v)} />
-              <Dato label="Accionante:" value={f.accionante} onChange={(v) => set('accionante', v)} />
-              <Dato label="Accionados:" value={f.accionados} onChange={(v) => set('accionados', v)} />
-              <Dato label="Vinculada:" value={f.vinculada} onChange={(v) => set('vinculada', v)} />
+            {/* Título del modelo */}
+            <div className="text-center pt-3">
+              <p className="font-bold text-[13px]">
+                CONTESTACIÓN DE ACCIÓN DE TUTELA Y SOLICITUD DE DESVINCULACIÓN
+              </p>
+              <p className="font-bold text-[10px] tracking-wide">
+                MODELO ESPECIAL - USO EXCLUSIVO DIRECCIÓN JURÍDICA
+              </p>
             </div>
 
+            {/* El control jurídico: se diligencia en pantalla y no viaja al despacho. */}
+            <BloqueControl
+              titulo="CONTROL JURÍDICO OBLIGATORIO — NO SE IMPRIME"
+              nota="Este modelo no genera argumentos ni solicitudes por su cuenta. Escoge únicamente los módulos que correspondan a los hechos, derechos invocados, pretensiones, competencias y pruebas del expediente."
+            >
+                <label className="flex items-center gap-2 text-[12px]">
+                  <span className="font-semibold text-[#4a4a63] w-28 shrink-0">Tipo de defensa</span>
+                  <select
+                    value={f.tipoDefensa}
+                    onChange={(e) => set('tipoDefensa', e.target.value)}
+                    className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                  >
+                    {TIPOS_DEFENSA.map((t) => (
+                      <option key={t.valor} value={t.valor}>{t.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Propone, no activa: el argumento entra cuando Jurídica lo decide. */}
+                {sugerido && !moduloActivo(sugerido.clave) && (
+                  <p className="text-[11px] text-[#4a4a63]">
+                    Ese tipo de defensa sugiere el módulo «{sugerido.titulo}».{' '}
+                    <button
+                      type="button"
+                      onClick={() => alternarModulo(sugerido.clave)}
+                      className="underline font-semibold text-[#16162b]"
+                    >
+                      Activarlo
+                    </button>
+                  </p>
+                )}
+
+                <div>
+                  <p className="text-[11px] font-semibold text-[#4a4a63] mb-1.5">
+                    Módulos de la sección III · {f.fundamentos.filter((x) => x.modulo).length} de{' '}
+                    {MODULOS_DEFENSA.length} activos
+                  </p>
+                  <div className="space-y-1">
+                    {MODULOS_DEFENSA.map((m) => (
+                      <label key={m.clave} className="flex items-start gap-2 text-[11.5px] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={moduloActivo(m.clave)}
+                          onChange={() => alternarModulo(m.clave)}
+                          className="mt-0.5 shrink-0"
+                        />
+                        <span>
+                          {m.titulo}
+                          {m.clave === 'tributario' && (
+                            <span className="block text-[10.5px] text-[#8a6d00]">
+                              Activar solo si el caso es realmente tributario y la UTAP carece de
+                              competencia decisoria.
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+            </BloqueControl>
+
+            <EncabezadoJudicial f={f} set={(k, v) => set(k, v)} />
+
             {/* Asunto */}
-            <div className="pt-4 grid grid-cols-[120px_1fr] gap-x-3">
-              <span className="font-bold tracking-wider">ASUNTO:</span>
+            <div className="pt-4 flex items-baseline gap-2">
+              <span className="font-bold tracking-wider shrink-0">ASUNTO:</span>
               <TextoEd
                 k="asunto"
                 plantilla="CONTESTACIÓN DE LA ACCIÓN DE TUTELA Y SOLICITUD DE DESVINCULACIÓN"
-                className="font-bold uppercase"
+                className="uppercase"
               />
             </div>
 
@@ -497,7 +607,7 @@ export default function ContestacionTutelaPage() {
                   `${f.apoderada}, mayor de edad, identificada con la cédula de ciudadanía No. `
                   + `${f.apoderadaCc} de ${f.apoderadaCcLugar}, abogada en ejercicio y portadora de la `
                   + `Tarjeta Profesional No. ${f.apoderadaTp} del Consejo Superior de la Judicatura, `
-                  + `actuando en calidad de apoderada judicial de la ${f.empresa || 'xxxxx'}, `
+                  + `actuando en calidad de apoderada judicial de ${f.empresa || '[NOMBRE DE LA UTAP / ENTIDAD]'}, `
                   + `identificada con NIT ${f.empresaNit} y representada legalmente por el señor `
                   + `${f.empresaRepLegal}, conforme al poder especial que se adjunta, respetuosamente `
                   + `comparezco dentro del término concedido para contestar la acción de tutela de la `
@@ -511,6 +621,12 @@ export default function ContestacionTutelaPage() {
             <p className="font-bold text-center pt-6">
               <span className="mr-8">I.</span>PRONUNCIAMIENTO FRENTE A LOS HECHOS
             </p>
+
+            <Guia>
+              Responde cada hecho por separado, indicando si es cierto, no es cierto, es
+              parcialmente cierto, no consta o corresponde a una valoración jurídica, y señala el
+              soporte cuando sea relevante.
+            </Guia>
 
             <div className="space-y-2 pt-2">
               {f.hechos.map((h, i) => (
@@ -554,35 +670,53 @@ export default function ContestacionTutelaPage() {
               </Button>
             </div>
 
-            {/* II. Fundamentos jurídicos de la defensa */}
+            {/* II. Pronunciamiento frente a las pretensiones */}
             <p className="font-bold text-center pt-6">
-              <span className="mr-8">II.</span>FUNDAMENTOS JURÍDICOS DE LA DEFENSA
+              <span className="mr-8">II.</span>PRONUNCIAMIENTO FRENTE A LAS PRETENSIONES
             </p>
+
+            <div className="pt-2">
+              <AutoTextarea
+                value={f.pretensiones}
+                onChange={(v) => set('pretensiones', v)}
+              />
+            </div>
+
+            {/* III. Fundamentos jurídicos de la defensa */}
+            <p className="font-bold text-center pt-6">
+              <span className="mr-8">III.</span>FUNDAMENTOS JURÍDICOS DE LA DEFENSA
+            </p>
+
+            <Guia>
+              Módulos opcionales. Se activan arriba, en el control jurídico, y solo los que
+              correspondan al caso concreto.
+            </Guia>
+
+            {f.fundamentos.length === 0 && (
+              <p className="no-print text-[11.5px] text-[#8a8aa0] italic pt-1">
+                Sin módulos activos. Enciende en el control jurídico los argumentos que sostenga
+                el expediente.
+              </p>
+            )}
 
             <div className="space-y-4 pt-2">
               {f.fundamentos.map((x, i) => (
                 <div key={i} className="group/fundamento">
                   <div className="flex items-start gap-2">
-                    <input
-                      value={x.numero}
-                      onChange={(e) => setFundamento(i, 'numero', e.target.value)}
-                      className="w-12 shrink-0 bg-transparent outline-none font-bold text-[12px] disabled:opacity-100 disabled:text-black"
-                    />
+                    <span className="shrink-0 font-bold">{numeroFundamento(i)}</span>
                     <input
                       value={x.titulo}
                       onChange={(e) => setFundamento(i, 'titulo', e.target.value)}
                       className="flex-grow min-w-0 bg-transparent outline-none font-bold text-[12px] disabled:opacity-100 disabled:text-black"
                     />
-                    {f.fundamentos.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => quitarFundamento(i)}
-                        title="Quitar este fundamento"
-                        className="no-print shrink-0 text-red-600 hover:text-red-800 opacity-0 group-hover/fundamento:opacity-100 transition-opacity mt-0.5"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => (x.modulo ? alternarModulo(x.modulo) : quitarFundamento(i))}
+                      title="Quitar este fundamento"
+                      className="no-print shrink-0 text-red-600 hover:text-red-800 opacity-0 group-hover/fundamento:opacity-100 transition-opacity mt-0.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   <AutoTextarea
                     value={x.cuerpo}
@@ -626,10 +760,72 @@ export default function ContestacionTutelaPage() {
               ))}
               <Button type="button" variant="outline" size="sm" onClick={agregarFundamento}
                 className="no-print h-7 text-[11px] gap-1.5">
-                <Plus className="w-3.5 h-3.5" /> Agregar fundamento
+                <Plus className="w-3.5 h-3.5" /> Agregar fundamento fuera del catálogo
               </Button>
             </div>
+
+            {/* IV. Oposición a las pretensiones */}
+            <p className="font-bold text-center pt-6">
+              <span className="mr-8">IV.</span>OPOSICIÓN A LAS PRETENSIONES
+            </p>
+            <div className="pt-2">
+              <AutoTextarea value={f.oposicion} onChange={(v) => set('oposicion', v)} />
+            </div>
+
+            {/* V. Solicitudes */}
+            <p className="font-bold text-center pt-6">
+              <span className="mr-8">V.</span>SOLICITUDES
+            </p>
+            <ListaNumerada
+              items={f.solicitudes}
+              onChange={(i, v) => setLista('solicitudes', i, v)}
+              onQuitar={(i) => quitarLinea('solicitudes', i)}
+              onAgregar={() => agregarLinea('solicitudes')}
+              etiqueta="solicitud"
+            />
+
+            {/* VI. Pruebas y anexos */}
+            <p className="font-bold text-center pt-6">
+              <span className="mr-8">VI.</span>PRUEBAS Y ANEXOS
+            </p>
+            <ListaNumerada
+              items={f.pruebas}
+              onChange={(i, v) => setLista('pruebas', i, v)}
+              onQuitar={(i) => quitarLinea('pruebas', i)}
+              onAgregar={() => agregarLinea('pruebas')}
+              etiqueta="prueba"
+            />
+
+            {/* VII. Notificaciones */}
+            <p className="font-bold text-center pt-6">
+              <span className="mr-8">VII.</span>NOTIFICACIONES
+            </p>
+            <div className="pt-2">
+              <TextoEd
+                k="notificaciones"
+                plantilla={
+                  `La suscrita apoderada recibirá notificaciones en el correo electrónico `
+                  + `${f.apoderadaCorreo}. La representada las recibirá en `
+                  + `${f.notificacionesRepresentada}.`
+                }
+              />
+            </div>
+
+            {/* Firma */}
+            <div className="pt-8">
+              <p>Atentamente,</p>
+              <div className="pt-12 space-y-0.5">
+                <p className="border-t border-black w-72 pt-1 font-bold">{f.apoderada}</p>
+                <p>C.C. {f.apoderadaCc} de {f.apoderadaCcLugar}</p>
+                <p>T.P. {f.apoderadaTp} del C.S.J.</p>
+                <p>Apoderada judicial</p>
+                <p>{f.apoderadaCorreo}</p>
+              </div>
+            </div>
+
+            <PieMembrete sede={f.empresaSede} correo={f.empresaCorreo} />
           </div>
+          <PieElaboracion />
 
           {/* Los datos que arman el texto. En el papel no existen, pero sin ellos habría
               que reescribir el párrafo a mano para cambiar un NIT. */}
@@ -647,7 +843,11 @@ export default function ContestacionTutelaPage() {
               <Campo label="Cédula de la apoderada" value={f.apoderadaCc} onChange={(v) => set('apoderadaCc', v)} />
               <Campo label="Expedida en" value={f.apoderadaCcLugar} onChange={(v) => set('apoderadaCcLugar', v)} />
               <Campo label="Tarjeta profesional" value={f.apoderadaTp} onChange={(v) => set('apoderadaTp', v)} />
+              <Campo label="Correo de la apoderada" value={f.apoderadaCorreo} onChange={(v) => set('apoderadaCorreo', v)} />
               <Campo label="Auto y anexos recibidos" value={f.recibidos} onChange={(v) => set('recibidos', v)} />
+              <Campo label="Sede de la representada" value={f.empresaSede} onChange={(v) => set('empresaSede', v)} />
+              <Campo label="Correo de la representada" value={f.empresaCorreo} onChange={(v) => set('empresaCorreo', v)} />
+              <Campo label="Notificaciones de la representada" value={f.notificacionesRepresentada} onChange={(v) => set('notificacionesRepresentada', v)} />
             </div>
           </section>
         </TextosDocumento>
@@ -660,52 +860,5 @@ export default function ContestacionTutelaPage() {
         )}
       </main>
     </div>
-  );
-}
-
-/* ── Subcomponentes ─────────────────────────────────────── */
-
-/** Renglón suelto del encabezado (fecha, juez, correo). */
-function Linea({ value, onChange, bold }: {
-  value: string; onChange: (v: string) => void; bold?: boolean;
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
-        + (bold ? 'font-bold' : '')}
-    />
-  );
-}
-
-/** Fila «Etiqueta: valor» del bloque de identificación del proceso. */
-function Dato({ label, value, onChange }: {
-  label: string; value: string; onChange: (v: string) => void;
-}) {
-  return (
-    <>
-      <span className="font-bold">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
-      />
-    </>
-  );
-}
-
-function Campo({ label, value, onChange }: {
-  label: string; value: string; onChange: (v: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-semibold text-[#4a4a63] mb-1">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-[#c9c9dc] rounded px-2 py-1 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
-      />
-    </label>
   );
 }

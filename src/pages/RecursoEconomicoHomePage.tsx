@@ -20,12 +20,16 @@ import { esRolPmo } from '@/utils/rolesPmo';
 
 const SECCIONES = [
   {
+    /** Solo del PMO: acá se configuran los porcentajes con los que se calcula todo. */
+    soloPmo: true,
     slug: 'parametros',
     nombre: 'Parámetros',
     descripcion: 'Interventoría por año y los porcentajes de retención de cada municipio',
     Icon: SlidersHorizontal,
   },
   {
+    // El director de proyecto entra a validar la factura de su municipio.
+    soloPmo: false,
     slug: 'factura',
     nombre: 'Factura',
     descripcion: 'La factura de concesión de cada municipio, mes a mes, y su valor neto',
@@ -37,7 +41,10 @@ export default function RecursoEconomicoHomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  if (!esRolPmo(user?.nombreRol)) {
+  const esPmo = esRolPmo(user?.nombreRol);
+  const visibles = SECCIONES.filter((s) => esPmo || !s.soloPmo);
+
+  if (!esPmo) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-50))]">
         <div className="text-center max-w-md px-6">
@@ -76,7 +83,7 @@ export default function RecursoEconomicoHomePage() {
 
       <main className="flex-grow max-w-4xl mx-auto px-6 py-12 w-full">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {SECCIONES.map(({ slug, nombre, descripcion, Icon }) => (
+          {visibles.map(({ slug, nombre, descripcion, Icon }) => (
             <Card
               key={slug}
               onClick={() => navigate(`/dashboard/recurso-economico/${slug}`)}

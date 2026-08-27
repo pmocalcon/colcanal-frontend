@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Pencil, Plus, Save, Search, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Campo, CampoCalculado, CampoPorcentaje, CampoSugerido, Selector } from '@/components/talentoHumano/campos';
-import { talentoHumanoService, type ThPersona } from '@/services/talentoHumano.service';
+import { Campo, CampoCalculado, CampoCheck, CampoPorcentaje, CampoSugerido, Selector } from '@/components/talentoHumano/campos';
+import { talentoHumanoService, type ThBanco, type ThPersona } from '@/services/talentoHumano.service';
 
 /**
  * Listado de la base de personal.
@@ -19,6 +19,32 @@ import { talentoHumanoService, type ThPersona } from '@/services/talentoHumano.s
  */
 
 const ESTADOS = ['ACTIVO', 'INACTIVO'];
+const TIPOS_CUENTA = ['AHORROS', 'CORRIENTE'];
+
+/**
+ * Los tipos de documento que el archivo del banco sabe traducir a su número. Vacío se
+ * lee como CC, que es lo que es casi toda la base.
+ */
+const TIPOS_ID = ['CC', 'CE', 'TI', 'NIT', 'PA'];
+
+/**
+ * Propone dónde termina el apellido en un «APELLIDOS NOMBRES».
+ *
+ * Es la misma regla del backend (`partirNombre` en `pagos.service.ts`) y está repetida a
+ * propósito: acá solo sirve para mostrar en gris lo que se va a usar si nadie escribe
+ * nada, y hacer un viaje al servidor para eso sería peor. Quien manda al armar el archivo
+ * sigue siendo el backend.
+ */
+const partirNombre = (nombre: string) => {
+  const palabras = (nombre ?? '').trim().split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return { apellidos: '', nombres: '' };
+  if (palabras.length === 1) return { apellidos: palabras[0], nombres: '' };
+  const cuantos = palabras.length >= 4 ? 2 : 1;
+  return {
+    apellidos: palabras.slice(0, cuantos).join(' '),
+    nombres: palabras.slice(cuantos).join(' '),
+  };
+};
 
 /** Las cifras de la remuneración, que en la tabla van juntas y alineadas a la derecha. */
 const cop = (v: string | null) => {
@@ -67,6 +93,20 @@ function Th({ children, alinear = 'left', fija = false }: {
   );
 }
 
+const SEXOS = ['FEMENINO', 'MASCULINO', 'OTRO'];
+const ESTADOS_CIVILES = ['SOLTERO(A)', 'CASADO(A)', 'UNIÓN LIBRE', 'SEPARADO(A)', 'DIVORCIADO(A)', 'VIUDO(A)'];
+/** Las cinco clases del decreto 1607. No es la tarifa: eso es «Tarifa ARL». */
+const CLASES_RIESGO = ['I', 'II', 'III', 'IV', 'V'];
+/**
+ * Tres respuestas y no un sí/no: hay cargos que no la necesitan, y aplanarlos a «no»
+ * dejaría a un auxiliar administrativo tan incumplido como a un técnico sin certificar.
+ */
+const TRABAJO_ALTURA = ['SÍ', 'NO', 'NO APLICA'];
+
+/** Los días con decimales: medio día de permiso es medio día, no cero ni uno. */
+const dias = (v: number | null | undefined) =>
+  v == null || v === 0 ? '—' : v.toLocaleString('es-CO', { maximumFractionDigits: 1 });
+
 type Borrador = Partial<ThPersona>;
 
 const num = (v: unknown) => {
@@ -108,6 +148,9 @@ const VACIO: Borrador = {
   operacionFge: '', centroCosto: '', tipoGasto: '',
   fechaIngreso: '', escalafon: '', formacionProfesional: '',
   salario: '', auxilioTransporte: '', auxilioRodamiento: '', totalSalarios: '',
+  polizaFuneraria: '', fspModo: '', aportaSalud: true, aportaPension: true,
+  fechaSalida: '', banco: '', cuenta: '', tipoCuenta: '',
+  tipoId: '', nombres: '', apellidos: '',
   cargaPrestacionalPct: '', cargaPrestacional: '', costoTotal: '',
   anioVigencia: new Date().getFullYear(), observaciones: '',
 };
@@ -148,6 +191,45 @@ export default function PersonalListPage() {
   const escalafones = useMemo(() => valoresDe('escalafon'), [rows]);
   const cargos = useMemo(() => valoresDe('cargo'), [rows]);
   const formaciones = useMemo(() => valoresDe('formacionProfesional'), [rows]);
+  /*
+   * EPS, AFP, ARL y CCF se sugieren de lo que ya está escrito y no de una lista fija: son
+   * un puñado de entidades, pero cambian de nombre —y de dueño— cada tanto, y una lista
+   * fija en el código obligaría a un despliegue cada vez que una se fusione.
+   */
+  const epss = useMemo(() => valoresDe('eps'), [rows]);
+  const afps = useMemo(() => valoresDe('afp'), [rows]);
+  const arls = useMemo(() => valoresDe('arl'), [rows]);
+  const ccfs = useMemo(() => valoresDe('ccf'), [rows]);
+  /**
+   * Los bancos salen del catálogo de Parámetros, no de lo que ya esté escrito en las
+   * fichas: el archivo del portal bancario necesita el código de la entidad, y un nombre
+   * escrito a mano —«Davivienda», «DAVIVIENDA S.A.»— no lo resuelve. Si el catálogo no
+   * carga, se cae a los valores en uso para no dejar el campo muerto.
+   */
+  const [catalogoBancos, setCatalogoBancos] = useState<ThBanco[]>([]);
+  useEffect(() => {
+    talentoHumanoService.listBancos().then(setCatalogoBancos).catch(() => setCatalogoBancos([]));
+  }, []);
+  const enUso = useMemo(() => valoresDe('banco'), [rows]);
+  const bancos = useMemo(() => {
+    const delCatalogo = catalogoBancos.filter((b) => b.activo).map((b) => b.nombre);
+    if (delCatalogo.length === 0) return enUso;
+    // Los que ya estén escritos y no estén en el catálogo se dejan en la lista: sacarlos
+    // borraría en silencio el banco de esa persona la próxima vez que se guarde su ficha.
+    const faltantes = enUso.filter(
+      (n) => !delCatalogo.some((c) => c.toUpperCase() === n.toUpperCase()),
+    );
+    return [...delCatalogo, ...faltantes].sort();
+  }, [catalogoBancos, enUso]);
+
+  const sugerido = useMemo(() => partirNombre(borrador?.nombre ?? ''), [borrador?.nombre]);
+
+  /**
+   * La fecha de salida solo se pide cuando la persona está inactiva: a un activo no se
+   * le ha ido nadie, y el campo vacío en la ficha de todos invita a llenarlo con
+   * cualquier cosa.
+   */
+  const estaInactivo = (borrador?.estado ?? '').trim().toUpperCase().startsWith('INACTIVO');
 
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
@@ -273,8 +355,34 @@ export default function PersonalListPage() {
               {/* Quién es */}
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3">
                 <Campo label="Identificación *" value={borrador.identificacion ?? ''} onChange={(v) => set('identificacion', v)} />
+                <Selector
+                  label="Tipo de documento"
+                  value={borrador.tipoId ?? ''}
+                  opciones={TIPOS_ID}
+                  onChange={(v) => set('tipoId', v)}
+                  vacio="CC"
+                  nota="Solo lo pide el archivo del banco."
+                />
                 <Campo label="Nombre *" value={borrador.nombre ?? ''} onChange={(v) => set('nombre', v)} ancho="md:col-span-2" />
                 <Selector label="Estado" value={borrador.estado ?? ''} opciones={ESTADOS} onChange={(v) => set('estado', v)} />
+
+                <Campo
+                  label="Fecha de nacimiento"
+                  value={borrador.fechaNacimiento ?? ''}
+                  onChange={(v) => set('fechaNacimiento', v)}
+                  tipo="date"
+                  nota="La edad se calcula sola: guardarla la dejaría vieja al año siguiente."
+                />
+                <Campo label="Correo" value={borrador.correo ?? ''} onChange={(v) => set('correo', v)} tipo="email" />
+                <Selector label="Sexo" value={borrador.sexo ?? ''} opciones={SEXOS} onChange={(v) => set('sexo', v)} />
+                <Selector label="Estado civil" value={borrador.estadoCivil ?? ''} opciones={ESTADOS_CIVILES} onChange={(v) => set('estadoCivil', v)} />
+                <Campo
+                  label="Hijos"
+                  value={borrador.hijos ?? ''}
+                  onChange={(v) => set('hijos', v === '' ? null : Number(v))}
+                  tipo="number"
+                  paso="1"
+                />
 
                 <CampoSugerido id="lista-cargos" label="Cargo" value={borrador.cargo ?? ''} opciones={cargos} onChange={(v) => set('cargo', v)} ancho="md:col-span-2" />
                 <CampoSugerido id="lista-areas" label="Área" value={borrador.area ?? ''} opciones={areas} onChange={(v) => set('area', v)} />
@@ -285,6 +393,37 @@ export default function PersonalListPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
                 <CampoSugerido id="lista-contratos" label="Tipo de contrato" value={borrador.tipoContrato ?? ''} opciones={contratos} onChange={(v) => set('tipoContrato', v)} />
                 <Campo label="Fecha de ingreso" value={borrador.fechaIngreso ?? ''} onChange={(v) => set('fechaIngreso', v)} tipo="date" />
+                {estaInactivo && (
+                  <Campo
+                    label="Fecha de salida"
+                    value={borrador.fechaSalida ?? ''}
+                    onChange={(v) => set('fechaSalida', v)}
+                    tipo="date"
+                    nota="El último día trabajado, no el día en que se registró la baja."
+                  />
+                )}
+                <Campo
+                  label="Fecha de retiro"
+                  value={borrador.fechaVencimientoContrato ?? ''}
+                  onChange={(v) => set('fechaVencimientoContrato', v)}
+                  tipo="date"
+                  nota="Solo en término fijo y prestación de servicios. Un indefinido no vence."
+                />
+                <Selector
+                  label="Contrato firmado"
+                  value={borrador.contratoFirmado == null ? '' : borrador.contratoFirmado ? 'SÍ' : 'NO'}
+                  opciones={['SÍ', 'NO']}
+                  onChange={(v) => set('contratoFirmado', v === '' ? null : v === 'SÍ')}
+                  vacio="Sin revisar"
+                  nota="Vacío es «sin revisar», que no es lo mismo que «sin firmar»."
+                />
+                <Campo
+                  label="Otrosí o modificatorios"
+                  value={borrador.otroSi ?? ''}
+                  onChange={(v) => set('otroSi', v)}
+                  ancho="md:col-span-2"
+                  nota="Qué se le cambió al contrato y desde cuándo."
+                />
                 <CampoSugerido id="lista-ubicaciones" label="Ubicación" value={borrador.ubicacion ?? ''} opciones={ubicaciones} onChange={(v) => set('ubicacion', v)} />
                 <CampoSugerido id="lista-empresas" label="Empresa o proyecto" value={borrador.empresaProyecto ?? ''} opciones={empresas} onChange={(v) => set('empresaProyecto', v)} />
 
@@ -306,7 +445,118 @@ export default function PersonalListPage() {
                 <CampoCalculado label="Costo total" value={cop(borrador.costoTotal ?? '')} nota="Total salarios + carga prestacional" />
                 <Campo label="Año de vigencia" value={borrador.anioVigencia ?? ''} onChange={(v) => set('anioVigencia', v === '' ? null : Number(v))} tipo="number" paso="1" />
 
+                {/* Van con `set` y no con `setCalculado`: son descuentos, no parte del salario. */}
+                <Campo
+                  label="Póliza funeraria"
+                  value={borrador.polizaFuneraria ?? ''}
+                  onChange={(v) => set('polizaFuneraria', v)}
+                  tipo="number"
+                  nota="Cuota mensual. Se descuenta en nómina, en Servicios GrupoRecordar."
+                />
+                <Selector
+                  label="FSP"
+                  value={borrador.fspModo ?? ''}
+                  opciones={['SI', 'NO']}
+                  onChange={(v) => set('fspModo', v)}
+                  vacio="Automático (según IBC)"
+                  nota="Solo si aporta o no. El valor lo calcula la nómina: 1% del salario por los días."
+                />
+                <CampoCheck
+                  label="Salud"
+                  value={borrador.aportaSalud}
+                  onChange={(v) => set('aportaSalud', v)}
+                  nota="4% del IBC. Desmarcar solo si no cotiza salud por nómina."
+                />
+                <CampoCheck
+                  label="Pensión"
+                  value={borrador.aportaPension}
+                  onChange={(v) => set('aportaPension', v)}
+                  nota="4% del IBC. Al desmarcarla tampoco se le cobra FSP en automático."
+                />
+
                 <Campo label="Observaciones" value={borrador.observaciones ?? ''} onChange={(v) => set('observaciones', v)} ancho="md:col-span-3 lg:col-span-4" />
+              </div>
+
+              {/* Seguridad social y riesgo */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
+                <p className="md:col-span-3 lg:col-span-4 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide">
+                  Seguridad social y riesgo
+                </p>
+                <CampoSugerido id="lista-eps" label="EPS" value={borrador.eps ?? ''} opciones={epss} onChange={(v) => set('eps', v)} />
+                <CampoSugerido id="lista-afp" label="AFP" value={borrador.afp ?? ''} opciones={afps} onChange={(v) => set('afp', v)} />
+                <CampoSugerido id="lista-arl" label="ARL" value={borrador.arl ?? ''} opciones={arls} onChange={(v) => set('arl', v)} />
+                <CampoSugerido id="lista-ccf" label="CCF" value={borrador.ccf ?? ''} opciones={ccfs} onChange={(v) => set('ccf', v)} />
+
+                <Selector
+                  label="Clase de riesgo"
+                  value={borrador.claseRiesgo ?? ''}
+                  opciones={CLASES_RIESGO}
+                  onChange={(v) => set('claseRiesgo', v)}
+                  nota="La clase del decreto 1607, de I a V. No es la tarifa."
+                />
+                <CampoPorcentaje label="Tarifa ARL" value={borrador.nivelRiesgo ?? ''} onChange={(v) => set('nivelRiesgo', v)} />
+                <Selector
+                  label="Formación trabajo en alturas"
+                  value={borrador.trabajoAltura ?? ''}
+                  opciones={TRABAJO_ALTURA}
+                  onChange={(v) => set('trabajoAltura', v)}
+                />
+                <Campo
+                  label="Vacaciones pendientes (días)"
+                  value={borrador.diasVacacionesPendientes ?? ''}
+                  onChange={(v) => set('diasVacacionesPendientes', v === '' ? null : Number(v))}
+                  tipo="number"
+                  paso="1"
+                  nota="A mano mientras el módulo de Vacaciones no tenga la historia. Los días de incapacidad y de permiso sí se calculan solos."
+                />
+              </div>
+
+              {/* Dónde se le consigna la nómina */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
+                <p className="md:col-span-3 lg:col-span-4 text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] uppercase tracking-wide">
+                  Cuenta para el pago de la nómina
+                </p>
+                <Selector
+                  label="Banco"
+                  value={borrador.banco ?? ''}
+                  opciones={bancos}
+                  onChange={(v) => set('banco', v)}
+                  nota={catalogoBancos.length
+                    ? 'Del catálogo de Parámetros → Bancos.'
+                    : 'El catálogo de bancos no cargó; se listan los que ya están en uso.'}
+                />
+                {/* Texto y no `number`: hay cuentas que empiezan por cero. */}
+                <Campo
+                  label="Cuenta"
+                  value={borrador.cuenta ?? ''}
+                  onChange={(v) => set('cuenta', v)}
+                  nota="Se guarda tal cual, con los ceros de la izquierda."
+                />
+                <Selector
+                  label="Tipo de cuenta"
+                  value={borrador.tipoCuenta ?? ''}
+                  opciones={TIPOS_CUENTA}
+                  onChange={(v) => set('tipoCuenta', v)}
+                />
+                {/*
+                  El archivo del banco pide el nombre en dos columnas. Se propone un corte
+                  y esto guarda la corrección una sola vez, para no rehacerla cada mes:
+                  «CASTILLO JORGE EDUARDO» es un apellido y dos nombres, y «CHAMORRO
+                  CARVAJAL CARLOS» son dos apellidos y un nombre — las dos tienen tres
+                  palabras y no hay cómo adivinarlo.
+                */}
+                <Campo
+                  label="Apellidos"
+                  value={borrador.apellidos ?? ''}
+                  onChange={(v) => set('apellidos', v)}
+                  nota={borrador.apellidos ? undefined : `Si se deja vacío: ${sugerido.apellidos || '—'}`}
+                />
+                <Campo
+                  label="Nombres"
+                  value={borrador.nombres ?? ''}
+                  onChange={(v) => set('nombres', v)}
+                  nota={borrador.nombres ? undefined : `Si se deja vacío: ${sugerido.nombres || '—'}`}
+                />
               </div>
             </div>
 
@@ -333,8 +583,16 @@ export default function PersonalListPage() {
                   <Th>Estado</Th>
                   <Th>Cargo</Th>
                   <Th>Área</Th>
+                  <Th alinear="right">Edad</Th>
+                  <Th>Sexo</Th>
+                  <Th>Estado civil</Th>
+                  <Th alinear="right">Hijos</Th>
+                  <Th>Correo</Th>
                   <Th>Contrato</Th>
                   <Th>Ingreso</Th>
+                  <Th>Fecha de retiro</Th>
+                  <Th alinear="center">Firmado</Th>
+                  <Th>Otrosí</Th>
                   <Th>Ubicación</Th>
                   <Th>Empresa o proyecto</Th>
                   <Th>Operación/FGE</Th>
@@ -346,6 +604,24 @@ export default function PersonalListPage() {
                   <Th alinear="right">Aux. transporte</Th>
                   <Th alinear="right">Aux. rodamiento</Th>
                   <Th alinear="right">Total salarios</Th>
+                  <Th alinear="right">Póliza funeraria</Th>
+                  <Th alinear="right">FSP</Th>
+                  <Th alinear="right">Salud</Th>
+                  <Th alinear="right">Pensión</Th>
+                  <Th>Banco</Th>
+                  <Th>Cuenta</Th>
+                  <Th>Tipo de cuenta</Th>
+                  <Th>Fecha de salida</Th>
+                  <Th>EPS</Th>
+                  <Th>AFP</Th>
+                  <Th>ARL</Th>
+                  <Th>CCF</Th>
+                  <Th alinear="center">Clase riesgo</Th>
+                  <Th alinear="right">Tarifa ARL</Th>
+                  <Th>Alturas</Th>
+                  <Th alinear="right">Vac. pendientes</Th>
+                  <Th alinear="right">Días incap.</Th>
+                  <Th alinear="right">Días permiso</Th>
                   <Th alinear="right">% carga</Th>
                   <Th alinear="right">Carga prestacional</Th>
                   <Th alinear="right">Costo total</Th>
@@ -370,8 +646,19 @@ export default function PersonalListPage() {
                     </td>
                     <td className="px-3 py-2">{p.cargo || '—'}</td>
                     <td className="px-3 py-2">{p.area || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.edad ?? '—'}</td>
+                    <td className="px-3 py-2">{p.sexo || '—'}</td>
+                    <td className="px-3 py-2">{p.estadoCivil || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.hijos ?? '—'}</td>
+                    <td className="px-3 py-2 max-w-[200px] truncate" title={p.correo ?? ''}>{p.correo || '—'}</td>
                     <td className="px-3 py-2">{p.tipoContrato || '—'}</td>
                     <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fecha(p.fechaIngreso)}</td>
+                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fecha(p.fechaVencimientoContrato)}</td>
+                    {/* Vacío es «sin revisar»: se deja en raya, no en «No». */}
+                    <td className="px-3 py-2 text-center">
+                      {p.contratoFirmado == null ? '—' : p.contratoFirmado ? 'Sí' : 'No'}
+                    </td>
+                    <td className="px-3 py-2 max-w-[200px] truncate" title={p.otroSi ?? ''}>{p.otroSi || '—'}</td>
                     <td className="px-3 py-2">{p.ubicacion || '—'}</td>
                     <td className="px-3 py-2">{p.empresaProyecto || '—'}</td>
                     <td className="px-3 py-2">{p.operacionFge || '—'}</td>
@@ -383,6 +670,28 @@ export default function PersonalListPage() {
                     <td className="px-3 py-2 text-right tabular-nums">{cop(p.auxilioTransporte)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{cop(p.auxilioRodamiento)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{cop(p.totalSalarios)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{cop(p.polizaFuneraria)}</td>
+                    <td className="px-3 py-2 text-right">{p.fspModo || 'Auto'}</td>
+                    <td className="px-3 py-2 text-right">{p.aportaSalud === false ? 'No' : 'Sí'}</td>
+                    <td className="px-3 py-2 text-right">{p.aportaPension === false ? 'No' : 'Sí'}</td>
+                    <td className="px-3 py-2">{p.banco || '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">{p.cuenta || '—'}</td>
+                    <td className="px-3 py-2">{p.tipoCuenta || '—'}</td>
+                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fecha(p.fechaSalida)}</td>
+                    <td className="px-3 py-2">{p.eps || '—'}</td>
+                    <td className="px-3 py-2">{p.afp || '—'}</td>
+                    <td className="px-3 py-2">{p.arl || '—'}</td>
+                    <td className="px-3 py-2">{p.ccf || '—'}</td>
+                    <td className="px-3 py-2 text-center">{p.claseRiesgo || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{pct(p.nivelRiesgo)}</td>
+                    <td className="px-3 py-2">{p.trabajoAltura || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.diasVacacionesPendientes ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" title="Registrados este año en Incapacidades">
+                      {dias(p.diasIncapacidad)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums" title="Este año en Ausentismos. Las horas sueltas cuentan como días de ocho.">
+                      {dias(p.diasPermiso)}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{pct(p.cargaPrestacionalPct)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{cop(p.cargaPrestacional)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold">{cop(p.costoTotal)}</td>

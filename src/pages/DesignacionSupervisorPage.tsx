@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Printer, Save, Loader2 } from 'lucide-react';
@@ -10,31 +10,52 @@ import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/jurid
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
 
 /**
- * Formato GJ-003-F · "Acta de designación y aceptación de supervisión contractual"
- * (fase 2 de G. jurídica). La diligencia Jurídica.
+ * "Designación y aceptación de supervisión contractual" (fase 2 de G. jurídica). La
+ * diligencia Jurídica.
  *
- * No es una carta a un tercero: es un acta en la que quien firma —la Representante
- * Legal de la contratante— deja constancia de que ejercerá **ella misma** la
- * supervisión y la acepta. Por eso no hay destinatario ni dos firmas: designante y
- * supervisora son la misma persona, y el propio texto del formato lo dice («la
- * suscrita actúa simultáneamente como Representante Legal de LA CONTRATANTE y como
- * supervisora»). Si alguna vez se designara a un tercero, ese párrafo y el de
- * aceptación necesitarían otra redacción, no solo otro nombre.
+ * La Representante Legal designa a quien ejercerá la supervisión del contrato, y esa
+ * persona acepta. Por eso el acta cierra con **dos firmas**: quien designa y quien acepta.
+ *
+ * Puede ocurrir que sean la misma persona —la Representante Legal supervisando ella
+ * misma—, y para ese caso el modelo pide expresamente un solo bloque de firma. Se resuelve
+ * con una casilla en el control de parametrización y no comparando los nombres: dos firmas
+ * con el mismo nombre encima es un error visible en un papel que ya se firmó, y no es algo
+ * que deba depender de si alguien escribió el segundo apellido.
  *
  * Ruta: `.../juridica/:id/designacion-supervisor`. Se guarda en data.designacionSupervisor.
  */
 
 interface DesignacionState {
+  // ── Control interno de parametrización, no se imprime ──
+  codigoDocumental: string;
+  version: string;
+  /** Designante y supervisor son la misma persona: entonces va un solo bloque de firma. */
+  mismaPersona: boolean;
+
   lugarFecha: string;
-  /** Quien firma: representante legal que además ejerce la supervisión. */
+
+  /** Quien designa: la Representante Legal de la contratante. */
   firmanteNombre: string;
   firmanteCc: string;
   firmanteCcLugar: string;
   firmanteCargo: string;
-  /** Cláusula del contrato que asigna la supervisión (en el modelo, la sexta). */
-  clausula: string;
+
+  /** Quien es designado. En el formato anterior no existía: supervisaba quien firmaba. */
+  supervisorNombre: string;
+  supervisorId: string;
+  supervisorCargo: string;
+
+  /**
+   * Qué sustenta la supervisión. Antes era siempre una cláusula del contrato («la sexta»);
+   * el modelo nuevo admite además un documento o una decisión interna, así que es texto
+   * libre y no un número de cláusula.
+   */
+  sustento: string;
+
   // Tabla de información del contrato
   tipologia: string;
   contratante: string; contratanteNit: string;
@@ -45,17 +66,32 @@ interface DesignacionState {
   plazo: string;
   inicio: string;
   terminacion: string;
+  garantias: string;
+
   /** Lugar y fecha de suscripción del acta, al pie. */
   suscripcion: string;
+
+  /** Quién lo elaboró. Quien lo revisa es siempre Jurídica y va en `PieElaboracion`. */
+  elaboro: string;
+
   /** Texto del acta que Jurídica reescribió, por clave. Vacío = plantilla. */
   textos: Record<string, string>;
 }
 
 const EMPTY: DesignacionState = {
+  codigoDocumental: '[ASIGNAR / VALIDAR POR GESTIÓN DOCUMENTAL]',
+  version: '[VERSIÓN]',
+  mismaPersona: false,
+
   lugarFecha: '',
+
   firmanteNombre: '', firmanteCc: '', firmanteCcLugar: '',
   firmanteCargo: 'Gerente y Representante Legal',
-  clausula: 'sexta',
+
+  supervisorNombre: '', supervisorId: '', supervisorCargo: '',
+
+  sustento: '',
+
   tipologia: '',
   contratante: '', contratanteNit: '',
   contratista: '', contratistaNit: '',
@@ -65,25 +101,42 @@ const EMPTY: DesignacionState = {
   plazo: '',
   inicio: '',
   terminacion: '',
+  garantias: '',
+
   suscripcion: '',
+  elaboro: '',
   textos: {},
 };
 
 /**
- * Las ocho responsabilidades de la supervisión, como plantilla. Cada una se puede
+ * Las diez responsabilidades de la supervisión, como plantilla. Cada una se puede
  * reescribir por separado —van con su propia clave en `textos`— porque en un contrato
  * concreto suele cambiar una sola.
  */
 const RESPONSABILIDADES = [
-  'Verificar el cumplimiento oportuno y adecuado del objeto contractual, especialmente el acompañamiento brindado por LA CONTRATISTA a la supervisión de los proyectos de infraestructura de alumbrado público, así como de las demás obligaciones y resultados pactados.',
-  'Solicitar a LA CONTRATISTA los informes, aclaraciones, explicaciones y soportes que resulten necesarios para comprobar el desarrollo de la ejecución contractual.',
-  'Revisar y aprobar, cuando corresponda, las facturas y los demás soportes presentados por LA CONTRATISTA, sin perjuicio de las verificaciones contables, financieras, tributarias y de tesorería que deban efectuar las áreas competentes de la empresa.',
-  'Verificar, antes del inicio de la ejecución, que las garantías contractuales se encuentren expedidas, presentadas y aprobadas, y controlar su ampliación, prórroga o restablecimiento cuando haya lugar.',
-  'Dejar constancia escrita de las reuniones, observaciones, requerimientos, aprobaciones, novedades y demás actuaciones relevantes de la supervisión dentro del expediente contractual.',
-  'Advertir oportunamente cualquier hecho que pueda afectar la correcta ejecución del contrato y promover las medidas contractuales o administrativas internas que correspondan.',
-  'Velar por el manejo reservado de la información y por el cumplimiento de las obligaciones relacionadas con confidencialidad, propiedad intelectual y tratamiento de datos personales.',
-  'Abstenerse de autorizar modificaciones al objeto, valor, plazo o demás condiciones del contrato sin el documento contractual suscrito por quienes se encuentren legalmente facultados.',
+  'Verificar el cumplimiento oportuno y adecuado del objeto contractual, las obligaciones, entregables, productos y resultados pactados.',
+  'Solicitar al contratista los informes, aclaraciones, explicaciones y soportes razonablemente necesarios para comprobar la ejecución contractual.',
+  'Revisar y aprobar, cuando corresponda a sus funciones, los informes de ejecución y los soportes que habilitan el trámite de pago, sin perjuicio de las verificaciones de las demás áreas competentes.',
+  '[SI APLICA] Verificar antes del inicio que las garantías contractuales exigidas se encuentren expedidas, presentadas y aprobadas, y advertir oportunamente la necesidad de modificación, prórroga, ampliación o restablecimiento.',
+  'Dejar trazabilidad escrita de reuniones, observaciones, requerimientos, aprobaciones, novedades, instrucciones y demás actuaciones relevantes de la supervisión en el expediente contractual.',
+  'Advertir oportunamente hechos o riesgos que puedan afectar la ejecución y solicitar la adopción de las medidas contractuales o administrativas que correspondan.',
+  'Velar por el cumplimiento de las obligaciones de confidencialidad, protección de datos, seguridad de la información, propiedad intelectual y demás deberes transversales que resulten aplicables.',
+  'Abstenerse de modificar por sí mismo(a) el objeto, valor, plazo, forma de pago o demás condiciones contractuales, salvo que exista documento suscrito por quienes se encuentren legalmente facultados.',
+  'Informar oportunamente a la Dirección Jurídica y a las áreas competentes sobre posibles incumplimientos, controversias o situaciones que requieran decisión diferente al seguimiento ordinario.',
+  'Cumplir las demás obligaciones de supervisión previstas en el contrato y en los procedimientos internos aplicables.',
 ];
+
+/**
+ * Las claves de `textos` de esta versión del formato van con prefijo `v2.`.
+ *
+ * El texto de casi todos los bloques cambió, y varios conservan el mismo papel dentro del
+ * acta —la referencia, el alcance, la aceptación, las responsabilidades—. Reusar las claves
+ * viejas haría que una designación anterior que hubiera reescrito «resp3» heredara ese
+ * párrafo dentro de una lista que ahora dice otra cosa y tiene diez ítems en vez de ocho.
+ * Con prefijo propio, lo guardado antes se queda donde estaba y esta versión arranca de su
+ * plantilla.
+ */
+const claveTexto = (clave: string) => `v2.${clave}`;
 
 const puedeEditar = (rol?: string) => {
   const r = (rol ?? '').toLowerCase();
@@ -138,6 +191,13 @@ export default function DesignacionSupervisorPage() {
           valor: saved.valor || d.honorarios || '',
           formaPago: saved.formaPago || d.formaPago || '',
           plazo: saved.plazo || d.duracion || '',
+          /*
+           * Las designaciones del formato anterior no tienen supervisor: lo ejercía quien
+           * firmaba. Se abren con la casilla marcada para que sigan imprimiendo una sola
+           * firma, que es lo que dicen esos documentos.
+           */
+          mismaPersona: saved.mismaPersona ?? (!!viejo.clausula && !saved.supervisorNombre),
+          sustento: saved.sustento || (viejo.clausula ? `la cláusula ${viejo.clausula} del contrato` : ''),
           textos: saved.textos ?? {},
         });
       } catch {
@@ -156,8 +216,9 @@ export default function DesignacionSupervisorPage() {
       await gestionConocimientoService.saveDocumento(solicitudId!, 'designacionSupervisor', f);
       toast.success('Designación guardada');
       return true;
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo guardar');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg || 'No se pudo guardar');
       return false;
     } finally {
       setSaving(false);
@@ -171,6 +232,10 @@ export default function DesignacionSupervisorPage() {
       </div>
     );
   }
+
+  /** Cómo se nombra al supervisor en el cuerpo: si es la misma persona, es quien firma. */
+  const supervisor = f.mismaPersona ? f.firmanteNombre : f.supervisorNombre;
+  const supervisorCargo = f.mismaPersona ? f.firmanteCargo : f.supervisorCargo;
 
   return (
     <div className="min-h-screen bg-white">
@@ -192,7 +257,7 @@ export default function DesignacionSupervisorPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Designación de Supervisor</h1>
-            <p className="text-xs text-[#4a4a63]">Formato GJ-003-F · Solicitud N.º {solicitudId}</p>
+            <p className="text-xs text-[#4a4a63]">Solicitud N.º {solicitudId}</p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -228,64 +293,91 @@ export default function DesignacionSupervisorPage() {
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
           <TextosDocumento value={textosCtx}>
-          <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md">
-            {/* Encabezado */}
-            <div className="grid grid-cols-[130px_1fr_150px] border-b border-[#0a2a52]">
-              <div className="flex items-center justify-center p-2 border-r border-[#0a2a52]">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-              </div>
-              <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[14px] border-r border-[#0a2a52]">
-                DESIGNACIÓN Y ACEPTACIÓN DE SUPERVISIÓN
-              </div>
-              <div className="grid grid-rows-[auto_1fr]">
-                <div className="flex items-center justify-center p-1 border-b border-[#0a2a52]">
-                  <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
-                </div>
-                <div className="grid grid-cols-[auto_1fr] text-[10px]">
-                  <CodeCell label="Código" value="GJ-003-F" />
-                  <CodeCell label="Fecha" value="22/06/2023" />
-                  <CodeCell label="Versión" value="1" last />
-                </div>
-              </div>
-            </div>
+          <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            {/* Cuerpo de la carta */}
-            <div className="px-8 py-6 space-y-4 leading-relaxed text-[12.5px]">
+            <MembreteOficio
+              titulo="DESIGNACIÓN Y ACEPTACIÓN DE SUPERVISIÓN"
+              subtitulo="CONTRACTUAL"
+            />
+
+            <BloqueControl
+              titulo="CONTROL INTERNO DE PARAMETRIZACIÓN — NO SE IMPRIME"
+              nota="El supervisor, lo que sustenta la supervisión y la exigencia de garantías son campos variables. Revísalos contra el contrato antes de imprimir."
+            >
+              <label className="flex items-center gap-2 text-[12px]">
+                <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Código documental</span>
+                <input
+                  value={f.codigoDocumental}
+                  onChange={(e) => set('codigoDocumental', e.target.value)}
+                  className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 text-[12px]">
+                <span className="font-semibold text-[#4a4a63] w-36 shrink-0">Versión</span>
+                <input
+                  value={f.version}
+                  onChange={(e) => set('version', e.target.value)}
+                  className="flex-grow min-w-0 border border-[#c9c9dc] rounded px-2 py-1 bg-white"
+                />
+              </label>
+
+              {/* La regla del modelo: si coinciden, un solo bloque de firma. */}
+              <label className="flex items-start gap-2 text-[11.5px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={f.mismaPersona}
+                  onChange={(e) => set('mismaPersona', e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>
+                  Quien designa ejerce la supervisión
+                  <span className="block text-[10.5px] text-[#8a6d00]">
+                    El acta se imprime con un solo bloque de firma y el texto habla en primera
+                    persona.
+                  </span>
+                </span>
+              </label>
+            </BloqueControl>
+
+            {/* Cuerpo del acta */}
+            <div className="space-y-4 leading-relaxed text-[12.5px]">
               <Line value={f.lugarFecha} onChange={(v) => set('lugarFecha', v)} placeholder="Santiago de Cali, 00 de mes de 0000." />
 
-              <h2 className="text-center font-bold text-[13px] pt-2">
-                ACTA DE DESIGNACIÓN Y ACEPTACIÓN DE SUPERVISIÓN CONTRACTUAL
-              </h2>
-
-              {/* Los bloques que citan datos se arman con la tabla de abajo mientras nadie
-                  los toque; al editarlos quedan como los dejó Jurídica. */}
               <FieldRow label="Referencia:">
                 <TextoEd
-                  k="referencia"
+                  k={claveTexto('referencia')}
                   plantilla={`Contrato de ${lower(f.tipologia) || 'prestación de servicios'} suscrito entre ${textOrDash(f.contratante)} y ${textOrDash(f.contratista)}.`}
                 />
               </FieldRow>
               <FieldRow label="Asunto:">
-                <TextoEd k="asunto" plantilla="Designación y aceptación de la supervisión contractual." />
+                <TextoEd k={claveTexto('asunto')} plantilla="Designación y aceptación de supervisión contractual." />
               </FieldRow>
 
-              {/* La constancia: quien firma asume la supervisión. Se arma con los datos
-                  del firmante y de la contratante, y se puede reescribir entera. */}
+              {/*
+                La designación. Cambia de raíz según quién supervisa: designar a un tercero
+                y asumirla uno mismo no son la misma frase con otro nombre, son dos
+                declaraciones distintas —y el acta la firman personas distintas en cada caso.
+              */}
               <TextoEd
-                k="constancia"
-                plantilla={`${textOrDash(f.firmanteNombre).toUpperCase()}, identificada con cédula de ciudadanía No. ${textOrDash(f.firmanteCc)} de ${textOrDash(f.firmanteCcLugar)}, actuando en calidad de ${lower(f.firmanteCargo) || 'gerente y representante legal'} de ${textOrDash(f.contratante)}, y en ejercicio de sus facultades legales, estatutarias y contractuales, deja constancia de que, de conformidad con la cláusula ${f.clausula || 'sexta'} del contrato de referencia, ejercerá directamente la supervisión del contrato y acepta las funciones y responsabilidades asociadas a dicha labor.`}
+                k={claveTexto('designa')}
+                plantilla={
+                  f.mismaPersona
+                    ? `${textOrDash(f.firmanteNombre).toUpperCase()}, identificada con cédula de ciudadanía No. ${textOrDash(f.firmanteCc)} expedida en ${textOrDash(f.firmanteCcLugar)}, actuando en calidad de ${lower(f.firmanteCargo) || 'gerente y representante legal'} de ${textOrDash(f.contratante)}, y en ejercicio de sus facultades legales, estatutarias y contractuales, deja constancia de que ejercerá directamente la supervisión del contrato de referencia, de conformidad con ${textOrDash(f.sustento)}.`
+                    : `${textOrDash(f.firmanteNombre).toUpperCase()}, identificada con cédula de ciudadanía No. ${textOrDash(f.firmanteCc)} expedida en ${textOrDash(f.firmanteCcLugar)}, actuando en calidad de ${lower(f.firmanteCargo) || 'gerente y representante legal'} de ${textOrDash(f.contratante)}, y en ejercicio de sus facultades legales, estatutarias y contractuales, por medio de la presente designa a ${textOrDash(f.supervisorNombre).toUpperCase()}, identificado(a) con ${textOrDash(f.supervisorId)}, quien se desempeña como ${textOrDash(f.supervisorCargo)}, para ejercer la supervisión del contrato de referencia, de conformidad con ${textOrDash(f.sustento)}.`
+                }
               />
 
-              <TextoEd k="preTabla" plantilla="La información principal del contrato objeto de supervisión es la siguiente:" />
-
               {/* Tabla de información del contrato */}
+              <h3 className="font-bold text-center pt-2">INFORMACIÓN PRINCIPAL DEL CONTRATO</h3>
+
               <table className="w-full border-collapse text-[12px] my-2">
                 <tbody>
                   <InfoRow label="Tipología contractual" value={f.tipologia} onChange={(v) => set('tipologia', v)} />
                   <InfoRow label="Contratante" value={f.contratante} onChange={(v) => set('contratante', v)} />
                   <InfoRow label="Identificación/NIT" value={f.contratanteNit} onChange={(v) => set('contratanteNit', v)} placeholder="NIT 000.000.000-0" />
                   <InfoRow label="Contratista" value={f.contratista} onChange={(v) => set('contratista', v)} />
-                  <InfoRow label="Identificación/NIT" value={f.contratistaNit} onChange={(v) => set('contratistaNit', v)} placeholder="NIT 000.000.000-0" />
+                  <InfoRow label="Identificación/NIT" value={f.contratistaNit} onChange={(v) => set('contratistaNit', v)} placeholder="CC / NIT 000.000.000-0" />
                   <InfoRow label="Objeto" value={f.objeto} onChange={(v) => set('objeto', v)} area />
                   {/* El valor va en una sola celda, como en el formato: el desglose del
                       IVA se escribe como texto corrido y no en tres campos. */}
@@ -296,33 +388,53 @@ export default function DesignacionSupervisorPage() {
                   <InfoRow label="Plazo" value={f.plazo} onChange={(v) => set('plazo', v)} area
                     placeholder="0 (0) meses, comprendidos entre el 00 de mes y el 00 de mes de 0000." />
                   <InfoRow label="Inicio" value={f.inicio} onChange={(v) => set('inicio', v)} area
-                    placeholder="00 de mes de 0000, previa expedición, presentación y aprobación de las garantías contractuales exigidas." />
+                    placeholder="00 de mes de 0000, o sujeto a acta de inicio." />
                   <InfoRow label="Terminación" value={f.terminacion} onChange={(v) => set('terminacion', v)} />
+                  <InfoRow label="Garantías" value={f.garantias} onChange={(v) => set('garantias', v)} area
+                    placeholder="No aplican, o aplican identificando el acta de aprobación." />
+                  {/*
+                    El supervisor no se vuelve a teclear acá: se arma con lo que ya se
+                    escribió arriba. Dos casillas para el mismo dato acaban diciendo cosas
+                    distintas, y esta fila es la que se lee de un vistazo.
+                  */}
+                  <tr>
+                    <td className="border border-[#0a2a52] px-2 py-1 font-semibold bg-[hsl(var(--canalco-neutral-100))] align-top w-[32%]">
+                      Supervisor designado
+                    </td>
+                    <td className="border border-[#0a2a52] px-2 py-1 align-top">
+                      {supervisor
+                        ? `${supervisor}${supervisorCargo ? ` - ${supervisorCargo}` : ''}`
+                        : <span className="italic text-[hsl(var(--canalco-neutral-400))]">Se llena con el nombre y el cargo del supervisor</span>}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
 
               {/* Alcance y responsabilidades */}
-              <h3 className="font-bold pt-2">ALCANCE Y RESPONSABILIDADES DE LA SUPERVISIÓN</h3>
-              {/* Clave nueva y no `alcance`: esa la usaba el formato anterior con otro
-                  texto, y una designación vieja que la hubiera reescrito heredaría aquí
-                  el párrafo equivocado. */}
-              <TextoEd k="alcanceIntro" plantilla="La supervisión comprenderá el seguimiento integral al cumplimiento de las obligaciones a cargo de LA CONTRATISTA, de acuerdo con el objeto, alcance, plazo, valor y demás condiciones previstas en el contrato. Para el efecto, la supervisora deberá:" />
+              <h3 className="font-bold text-center pt-2">ALCANCE Y RESPONSABILIDADES DE LA SUPERVISIÓN</h3>
+
+              <TextoEd
+                k={claveTexto('alcanceIntro')}
+                plantilla="La supervisión comprenderá el seguimiento integral al cumplimiento del objeto, obligaciones, alcance, plazo, valor y demás condiciones del contrato, dentro de las competencias del supervisor y sin sustituir las responsabilidades de las áreas financiera, administrativa, tributaria, de tesorería, seguridad y salud en el trabajo u otras que correspondan. En particular, el/la supervisor(a) deberá:"
+              />
 
               <ol className="list-decimal pl-6 space-y-1.5">
                 {RESPONSABILIDADES.map((texto, i) => (
                   <li key={i} className="text-justify">
-                    <TextoEd k={`resp${i + 1}`} plantilla={texto} />
+                    <TextoEd k={claveTexto(`resp${i + 1}`)} plantilla={texto} />
                   </li>
                 ))}
               </ol>
 
-              <TextoEd k="trazabilidad" plantilla="Teniendo en cuenta que la suscrita actúa simultáneamente como Representante Legal de LA CONTRATANTE y como supervisora, todas las decisiones, aprobaciones, observaciones y requerimientos propios de la supervisión deberán quedar documentados por escrito en el expediente contractual, con el fin de garantizar su trazabilidad." />
-
               {/* Aceptación */}
-              <h3 className="font-bold pt-2">ACEPTACIÓN</h3>
+              <h3 className="font-bold text-center pt-2">ACEPTACIÓN</h3>
               <TextoEd
-                k="aceptacion"
-                plantilla={`En mi calidad de ${lower(f.firmanteCargo) || 'gerente y representante legal'} de ${textOrDash(f.contratante)}, manifiesto que conozco y acepto la designación aquí consignada y me comprometo a ejercer directamente la supervisión del contrato con diligencia, objetividad y sujeción a sus estipulaciones.`}
+                k={claveTexto('aceptacion')}
+                plantilla={
+                  f.mismaPersona
+                    ? `En mi calidad de ${lower(f.firmanteCargo) || 'gerente y representante legal'} de ${textOrDash(f.contratante)}, manifiesto que conozco y acepto la designación aquí consignada y me comprometo a ejercer la supervisión con diligencia, objetividad, trazabilidad y sujeción a las estipulaciones contractuales y a los procedimientos internos aplicables.`
+                    : `Yo, ${textOrDash(f.supervisorNombre).toUpperCase()}, en calidad de ${textOrDash(f.supervisorCargo)}, manifiesto que conozco y acepto la designación aquí consignada y me comprometo a ejercer la supervisión con diligencia, objetividad, trazabilidad y sujeción a las estipulaciones contractuales y a los procedimientos internos aplicables.`
+                }
               />
 
               <div className="pt-2">
@@ -330,26 +442,48 @@ export default function DesignacionSupervisorPage() {
                 <Line value={f.suscripcion} onChange={(v) => set('suscripcion', v)} placeholder="Santiago de Cali el 00 (cero) de mes de 0000." />
               </div>
 
-              {/* Una sola firma: designante y supervisora son la misma persona, y la
-                  línea de calidad lo deja escrito en el papel. */}
-              <div className="pt-12 max-w-[60%]">
-                <Firma titulo="">
-                  <Line value={f.firmanteNombre} onChange={(v) => set('firmanteNombre', v)} placeholder="NOMBRE DE QUIEN FIRMA" bold />
+              {/*
+                Dos firmas: quien designa y quien acepta. Cuando coinciden va una sola —lo
+                pide el modelo—, porque el mismo nombre firmando dos veces el mismo papel
+                se lee como un error de armado, no como una formalidad.
+              */}
+              <div className={'pt-12 ' + (f.mismaPersona ? 'max-w-[60%]' : 'grid grid-cols-2 gap-10')}>
+                <Firma>
+                  <Line value={f.firmanteNombre} onChange={(v) => set('firmanteNombre', v)} placeholder="NOMBRE DE QUIEN DESIGNA" bold />
                   <Line value={f.firmanteCargo} onChange={(v) => set('firmanteCargo', v)} placeholder="Gerente y Representante Legal" />
                   <Line value={f.contratante} onChange={(v) => set('contratante', v)} placeholder="EMPRESA CONTRATANTE" />
-                  <TextoEd k="calidad" plantilla="Contratante y supervisora del contrato" />
-                  <Line value={f.contratanteNit} onChange={(v) => set('contratanteNit', v)} placeholder="NIT 000.000.000-0" />
+                  <p>{f.mismaPersona ? 'Quien designa y ejerce la supervisión' : 'Quien designa'}</p>
                 </Firma>
+
+                {!f.mismaPersona && (
+                  <Firma>
+                    <Line value={f.supervisorNombre} onChange={(v) => set('supervisorNombre', v)} placeholder="NOMBRE DEL SUPERVISOR" bold />
+                    <Line value={f.supervisorCargo} onChange={(v) => set('supervisorCargo', v)} placeholder="Cargo" />
+                    <p>Supervisor(a) designado(a)</p>
+                    <p>Quien acepta</p>
+                  </Firma>
+                )}
               </div>
 
-              <div className="pt-6">
-                <TextoEd k="anexo" plantilla="Anexo: copia del contrato objeto de supervisión." />
+              <div className="pt-6 text-[11px]">
+                <TextoEd k={claveTexto('anexo')} plantilla="Anexo: copia del contrato objeto de supervisión, si aplica." />
               </div>
-
             </div>
+
+            <PieMembrete />
           </div>
 
-          <PieElaboracion />
+          {/* Quien elabora varía; quien revisa es siempre la Dirección Jurídica. */}
+          <div className="px-8 pt-3 text-[10px] text-black">
+            <span>Elaboró: </span>
+            <input
+              value={f.elaboro}
+              onChange={(e) => set('elaboro', e.target.value)}
+              placeholder="Nombre - Cargo"
+              className="bg-transparent outline-none text-[10px] w-64 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
+            />
+          </div>
+          <PieElaboracion soloRevision className="pt-0" />
           </TextosDocumento>
           </fieldset>
         )}
@@ -370,15 +504,6 @@ const textOrDash = (v: string) => (v?.trim() ? v : '…');
 const lower = (v: string) => (v ? v.toLowerCase() : '');
 
 /* ── Subcomponentes ─────────────────────────────────────── */
-
-function CodeCell({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  return (
-    <>
-      <div className={'px-2 py-0.5 font-semibold bg-[hsl(var(--canalco-neutral-100))] border-r border-[#0a2a52] ' + (last ? '' : 'border-b border-[#0a2a52]')}>{label}</div>
-      <div className={'px-2 py-0.5 text-right ' + (last ? '' : 'border-b border-[#0a2a52]')}>{value}</div>
-    </>
-  );
-}
 
 /** Línea editable en bloque (una por renglón). */
 function Line({ value, onChange, placeholder, bold }: {
@@ -403,8 +528,8 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function InfoRow({ label, value, onChange, area, placeholder, extra }: {
-  label: string; value: string; onChange: (v: string) => void; area?: boolean; placeholder?: string; extra?: React.ReactNode;
+function InfoRow({ label, value, onChange, area, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; area?: boolean; placeholder?: string;
 }) {
   return (
     <tr>
@@ -417,17 +542,16 @@ function InfoRow({ label, value, onChange, area, placeholder, extra }: {
           <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
             className="w-full bg-transparent outline-none text-[12px] placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]" />
         )}
-        {extra}
       </td>
     </tr>
   );
 }
 
-function Firma({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Firma({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      <div className="border-t border-[#0a2a52] pt-1 font-bold text-[11px]">{titulo}</div>
-      <div className="space-y-0.5 mt-1">{children}</div>
+      <div className="border-t border-[#0a2a52] pt-1" />
+      <div className="space-y-0.5 mt-1 text-[11.5px]">{children}</div>
     </div>
   );
 }

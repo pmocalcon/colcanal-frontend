@@ -9,7 +9,7 @@ import { LogOut, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
-import { esRolPmo } from '@/utils/rolesPmo';
+import { puedeVerRecursoEconomico, esDirectorProyecto } from '@/utils/rolesPmo';
 import { prepararModulos, puedeVerAprobaciones, APROBACIONES } from '@/config/modulosSistema';
 import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
@@ -204,16 +204,31 @@ export default function DashboardPage() {
               onClick={() => navigate('/dashboard/talento-humano')}
             />
           )}
-          {/* Recurso Económico: también fija, pero solo para el PMO. A quien no lo
-              sea no se le pinta: la tarjeta con candado invitaría a pedir un
-              permiso que no existe. */}
-          {esRolPmo(user?.nombreRol) && (
+          {/* Recurso Económico: también fija, y solo del PMO. A quien no lo sea no se
+              le pinta: la tarjeta con candado invitaría a pedir un permiso que no
+              existe. */}
+          {puedeVerRecursoEconomico(user?.nombreRol) && (
             <ModuleCard
               nombre="Recurso Económico"
               slug="recurso-economico"
               icono="Wallet"
               hasAccess={true}
               onClick={() => navigate('/dashboard/recurso-economico')}
+            />
+          )}
+          {/*
+            El director de proyecto no ve el módulo, pero sí la única pantalla que le
+            toca: la factura de su municipio, a confirmar el valor pago. Va como tarjeta
+            propia y no como el módulo entero porque es lo que hace —validar una cifra—,
+            no administrar la interventoría.
+          */}
+          {esDirectorProyecto(user?.nombreRol) && (
+            <ModuleCard
+              nombre="Validar facturas"
+              slug="validar-facturas"
+              icono="Wallet"
+              hasAccess={true}
+              onClick={() => navigate('/dashboard/recurso-economico/factura')}
             />
           )}
         </div>

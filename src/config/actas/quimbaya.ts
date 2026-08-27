@@ -3,7 +3,7 @@ import type { ActaConfig } from './types';
 export const quimbayaConfig: ActaConfig = {
 
   hideMunicipioBanner: true,
-  logoUrl: '/assets/images/logo-quimbaya.png',
+  logoUrl: '/assets/images/logo-quimbaya.jpg',
   docFields: {
     municipio: 'QUIMBAYA',
     municipioNombreCompleto: 'QUIMBAYA QUINDÍO',

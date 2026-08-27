@@ -18,6 +18,9 @@ import {
   esEditable,
 } from '@/utils/prestamoWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
+import {
+  buscarFicha, llenarVacios, estadoCivilDeFicha, tipoDocumentoDeFicha,
+} from '@/utils/prellenarFormato';
 
 /**
  * Solicitud de Préstamo (G. de talento humano).
@@ -146,6 +149,34 @@ export default function SolicitudPrestamoPage() {
   const puedeAprobarGerencia =
     estado === 'pendiente_gerencia' &&
     accionesDisponibles(estado, user?.nombreRol, esCreador).some((a) => a.accion === 'aprobar_gerencia');
+
+  /**
+   * Con la cédula se trae lo que ya está en la ficha de personal.
+   *
+   * Se dispara al salir de la casilla y no en cada tecla: mientras se escribe, «11448» es
+   * una cédula distinta cada vez y serían siete consultas para una sola persona.
+   *
+   * Solo llena lo que está en blanco. Si alguien escribió algo distinto puede ser que la
+   * ficha esté vieja —un traslado que Talento Humano no ha registrado—, y pisárselo le
+   * borraría el trabajo delante de los ojos.
+   */
+  const prellenar = async (cedula: string) => {
+    if (locked) return;
+    const ficha = await buscarFicha(cedula);
+    if (!ficha) return;
+    setF((p) => llenarVacios(p, {
+      primerApellido: ficha.primerApellido,
+      segundoApellido: ficha.segundoApellido,
+      primerNombre: ficha.primerNombre,
+      segundoNombre: ficha.segundoNombre,
+      estadoCivil: estadoCivilDeFicha(ficha.estadoCivil),
+      tipoDocumento: tipoDocumentoDeFicha(ficha.tipoId),
+      cargo: ficha.cargo ?? '',
+      area: ficha.area ?? '',
+      // Llega en nulo salvo para quien ya ve la nómina; ahí se digita como siempre.
+      salario: ficha.salario ? String(Math.round(Number(ficha.salario))) : '',
+    }));
+  };
 
   const set = <K extends keyof PrestamoState>(k: K, v: PrestamoState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -360,7 +391,14 @@ export default function SolicitudPrestamoPage() {
           </div>
 
           <div className="px-2 py-1.5 border-b border-black grid grid-cols-2 gap-6">
-            <Renglon label="Número:" value={f.numero} onChange={(v) => set('numero', v)} readOnly={locked} />
+            <Renglon
+              label="Número:"
+              value={f.numero}
+              onChange={(v) => set('numero', v)}
+              onSalir={() => void prellenar(f.numero)}
+              readOnly={locked}
+              nota={locked ? undefined : 'Escribe la cédula y sal de la casilla: el resto se llena solo.'}
+            />
             <Renglon label="Expedida:" value={f.expedida} onChange={(v) => set('expedida', v)} readOnly={locked} />
           </div>
 
@@ -444,7 +482,7 @@ export default function SolicitudPrestamoPage() {
           <div className="grid grid-cols-2 border-b border-black">
             <FirmaCelda titulo="Firma Empleado" nombre={nombreCompleto} cedula={f.numero} fecha={f.fechaFirmaEmpleado} />
             <FirmaCelda
-              titulo={'Firma Dirección\nAdministrativa'}
+              titulo={'Firma Dirección\nAdministrativa y Financiera'}
               nombre={f.firmaAdministrativa}
               fecha={f.fechaFirmaAdministrativa}
               last
@@ -681,18 +719,27 @@ function Celda({ label, value, onChange, last, area, readOnly }: {
 }
 
 /** «Etiqueta: ______» en una sola línea, como los renglones del formato. */
-function Renglon({ label, value, onChange, readOnly }: {
+function Renglon({ label, value, onChange, readOnly, onSalir, nota }: {
   label: string; value: string; onChange: (v: string) => void; readOnly?: boolean;
+  /** Al salir de la casilla o al pulsar Enter. Lo usa la cédula para traer la ficha. */
+  onSalir?: () => void;
+  /** Ayuda que se ve en pantalla y no en el papel: `no-print`. */
+  nota?: string;
 }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="font-bold whitespace-nowrap">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        readOnly={readOnly}
-        className="flex-grow min-w-0 bg-transparent outline-none border-b border-black text-[11px]"
-      />
+      <span className="flex-grow min-w-0">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onSalir}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSalir?.(); } }}
+          readOnly={readOnly}
+          className="w-full bg-transparent outline-none border-b border-black text-[11px]"
+        />
+        {nota && <span className="no-print block text-[9px] text-[#4a4a63]">{nota}</span>}
+      </span>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Plane, Users, Wallet } from 'lucide-react';
+import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Landmark, Plane, SlidersHorizontal, Users, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
+import { puedeVerSolicitudesPago } from '@/services/talentoHumano.service';
 
 /**
  * Portada del módulo Talento Humano.
@@ -17,6 +19,13 @@ import { Card, CardContent } from '@/components/ui/card';
  */
 
 const SECCIONES = [
+
+  {
+    slug: 'parametros',
+    nombre: 'Parámetros',
+    descripcion: 'Salario mínimo y auxilio de transporte de cada año, que es de donde la nómina los toma',
+    Icon: SlidersHorizontal,
+  },
   {
     slug: 'personal',
     nombre: 'Personal',
@@ -59,10 +68,26 @@ const SECCIONES = [
     descripcion: 'Novedades del mes y liquidación: devengado, deducciones y neto a pagar',
     Icon: Wallet,
   },
+  {
+    slug: 'pagos',
+    nombre: 'Solicitudes de pago',
+    descripcion: 'A quién se le consigna cuánto, y el archivo que se sube al portal bancario',
+    Icon: Landmark,
+  },
 ];
 
 export default function TalentoHumanoHomePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  /*
+   * Solicitudes de pago no es para todo el módulo: ahí están las cuentas bancarias de la
+   * empresa entera y lo que se le gira a cada quien. A quien no entra no se le pinta la
+   * tarjeta —ni siquiera apagada—: invitaría a pedir un acceso que no se va a dar.
+   */
+  const visibles = SECCIONES.filter(
+    (s) => s.slug !== 'pagos' || puedeVerSolicitudesPago(user?.nombreRol, user?.nombre),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -87,7 +112,7 @@ export default function TalentoHumanoHomePage() {
 
       <main className="max-w-5xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {SECCIONES.map(({ slug, nombre, descripcion, Icon }) => (
+          {visibles.map(({ slug, nombre, descripcion, Icon }) => (
             <Card
               key={slug}
               onClick={() => navigate(`/dashboard/talento-humano/${slug}`)}

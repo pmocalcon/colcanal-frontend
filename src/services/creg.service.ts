@@ -250,10 +250,125 @@ export interface IddOffFalla {
   barrio?: string;
   fechaInicial?: string;
   fechaFinal?: string;
+  /** Urbano o rural. Si va vacío se deduce de `localizacion`; solo se usa para el tope. */
+  zona?: ZonaFalla | null;
 }
 
 /** Horas de operación que se facturan por día (12 h nocturnas). */
 export const HORAS_OPERACION_DIA = 12;
+
+/** Si la luminaria está en el casco urbano o en zona rural. */
+export type ZonaFalla = 'urbano' | 'rural';
+
+/**
+ * Horas hábiles que da el contrato para atender una falla, por municipio y zona.
+ *
+ * **No entran al cálculo**: el índice sigue contando las horas reales que la luminaria
+ * estuvo apagada. Esto es el compromiso de atención, y sirve para ver de un vistazo
+ * cuáles fallas se pasaron del tiempo pactado.
+ *
+ * `ruralPactado: false` es Guacarí y compañía, donde el contrato no dice nada de la zona
+ * rural: se les aplica el mismo tope urbano a falta de otra cosa, pero conviene saber que
+ * es un supuesto y no una cláusula.
+ */
+export interface TopeAtencion {
+  municipio: string;
+  urbano: number;
+  rural: number;
+  ruralPactado: boolean;
+  /**
+   * Otras formas en que aparece escrito el municipio en la base.
+   *
+   * Hace falta porque el mismo sitio está con dos ortografías: la empresa es «Unión
+   * Temporal Alumbrado Público Pueblorrico» y el proyecto de Canales & Contactos es
+   * «Pueblo Rico». Quitar tildes y espacios no las une —sobra una erre—, así que se
+   * declaran.
+   */
+  alias?: string[];
+}
+
+export const TOPES_ATENCION: TopeAtencion[] = [
+  { municipio: 'Guacarí', urbano: 32, rural: 32, ruralPactado: false },
+  { municipio: 'El Cerrito', urbano: 32, rural: 32, ruralPactado: false },
+  { municipio: 'Quimbaya', urbano: 32, rural: 32, ruralPactado: false },
+  { municipio: 'Circasia', urbano: 32, rural: 32, ruralPactado: false },
+  { municipio: 'Puerto Asís', urbano: 32, rural: 32, ruralPactado: false },
+
+  { municipio: 'Jericó', urbano: 36, rural: 60, ruralPactado: true },
+  { municipio: 'Ciudad Bolívar', urbano: 36, rural: 60, ruralPactado: true },
+  { municipio: 'Santa Bárbara', urbano: 36, rural: 60, ruralPactado: true },
+
+  { municipio: 'Tarso', urbano: 48, rural: 72, ruralPactado: true },
+  { municipio: 'Pueblorrico', urbano: 48, rural: 72, ruralPactado: true, alias: ['Pueblo Rico'] },
+];
+
+/** Sin tildes, sin espacios y en mayúsculas: «Pueblo Rico» y «Pueblorrico» son el mismo. */
+const claveMunicipio = (t: string): string =>
+  (t ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase();
+
+/**
+ * El tope del municipio que nombre el texto, o `null` si no hay ninguno pactado.
+ *
+ * Recibe el rótulo que arma la pantalla —«Unión Temporal Alumbrado Público Guacarí» o
+ * «Canales & Contactos — Tarso»— y busca dentro, porque el municipio unas veces es la
+ * empresa y otras el proyecto. Jamundí no está en la tabla y devuelve `null`: es
+ * preferible no marcar nada a marcar con un tope inventado.
+ */
+export const topeDeMunicipio = (municipioTexto: string): TopeAtencion | null => {
+  const clave = claveMunicipio(municipioTexto);
+  if (!clave) return null;
+  // El más largo primero: así «Ciudad Bolívar» no lo gana un municipio de nombre corto
+  // que casualmente esté contenido en el texto.
+  const candidatos = [...TOPES_ATENCION].sort(
+    (a, b) => claveMunicipio(b.municipio).length - claveMunicipio(a.municipio).length,
+  );
+  return (
+    candidatos.find((t) =>
+      [t.municipio, ...(t.alias ?? [])].some((n) => clave.includes(claveMunicipio(n))),
+    ) ?? null
+  );
+};
+
+/**
+ * Urbano o rural, deducido de cómo se escribió la localización.
+ *
+ * En los reportes de mantenimiento la zona no viene como dato aparte, pero el nombre la
+ * delata: `V.`, `VRD`, `VEREDA`, `CGTO` y `CORREG` son rurales, y todo lo demás —`B.`,
+ * `BARRIO` o el nombre pelado— es urbano. Se puede corregir a mano en la fila; esto es
+ * solo la propuesta.
+ */
+export const zonaDeLocalizacion = (localizacion?: string): ZonaFalla => {
+  const t = (localizacion ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+  return /^(V\.|VDA|VRD|VEREDA|CGTO|CORREG)/.test(t) ? 'rural' : 'urbano';
+};
+
+/** La zona que vale para una falla: la escogida a mano, y si no, la deducida. */
+export const zonaDeFalla = (f: IddOffFalla): ZonaFalla =>
+  f.zona ?? zonaDeLocalizacion(f.localizacion);
+
+/**
+ * Cuántas horas de más estuvo apagada respecto del tope, o `0` si no se pasó.
+ *
+ * Devuelve `null` cuando el municipio no tiene tope pactado, que no es lo mismo que cero:
+ * uno significa «cumplió» y el otro «no hay con qué compararlo».
+ */
+export const excesoSobreTope = (
+  f: IddOffFalla,
+  tope: TopeAtencion | null,
+  sumaMediaNoche = false,
+): number | null => {
+  if (!tope) return null;
+  const limite = zonaDeFalla(f) === 'rural' ? tope.rural : tope.urbano;
+  return Math.max(0, horasFuera(f, sumaMediaNoche) - limite);
+};
 
 /**
  * Horas fuera de servicio. Dos fórmulas conviven según el proyecto, controladas
