@@ -536,10 +536,6 @@ export const talentoHumanoService = {
     const { data } = await api.patch<ThPrestamo>(`${BASE}/prestamos/${id}`, payload);
     return data;
   },
-  async registrarPago(id: number, payload: { anio: number; mes: number; valor: number }) {
-    const { data } = await api.post<ThPrestamoPago>(`${BASE}/prestamos/${id}/pagos`, payload);
-    return data;
-  },
   async deletePrestamo(id: number) {
     await api.delete(`${BASE}/prestamos/${id}`);
   },
