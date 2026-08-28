@@ -28,6 +28,23 @@ const horas = (v: string | null) => {
   return Number.isFinite(n) && n !== 0 ? n.toLocaleString('es-CO') : '—';
 };
 
+const MESES_ORD = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/**
+ * Clave para ordenar los periodos, que son texto como «Julio 2026». Ordenar por letra los
+ * mandaría a agosto antes que julio; se convierte a año·mes para que el desplegable vaya
+ * del más reciente al más viejo.
+ */
+const ordenPeriodo = (p: string): number => {
+  const m = /^(\S+)\s+(\d{4})$/.exec(p.trim().toLowerCase());
+  if (!m) return 0;
+  const mes = MESES_ORD.indexOf(m[1]);
+  return Number(m[2]) * 100 + (mes < 0 ? 0 : mes);
+};
+
 const TIPOS = [
   { key: 'diurna', label: 'HED' },
   { key: 'recargoNocturno', label: 'RN' },
@@ -41,6 +58,7 @@ export default function HorasExtrasListPage() {
   const [rows, setRows] = useState<ThHorasExtra[]>([]);
   const [loading, setLoading] = useState(true);
   const [buscar, setBuscar] = useState('');
+  const [periodo, setPeriodo] = useState('');
 
   const [abierto, setAbierto] = useState<number | null>(null);
   const [detalles, setDetalles] = useState<Record<number, ThHorasExtra>>({});
@@ -67,12 +85,20 @@ export default function HorasExtrasListPage() {
     }
   };
 
+  const periodos = useMemo(
+    () => [...new Set(rows.map((r) => (r.periodo ?? '').trim()).filter(Boolean))]
+      .sort((a, b) => ordenPeriodo(b) - ordenPeriodo(a)),
+    [rows],
+  );
+
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
-    return rows.filter((r) => !q
-      || r.nombre.toLowerCase().includes(q)
-      || (r.identificacion ?? '').includes(q));
-  }, [rows, buscar]);
+    return rows
+      .filter((r) => (periodo ? (r.periodo ?? '').trim() === periodo : true))
+      .filter((r) => !q
+        || r.nombre.toLowerCase().includes(q)
+        || (r.identificacion ?? '').includes(q));
+  }, [rows, buscar, periodo]);
 
   const totales = useMemo(() => ({
     horas: visibles.reduce((s, r) => s + (Number(r.totalHoras ?? 0) || 0), 0),
@@ -119,6 +145,14 @@ export default function HorasExtrasListPage() {
               className="w-full pl-8 pr-2 py-1.5 text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md outline-none focus:border-[hsl(var(--canalco-primary))]"
             />
           </div>
+          <select
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+            className="text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1.5 bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
+          >
+            <option value="">Todos los periodos</option>
+            {periodos.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
         </div>
       </header>
 

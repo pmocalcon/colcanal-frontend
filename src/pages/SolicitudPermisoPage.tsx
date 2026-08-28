@@ -22,99 +22,103 @@ import { textoSla } from '@/utils/juridicaWorkflow';
 import { buscarFicha, llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
 
 /**
- * Solicitud de Permiso · formato GTH-009-F (G. de talento humano).
+ * Solicitud de Permiso · formato GTH-009-F v2 (G. de talento humano).
  *
- * Formulario impreso de una sola tabla: etiqueta a la izquierda, espacio para escribir a
- * la derecha. Lo aprueba el **jefe de área** del solicitante, que sale de la tabla de
- * autorizaciones y no de un rol fijo.
+ * Reproduce el papel oficial en sus cuatro secciones: información del colaborador,
+ * información del permiso (desde/hasta con hora, remuneración, soporte), aprobación
+ * interna y las dos firmas (jefe inmediato y Dir. Administrativa y Financiera). Lo aprueba
+ * el **jefe de área** del solicitante, que sale de la tabla de autorizaciones y no de un
+ * rol fijo.
  *
  * El formato tiene dos dueños y el permiso de edición va por zonas:
- *  - Arriba lo llena el solicitante, solo mientras es borrador.
- *  - El cuadro «Aprobación interna» lo llena el jefe, solo mientras está en su bandeja,
- *    y se guarda junto con su decisión. El solicitante no lo toca nunca.
+ *  - Las secciones 1 y 2 las llena el solicitante, solo mientras es borrador.
+ *  - «Observaciones» de la aprobación interna la llena el jefe, solo mientras está en su
+ *    bandeja, y se guarda junto con su decisión. El solicitante no la toca.
+ *
+ * Compatibilidad: los permisos creados con el formato anterior guardaban `fechaPermiso`,
+ * `motivo` y `horario`; al abrirlos se migran a `desde`, `descripcionMotivo` y `horaDesde`
+ * para no perder lo diligenciado. El backend también lee ambos juegos de claves.
  *
  * @see permisoWorkflow — la máquina de estados, espejo de la del backend.
  *
  * Ruta: `.../talento-humano/permiso/:id`.
  */
 
-/** Sí y No son excluyentes; vacío = la dirección todavía no se pronunció. */
-type Decision = 'si' | 'no' | '';
+/** Mensaje de error del backend, o el respaldo si no lo trae. */
+const errMsg = (e: unknown, fallback: string): string =>
+  (e as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
+
+/** Sí y No son excluyentes; vacío = sin marcar. */
+type Excl = 'si' | 'no' | '';
+/** Remunerado y No remunerado son excluyentes; vacío = sin marcar. */
+type Remun = 'remunerado' | 'no-remunerado' | '';
 
 interface PermisoState {
+  // ── 1. Información del colaborador ──
   fechaSolicitud: string;
   proyecto: string;
   nombre: string;
   /**
-   * No está en el papel modelo. Se agrega para que el permiso aprobado se pueda
-   * registrar en la base real de ausentismos (`th_ausentismos`), que exige
-   * identificación: sin ella el permiso quedaría aprobado sin alimentarla.
+   * Solo el número de documento. En el papel la casilla dice «Tipo y número», pero se
+   * guarda el número limpio: con él se trae la ficha de personal y, al aprobar, nace el
+   * ausentismo en `th_ausentismos`, que cruza por identificación.
    */
   identificacion: string;
   cargo: string;
-  tipoPermiso: string;
-  motivo: string;
-  fechaPermiso: string;
-  horario: string;
-  nombreSolicitante: string;
+  jefeInmediato: string;
 
-  // ── Aprobación interna ──
-  /** Por clave de dirección. Las firmas van a mano sobre el impreso. */
-  aprobaciones: Record<string, Decision>;
+  // ── 2. Información del permiso ──
+  desde: string;
+  horaDesde: string;
+  hasta: string;
+  horaHasta: string;
+  remuneracion: Remun;
+  descripcionMotivo: string;
+  anexaSoporte: Excl;
+  tipoSoporte: string;
+
+  // ── 3. Aprobación interna ──
+  /** La pone el sistema al aprobar. */
   fechaAprobacion: string;
   observaciones: string;
+  /** Nombre de quien aprobó; lo escribe el backend. */
+  aprobadoPor: string;
 }
 
 const EMPTY: PermisoState = {
-  fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', tipoPermiso: '',
-  motivo: '', fechaPermiso: '', horario: '', nombreSolicitante: '',
-  aprobaciones: {}, fechaAprobacion: '', observaciones: '',
+  fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', jefeInmediato: '',
+  desde: '', horaDesde: '', hasta: '', horaHasta: '', remuneracion: '', descripcionMotivo: '',
+  anexaSoporte: '', tipoSoporte: '',
+  fechaAprobacion: '', observaciones: '', aprobadoPor: '',
 };
 
 /**
- * Las direcciones que se pronuncian, tal como están impresas.
- *
- * Se guardan por **clave estable** y no por su etiqueta: si mañana una dirección se
- * renombra, lo marcado sigue donde estaba en vez de perderse.
+ * Lleva un permiso guardado al modelo v2, migrando las claves del formato anterior para
+ * no perder lo que ya se había diligenciado.
  */
-const DIRECCIONES: { key: string; label: string }[] = [
-  { key: 'comercial', label: 'APROBACIÓN DIRECCIÓN COMERCIAL' },
-  { key: 'financiera', label: 'APROBACIÓN DIRECCIÓN FINANCIERA' },
-  { key: 'operativa', label: 'APROBACIÓN DIRECCIÓN OPERATIVA' },
-  { key: 'juridica', label: 'APROBACIÓN DIRECCIÓN JURIDICA' },
-  { key: 'pmo', label: 'APROBACIÓN DIRECCIÓN PMO' },
-  { key: 'gerencia-proyectos', label: 'APROBACIÓN GERENCIA DE PROYECTOS' },
-  { key: 'tecnica', label: 'APROBACIÓN DE DIRECCIÓN TECNICA' },
-  { key: 'tics', label: "APROBACIÓN DIRECCIÓN TIC's" },
-  { key: 'administrativa-financiera', label: 'APROBACIÓN DIRECCIÓN ADMINISTRATIVA Y FINANCIERA' },
-  // Va de última, antes de la fecha de aprobación: Gerencia se pronuncia sobre lo que
-  // ya dijeron las direcciones, no en paralelo con ellas.
-  { key: 'gerencia', label: 'APROBACIÓN GERENCIA' },
-];
+const migrar = (saved: Record<string, unknown>): PermisoState => {
+  const s = saved as Partial<PermisoState> & Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  return {
+    ...EMPTY,
+    ...(s as Partial<PermisoState>),
+    desde: str(s.desde) || str(s.fechaPermiso),
+    descripcionMotivo: str(s.descripcionMotivo) || str(s.motivo),
+    horaDesde: str(s.horaDesde) || str(s.horario),
+  };
+};
 
-/**
- * Las filas del formato, en su orden. El renglón de la firma va aparte: se firma a mano.
- *
- * El tipo se restringe a los campos de texto —no a todo `PermisoState`— porque estas
- * filas pintan un `input`, y `aprobaciones` no es un texto.
- */
-type CampoTexto =
-  | 'fechaSolicitud' | 'proyecto' | 'nombre' | 'identificacion' | 'cargo' | 'tipoPermiso'
-  | 'motivo' | 'fechaPermiso' | 'horario' | 'nombreSolicitante';
+/** Filas simples etiqueta/valor de la sección 1. */
+type CampoColaborador = 'fechaSolicitud' | 'proyecto' | 'nombre' | 'identificacion' | 'cargo' | 'jefeInmediato';
 
-const FILAS: { key: CampoTexto; label: string; area?: boolean }[] = [
+const FILAS_COLABORADOR: { key: CampoColaborador; label: string }[] = [
   { key: 'fechaSolicitud', label: 'FECHA DE SOLICITUD:' },
   { key: 'proyecto', label: 'PROYECTO:' },
   { key: 'nombre', label: 'NOMBRE:' },
   // Al salir de esta casilla se traen nombre, cargo y proyecto de la ficha de personal.
-  { key: 'identificacion', label: 'IDENTIFICACIÓN:' },
+  { key: 'identificacion', label: 'TIPO Y NÚMERO DE DOCUMENTO:' },
   { key: 'cargo', label: 'CARGO:' },
-  // Va antes del motivo: primero de qué tipo es el permiso y después por qué.
-  { key: 'tipoPermiso', label: 'TIPO DE PERMISO:' },
-  { key: 'motivo', label: 'MOTIVO:', area: true },
-  { key: 'fechaPermiso', label: 'FECHA DE PERMISO:' },
-  { key: 'horario', label: 'HORARIO:' },
-  { key: 'nombreSolicitante', label: 'NOMBRE DEL SOLICITANTE' },
+  { key: 'jefeInmediato', label: 'JEFE INMEDIATO:' },
 ];
 
 export default function SolicitudPermisoPage() {
@@ -137,11 +141,15 @@ export default function SolicitudPermisoPage() {
    * Con la cédula llegan el nombre, el cargo y el proyecto de la ficha de personal.
    *
    * Al salir de la casilla, no en cada tecla: mientras se escribe, cada dígito sería una
-   * cédula distinta y una consulta más. Y solo llena lo que está en blanco, para no
-   * pisarle a nadie lo que acaba de escribir.
+   * cédula distinta y una consulta más. Solo llena lo que está en blanco, para no pisarle
+   * a nadie lo que acaba de escribir. La casilla se normaliza a solo dígitos: el ausentismo
+   * y la ficha cruzan por el número, no por «CC 123».
    */
-  const prellenar = async (cedula: string) => {
+  const prellenar = async () => {
     if (!editaSolicitud) return;
+    const cedula = f.identificacion.replace(/\D/g, '');
+    if (cedula !== f.identificacion) set('identificacion', cedula);
+    if (!cedula) return;
     const ficha = await buscarFicha(cedula);
     if (!ficha) return;
     setF((p) => llenarVacios(p, {
@@ -154,12 +162,11 @@ export default function SolicitudPermisoPage() {
   const set = <K extends keyof PermisoState>(k: K, v: PermisoState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
 
-  /** Marcar Sí apaga No, y volver a marcar lo mismo deja la fila sin pronunciar. */
-  const decidir = (key: string, valor: Exclude<Decision, ''>) =>
-    setF((p) => ({
-      ...p,
-      aprobaciones: { ...p.aprobaciones, [key]: p.aprobaciones[key] === valor ? '' : valor },
-    }));
+  /** Marcar la misma opción otra vez la deja sin marcar. */
+  const toggleRemun = (v: Exclude<Remun, ''>) =>
+    set('remuneracion', f.remuneracion === v ? '' : v);
+  const toggleSoporte = (v: Exclude<Excl, ''>) =>
+    set('anexaSoporte', f.anexaSoporte === v ? '' : v);
 
   useEffect(() => {
     if (docId === null) { setLoading(false); return; }
@@ -169,8 +176,7 @@ export default function SolicitudPermisoPage() {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
         setSol(row);
-        const saved = (row.data ?? {}) as Partial<PermisoState>;
-        setF({ ...EMPTY, ...saved, aprobaciones: saved.aprobaciones ?? {} });
+        setF(migrar((row.data ?? {}) as Record<string, unknown>));
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
       } finally {
@@ -185,14 +191,14 @@ export default function SolicitudPermisoPage() {
     try {
       const row = await gestionConocimientoService.get(docId);
       setSol(row);
-      const saved = (row.data ?? {}) as Partial<PermisoState>;
-      setF({ ...EMPTY, ...saved, aprobaciones: saved.aprobaciones ?? {} });
+      setF(migrar((row.data ?? {}) as Record<string, unknown>));
     } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
   };
 
   /**
-   * El cuadro de aprobación interna viaja con la decisión, no con «Guardar»: es del
-   * jefe, y solo puede escribirlo en el mismo acto en que aprueba o niega.
+   * El cuadro de aprobación interna viaja con la decisión, no con «Guardar»: es del jefe,
+   * y solo puede escribirlo en el mismo acto en que aprueba o niega. Las casillas de firma
+   * del papel las marca el backend según el rol de quien decide.
    */
   const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
     let motivo: string | undefined;
@@ -202,15 +208,13 @@ export default function SolicitudPermisoPage() {
       if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
       motivo = m.trim();
     }
-    const data = editaAprobacion
-      ? { aprobaciones: f.aprobaciones, observaciones: f.observaciones }
-      : undefined;
+    const data = editaAprobacion ? { observaciones: f.observaciones } : undefined;
     try {
       await gestionConocimientoService.transition(docId!, { accion, motivo, data });
       toast.success('Acción registrada');
       await recargar();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo ejecutar la acción');
+    } catch (e) {
+      toast.error(errMsg(e, 'No se pudo ejecutar la acción'));
     }
   };
 
@@ -232,8 +236,8 @@ export default function SolicitudPermisoPage() {
           { replace: true },
         );
       }
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'No se pudo guardar');
+    } catch (e) {
+      toast.error(errMsg(e, 'No se pudo guardar'));
     } finally {
       setSaving(false);
     }
@@ -246,6 +250,8 @@ export default function SolicitudPermisoPage() {
       </div>
     );
   }
+
+  const inputCls = 'w-full bg-transparent outline-none text-[11px]';
 
   return (
     <div className="min-h-screen bg-white">
@@ -305,113 +311,151 @@ export default function SolicitudPermisoPage() {
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
               <Meta label="CÓDIGO:" value="GTH-009-F" />
-              <Meta label="FECHA:" value="20/08/2026" />
+              <Meta label="FECHA:" value="06/10/2025" />
               <Meta label="VERSIÓN:" value="2" last />
             </div>
           </div>
 
-          {/* Cuerpo */}
+          {/* 1. Información del colaborador */}
+          <Seccion titulo="1. INFORMACIÓN DEL COLABORADOR" />
           <table className="w-full border-collapse">
             <tbody>
-              {FILAS.map(({ key, label, area }) => (
+              {FILAS_COLABORADOR.map(({ key, label }) => (
                 <tr key={key}>
                   <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top w-[38%]">
                     {label}
                   </td>
                   <td className="border border-black px-2 py-1 align-top">
-                    {area ? (
-                      <textarea
-                        value={f[key]}
-                        onChange={(e) => set(key, e.target.value)}
-                        readOnly={!editaSolicitud}
-                        rows={2}
-                        className="w-full bg-transparent outline-none resize-y text-[11px]"
-                      />
-                    ) : (
-                      <input
-                        value={f[key]}
-                        onChange={(e) => set(key, e.target.value)}
-                        // Solo la cédula trae ficha; en las demás casillas no hay nada que buscar.
-                        onBlur={key === 'identificacion' ? () => void prellenar(f.identificacion) : undefined}
-                        onKeyDown={(e) => {
-                          if (key === 'identificacion' && e.key === 'Enter') {
-                            e.preventDefault();
-                            void prellenar(f.identificacion);
-                          }
-                        }}
-                        readOnly={!editaSolicitud}
-                        className="w-full bg-transparent outline-none text-[11px]"
-                      />
-                    )}
+                    <input
+                      value={f[key]}
+                      onChange={(e) => set(key, e.target.value)}
+                      onBlur={key === 'identificacion' ? () => void prellenar() : undefined}
+                      onKeyDown={(e) => {
+                        if (key === 'identificacion' && e.key === 'Enter') {
+                          e.preventDefault();
+                          void prellenar();
+                        }
+                      }}
+                      readOnly={!editaSolicitud}
+                      className={inputCls}
+                    />
                   </td>
                 </tr>
               ))}
-              {/* La firma no se teclea: se firma a mano sobre el impreso. */}
+            </tbody>
+          </table>
+
+          {/* 2. Información del permiso */}
+          <Seccion titulo="2. INFORMACIÓN DEL PERMISO" />
+          <table className="w-full border-collapse">
+            <tbody>
+              {/* Desde / Hasta, cada uno con su hora. */}
+              {([
+                ['DESDE:', 'desde', 'horaDesde'],
+                ['HASTA:', 'hasta', 'horaHasta'],
+              ] as const).map(([label, fechaKey, horaKey]) => (
+                <tr key={fechaKey}>
+                  <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] w-[24%]">{label}</td>
+                  <td className="border border-black px-2 py-1 w-[38%]">
+                    <input
+                      type="date"
+                      value={f[fechaKey]}
+                      onChange={(e) => set(fechaKey, e.target.value)}
+                      readOnly={!editaSolicitud}
+                      className={inputCls}
+                    />
+                  </td>
+                  <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] w-[14%]">HORA:</td>
+                  <td className="border border-black px-2 py-1">
+                    <input
+                      type="time"
+                      value={f[horaKey]}
+                      onChange={(e) => set(horaKey, e.target.value)}
+                      readOnly={!editaSolicitud}
+                      className={inputCls}
+                    />
+                  </td>
+                </tr>
+              ))}
+
+              {/* Remunerado / No remunerado, excluyentes. */}
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO REMUNERADO</td>
+                <td className="border border-black px-2 py-1">
+                  <Cajita checked={f.remuneracion === 'remunerado'} onToggle={() => toggleRemun('remunerado')} disabled={!editaSolicitud} />
+                </td>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO NO REMUNERADO</td>
+                <td className="border border-black px-2 py-1">
+                  <Cajita checked={f.remuneracion === 'no-remunerado'} onToggle={() => toggleRemun('no-remunerado')} disabled={!editaSolicitud} />
+                </td>
+              </tr>
+
+              {/* Descripción del motivo. */}
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top">
-                  FIRMA DEL SOLICITANTE
+                  DESCRIPCIÓN DEL MOTIVO DEL PERMISO
                 </td>
-                <td className="border border-black px-2 py-6"></td>
+                <td className="border border-black px-2 py-1 align-top" colSpan={3}>
+                  <textarea
+                    value={f.descripcionMotivo}
+                    onChange={(e) => set('descripcionMotivo', e.target.value)}
+                    readOnly={!editaSolicitud}
+                    rows={2}
+                    className="w-full bg-transparent outline-none resize-y text-[11px]"
+                  />
+                </td>
+              </tr>
+
+              {/* Anexa soporte + tipo. */}
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">ANEXA SOPORTE</td>
+                <td className="border border-black px-2 py-1">
+                  <div className="flex items-center gap-4">
+                    <Cajita label="SI" checked={f.anexaSoporte === 'si'} onToggle={() => toggleSoporte('si')} disabled={!editaSolicitud} />
+                    <Cajita label="NO" checked={f.anexaSoporte === 'no'} onToggle={() => toggleSoporte('no')} disabled={!editaSolicitud} />
+                  </div>
+                </td>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">TIPO DE SOPORTE</td>
+                <td className="border border-black px-2 py-1">
+                  <input
+                    value={f.tipoSoporte}
+                    onChange={(e) => set('tipoSoporte', e.target.value)}
+                    readOnly={!editaSolicitud}
+                    className={inputCls}
+                  />
+                </td>
               </tr>
             </tbody>
           </table>
-        </div>
 
-        {/* Aprobación interna. Cuadro aparte, como en el papel: lo diligencia el jefe
-            del área, no quien pide el permiso, y solo mientras está en su bandeja. */}
-        <div className="doc bg-white border border-black text-[11px] text-black shadow-md mt-6">
-          <p className="px-2 py-1.5 font-bold border-b border-black">
-            APROBACIÓN INTERNA DE LA SOLICITUD DE PERMISO
-          </p>
+          {/* 3. Aprobación interna del permiso */}
+          <Seccion titulo="3. APROBACIÓN INTERNA DEL PERMISO" />
           {!editaAprobacion && (
             <p className="no-print px-2 py-1 text-[10px] italic text-[#8a8aa3] border-b border-black">
-              Este cuadro lo diligencia el jefe de área cuando la solicitud está en su bandeja.
+              «Observaciones» las diligencia el jefe de área cuando la solicitud está en su bandeja.
             </p>
           )}
-
           <table className="w-full border-collapse">
             <tbody>
-              {/* La fecha no se vuelve a teclear: es la de arriba. Con dos campos, el
-                  mismo papel podría acabar mostrando dos fechas de solicitud distintas. */}
+              {/* La firma no se teclea: se firma a mano sobre el impreso. */}
               <tr>
-                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] w-[38%]">
-                  FECHA DE SOLICITUD
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top w-[38%]">
+                  FIRMA DEL TRABAJADOR
                 </td>
-                <td className="border border-black px-2 py-1" colSpan={3}>{f.fechaSolicitud}</td>
+                <td className="border border-black px-2 py-6"></td>
               </tr>
-
-              {DIRECCIONES.map(({ key, label }) => {
-                const d = f.aprobaciones[key] ?? '';
-                return (
-                  <tr key={key}>
-                    <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-middle">
-                      {label}
-                    </td>
-                    <td className="border border-black px-2 py-1 w-[14%]">
-                      <Casilla label="SI" checked={d === 'si'} onToggle={() => decidir(key, 'si')} disabled={!editaAprobacion} />
-                    </td>
-                    <td className="border border-black px-2 py-1 w-[14%]">
-                      <Casilla label="NO" checked={d === 'no'} onToggle={() => decidir(key, 'no')} disabled={!editaAprobacion} />
-                    </td>
-                    {/* La firma va a mano sobre el impreso. */}
-                    <td className="border border-black px-2 py-1 w-[26%]">FIRMA:</td>
-                  </tr>
-                );
-              })}
-
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">
                   FECHA DE APROBACIÓN
                 </td>
-                {/* La pone el sistema al aprobar: es la fecha en que se aprobó, no una
-                    que se teclee después. */}
-                <td className="border border-black px-2 py-1" colSpan={3}>{f.fechaAprobacion}</td>
+                {/* La pone el sistema al aprobar. */}
+                <td className="border border-black px-2 py-1">{f.fechaAprobacion}</td>
               </tr>
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top">
                   OBSERVACIONES
                 </td>
-                <td className="border border-black px-2 py-1 align-top" colSpan={3}>
+                <td className="border border-black px-2 py-1 align-top">
                   <textarea
                     value={f.observaciones}
                     onChange={(e) => set('observaciones', e.target.value)}
@@ -423,6 +467,15 @@ export default function SolicitudPermisoPage() {
               </tr>
             </tbody>
           </table>
+
+          {/* 4. Firmas */}
+          <div className="px-2 py-2 border-t border-black">
+            <p className="font-bold mb-8">4. FIRMAS</p>
+            <div className="grid grid-cols-2 gap-8">
+              <Firma titulo="Aprobado por:" nombre={f.aprobadoPor} cargo="Jefe inmediato" />
+              <Firma titulo="Revisado por:" nombre="" cargo="Dir. Administrativa y Financiera" />
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -435,8 +488,8 @@ const fmtFechaHora = (d?: string | Date | null) =>
   d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
 /**
- * Estado del trámite, botones del paso que toca y bitácora. No se imprime: el papel
- * lleva el cuadro de aprobación, no el recorrido.
+ * Estado del trámite, botones del paso que toca y bitácora. No se imprime: el papel lleva
+ * las firmas, no el recorrido.
  */
 function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
   sol: GcSolicitud;
@@ -469,7 +522,7 @@ function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
 
       {estado === 'pendiente_jefe' && acciones.length > 0 && (
         <p className="text-xs text-[#4a4a63]">
-          Marca las casillas del cuadro de abajo y decide: lo que marques se guarda con tu decisión.
+          Decide sobre la solicitud: lo que escribas en «Observaciones» se guarda con tu decisión.
         </p>
       )}
 
@@ -517,13 +570,22 @@ function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
 
 /* ── Subcomponentes ─────────────────────────────────────── */
 
-/** Casilla del formato: etiqueta y cuadrito, como se imprime. */
-function Casilla({ label, checked, onToggle, disabled }: {
-  label: string; checked: boolean; onToggle: () => void; disabled?: boolean;
+/** Barra de título de sección, a todo el ancho del formato. */
+function Seccion({ titulo }: { titulo: string }) {
+  return (
+    <p className="px-2 py-1.5 font-bold border-t border-b border-black bg-[hsl(var(--canalco-neutral-100))]">
+      {titulo}
+    </p>
+  );
+}
+
+/** Cuadrito del formato, con etiqueta opcional a la izquierda. */
+function Cajita({ label, checked, onToggle, disabled }: {
+  label?: string; checked: boolean; onToggle: () => void; disabled?: boolean;
 }) {
   return (
     <label className={'inline-flex items-center gap-2 ' + (disabled ? '' : 'cursor-pointer')}>
-      <span className="font-semibold">{label}</span>
+      {label && <span className="font-semibold">{label}</span>}
       <input
         type="checkbox"
         checked={checked}
@@ -532,6 +594,19 @@ function Casilla({ label, checked, onToggle, disabled }: {
         className="w-3.5 h-3.5 accent-black"
       />
     </label>
+  );
+}
+
+/** Un bloque de firma de la sección 4: línea para firmar, nombre y cargo debajo. */
+function Firma({ titulo, nombre, cargo }: { titulo: string; nombre: string; cargo: string }) {
+  return (
+    <div className="text-[11px]">
+      <p className="mb-10">{titulo}</p>
+      <div className="border-t border-black pt-1">
+        <p><span className="font-semibold">Nombre:</span> {nombre}</p>
+        <p>{cargo}</p>
+      </div>
+    </div>
   );
 }
 
