@@ -142,9 +142,13 @@ export default function PrestamosListPage() {
   const [abono, setAbono] = useState(nuevoAbono);
   const [guardando, setGuardando] = useState(false);
 
-  /** El préstamo cuya cuota se está ajustando en línea, y el valor en el input. */
-  const [editandoCuota, setEditandoCuota] = useState<number | null>(null);
-  const [cuotaInput, setCuotaInput] = useState('');
+  /**
+   * La fila del plan cuyo descontado se está ajustando (su clave, p. ej. "2026-04"), y el
+   * valor en el input. Registra la cuota descontada de ese mes: reemplaza la cuota previa
+   * del mes y deja los abonos como estén —esos se mueven con el botón de abonos—.
+   */
+  const [editandoDescontado, setEditandoDescontado] = useState<string | null>(null);
+  const [descontadoInput, setDescontadoInput] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -178,29 +182,44 @@ export default function PrestamosListPage() {
     setRows(lista);
   };
 
-  /** Abre el editor de cuota en una fila, sin desplegar el detalle. */
-  const abrirEdicionCuota = (p: ThPrestamo) => {
-    setEditandoCuota(p.prestamoId);
-    setCuotaInput(p.valorCuota ? String(Number(p.valorCuota)) : '');
+  /** Abre el editor en la fila del plan que se tocó, con la cuota descontada del mes. */
+  const abrirEdicionDescontado = (clave: string, cuotaDelMes: number) => {
+    setEditandoDescontado(clave);
+    setDescontadoInput(cuotaDelMes > 0 ? String(cuotaDelMes) : '');
   };
 
-  /** Guarda la nueva cuota. El plan se recalcula solo al refrescar. */
-  const guardarCuota = async (prestamoId: number) => {
-    const valor = Number(cuotaInput);
+  /**
+   * Fija la cuota descontada del mes que se está editando.
+   *
+   * Reemplaza la cuota previa —borra los pagos de tipo CUOTA de ese mes y registra uno
+   * nuevo— y no toca los abonos, que se mueven con su propio botón. Así el número de la
+   * columna Descontado queda como el que se escribió más los abonos que hubiera.
+   */
+  const guardarDescontado = async (prestamoId: number) => {
+    if (!editandoDescontado) return;
+    const [anio, mes] = editandoDescontado.split('-').map(Number);
+    const valor = Number(descontadoInput);
     if (!valor || valor <= 0) {
-      toast.error('Indica un valor de cuota válido');
+      toast.error('Indica un valor descontado válido');
       return;
     }
     setGuardando(true);
     try {
-      await talentoHumanoService.updatePrestamo(prestamoId, {
-        valorCuota: String(valor),
+      const detalle = detalles[prestamoId];
+      const cuotasPrevias = (detalle?.pagos ?? []).filter(
+        (g) => g.anio === anio && g.mes === mes && (g.tipo ?? 'CUOTA').toUpperCase() !== 'ABONO',
+      );
+      for (const cp of cuotasPrevias) {
+        await talentoHumanoService.eliminarPago(prestamoId, cp.pagoId);
+      }
+      await talentoHumanoService.registrarPago(prestamoId, {
+        anio, mes, valor, tipo: 'CUOTA', medio: 'NOMINA',
       });
-      toast.success('Cuota ajustada. Se recalculó el plan de pagos.');
-      setEditandoCuota(null);
+      toast.success('Cuota del mes registrada. Se recalculó el saldo.');
+      setEditandoDescontado(null);
       await refrescar(prestamoId);
     } catch {
-      toast.error('No se pudo ajustar la cuota');
+      toast.error('No se pudo ajustar lo descontado');
     } finally {
       setGuardando(false);
     }
@@ -391,52 +410,7 @@ export default function PrestamosListPage() {
                       <td className="px-3 py-2 text-right tabular-nums">{p.numeroCuotas ?? '—'}</td>
                       <td className="px-3 py-2">{mesAnio(p.fechaVencimiento)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{cop(p.valorPrestamo)}</td>
-                      <td
-                        className="px-3 py-2 text-right tabular-nums"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {editandoCuota === p.prestamoId ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <input
-                              type="number"
-                              autoFocus
-                              value={cuotaInput}
-                              onChange={(e) => setCuotaInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') void guardarCuota(p.prestamoId);
-                                if (e.key === 'Escape') setEditandoCuota(null);
-                              }}
-                              className="w-28 rounded border border-[hsl(var(--canalco-neutral-300))] px-2 py-0.5 text-right text-sm"
-                            />
-                            <button
-                              onClick={() => void guardarCuota(p.prestamoId)}
-                              disabled={guardando}
-                              title="Guardar"
-                              className="text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setEditandoCuota(null)}
-                              title="Cancelar"
-                              className="text-[hsl(var(--canalco-neutral-400))] hover:text-[hsl(var(--canalco-neutral-700))]"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center justify-end gap-1.5">
-                            {cop(p.valorCuota)}
-                            <button
-                              onClick={() => abrirEdicionCuota(p)}
-                              title="Ajustar la cuota"
-                              className="text-[hsl(var(--canalco-neutral-300))] hover:text-[hsl(var(--canalco-primary))] transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </span>
-                        )}
-                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{cop(p.valorCuota)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-800">{cop(p.valorCancelado)}</td>
                       <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
                         debe ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-400))]'
@@ -465,6 +439,12 @@ export default function PrestamosListPage() {
                               {(() => {
                                 const cual = vista[p.prestamoId] ?? 'plan';
                                 const plan = planDeAmortizacion(detalle, detalle.pagos ?? []);
+                                // La cuota descontada de cada mes (sin abonos), para prellenar
+                                // el editor con lo que hay que corregir y no con el total.
+                                const cuotaPorMes = new Map<string, number>();
+                                for (const mp of agruparPorMes(detalle.pagos)) {
+                                  cuotaPorMes.set(mp.clave, mp.cuota);
+                                }
                                 return (
                                   <>
                                     <div className="flex gap-1 mb-2">
@@ -487,7 +467,19 @@ export default function PrestamosListPage() {
                                     </div>
 
                                     {cual === 'plan' ? (
-                                      <TablaAmortizacion plan={plan} />
+                                      <TablaAmortizacion
+                                        plan={plan}
+                                        edicion={{
+                                          cuotaPorMes,
+                                          editando: editandoDescontado,
+                                          input: descontadoInput,
+                                          setInput: setDescontadoInput,
+                                          guardando,
+                                          abrir: abrirEdicionDescontado,
+                                          guardar: () => guardarDescontado(p.prestamoId),
+                                          cancelar: () => setEditandoDescontado(null),
+                                        }}
+                                      />
                                     ) : detalle.pagos?.length ? (
                                       <TablaDePagos
                                         meses={agruparPorMes(detalle.pagos)}
@@ -644,7 +636,27 @@ export default function PrestamosListPage() {
  * quedar si todo se pagara al día; «saldo real» es lo que queda con lo que se ha pagado.
  * Cuando se separan, ahí está el atraso o el adelanto, y se ve en qué mes empezó.
  */
-function TablaAmortizacion({ plan }: { plan: ReturnType<typeof planDeAmortizacion> }) {
+/** Lo necesario para ajustar la cuota descontada de un mes desde el plan. */
+interface EdicionDescontado {
+  /** La cuota descontada de cada mes (sin abonos), por clave, para prellenar el input. */
+  cuotaPorMes: Map<string, number>;
+  /** La clave de la fila en edición, o null. */
+  editando: string | null;
+  input: string;
+  setInput: (v: string) => void;
+  guardando: boolean;
+  abrir: (clave: string, cuotaDelMes: number) => void;
+  guardar: () => void;
+  cancelar: () => void;
+}
+
+function TablaAmortizacion({
+  plan,
+  edicion,
+}: {
+  plan: ReturnType<typeof planDeAmortizacion>;
+  edicion: EdicionDescontado;
+}) {
   if (plan.problema) {
     return (
       <div className="bg-white border border-[hsl(var(--canalco-neutral-300))] rounded-lg px-3 py-3 text-xs">
@@ -709,7 +721,9 @@ function TablaAmortizacion({ plan }: { plan: ReturnType<typeof planDeAmortizacio
             </tr>
           </thead>
           <tbody>
-            {plan.cuotas.map((c) => <RenglonCuota key={c.clave} c={c} />)}
+            {plan.cuotas.map((c) => (
+              <RenglonCuota key={c.clave} c={c} edicion={edicion} />
+            ))}
 
             {plan.fueraDePlan.length > 0 && (
               <tr className="border-t border-amber-300 bg-amber-100/70">
@@ -765,8 +779,9 @@ const ESTADO_CUOTA = {
   pendiente: { fila: '', texto: 'text-[hsl(var(--canalco-neutral-400))]', etiqueta: '' },
 } as const;
 
-function RenglonCuota({ c }: { c: CuotaPlan }) {
+function RenglonCuota({ c, edicion }: { c: CuotaPlan; edicion: EdicionDescontado }) {
   const e = ESTADO_CUOTA[c.estado];
+  const enEdicion = edicion.editando === c.clave;
 
   return (
     <tr className={`border-t border-[hsl(var(--canalco-neutral-200))] ${e.fila}`}>
@@ -776,8 +791,48 @@ function RenglonCuota({ c }: { c: CuotaPlan }) {
       <td className="px-3 py-1.5 whitespace-nowrap">{MESES[c.mes - 1]} {c.anio}</td>
       <td className="px-3 py-1.5 text-right tabular-nums">{cop(c.cuota)}</td>
       <td className={`px-3 py-1.5 text-right tabular-nums ${e.texto}`}>
-        {c.pagado > 0 ? cop(c.pagado) : '—'}
-        {e.etiqueta && <span className="ml-1.5 text-[10px]">{e.etiqueta}</span>}
+        {enEdicion ? (
+          <div className="flex items-center justify-end gap-1">
+            <input
+              type="number"
+              autoFocus
+              value={edicion.input}
+              onChange={(ev) => edicion.setInput(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') edicion.guardar();
+                if (ev.key === 'Escape') edicion.cancelar();
+              }}
+              className="w-24 rounded border border-[hsl(var(--canalco-neutral-300))] px-2 py-0.5 text-right text-sm"
+            />
+            <button
+              onClick={edicion.guardar}
+              disabled={edicion.guardando}
+              title="Guardar la cuota descontada del mes"
+              className="text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={edicion.cancelar}
+              title="Cancelar"
+              className="text-[hsl(var(--canalco-neutral-400))] hover:text-[hsl(var(--canalco-neutral-700))]"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            {c.pagado > 0 ? cop(c.pagado) : '—'}
+            {e.etiqueta && <span className="text-[10px]">{e.etiqueta}</span>}
+            <button
+              onClick={() => edicion.abrir(c.clave, edicion.cuotaPorMes.get(c.clave) ?? 0)}
+              title="Ajustar la cuota descontada de este mes (los abonos no se tocan)"
+              className="text-[hsl(var(--canalco-neutral-300))] hover:text-[hsl(var(--canalco-primary))] transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          </span>
+        )}
       </td>
       <td className="px-3 py-1.5 text-right tabular-nums text-[hsl(var(--canalco-neutral-500))]">
         {cop(c.saldoPlan)}
