@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Banknote, ChevronDown, ChevronRight, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, Banknote, Check, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   talentoHumanoService,
@@ -142,6 +142,10 @@ export default function PrestamosListPage() {
   const [abono, setAbono] = useState(nuevoAbono);
   const [guardando, setGuardando] = useState(false);
 
+  /** El préstamo cuya cuota se está ajustando en línea, y el valor en el input. */
+  const [editandoCuota, setEditandoCuota] = useState<number | null>(null);
+  const [cuotaInput, setCuotaInput] = useState('');
+
   useEffect(() => {
     let cancelled = false;
     talentoHumanoService
@@ -172,6 +176,34 @@ export default function PrestamosListPage() {
     ]);
     setDetalles((d) => ({ ...d, [prestamoId]: detalle }));
     setRows(lista);
+  };
+
+  /** Abre el editor de cuota en una fila, sin desplegar el detalle. */
+  const abrirEdicionCuota = (p: ThPrestamo) => {
+    setEditandoCuota(p.prestamoId);
+    setCuotaInput(p.valorCuota ? String(Number(p.valorCuota)) : '');
+  };
+
+  /** Guarda la nueva cuota. El plan se recalcula solo al refrescar. */
+  const guardarCuota = async (prestamoId: number) => {
+    const valor = Number(cuotaInput);
+    if (!valor || valor <= 0) {
+      toast.error('Indica un valor de cuota válido');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await talentoHumanoService.updatePrestamo(prestamoId, {
+        valorCuota: String(valor),
+      });
+      toast.success('Cuota ajustada. Se recalculó el plan de pagos.');
+      setEditandoCuota(null);
+      await refrescar(prestamoId);
+    } catch {
+      toast.error('No se pudo ajustar la cuota');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const registrarAbono = async (prestamoId: number) => {
@@ -359,7 +391,52 @@ export default function PrestamosListPage() {
                       <td className="px-3 py-2 text-right tabular-nums">{p.numeroCuotas ?? '—'}</td>
                       <td className="px-3 py-2">{mesAnio(p.fechaVencimiento)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{cop(p.valorPrestamo)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{cop(p.valorCuota)}</td>
+                      <td
+                        className="px-3 py-2 text-right tabular-nums"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {editandoCuota === p.prestamoId ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              autoFocus
+                              value={cuotaInput}
+                              onChange={(e) => setCuotaInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void guardarCuota(p.prestamoId);
+                                if (e.key === 'Escape') setEditandoCuota(null);
+                              }}
+                              className="w-28 rounded border border-[hsl(var(--canalco-neutral-300))] px-2 py-0.5 text-right text-sm"
+                            />
+                            <button
+                              onClick={() => void guardarCuota(p.prestamoId)}
+                              disabled={guardando}
+                              title="Guardar"
+                              className="text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setEditandoCuota(null)}
+                              title="Cancelar"
+                              className="text-[hsl(var(--canalco-neutral-400))] hover:text-[hsl(var(--canalco-neutral-700))]"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center justify-end gap-1.5">
+                            {cop(p.valorCuota)}
+                            <button
+                              onClick={() => abrirEdicionCuota(p)}
+                              title="Ajustar la cuota"
+                              className="text-[hsl(var(--canalco-neutral-300))] hover:text-[hsl(var(--canalco-primary))] transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-800">{cop(p.valorCancelado)}</td>
                       <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
                         debe ? 'text-[hsl(var(--canalco-primary))]' : 'text-[hsl(var(--canalco-neutral-400))]'
