@@ -9,8 +9,6 @@ import {
   User,
   Plus,
   Trash2,
-  Eye,
-  EyeOff,
   Building2,
   FolderOpen,
 } from 'lucide-react';
@@ -70,9 +68,7 @@ export default function DetalleUsuarioPage() {
     nombre: '',
     cargo: '',
     rolId: 0,
-    password: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
 
   // Modal de agregar subordinado
   const [showAddModal, setShowAddModal] = useState(false);
@@ -136,7 +132,6 @@ export default function DetalleUsuarioPage() {
         nombre: userData.nombre,
         cargo: userData.cargo,
         rolId: userData.rolId,
-        password: '',
       });
 
       // Cargar subordinados disponibles y accesos de surveys
@@ -242,19 +237,14 @@ export default function DetalleUsuarioPage() {
       setSaving(true);
       setError(null);
 
-      const updateData: { nombre: string; cargo: string; rolId: number; password?: string } = {
+      const updateData: { nombre: string; cargo: string; rolId: number } = {
         nombre: formData.nombre,
         cargo: formData.cargo,
         rolId: formData.rolId,
       };
 
-      if (formData.password.trim()) {
-        updateData.password = formData.password;
-      }
-
       await usersService.update(userId, updateData);
       setSuccessMessage('Usuario actualizado correctamente');
-      setFormData({ ...formData, password: '' });
       await loadData();
     } catch (err: any) {
       console.error('Error updating user:', err);
@@ -451,27 +441,6 @@ export default function DetalleUsuarioPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Nueva Contraseña (opcional)</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Dejar vacío para mantener la actual"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--canalco-neutral-500))]"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
               </div>
 
               <Button

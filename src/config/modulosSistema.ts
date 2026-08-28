@@ -22,6 +22,34 @@ const DENTRO_DE_COMPRAS = ['proveedores', 'materiales', 'inventarios', 'auditori
  */
 const OCULTOS = ['dashboard'];
 
+/**
+ * Módulos que se pintan como tarjeta fija del frontend (Aprobaciones, Gestión del
+ * conocimiento, Talento Humano, Recurso Económico) y que además ya existen como
+ * gestión en la tabla. Se excluyen de `prepararModulos` para no pintarlos dos veces:
+ * su tarjeta la pone el frontend y su acceso lo resuelve `accesoModuloHibrido`.
+ */
+const FIJOS_HIBRIDOS = [
+  'aprobaciones',
+  'gestion-conocimiento',
+  'talento-humano',
+  'recurso-economico',
+];
+
+/**
+ * Acceso a un módulo fijo. Prefiere la asignación por rol de la tabla `gestiones`
+ * (el checklist de administración); si esa gestión todavía no existe en lo que
+ * devuelve el backend —p. ej. antes de correr el script que las crea—, cae al
+ * gateo por rol de siempre, para que nadie pierda el módulo en el intervalo.
+ */
+export const accesoModuloHibrido = (
+  slug: string,
+  modules: Module[],
+  gatePorRol: boolean,
+): boolean => {
+  const m = modules.find((x) => x.slug === slug);
+  return m ? m.hasAccess : gatePorRol;
+};
+
 /** Orden de presentación. Lo que no está listado va al final. */
 const ORDEN = [
   'compras',
@@ -74,7 +102,12 @@ export const prepararModulos = (modules: Module[]): Module[] =>
       const slug = SLUGS[m.slug] || m.slug;
       return { ...m, slug, nombre: NOMBRES[slug] || m.nombre };
     })
-    .filter((m) => !DENTRO_DE_COMPRAS.includes(m.slug) && !OCULTOS.includes(m.slug))
+    .filter(
+      (m) =>
+        !DENTRO_DE_COMPRAS.includes(m.slug) &&
+        !OCULTOS.includes(m.slug) &&
+        !FIJOS_HIBRIDOS.includes(m.slug),
+    )
     .sort((a, b) => {
       const ia = ORDEN.indexOf(a.slug);
       const ib = ORDEN.indexOf(b.slug);

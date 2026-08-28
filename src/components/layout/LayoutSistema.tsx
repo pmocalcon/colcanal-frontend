@@ -8,6 +8,7 @@ import {
   prepararModulos,
   seccionesDe,
   puedeVerAprobaciones,
+  accesoModuloHibrido,
   APROBACIONES,
   type Seccion,
 } from '@/config/modulosSistema';
@@ -112,18 +113,20 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       slug: m.slug, nombre: m.nombre, icono: m.icono, acceso: m.hasAccess,
     }));
     const fijos = FIJOS
-      // Talento Humano y Recurso Económico se abren por rol, no por permiso: a quien
-      // no lo tenga no se le pintan, ni con candado, porque no hay permiso que pueda
-      // pedir. Gestión del conocimiento sí es para todos.
+      // Acceso híbrido: manda la asignación de la tabla `gestiones` (el checklist de
+      // administración) y, mientras esa gestión no exista, cae al gateo por rol de
+      // siempre. A quien no tiene acceso no se le pinta, ni con candado.
       .filter((f) => {
-        if (f.slug === 'talento-humano') return puedeVerTalentoHumano(user?.nombreRol);
-        if (f.slug === 'recurso-economico') return puedeVerRecursoEconomico(user?.nombreRol);
-        return true;
+        if (f.slug === 'talento-humano')
+          return accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol));
+        if (f.slug === 'recurso-economico')
+          return accesoModuloHibrido('recurso-economico', modules, puedeVerRecursoEconomico(user?.nombreRol));
+        return accesoModuloHibrido('gestion-conocimiento', modules, true);
       })
       .map((f) => ({ ...f, acceso: true }));
     // Aprobaciones encabeza la barra, en el mismo orden que el tablero: es lo que hay
     // pendiente de firmar y quien la ve entra al sistema para eso.
-    const aprobaciones = puedeVerAprobaciones(user?.nombreRol)
+    const aprobaciones = accesoModuloHibrido('aprobaciones', modules, puedeVerAprobaciones(user?.nombreRol))
       ? [{ ...APROBACIONES, acceso: true }]
       : [];
     return [...aprobaciones, ...delBackend, ...fijos];

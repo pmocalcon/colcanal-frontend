@@ -155,6 +155,11 @@ export interface BulkAuthorizationResponse {
 
 // ============ SERVICIO ============
 
+export interface ModulePermiso {
+  gestionId: number;
+  permisoIds: number[];
+}
+
 export interface CredencialEstado {
   userId: number;
   nombre: string;
@@ -442,6 +447,26 @@ export const usersService = {
   async deleteAuthorization(authorizationId: number): Promise<{ message: string }> {
     const response = await api.delete<{ message: string }>(
       `/users/authorizations/${authorizationId}`
+    );
+    return response.data;
+  },
+
+  // ============ PERMISOS POR MÓDULO ============
+
+  async getModulePermissions(rolId: number): Promise<ModulePermiso[]> {
+    const response = await api.get<ModulePermiso[]>(
+      `/users/roles/${rolId}/module-permissions`,
+    );
+    return response.data;
+  },
+
+  async setModulePermissions(
+    rolId: number,
+    asignaciones: ModulePermiso[],
+  ): Promise<ModulePermiso[]> {
+    const response = await api.put<ModulePermiso[]>(
+      `/users/roles/${rolId}/module-permissions`,
+      { asignaciones },
     );
     return response.data;
   },

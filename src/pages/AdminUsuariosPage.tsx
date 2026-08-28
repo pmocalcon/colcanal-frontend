@@ -50,6 +50,7 @@ import {
   type Permission,
   type Gestion,
   type CreateRoleDto,
+  type ModulePermiso,
 } from '@/services/users.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 import { surveysService } from '@/services/surveys.service';
@@ -93,11 +94,13 @@ export default function AdminUsuariosPage() {
   });
   const [roleLoading, setRoleLoading] = useState(false);
 
-  // Estados para modal de permisos
+  // Estados para modal de permisos (matriz módulo → permisos)
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [selectedRoleForPermissions, setSelectedRoleForPermissions] = useState<Role | null>(null);
-  const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
+  // gestionId → set de permisoIds marcados para ese módulo
+  const [moduloPermisos, setModuloPermisos] = useState<Record<number, number[]>>({});
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [permisosModalCargando, setPermisosModalCargando] = useState(false);
 
   // Estados para modal de gestiones
   const [showGestionesModal, setShowGestionesModal] = useState(false);
@@ -297,25 +300,64 @@ export default function AdminUsuariosPage() {
   };
 
   // ========== FUNCIONES DE PERMISOS ==========
-  const handleManagePermissions = (role: Role) => {
+  const handleManagePermissions = async (role: Role) => {
     setSelectedRoleForPermissions(role);
-    const currentPermissionIds = role.rolePermissions?.map((rp) => rp.permisoId) || [];
-    setSelectedPermissionIds(currentPermissionIds);
+    setModuloPermisos({});
     setShowPermissionsModal(true);
+    try {
+      setPermisosModalCargando(true);
+      const matriz = await usersService.getModulePermissions(role.rolId);
+      const record: Record<number, number[]> = {};
+      matriz.forEach((m) => { record[m.gestionId] = m.permisoIds; });
+      setModuloPermisos(record);
+    } catch (err: any) {
+      console.error('Error loading module permissions:', err);
+      setError(err.response?.data?.message || 'Error al cargar los permisos del rol');
+    } finally {
+      setPermisosModalCargando(false);
+    }
   };
 
-  const togglePermission = (permisoId: number) => {
-    setSelectedPermissionIds((prev) =>
-      prev.includes(permisoId) ? prev.filter((id) => id !== permisoId) : [...prev, permisoId]
-    );
+  // Marca/desmarca un permiso dentro de un módulo.
+  const togglePermisoModulo = (gestionId: number, permisoId: number) => {
+    setModuloPermisos((prev) => {
+      const actuales = prev[gestionId] ?? [];
+      const nuevos = actuales.includes(permisoId)
+        ? actuales.filter((id) => id !== permisoId)
+        : [...actuales, permisoId];
+      return { ...prev, [gestionId]: nuevos };
+    });
   };
+
+  // Marca o desmarca todos los permisos de un módulo de una vez.
+  const toggleModuloCompleto = (gestionId: number, todosLosPermisoIds: number[]) => {
+    setModuloPermisos((prev) => {
+      const actuales = prev[gestionId] ?? [];
+      const yaTodos = todosLosPermisoIds.every((id) => actuales.includes(id));
+      return { ...prev, [gestionId]: yaTodos ? [] : [...todosLosPermisoIds] };
+    });
+  };
+
+  const totalPermisosSeleccionados = Object.values(moduloPermisos).reduce(
+    (acc, ids) => acc + ids.length,
+    0,
+  );
 
   const handleSavePermissions = async () => {
     if (!selectedRoleForPermissions) return;
 
     try {
       setPermissionsLoading(true);
-      await usersService.assignPermissionsToRole(selectedRoleForPermissions.rolId, selectedPermissionIds);
+      const asignaciones: ModulePermiso[] = gestionesAsignables
+        .map((g) => {
+          const aplicables = new Set(permisosDeModulo(g).map((p) => p.permisoId));
+          const permisoIds = (moduloPermisos[g.gestionId] ?? []).filter((id) =>
+            aplicables.has(id),
+          );
+          return { gestionId: g.gestionId, permisoIds };
+        })
+        .filter((a) => a.permisoIds.length > 0);
+      await usersService.setModulePermissions(selectedRoleForPermissions.rolId, asignaciones);
       setSuccessMessage(`Permisos actualizados para "${selectedRoleForPermissions.nombreRol}"`);
       setShowPermissionsModal(false);
       await loadData();
@@ -339,6 +381,26 @@ export default function AdminUsuariosPage() {
     setSelectedGestionIds((prev) =>
       prev.includes(gestionId) ? prev.filter((id) => id !== gestionId) : [...prev, gestionId]
     );
+  };
+
+  // Módulos asignables por rol. El Dashboard se oculta por ahora: es la portada
+  // que todos ven al entrar, no un módulo cuyo acceso se conceda o niegue.
+  const gestionesAsignables = gestiones.filter((g) => g.slug !== 'dashboard');
+
+  // Los permisos que aplican a un módulo, para no mezclarlos entre sí:
+  //  - Si el módulo tiene permisos granulares con nombre propio (p. ej.
+  //    `levantamientos:*`, `creg:*`), esos son su set.
+  //  - Si no, muestra los genéricos (Ver, Crear, …), que aplican a cualquier módulo.
+  const prefijoDeModulo = (slug: string) =>
+    slug === 'levantamiento-obras' ? 'levantamientos' : slug;
+  const permisosDeModulo = (g: Gestion): Permission[] => {
+    const prefijo = prefijoDeModulo(g.slug);
+    const granulares = permissions.filter(
+      (p) => p.nombrePermiso.includes(':') && p.nombrePermiso.split(':')[0] === prefijo,
+    );
+    return granulares.length > 0
+      ? granulares
+      : permissions.filter((p) => !p.nombrePermiso.includes(':'));
   };
 
   const handleSaveGestiones = async () => {
@@ -1032,41 +1094,77 @@ export default function AdminUsuariosPage() {
 
       {/* Modal de Gestionar Permisos */}
       <Dialog open={showPermissionsModal} onOpenChange={setShowPermissionsModal}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gestionar Permisos</DialogTitle>
             <DialogDescription>
-              Selecciona los permisos para el rol "{selectedRoleForPermissions?.nombreRol}"
+              Marca los permisos <b>por módulo</b> para el rol "{selectedRoleForPermissions?.nombreRol}".
+              Cada módulo tiene sus propios permisos.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            {permissions.length === 0 ? (
+          <div className="py-2">
+            {permisosModalCargando ? (
+              <div className="flex items-center justify-center py-10 text-[hsl(var(--canalco-neutral-500))]">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Cargando permisos…
+              </div>
+            ) : gestionesAsignables.length === 0 || permissions.length === 0 ? (
               <p className="text-center text-[hsl(var(--canalco-neutral-600))]">
-                No hay permisos disponibles
+                No hay módulos o permisos disponibles
               </p>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {permissions.map((permission) => (
-                  <label
-                    key={permission.permisoId}
-                    className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))]"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedPermissionIds.includes(permission.permisoId)}
-                      onChange={() => togglePermission(permission.permisoId)}
-                      className="mt-1 rounded border-gray-300"
-                    />
-                    <div>
-                      <p className="font-medium text-sm">{permission.nombrePermiso}</p>
-                      {permission.descripcion && (
-                        <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-                          {permission.descripcion}
-                        </p>
-                      )}
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                {gestionesAsignables.map((g) => {
+                  const permisosModulo = permisosDeModulo(g);
+                  const todosLosIds = permisosModulo.map((p) => p.permisoId);
+                  const seleccionados = (moduloPermisos[g.gestionId] ?? []).filter((id) =>
+                    todosLosIds.includes(id),
+                  );
+                  const yaTodos = todosLosIds.length > 0 && todosLosIds.every((id) => seleccionados.includes(id));
+                  return (
+                    <div key={g.gestionId} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{g.nombre}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {seleccionados.length}
+                          </Badge>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleModuloCompleto(g.gestionId, todosLosIds)}
+                          className="text-xs font-medium text-[hsl(var(--canalco-primary))] hover:underline"
+                        >
+                          {yaTodos ? 'Quitar todos' : 'Todos'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {permisosModulo.map((p) => {
+                          const activo = seleccionados.includes(p.permisoId);
+                          return (
+                            <label
+                              key={p.permisoId}
+                              title={p.descripcion || undefined}
+                              className={
+                                'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs cursor-pointer transition-colors ' +
+                                (activo
+                                  ? 'bg-[hsl(var(--canalco-primary))]/10 border-[hsl(var(--canalco-primary))] text-[hsl(var(--canalco-primary))] font-medium'
+                                  : 'border-[hsl(var(--canalco-neutral-200))] hover:bg-[hsl(var(--canalco-neutral-100))]')
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={activo}
+                                onChange={() => togglePermisoModulo(g.gestionId, p.permisoId)}
+                                className="rounded border-gray-300"
+                              />
+                              {p.nombrePermiso}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </label>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1076,11 +1174,11 @@ export default function AdminUsuariosPage() {
             </Button>
             <Button
               onClick={handleSavePermissions}
-              disabled={permissionsLoading}
+              disabled={permissionsLoading || permisosModalCargando}
               className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary-hover))]"
             >
               {permissionsLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Guardar Permisos ({selectedPermissionIds.length})
+              Guardar Permisos ({totalPermisosSeleccionados})
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1096,13 +1194,13 @@ export default function AdminUsuariosPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            {gestiones.length === 0 ? (
+            {gestionesAsignables.length === 0 ? (
               <p className="text-center text-[hsl(var(--canalco-neutral-600))]">
                 No hay módulos disponibles
               </p>
             ) : (
               <div className="space-y-2">
-                {gestiones.map((gestion) => (
+                {gestionesAsignables.map((gestion) => (
                   <label
                     key={gestion.gestionId}
                     className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))]"

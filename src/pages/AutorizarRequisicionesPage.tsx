@@ -106,12 +106,20 @@ const AutorizarRequisicionesPage: React.FC = () => {
       setError(null);
       const response = await getPendingActions({ page, limit: 100 });
 
-      // Filtrar requisiciones relevantes para el autorizador:
-      // - pendiente_autorizacion (pendientes de autorizar)
-      // - autorizado (ya autorizadas por el autorizador)
-      // - aprobada_gerencia (ya pasaron por autorización y aprobación)
-      // NO incluir rechazada_revisor porque esas van al creador, no al autorizador
-      const relevantStatuses = ['pendiente_autorizacion', 'autorizado', 'aprobada_gerencia'];
+      // Estados relevantes para el autorizador: lo pendiente de su firma y todo el
+      // recorrido de lo que autorizó (el backend ya acota a las que pasaron por su
+      // autorización, así que aquí solo controlamos qué se muestra).
+      // NO incluir rechazada_revisor porque esas van al creador, no al autorizador.
+      const relevantStatuses = [
+        'pendiente_autorizacion',
+        'autorizado',
+        'rechazada_autorizador',
+        'aprobada_gerencia',
+        'rechazada_gerencia',
+        'cotizada',
+        'en_orden_compra',
+        'pendiente_recepcion',
+      ];
       const authRequisitions = response.data.filter(
         (req) => relevantStatuses.includes(req.status?.code || '')
       );

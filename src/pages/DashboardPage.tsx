@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { puedeVerRecursoEconomico, esDirectorProyecto } from '@/utils/rolesPmo';
-import { prepararModulos, puedeVerAprobaciones, APROBACIONES } from '@/config/modulosSistema';
+import { prepararModulos, puedeVerAprobaciones, APROBACIONES, accesoModuloHibrido } from '@/config/modulosSistema';
 import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 // Qué módulos se muestran, con qué nombre y en qué orden: vive en
@@ -164,7 +164,7 @@ export default function DashboardPage() {
           {/* Aprobaciones va de primera: es lo que hay pendiente de firmar, y quien la
               ve entra al sistema para eso. Fija como las demás de abajo —no es una
               gestión de la tabla— y sin candado: se abre por rol, no por permiso. */}
-          {puedeVerAprobaciones(user?.nombreRol) && (
+          {accesoModuloHibrido('aprobaciones', modules, puedeVerAprobaciones(user?.nombreRol)) && (
             <ModuleCard
               nombre={APROBACIONES.nombre}
               slug={APROBACIONES.slug}
@@ -183,19 +183,22 @@ export default function DashboardPage() {
               onClick={() => handleModuleClick(module)}
             />
           ))}
-          {/* Gestión del conocimiento: tarjeta fija en el frontend (no viene de la tabla gestion). */}
-          <ModuleCard
-            nombre="Gestión del conocimiento"
-            slug="gestion-conocimiento"
-            icono="BookOpen"
-            hasAccess={true}
-            onClick={() => navigate('/dashboard/gestion-conocimiento')}
-          />
+          {/* Gestión del conocimiento: para todos por defecto; si se le asigna la
+              gestión a los roles, el checklist puede graduar quién la ve. */}
+          {accesoModuloHibrido('gestion-conocimiento', modules, true) && (
+            <ModuleCard
+              nombre="Gestión del conocimiento"
+              slug="gestion-conocimiento"
+              icono="BookOpen"
+              hasAccess={true}
+              onClick={() => navigate('/dashboard/gestion-conocimiento')}
+            />
+          )}
           {/* Talento Humano: también fija, y solo para quien tiene acceso. Sin candado,
               por la misma razón que Recurso Económico: no hay permiso que pedir, se
               abre por rol. Es el módulo de consulta —personal, préstamos,
               incapacidades—; los formatos se diligencian en Gestión del conocimiento. */}
-          {puedeVerTalentoHumano(user?.nombreRol) && (
+          {accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol)) && (
             <ModuleCard
               nombre="Talento Humano"
               slug="talento-humano"
@@ -207,7 +210,7 @@ export default function DashboardPage() {
           {/* Recurso Económico: también fija, y solo del PMO. A quien no lo sea no se
               le pinta: la tarjeta con candado invitaría a pedir un permiso que no
               existe. */}
-          {puedeVerRecursoEconomico(user?.nombreRol) && (
+          {accesoModuloHibrido('recurso-economico', modules, puedeVerRecursoEconomico(user?.nombreRol)) && (
             <ModuleCard
               nombre="Recurso Económico"
               slug="recurso-economico"
