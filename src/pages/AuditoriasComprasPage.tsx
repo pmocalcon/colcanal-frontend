@@ -7,7 +7,7 @@ import type {
   AuditStats,
   MaterialPurchaseControlResponse,
   SupplierPurchasesResponse,
-  RequisitionPurchaseOrder,
+  RequisitionPurchaseOrdersResponse,
 } from '@/services/audit.service';
 import { usersService } from '@/services/users.service';
 import type { User } from '@/services/users.service';
@@ -151,6 +151,26 @@ const MATRIX_ACTION_COLORS: Record<string, string> = {
   factura_contabilidad: 'bg-amber-100 text-amber-800',
   anular_requisicion: 'bg-slate-100 text-slate-800',
 };
+
+/** Estado de recepción de una OC: etiqueta y color para el desglose de Registros. */
+const RECEPTION_STATUS_META: Record<string, { label: string; cls: string }> = {
+  pendiente_recepcion: { label: 'Pendiente recepción', cls: 'bg-amber-100 text-amber-800' },
+  en_recepcion: { label: 'En recepción', cls: 'bg-blue-100 text-blue-800' },
+  recepcion_completa: { label: 'Recepcionada', cls: 'bg-teal-100 text-teal-800' },
+};
+
+/** Estado de facturación de una OC: etiqueta y color para el desglose de Registros. */
+const INVOICE_STATUS_META: Record<string, { label: string; cls: string }> = {
+  sin_factura: { label: 'Sin factura', cls: 'bg-slate-100 text-slate-700' },
+  facturacion_parcial: { label: 'Factura parcial', cls: 'bg-amber-100 text-amber-800' },
+  factura_completa: { label: 'Factura completa', cls: 'bg-green-100 text-green-800' },
+  enviada_contabilidad: { label: 'Enviada a contab.', cls: 'bg-indigo-100 text-indigo-800' },
+  recibida_contabilidad: { label: 'Recibida por contab.', cls: 'bg-emerald-100 text-emerald-800' },
+};
+
+/** Para un estado sin entrada en el mapa: «recepcion_parcial» → «Recepcion parcial». */
+const prettyStatus = (v: string | null): string =>
+  v ? v.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '—';
 
 /**
  * Los estados traen un instante con hora, pero «Factura a contabilidad» trae una
@@ -312,7 +332,7 @@ export default function AuditoriasComprasPage() {
    * Lo ya pedido se queda en memoria, así que cerrar y volver a abrir no cuesta.
    */
   const [ocAbiertas, setOcAbiertas] = useState<Set<number>>(new Set());
-  const [ocPorRequisicion, setOcPorRequisicion] = useState<Record<number, RequisitionPurchaseOrder[]>>({});
+  const [ocPorRequisicion, setOcPorRequisicion] = useState<Record<number, RequisitionPurchaseOrdersResponse>>({});
   const [ocCargando, setOcCargando] = useState<Set<number>>(new Set());
 
   const alternarOc = async (requisitionId: number) => {
@@ -332,7 +352,7 @@ export default function AuditoriasComprasPage() {
     } catch {
       // Si falla, se guarda vacío: el desglose dirá que no hay órdenes en vez de
       // quedarse girando para siempre.
-      setOcPorRequisicion((prev) => ({ ...prev, [requisitionId]: [] }));
+      setOcPorRequisicion((prev) => ({ ...prev, [requisitionId]: { orders: [], estados: [] } }));
     } finally {
       setOcCargando((prev) => {
         const next = new Set(prev);
@@ -1283,26 +1303,54 @@ export default function AuditoriasComprasPage() {
                                   Cargando las órdenes de compra…
                                 </p>
                               )}
-                              {!cargandoOc && ordenes && ordenes.length === 0 && (
+                              {/* Recorrido de estados de la requisición: lo que la
+                                  pestaña Matriz muestra por fila, aquí sin cambiar de
+                                  pestaña. */}
+                              {!cargandoOc && ordenes && ordenes.estados.length > 0 && (
+                                <div className="mb-3">
+                                  <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1.5">
+                                    Recorrido de estados
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {ordenes.estados.map((e, i) => (
+                                      <Fragment key={e.action + i}>
+                                        {i > 0 && (
+                                          <ChevronRight className="w-3 h-3 text-[hsl(var(--canalco-neutral-400))]" />
+                                        )}
+                                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${getActionColor(e.action)}`}>
+                                          {getActionLabel(e.action)}
+                                          {e.date && (
+                                            <span className="opacity-70">· {formatDateShort(e.date)}</span>
+                                          )}
+                                        </span>
+                                      </Fragment>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {!cargandoOc && ordenes && ordenes.orders.length === 0 && (
                                 <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                                   Esta requisición todavía no tiene órdenes de compra.
                                 </p>
                               )}
-                              {!cargandoOc && ordenes && ordenes.length > 0 && (
+                              {!cargandoOc && ordenes && ordenes.orders.length > 0 && (
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-sm">
                                     <thead>
                                       <tr className="text-left text-[hsl(var(--canalco-neutral-600))] border-b border-[hsl(var(--canalco-neutral-300))]">
                                         <th className="px-3 py-2 font-semibold">OC</th>
                                         <th className="px-3 py-2 font-semibold whitespace-nowrap">Emitida</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Estado</th>
                                         <th className="px-3 py-2 font-semibold text-right">Días</th>
                                         <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor OC</th>
                                         <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor factura</th>
                                         <th className="px-3 py-2 font-semibold text-right">Diferencia</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Fecha del sistema en que se envió a Contabilidad">Enviada a contab.</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Fecha del sistema en que se registró la última factura">Factura reg.</th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {ordenes.map((o) => {
+                                      {ordenes.orders.map((o) => {
                                         // Una orden sin nada pendiente ya está saldada: los días que
                                         // lleva emitida dejan de ser una alarma y el cero no se pinta
                                         // en rojo junto a las que sí deben.
@@ -1321,6 +1369,16 @@ export default function AuditoriasComprasPage() {
                                             </td>
                                             <td className="px-3 py-2 whitespace-nowrap">
                                               {o.issueDate ? o.issueDate.slice(0, 10) : '—'}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                              <div className="flex flex-col gap-1">
+                                                <span className={`inline-flex w-fit text-[11px] px-1.5 py-0.5 rounded-full ${RECEPTION_STATUS_META[o.receptionStatus ?? '']?.cls ?? 'bg-slate-100 text-slate-600'}`}>
+                                                  {RECEPTION_STATUS_META[o.receptionStatus ?? '']?.label ?? prettyStatus(o.receptionStatus)}
+                                                </span>
+                                                <span className={`inline-flex w-fit text-[11px] px-1.5 py-0.5 rounded-full ${INVOICE_STATUS_META[o.invoiceStatus ?? '']?.cls ?? 'bg-slate-100 text-slate-600'}`}>
+                                                  {INVOICE_STATUS_META[o.invoiceStatus ?? '']?.label ?? prettyStatus(o.invoiceStatus)}
+                                                </span>
+                                              </div>
                                             </td>
                                             <td
                                               className={
@@ -1359,6 +1417,12 @@ export default function AuditoriasComprasPage() {
                                                 ? '$0'
                                                 : `$${o.pendingAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
                                             </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-[hsl(var(--canalco-neutral-700))]">
+                                              {o.sentToAccountingAt ? formatDateShort(o.sentToAccountingAt) : '—'}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-[hsl(var(--canalco-neutral-700))]">
+                                              {o.invoiceRegisteredAt ? formatDateShort(o.invoiceRegisteredAt) : '—'}
+                                            </td>
                                           </tr>
                                         );
                                       })}
@@ -1367,6 +1431,7 @@ export default function AuditoriasComprasPage() {
                                   <p className="mt-2 text-xs text-[hsl(var(--canalco-neutral-500))]">
                                     Diferencia = valor de la orden menos lo facturado. En rojo, las que
                                     llevan {DIAS_SIN_FACTURA} días o más sin factura completa.
+                                    «Enviada a contab.» y «Factura reg.» son fechas del sistema.
                                   </p>
                                 </div>
                               )}

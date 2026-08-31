@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Pencil, Plus, Save, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Pencil, Plus, Save, Search, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Campo, CampoCalculado, CampoCheck, CampoPorcentaje, CampoSugerido, Selector } from '@/components/talentoHumano/campos';
 import { talentoHumanoService, type ThBanco, type ThPersona } from '@/services/talentoHumano.service';
+import { buildXlsxBlob, downloadBlob, type XlsxCell, type XlsxRow } from '@/utils/xlsxWriter';
 
 /**
  * Listado de la base de personal.
@@ -84,9 +85,12 @@ function Th({ children, alinear = 'left', fija = false }: {
   alinear?: keyof typeof ALINEAR;
   fija?: boolean;
 }) {
+  // `sticky top-0` deja la fila de encabezados pegada arriba al desplazarse hacia
+  // abajo; la columna del nombre (`fija`) además queda pegada a la izquierda, así
+  // que su celda de encabezado es la esquina y va por encima de las demás.
   return (
-    <th className={`px-3 py-2 font-semibold whitespace-nowrap ${ALINEAR[alinear]} ${
-      fija ? 'sticky left-0 z-20 bg-[hsl(var(--canalco-neutral-100))]' : ''
+    <th className={`px-3 py-2 font-semibold whitespace-nowrap sticky top-0 bg-[hsl(var(--canalco-neutral-100))] ${ALINEAR[alinear]} ${
+      fija ? 'left-0 z-30' : 'z-20'
     }`}>
       {children}
     </th>
@@ -280,6 +284,103 @@ export default function PersonalListPage() {
     }
   };
 
+  /**
+   * Exporta a Excel lo que está en pantalla (respeta buscador, área y «solo
+   * activos»), con las mismas columnas de la tabla. Los pesos van como número
+   * para poder sumarlos; fechas y porcentajes, como texto tal como se ven.
+   */
+  const exportarExcel = async () => {
+    if (visibles.length === 0) {
+      toast.error('No hay filas para exportar');
+      return;
+    }
+    const txt = (v: unknown): XlsxCell => ({ v: v == null || v === '' ? null : String(v), s: 'text' });
+    const money = (v: string | number | null | undefined): XlsxCell => {
+      const x = Number(v ?? 0);
+      return { v: Number.isFinite(x) && x !== 0 ? Math.round(x) : null, s: 'money' };
+    };
+    const int = (v: number | null | undefined): XlsxCell => ({ v: v == null ? null : v, s: 'qty' });
+    const num1c = (v: number | null | undefined): XlsxCell => ({ v: v == null || v === 0 ? null : v, s: 'num1' });
+    const fchaX = (iso: string | null | undefined): XlsxCell => { const s = fecha(iso ?? null); return txt(s === '—' ? '' : s); };
+    const pctX = (v: string | null | undefined): XlsxCell => { const s = pct(v ?? null); return txt(s === '—' ? '' : s); };
+
+    const encabezados = [
+      'Nombre', 'Identificación', 'Estado', 'Cargo', 'Área', 'Edad', 'Sexo', 'Estado civil', 'Hijos',
+      'Correo', 'Contrato', 'Ingreso', 'Fecha de retiro', 'Firmado', 'Otrosí', 'Ubicación',
+      'Empresa o proyecto', 'Operación/FGE', 'Centro de costo', 'Tipo de gasto', 'Escalafón', 'Formación',
+      'Salario', 'Aux. transporte', 'Aux. rodamiento', 'Total salarios', 'Póliza funeraria', 'FSP',
+      'Salud', 'Pensión', 'Banco', 'Cuenta', 'Tipo de cuenta', 'Fecha de salida', 'EPS', 'AFP', 'ARL',
+      'CCF', 'Clase de riesgo', 'Tarifa ARL', 'Alturas', 'Vac. pendientes', 'Días incap.', 'Días permiso',
+      '% carga', 'Carga prestacional', 'Costo total', 'Año', 'Observaciones',
+    ];
+
+    const filas: XlsxRow[] = [
+      encabezados.map((v) => ({ v, s: 'header' as const })),
+      ...visibles.map((p): XlsxRow => [
+        txt(p.nombre),
+        txt(p.identificacion),
+        txt((p.estado ?? '').trim()),
+        txt(p.cargo),
+        txt(p.area),
+        int(p.edad),
+        txt(p.sexo),
+        txt(p.estadoCivil),
+        int(p.hijos),
+        txt(p.correo),
+        txt(p.tipoContrato),
+        fchaX(p.fechaIngreso),
+        fchaX(p.fechaVencimientoContrato),
+        txt(p.contratoFirmado == null ? '' : p.contratoFirmado ? 'Sí' : 'No'),
+        txt(p.otroSi),
+        txt(p.ubicacion),
+        txt(p.empresaProyecto),
+        txt(p.operacionFge),
+        txt(p.centroCosto),
+        txt(p.tipoGasto),
+        txt(p.escalafon),
+        txt(p.formacionProfesional),
+        money(p.salario),
+        money(p.auxilioTransporte),
+        money(p.auxilioRodamiento),
+        money(p.totalSalarios),
+        money(p.polizaFuneraria),
+        txt(p.fspModo || 'Auto'),
+        txt(p.aportaSalud === false ? 'No' : 'Sí'),
+        txt(p.aportaPension === false ? 'No' : 'Sí'),
+        txt(p.banco),
+        txt(p.cuenta),
+        txt(p.tipoCuenta),
+        fchaX(p.fechaSalida),
+        txt(p.eps),
+        txt(p.afp),
+        txt(p.arl),
+        txt(p.ccf),
+        txt(p.claseRiesgo),
+        pctX(p.nivelRiesgo),
+        txt(p.trabajoAltura),
+        int(p.diasVacacionesPendientes),
+        num1c(p.diasIncapacidad),
+        num1c(p.diasPermiso),
+        pctX(p.cargaPrestacionalPct),
+        money(p.cargaPrestacional),
+        money(p.costoTotal),
+        int(p.anioVigencia),
+        txt(p.observaciones),
+      ]),
+    ];
+    const anchos = [
+      30, 14, 10, 26, 18, 6, 12, 14, 6, 26, 18, 12, 12, 9, 20, 16, 18, 14, 12, 14, 14, 18,
+      14, 14, 14, 14, 14, 8, 7, 7, 16, 18, 12, 12, 14, 14, 14, 14, 10, 10, 10, 10, 10, 10,
+      10, 16, 16, 8, 30,
+    ];
+    try {
+      const blob = await buildXlsxBlob('Personal', filas, anchos);
+      downloadBlob(blob, `Personal_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error('No se pudo generar el Excel');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
       <header className="bg-white border-b border-[hsl(var(--canalco-neutral-300))] shadow-sm sticky top-0 z-30">
@@ -295,6 +396,15 @@ export default function PersonalListPage() {
               {loading ? 'Cargando…' : `${activos} activos de ${rows.length} registros`}
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={exportarExcel}
+            disabled={loading || visibles.length === 0}
+            className="gap-2"
+            title="Exportar a Excel lo que está en pantalla"
+          >
+            <Download className="w-4 h-4" /> Exportar a Excel
+          </Button>
           <Button
             onClick={() => setBorrador({ ...VACIO })}
             className="gap-2 bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white"
@@ -574,7 +684,7 @@ export default function PersonalListPage() {
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
           </div>
         ) : (
-          <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+          <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
             <table className="w-full text-sm min-w-[2400px]">
               <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
                 <tr>

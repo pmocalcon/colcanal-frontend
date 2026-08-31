@@ -236,9 +236,9 @@ export default function CregPage() {
             {loadingUcaps ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="w-10 h-10 animate-spin text-[hsl(var(--canalco-primary))]" /></div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 z-10 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                     <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
                       <TableHead className="font-semibold">Código</TableHead>
                       <TableHead className="font-semibold">UCAP</TableHead>

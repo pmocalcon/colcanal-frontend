@@ -9,6 +9,7 @@ import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/jurid
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 
 /**
  * Acta de revisión y aprobación de garantías contractuales, plantilla 2026 (el formato
@@ -284,16 +285,10 @@ export default function AprobacionGarantiasPage() {
           <TextosDocumento value={textosCtx}>
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-7 space-y-4">
 
-              {/* Membrete */}
-              <div className="flex items-center justify-between">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-                <h1 className="text-center font-bold text-[13px] leading-snug px-3">
-                  ACTA DE REVISIÓN Y APROBACIÓN DE GARANTÍAS<br />CONTRACTUALES
-                </h1>
-                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-              </div>
-
-              <p className="text-[11px] font-bold">NIT 900.456.735-7</p>
+              <EncabezadoFormato
+                codigo="GJ-008-F"
+                titulo={<h1 className="font-bold text-[13px] leading-snug">ACTA DE REVISIÓN Y APROBACIÓN DE GARANTÍAS CONTRACTUALES</h1>}
+              />
 
               {/* Referencia del contrato */}
               <table className="w-full border-collapse text-[12px] bloque">

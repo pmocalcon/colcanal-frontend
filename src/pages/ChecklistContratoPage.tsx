@@ -223,7 +223,7 @@ export default function ChecklistContratoPage() {
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Lista de Chequeo de Documentos</h1>
             <p className="text-xs text-[#4a4a63]">
-              Formato GA-25-F · Solicitud N.º {solicitudId}{tipo ? ` · ${tipo.nombre}` : ''}
+              Formato GA-005-F · Solicitud N.º {solicitudId}{tipo ? ` · ${tipo.nombre}` : ''}
             </p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
@@ -350,8 +350,8 @@ export default function ChecklistContratoPage() {
                   <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
                 </div>
                 <div className="grid grid-cols-[auto_1fr] text-[10px]">
-                  <CodeCell label="Código" value="GA-25-F" />
-                  <CodeCell label="Fecha" value="09/04/2026" />
+                  <CodeCell label="Código" value="GA-005-F" />
+                  <CodeCell label="Fecha" value="31/08/2026" />
                   <CodeCell label="Versión" value="1" last />
                 </div>
               </div>

@@ -8,6 +8,7 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
 
@@ -383,17 +384,12 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
           <TextosDocumento value={textosCtx}>
           <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-6">
             {/* Membrete */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex flex-col items-center">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-                <span className="text-[11px] font-bold mt-1">900.456.735-7</span>
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-            </div>
+            <EncabezadoFormato
+              className="mb-3"
+              codigo="GJ-002-F"
+              titulo={<h1 className="font-bold text-[12.5px] leading-snug">CONTRATO DE PRESTACIÓN DE SERVICIOS</h1>}
+            />
 
-            <div className="text-center font-bold leading-snug text-[12.5px] mb-1">
-              CONTRATO DE PRESTACIÓN DE SERVICIOS
-            </div>
             {/* Qué plantilla se está usando. Es rótulo interno: un contrato firmado no puede
                 decir «plantilla marco», así que se ve en pantalla y no se imprime. */}
             <p className="no-print text-center text-[11px] text-[hsl(var(--canalco-neutral-500))] mb-1">
@@ -406,13 +402,6 @@ export default function ContratoPrestacionDoc({ solicitud }: { solicitud: GcSoli
                 firmable. Va `no-print` entero, que es la única forma de que la instrucción
                 se cumpla sola y no dependa de que alguien se acuerde de borrarlo. */}
             <div className="no-print border border-[#0a2a52] mb-5">
-              <p className="bg-[#fff2cc] px-3 py-1.5 text-[11px] font-bold border-b border-[#0a2a52]">
-                CONTROL INTERNO - NO MOSTRAR EN VERSIÓN FIRMABLE
-              </p>
-              <p className="px-3 py-1.5 text-[11px] border-b border-[#0a2a52]">
-                Parametrizar objeto, obligaciones, IVA, supervisor, garantías, solución de controversias y
-                régimen de terminación. No fijar porcentajes ni vigencias de pólizas por defecto.
-              </p>
               <table className="w-full border-collapse text-[12px]">
                 <tbody>
                   <Fila label="Garantías" value={f.ciGarantias} onChange={(v) => set('ciGarantias', v)} area />

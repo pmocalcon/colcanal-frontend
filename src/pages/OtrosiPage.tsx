@@ -10,7 +10,8 @@ import { TextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
-import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
+import { BloqueControl } from '@/components/juridica/camposDocumento';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 
 /**
  * Otrosí al contrato. Se firma **después** del acta de inicio, sobre un contrato que ya
@@ -395,9 +396,12 @@ export default function OtrosiPage() {
             <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
             <TextosDocumento value={textosCtx}>
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-10 py-8">
-              <MembreteOficio
-                titulo="OTROSÍ AL CONTRATO DE PRESTACIÓN DE SERVICIOS"
-                subtitulo="MODELO MODULAR - SIN GARANTÍAS CONTRACTUALES"
+              <EncabezadoFormato
+                codigo="GJ-011-F"
+                titulo={<>
+                  <h1 className="font-bold text-[13px]">OTROSÍ AL CONTRATO DE PRESTACIÓN DE SERVICIOS</h1>
+                  <p className="font-bold text-[10px]">MODELO MODULAR - SIN GARANTÍAS CONTRACTUALES</p>
+                </>}
               />
 
               <BloqueControl

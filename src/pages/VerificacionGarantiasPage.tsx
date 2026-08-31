@@ -13,6 +13,7 @@ import {
 } from '@/config/juridicaGarantias';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 
 /**
@@ -244,6 +245,11 @@ export default function VerificacionGarantiasPage() {
         ) : (
           <fieldset disabled={!editable} className="border-0 m-0 p-0 min-w-0">
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md p-5 space-y-6">
+
+              <EncabezadoFormato
+                codigo="GJ-007-F"
+                titulo={<h1 className="font-bold text-[13px]">VERIFICACIÓN DE GARANTÍAS</h1>}
+              />
 
               {/* ── Lista de verificación ─────────────────────────── */}
               <section>

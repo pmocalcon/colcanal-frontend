@@ -226,9 +226,9 @@ export default function CregComparadorPage() {
                   Ningún elemento coincide con los filtros.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 z-10 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                       <tr className="bg-[hsl(var(--canalco-neutral-100))]">
                         <th className="sticky left-0 z-10 bg-[hsl(var(--canalco-neutral-100))] text-left font-semibold px-4 py-3 border-b border-[hsl(var(--canalco-neutral-300))] min-w-[20rem]">
                           Elemento

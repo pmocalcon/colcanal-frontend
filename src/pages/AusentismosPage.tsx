@@ -138,9 +138,9 @@ export default function AusentismosPage() {
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--canalco-primary))]" />
           </div>
         ) : (
-          <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+          <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
             <table className="w-full text-sm min-w-[900px]">
-              <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
+              <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold">Nombre</th>
                   <th className="text-left px-3 py-2 font-semibold">Identificación</th>

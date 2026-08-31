@@ -303,7 +303,7 @@ export default function SolicitudPrestamoPage() {
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Solicitud de préstamo</h1>
             <p className="text-xs text-[#4a4a63]">
-              Formato GTH-007-F · Solicitud N.º {docId}{user?.nombre ? ` · ${user.nombre}` : ''}
+              Formato GTH-008-F · Solicitud N.º {docId}{user?.nombre ? ` · ${user.nombre}` : ''}
             </p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
@@ -344,9 +344,9 @@ export default function SolicitudPrestamoPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
-              <Meta label="CÓDIGO:" value="GTH-007-F" />
-              <Meta label="FECHA:" value="20/08/2026" />
-              <Meta label="VERSIÓN:" value="1" last />
+              <Meta label="CÓDIGO:" value="GTH-008-F" />
+              <Meta label="FECHA:" value="31/08/2026" />
+              <Meta label="VERSIÓN:" value="2" last />
             </div>
           </div>
 

@@ -23,7 +23,7 @@ import {
 } from '@/utils/prellenarFormato';
 
 /**
- * Solicitud de Vacaciones · formato GTH-018-F (G. de talento humano).
+ * Solicitud de Vacaciones · formato GTH-009-F (G. de talento humano).
  *
  * Formulario impreso. Las fechas van partidas en casillas de día, mes y año —así está el
  * papel— y por eso se guardan igual, no como una cadena: el formato tiene una casilla por
@@ -301,7 +301,7 @@ export default function SolicitudVacacionesPage() {
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Solicitud de vacaciones</h1>
             <p className="text-xs text-[#4a4a63]">
-              Formato GTH-018-F ·{' '}
+              Formato GTH-009-F ·{' '}
               {docId === null ? 'Sin guardar' : `Solicitud N.º ${docId}`}
             </p>
           </div>
@@ -341,8 +341,8 @@ export default function SolicitudVacacionesPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
-              <Meta label="Código:" value="GTH-018-F" />
-              <Meta label="Fecha:" value="20/08/2026" />
+              <Meta label="Código:" value="GTH-009-F" />
+              <Meta label="Fecha:" value="31/08/2026" />
               <Meta label="Versión:" value="2" last />
             </div>
           </div>
@@ -582,7 +582,10 @@ export default function SolicitudVacacionesPage() {
           {/* Las firmas van a mano sobre el impreso; debajo, lo que ya quedó registrado
               en el sistema al ejecutar cada paso. */}
           <div className="grid grid-cols-3 gap-3">
-            <Firma rotulo="FIRMA" nombre={f.enviadoPor} />
+            {/* La firma del empleado lleva el nombre que se diligenció en el formato
+                —quien pide las vacaciones—, no quien la envía en el sistema: el PMO puede
+                registrarla a nombre de otro, y el papel es del empleado. */}
+            <Firma rotulo="FIRMA" nombre={f.nombres} />
             <Firma rotulo="Vo.Bo. JEFE INMEDIATO" subrayado nombre={f.voBoJefeNombre} fecha={f.voBoJefeFecha} />
             <Firma rotulo="Vo.Bo. TALENTO HUMANO" subrayado nombre={f.voBoTalentoHumanoNombre} fecha={f.voBoTalentoHumanoFecha} />
           </div>

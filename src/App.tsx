@@ -360,8 +360,8 @@ export default function App() {
               ordena por especificidad), igual que ya pasaba con /matriz. */}
           <Route path="/dashboard/gestion-conocimiento/juridica" element={<GestionFormatosHomePage gestion="juridica" />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/contratos" element={<SolicitudesJuridicaListPage />} />
-          <Route path="/dashboard/gestion-conocimiento/juridica/terminacion" element={<FormatoListPage gestion="juridica" slug="terminacion" />} />
-          <Route path="/dashboard/gestion-conocimiento/juridica/terminacion/:id" element={<ActaTerminacionPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion" element={<FormatoListPage gestion="talento-humano" slug="terminacion" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion/:id" element={<ActaTerminacionPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela" element={<FormatoListPage gestion="juridica" slug="tutela" />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela/:id" element={<ContestacionTutelaPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/poder" element={<FormatoListPage gestion="juridica" slug="poder" />} />

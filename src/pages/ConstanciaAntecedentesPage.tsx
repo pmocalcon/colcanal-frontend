@@ -8,6 +8,7 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
 
 /**
@@ -284,35 +285,15 @@ export default function ConstanciaAntecedentesPage() {
             <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-7 space-y-4">
 
               {/* Membrete */}
-              <div className="flex items-center justify-between">
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-                <div className="text-center px-3">
+              <EncabezadoFormato
+                codigo="GJ-005-F"
+                titulo={<>
                   <h1 className="font-bold text-[13px]">CONSTANCIA DE VERIFICACIÓN</h1>
                   <p className="font-bold text-[11.5px]">ANTECEDENTES Y VALIDACIONES DOCUMENTALES</p>
-                </div>
-                <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-              </div>
+                </>}
+              />
 
               <p className="text-[11px] font-bold">NIT 900.456.735-7</p>
-
-              {/* La plantilla lo dice en su propio título: no se muestra en la versión
-                  firmable. Va `no-print`, que es la única forma de que la instrucción se
-                  cumpla sola y no dependa de que alguien se acuerde de borrarla. */}
-              <table className="no-print w-full border-collapse text-[12px]">
-                <tbody>
-                  <tr>
-                    <td className="border border-[#0a2a52] bg-[#fff2cc] px-2 py-1.5 align-middle w-[36%] font-bold text-[11px]">
-                      CONTROL INTERNO - NO MOSTRAR EN VERSIÓN FIRMABLE
-                    </td>
-                    <td className="border border-[#0a2a52] px-2 py-1.5 align-top text-[11px] leading-snug">
-                      Realizar únicamente las consultas justificadas por la finalidad del proceso, el perfil o
-                      el contrato. Aplicar minimización de datos y conservar evidencia de la consulta. No
-                      automatizar decisiones de exclusión por la sola aparición de un registro sin revisión
-                      jurídica o del área competente.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
 
               {/* Ficha de la verificación */}
               <table className="w-full border-collapse text-[12px] bloque">

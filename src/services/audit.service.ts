@@ -59,9 +59,28 @@ export interface RequisitionPurchaseOrder {
   /** Días corridos desde que se emitió. */
   days: number;
   totalAmount: number;
+  /** Estado de recepción de la OC: pendiente_recepcion, recepcionada, … */
+  receptionStatus: string | null;
+  /** Estado de facturación de la OC: sin_factura, factura_parcial, factura_completa, enviada_contabilidad, … */
+  invoiceStatus: string | null;
   invoicedAmount: number;
   /** Lo que falta por facturar: valor de la orden menos lo facturado. */
   pendingAmount: number;
+  /** Fecha del sistema en que la factura se envió a Contabilidad (la última). */
+  sentToAccountingAt: string | null;
+  /** Fecha del sistema en que se registró la última factura de la OC. */
+  invoiceRegisteredAt: string | null;
+}
+
+/** Un paso del recorrido de estados de la requisición (lo que muestra la Matriz). */
+export interface RequisitionEstado {
+  action: string;
+  date: string | null;
+}
+
+export interface RequisitionPurchaseOrdersResponse {
+  orders: RequisitionPurchaseOrder[];
+  estados: RequisitionEstado[];
 }
 
 export interface TimelineEvent {
@@ -260,9 +279,9 @@ export const auditService = {
     return response.data;
   },
 
-  /** Las órdenes de compra de una requisición, para el desglose de Registros. */
-  async getRequisitionPurchaseOrders(requisitionId: number): Promise<RequisitionPurchaseOrder[]> {
-    const response = await api.get<RequisitionPurchaseOrder[]>(
+  /** Las órdenes de compra de una requisición y su recorrido de estados, para el desglose de Registros. */
+  async getRequisitionPurchaseOrders(requisitionId: number): Promise<RequisitionPurchaseOrdersResponse> {
+    const response = await api.get<RequisitionPurchaseOrdersResponse>(
       `/audit/requisition/${requisitionId}/purchase-orders`,
     );
     return response.data;

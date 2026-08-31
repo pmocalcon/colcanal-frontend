@@ -16,6 +16,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { materialsService, type Material } from '@/services/materials.service';
 import { ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
+import { HistorialRqObra } from '@/components/cronograma/HistorialRqObra';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
@@ -48,6 +49,8 @@ export default function CronogramaPage() {
 
   // ── Vista de acta (Gantt de todas las obras del acta)
   const [selectedActa, setSelectedActa] = useState<string | null>(null);
+  // Material elegido en la tabla Presupuesto vs OC para filtrar el Historial de RQ.
+  const [rqMaterialSel, setRqMaterialSel] = useState<string | null>(null);
   // Flujo de revisión del Plan del cronograma (Director de Proyecto → Director Técnico).
   const [actaCronograma, setActaCronograma] = useState<WorkActa | null>(null);
   const [actaCompanyId, setActaCompanyId] = useState<number | null>(null);
@@ -3931,7 +3934,12 @@ export default function CronogramaPage() {
                       </thead>
                       <tbody className="divide-y divide-[hsl(var(--canalco-neutral-100))]">
                         {pcRows.map((row) => (
-                          <tr key={row.key} className="hover:bg-[hsl(var(--canalco-neutral-50))]">
+                          <tr
+                            key={row.key}
+                            onClick={() => setRqMaterialSel((prev) => prev === row.materialCode ? null : row.materialCode)}
+                            title="Ver el historial de RQ de este material"
+                            className={`cursor-pointer hover:bg-[hsl(var(--canalco-neutral-50))] ${rqMaterialSel === row.materialCode ? 'bg-[hsl(var(--canalco-primary))]/5' : ''}`}
+                          >
                             <td className="px-4 py-2.5 font-mono font-semibold text-[hsl(var(--canalco-primary))]">{row.materialCode}</td>
                             <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-700))] max-w-[220px] truncate" title={row.materialDescription ?? ''}>{row.materialDescription ?? '-'}</td>
                             <td className="px-4 py-2.5 text-[hsl(var(--canalco-neutral-500))]">{row.unitOfMeasure ?? '-'}</td>
@@ -3961,6 +3969,15 @@ export default function CronogramaPage() {
                     </table>
                   </div>
                 </section>
+              )}
+
+              {pcRows.length > 0 && (
+                <HistorialRqObra
+                  projectId={actaProjectId}
+                  materialSeleccionado={rqMaterialSel}
+                  onSeleccionarMaterial={setRqMaterialSel}
+                  nombreObra={selectedActa ?? undefined}
+                />
               )}
 
               {actRows.length > 0 && (

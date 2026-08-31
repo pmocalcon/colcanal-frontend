@@ -22,13 +22,15 @@ import { textoSla } from '@/utils/juridicaWorkflow';
 /**
  * Horas Extras Personal · formato GTH-016-F (G. de talento humano).
  *
- * A diferencia de los demás formatos de la gestión, este no solo se diligencia: **se
- * liquida**. Las horas se registran por día y por tipo, cada tipo tiene su recargo impreso
- * en el encabezado, y de ahí salen las horas laboradas y la liquidación proyectada.
+ * La planilla **registra horas**, igual que el papel oficial: por día y por tipo (diurna,
+ * recargo nocturno, nocturna, diurna festiva, nocturna festiva), con el recargo de cada
+ * tipo impreso en el encabezado. La columna de horas laboradas se calcula (la suma de los
+ * cinco tipos); el resto —proyecto, horarios, labor, firma— se escribe.
  *
- * Esas dos columnas se calculan y no se teclean: son el producto de lo que ya está en la
- * fila, y a mano son cinco multiplicaciones por renglón. El resto —proyecto, horarios,
- * labor, firma— sí se escribe.
+ * **No se liquida en el formato**: no lleva valor hora ni columna de dinero. El pago lo
+ * calcula la nómina al liquidar, con el salario que la ficha de Personal tiene para la
+ * cédula ÷ 210 por los factores de cada tipo (ver `gestion-conocimiento.service`,
+ * `DIVISOR_HORA_EXTRA`).
  *
  * Va apaisado: la tabla tiene dieciséis columnas y en vertical no cabe.
  *
@@ -53,6 +55,12 @@ const TIPOS_HORA = [
 
 type TipoHora = typeof TIPOS_HORA[number]['key'];
 
+/** Los meses, capitalizados como los espera el periodo («Julio 2026»). */
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+] as const;
+
 interface Fila {
   proyecto: string;
   region: string;
@@ -69,10 +77,15 @@ interface Fila {
 interface HorasExtrasState {
   nombre: string;
   cedula: string;
-  salario: string;
-  periodo: string;
+  mes: string;
+  anio: string;
   cargo: string;
-  valorHora: string;
+  ciudad: string;
+  /**
+   * «Mes Año», derivado de `mes` + `anio` al guardar. La nómina lo usa para ubicar el
+   * periodo de la planilla; por eso se conserva aunque el formato ya no lo pida suelto.
+   */
+  periodo: string;
   filas: Fila[];
 }
 
@@ -82,7 +95,7 @@ const filaVacia = (): Fila => ({
 });
 
 const EMPTY: HorasExtrasState = {
-  nombre: '', cedula: '', salario: '', periodo: '', cargo: '', valorHora: '',
+  nombre: '', cedula: '', mes: '', anio: '', cargo: '', ciudad: '', periodo: '',
   // La planilla nace con renglones en blanco, como el impreso: se llena de arriba abajo
   // sin tener que pulsar «Agregar» en cada línea.
   filas: Array.from({ length: 12 }, filaVacia),
@@ -98,9 +111,6 @@ const num = (v: string | undefined): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const cop = (n: number) =>
-  n > 0 ? '$' + Math.round(n).toLocaleString('es-CO') : '';
-
 /**
  * El estado de la pantalla a partir de la fila guardada. Los renglones en blanco no se
  * guardan, así que al abrir una planilla vacía se repone la hoja de doce para poder
@@ -108,19 +118,26 @@ const cop = (n: number) =>
  */
 const desde = (row: GcSolicitud): HorasExtrasState => {
   const saved = (row.data ?? {}) as Partial<HorasExtrasState>;
+  // Planillas viejas guardaban solo `periodo` («Julio 2026»); se parte en mes y año para
+  // que el formato nuevo los muestre en sus dos casillas.
+  let mes = saved.mes ?? '';
+  let anio = saved.anio ?? '';
+  if ((!mes || !anio) && saved.periodo) {
+    const partes = saved.periodo.trim().split(/\s+/);
+    anio = anio || (partes.length > 1 ? partes[partes.length - 1] : '');
+    mes = mes || (partes.length > 1 ? partes.slice(0, -1).join(' ') : partes[0] ?? '');
+  }
   return {
     ...EMPTY,
     ...saved,
+    mes,
+    anio,
     filas: saved.filas?.length ? saved.filas.map((x) => ({ ...filaVacia(), ...x })) : EMPTY.filas,
   };
 };
 
 /** Horas extras laboradas: la suma de los cinco tipos, sin recargo. */
 const horasDe = (f: Fila) => TIPOS_HORA.reduce((s, t) => s + num(f.horas[t.key]), 0);
-
-/** Liquidación proyectada: cada tipo por su recargo, todo por el valor de la hora. */
-const liquidacionDe = (f: Fila, valorHora: number) =>
-  valorHora * TIPOS_HORA.reduce((s, t) => s + num(f.horas[t.key]) * t.factor, 0);
 
 export default function HorasExtrasPage() {
   const navigate = useNavigate();
@@ -204,10 +221,13 @@ export default function HorasExtrasPage() {
       // escribir sin pulsar «Agregar», y guardarlos llenaría la base de filas vacías.
       const filas = f.filas.filter((x) =>
         Object.values(x).some((v) => (typeof v === 'string' ? v.trim() !== '' : Object.values(v).some((h) => String(h).trim() !== ''))));
+      // `periodo` («Mes Año») se arma de mes + año: es lo que la nómina lee para ubicar
+      // la planilla en su mes.
+      const periodo = `${(f.mes ?? '').trim()} ${(f.anio ?? '').trim()}`.trim();
       const guardada = await gestionConocimientoService.guardar(docId, {
         gestion: 'talento-humano',
         formato: FORMATO_HORAS_EXTRAS,
-        data: { ...f, filas },
+        data: { ...f, periodo, filas },
       });
       setSol(guardada);
       toast.success('Planilla guardada');
@@ -226,9 +246,7 @@ export default function HorasExtrasPage() {
     }
   };
 
-  const valorHora = num(f.valorHora);
   const totalHoras = f.filas.reduce((s, x) => s + horasDe(x), 0);
-  const totalLiquidacion = f.filas.reduce((s, x) => s + liquidacionDe(x, valorHora), 0);
 
   if (loading) {
     return (
@@ -258,7 +276,7 @@ export default function HorasExtrasPage() {
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Horas extras</h1>
             <p className="text-xs text-[#4a4a63]">
-              Formato GTH-016-F · Planilla N.º {docId} · se imprime apaisado
+              Formato GTH-011-F · Planilla N.º {docId} · se imprime apaisado
             </p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
@@ -299,31 +317,32 @@ export default function HorasExtrasPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[9px] content-start">
-              <Meta label="CÓDIGO:" value="GTH-016-F" />
-              <Meta label="FECHA:" value="20/08/2026" />
-              <Meta label="VERSIÓN:" value="5" last />
+              <Meta label="CÓDIGO:" value="GTH-011-F" />
+              <Meta label="FECHA:" value="31/08/2026" />
+              <Meta label="VERSIÓN:" value="2" last />
             </div>
           </div>
 
           <p className="px-2 py-1 text-center font-bold border-b border-black min-w-[1000px]">
             Horario de jornada laboral establecido:{' '}
             <span className="font-normal">
-              De  Lunes a Viernes de 7:30 a.m. a 12 p.m. y de 1:30 p.m. a 4:30 p.m. Sábados de 8 a.m. a 12:30 p.m.
+              De lunes a Viernes de 7:30 a.m. a 12 p.m. y de 1:30 p.m. a 4:30 p.m. Sábados de 8 a.m. a 12:30 p.m.
             </span>
           </p>
 
-          {/* Datos del trabajador */}
+          {/* Datos del trabajador (campos del formato oficial). El valor hora ya no se
+              teclea: la nómina lo calcula con el salario de la ficha ÷ 210. */}
           <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
             <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} />
             <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} readOnly={locked} />
-            <Dato label="SALARIO: $" value={f.salario} onChange={(v) => set('salario', v)} readOnly={locked} />
-            <Dato label="PERIODO" value={f.periodo} onChange={(v) => set('periodo', v)} readOnly={locked} last />
+            <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} />
+            <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} last />
           </div>
           <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
             <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
             <div className="border-r border-black" />
             <div className="border-r border-black" />
-            <Dato label="VALOR HORA: $" value={f.valorHora} onChange={(v) => set('valorHora', v)} readOnly={locked} last />
+            <Dato label="CIUDAD:" value={f.ciudad} onChange={(v) => set('ciudad', v)} readOnly={locked} last />
           </div>
 
           {/* Registro diario */}
@@ -338,7 +357,6 @@ export default function HorasExtrasPage() {
                 <Th rowSpan={2}>ALMUERZO / DESCANSO</Th>
                 <Th colSpan={5}>HORAS EXTRAS</Th>
                 <Th rowSpan={2}>HORAS EXTRAS LABORADAS</Th>
-                <Th rowSpan={2}>LIQUIDACIÓN PROYECTADA</Th>
                 <Th rowSpan={2}>CÓDIGO LABOR EJECUTADA</Th>
                 <Th rowSpan={2}>LABOR EJECUTADA</Th>
                 <Th rowSpan={2}>FIRMA DEL TRABAJADOR</Th>
@@ -356,7 +374,6 @@ export default function HorasExtrasPage() {
             <tbody>
               {f.filas.map((fila, i) => {
                 const horas = horasDe(fila);
-                const liq = liquidacionDe(fila, valorHora);
                 return (
                   <tr key={i}>
                     <Td><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={locked} /></Td>
@@ -370,9 +387,8 @@ export default function HorasExtrasPage() {
                         <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} readOnly={locked} centro />
                       </Td>
                     ))}
-                    {/* Calculadas: no se teclean. */}
+                    {/* Calculada: no se teclea. */}
                     <Td className="text-center font-semibold">{horas > 0 ? horas.toLocaleString('es-CO') : ''}</Td>
-                    <Td className="text-right font-semibold whitespace-nowrap">{cop(liq)}</Td>
                     <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={locked} centro /></Td>
                     <Td><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={locked} /></Td>
                     {/* La firma va a mano sobre el impreso. */}
@@ -389,10 +405,9 @@ export default function HorasExtrasPage() {
                 );
               })}
 
-              {/* Totales. No está en el impreso: es la suma de la columna que la planilla
-                  existe para producir, y a mano se hace igual pero con más errores. */}
+              {/* Totales de horas por tipo, como el pie del impreso. */}
               <tr className="bg-[hsl(var(--canalco-neutral-100))] font-bold">
-                <Td colSpan={6} className="text-right pr-2">TOTAL</Td>
+                <Td colSpan={6} className="text-right pr-2">TOTALES</Td>
                 {TIPOS_HORA.map((t) => (
                   <Td key={t.key} className="text-center">
                     {(() => {
@@ -402,12 +417,28 @@ export default function HorasExtrasPage() {
                   </Td>
                 ))}
                 <Td className="text-center">{totalHoras > 0 ? totalHoras.toLocaleString('es-CO') : ''}</Td>
-                <Td className="text-right whitespace-nowrap">{cop(totalLiquidacion)}</Td>
                 <Td colSpan={3} />
                 <td className="border-0 no-print" />
               </tr>
             </tbody>
           </table>
+
+          {/* Observaciones — autorización marco del 14/02/2023, tal como el formato oficial. */}
+          <div className="border-t border-black px-2 py-1.5 min-w-[1000px] leading-snug">
+            <b>OBSERVACIONES:</b> El 14/02/2023 la representante legal y el director de proyectos
+            autorizan la remuneración en dinero de las horas extras que requiera trabajar el personal
+            operativo para cumplir con las labores de mantenimiento en todos los municipios de
+            Antioquia. Estas horas se reconocerán siempre y cuando el supervisor autorice previamente
+            las labores.
+          </div>
+
+          {/* Pie de firmas del formato oficial. Los nombres van fijos, como en la plantilla. */}
+          <div className="grid grid-cols-4 border-t border-black min-w-[1000px]">
+            <Firma titulo="Reportado por:" nombre="" cargo="Jefe inmediato" />
+            <Firma titulo="Revisado por:" nombre="Andres Felipe Gomez Lopez" cargo="Director Tecnico" />
+            <Firma titulo="Aprobado por:" nombre="Lorena Martinez Jurado" cargo="Gerencia de Proyectos" />
+            <Firma titulo="Control Administrativo:" nombre="Daniela Swann Torres" cargo="Dir. Administrativa y Financiera" last />
+          </div>
         </div>
 
         <div className="no-print mt-3 flex items-center gap-3">
@@ -415,11 +446,6 @@ export default function HorasExtrasPage() {
             <Button type="button" variant="outline" size="sm" onClick={agregarFila} className="h-8 text-[12px] gap-1.5">
               <Plus className="w-4 h-4" /> Agregar renglón
             </Button>
-          )}
-          {!locked && !valorHora && (
-            <p className="text-xs text-[#8a8aa0]">
-              La liquidación aparece cuando se escribe el <b>valor hora</b>.
-            </p>
           )}
         </div>
       </main>
@@ -545,6 +571,39 @@ function Meta({ label, value, last }: { label: string; value: string; last?: boo
       <div className={'px-1.5 py-0.5 font-semibold ' + (last ? '' : 'border-b border-black')}>{label}</div>
       <div className={'px-1.5 py-0.5 text-center border-l border-black ' + (last ? '' : 'border-b border-black')}>{value}</div>
     </>
+  );
+}
+
+/** Una casilla del pie de firmas: título, espacio para firmar, nombre y cargo. */
+function Firma({ titulo, nombre, cargo, last }: {
+  titulo: string; nombre: string; cargo: string; last?: boolean;
+}) {
+  return (
+    <div className={'px-2 pt-2 pb-1.5 flex flex-col ' + (last ? '' : 'border-r border-black')}>
+      <span className="font-semibold">{titulo}</span>
+      <span className="mt-8 border-t border-black pt-0.5 font-semibold min-h-[1em]">{nombre}</span>
+      <span className="text-[hsl(var(--canalco-neutral-600))]">{cargo}</span>
+    </div>
+  );
+}
+
+/** Como `Dato`, pero con un desplegable de opciones (p. ej. el mes). */
+function DatoSelect({ label, value, onChange, opciones, last, readOnly }: {
+  label: string; value: string; onChange: (v: string) => void; opciones: readonly string[]; last?: boolean; readOnly?: boolean;
+}) {
+  return (
+    <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + (last ? '' : 'border-r border-black')}>
+      <span className="font-bold whitespace-nowrap">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={readOnly}
+        className="flex-grow min-w-0 bg-transparent outline-none text-[9px]"
+      >
+        <option value="" />
+        {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
   );
 }
 

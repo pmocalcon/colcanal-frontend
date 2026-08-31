@@ -22,7 +22,7 @@ import { textoSla } from '@/utils/juridicaWorkflow';
 import { buscarFicha, llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
 
 /**
- * Solicitud de Permiso · formato GTH-009-F v2 (G. de talento humano).
+ * Solicitud de Permiso · formato GTH-010-F v2 (G. de talento humano).
  *
  * Reproduce el papel oficial en sus cuatro secciones: información del colaborador,
  * información del permiso (desde/hasta con hora, remuneración, soporte), aprobación
@@ -272,7 +272,7 @@ export default function SolicitudPermisoPage() {
           </Button>
           <div className="flex-grow">
             <h1 className="text-lg font-bold text-[#16162b]">Solicitud de permiso</h1>
-            <p className="text-xs text-[#4a4a63]">Formato GTH-009-F · Solicitud N.º {docId}</p>
+            <p className="text-xs text-[#4a4a63]">Formato GTH-010-F · Solicitud N.º {docId}</p>
           </div>
           <Button onClick={() => window.print()} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
             <Printer className="w-4 h-4" /> Imprimir / PDF
@@ -310,8 +310,8 @@ export default function SolicitudPermisoPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[10px] content-start">
-              <Meta label="CÓDIGO:" value="GTH-009-F" />
-              <Meta label="FECHA:" value="06/10/2025" />
+              <Meta label="CÓDIGO:" value="GTH-010-F" />
+              <Meta label="FECHA:" value="31/08/2026" />
               <Meta label="VERSIÓN:" value="2" last />
             </div>
           </div>

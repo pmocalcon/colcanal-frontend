@@ -375,9 +375,9 @@ function NovedadesTab({ periodo, generado, smmlv, campos, filtro, conObservacion
           borra la casilla y guarda.
         </p>
       )}
-      <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+      <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
         <table className="text-xs min-w-[1700px] w-full">
-          <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
+          <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
             <tr>
               <Th>Identificación</Th>
               <Th>Nombre</Th>
@@ -590,9 +590,9 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
           Nadie coincide con la búsqueda.
         </p>
       ) : (
-        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
           <table className="text-xs min-w-[2400px] w-full border-collapse">
-            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
+            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
               <tr>
                 <Th rowSpan={2}>Número de cédula</Th>
                 <Th rowSpan={2}>Nombre</Th>

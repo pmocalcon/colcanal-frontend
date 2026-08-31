@@ -233,9 +233,9 @@ function SeccionAnios() {
           Todavía no hay ningún año cargado.
         </p>
       ) : (
-        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
           <table className="text-sm w-full">
-            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
+            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
               <tr>
                 <th className="px-4 py-2 text-left font-semibold">Año</th>
                 <th className="px-4 py-2 text-right font-semibold">Salario mínimo</th>
@@ -413,9 +413,9 @@ function SeccionBancos() {
           {filas.length === 0 ? 'Todavía no hay bancos cargados.' : 'Ningún banco coincide.'}
         </p>
       ) : (
-        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-x-auto shadow-sm">
+        <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-auto shadow-sm max-h-[calc(100vh-13rem)]">
           <table className="text-sm w-full">
-            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
+            <thead className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))] [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
               <tr>
                 <th className="px-4 py-2 text-right font-semibold w-24">Código</th>
                 <th className="px-4 py-2 text-left font-semibold">Entidad</th>

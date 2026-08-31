@@ -503,9 +503,9 @@ export default function CregUnitFormPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                     <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left text-xs text-[hsl(var(--canalco-neutral-600))]">
                       <th className="px-3 py-2 font-semibold">Descripción</th>
                       <th className="px-3 py-2 font-semibold w-24">Unidad</th>

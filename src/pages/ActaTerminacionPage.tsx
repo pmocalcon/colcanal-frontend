@@ -13,7 +13,7 @@ import { FORMATO_CONTRATACION, FORMATO_TERMINACION } from '@/config/formatosGest
  * Acta de terminación anticipada de mutuo acuerdo a un contrato de prestación de servicios.
  *
  * **No pertenece al trámite de contratación**: no es un documento de la solicitud sino un
- * formato propio de G. jurídica, con su fila en `gc_solicitudes` (`formato` =
+ * formato propio de G. talento humano, con su fila en `gc_solicitudes` (`formato` =
  * ACTA-TERMINACION). Se diligencia, se guarda y se imprime para firmarla en papel; no
  * tiene máquina de estados, así que se queda en borrador y siempre se puede corregir.
  *
@@ -21,7 +21,7 @@ import { FORMATO_CONTRATACION, FORMATO_TERMINACION } from '@/config/formatosGest
  * —contratista, objeto, valor, plazo y el último otrosí—, pero no lo exige: los contratos
  * anteriores al sistema se diligencian a mano.
  *
- * Ruta: `.../juridica/terminacion/:id`.
+ * Ruta: `.../talento-humano/terminacion/:id`.
  */
 
 interface TerminacionState {
@@ -226,7 +226,7 @@ export default function ActaTerminacionPage() {
     setSaving(true);
     try {
       const guardada = await gestionConocimientoService.guardar(actaId, {
-        gestion: 'juridica',
+        gestion: 'talento-humano',
         formato: FORMATO_TERMINACION,
         data: f,
       });
@@ -235,7 +235,7 @@ export default function ActaTerminacionPage() {
       // siguiente guardado crearía una segunda acta.
       if (actaId === null) {
         navigate(
-          `/dashboard/gestion-conocimiento/juridica/terminacion/${guardada.solicitudId}`,
+          `/dashboard/gestion-conocimiento/talento-humano/terminacion/${guardada.solicitudId}`,
           { replace: true },
         );
       }
@@ -268,7 +268,7 @@ export default function ActaTerminacionPage() {
 
       <header className="no-print bg-white border-b border-[#e6e6f0] shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 pt-4 pb-3 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/juridica/terminacion')} title="Volver a las actas">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/gestion-conocimiento/talento-humano/terminacion')} title="Volver a las actas">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-grow">

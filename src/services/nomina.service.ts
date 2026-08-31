@@ -36,7 +36,12 @@ export interface SugerenciasNovedad {
   vacacionesHabiles: number | null;
   /** La cuota de la póliza funeraria que tiene la persona en su ficha de personal. */
   serviciosGruporecordar: number | null;
-  /** De dónde salió: "Incapacidades", "Horas extras", "Vacaciones", "Póliza funeraria". */
+  /**
+   * Días que bajan de los 30 por vacaciones disfrutadas, incapacidad que asume la empresa
+   * y permisos no remunerados. Los días trabajados sugeridos son 30 − diasDescontados.
+   */
+  diasDescontados: number | null;
+  /** De dónde salió: "Incapacidades", "Horas extras", "Vacaciones", "Permiso no remunerado", "Póliza funeraria". */
   origen: string[];
 }
 

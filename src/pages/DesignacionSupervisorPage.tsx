@@ -11,7 +11,8 @@ import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
-import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
+import { BloqueControl } from '@/components/juridica/camposDocumento';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 
 /**
  * "Designación y aceptación de supervisión contractual" (fase 2 de G. jurídica). La
@@ -295,9 +296,12 @@ export default function DesignacionSupervisorPage() {
           <TextosDocumento value={textosCtx}>
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            <MembreteOficio
-              titulo="DESIGNACIÓN Y ACEPTACIÓN DE SUPERVISIÓN"
-              subtitulo="CONTRACTUAL"
+            <EncabezadoFormato
+              codigo="GJ-009-F"
+              titulo={<>
+                <h1 className="font-bold text-[13px]">DESIGNACIÓN Y ACEPTACIÓN DE SUPERVISIÓN</h1>
+                <p className="font-bold text-[10px]">CONTRACTUAL</p>
+              </>}
             />
 
             <BloqueControl

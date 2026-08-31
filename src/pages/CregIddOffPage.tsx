@@ -587,9 +587,9 @@ export default function CregIddOffPage() {
                   <p className="text-xs mt-1">Con cero fallas el ID es 1 (disponibilidad total).</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-xs whitespace-nowrap">
-                    <thead>
+                    <thead className="sticky top-0 z-10 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                       <tr className="bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-700))]">
                         <Th className="w-10">Ítem</Th>
                         <Th>Código</Th>

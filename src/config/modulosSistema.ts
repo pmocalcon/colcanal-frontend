@@ -149,7 +149,6 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
   ],
   'gestion-conocimiento/juridica': [
     { to: '/dashboard/gestion-conocimiento/juridica/contratos', label: 'Trámite de contratación' },
-    { to: '/dashboard/gestion-conocimiento/juridica/terminacion', label: 'Terminación anticipada' },
     { to: '/dashboard/gestion-conocimiento/juridica/tutela', label: 'Contestación de tutela' },
     { to: '/dashboard/gestion-conocimiento/juridica/matriz', label: 'Matriz de contratos' },
     { to: '/dashboard/gestion-conocimiento/juridica/nueva', label: 'Nueva solicitud' },
@@ -159,6 +158,7 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
     { to: '/dashboard/gestion-conocimiento/talento-humano/permiso', label: 'Solicitud de permiso' },
     { to: '/dashboard/gestion-conocimiento/talento-humano/vacaciones', label: 'Solicitud de vacaciones' },
     { to: '/dashboard/gestion-conocimiento/talento-humano/horas-extras', label: 'Horas extras' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/terminacion', label: 'Terminación anticipada' },
   ],
   'gestion-conocimiento/contable': [
     { to: '/dashboard/gestion-conocimiento/contable/anticipos', label: 'Anticipos' },

@@ -11,7 +11,8 @@ import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
-import { MembreteOficio, BloqueControl } from '@/components/juridica/camposDocumento';
+import { BloqueControl } from '@/components/juridica/camposDocumento';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 
 /**
  * "Acta de inicio" del contrato de prestación de servicios, alquiler, suministro u otro
@@ -305,9 +306,12 @@ export default function ActaInicioPage() {
           <TextosDocumento value={textosCtx}>
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            <MembreteOficio
-              titulo="ACTA DE INICIO"
-              subtitulo="PRESTACIÓN DE SERVICIOS / ALQUILER / SUMINISTRO / OTRO"
+            <EncabezadoFormato
+              codigo="GJ-010-F"
+              titulo={<>
+                <h1 className="font-bold text-[13px]">ACTA DE INICIO</h1>
+                <p className="font-bold text-[10px]">PRESTACIÓN DE SERVICIOS / ALQUILER / SUMINISTRO / OTRO</p>
+              </>}
             />
 
             <BloqueControl

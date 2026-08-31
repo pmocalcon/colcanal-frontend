@@ -169,9 +169,9 @@ export default function CregResumenPage() {
                 No hay UCAPs con hoja de costos definida para este municipio.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-xs whitespace-nowrap">
-                  <thead>
+                  <thead className="sticky top-0 z-10 [&_th]:bg-[hsl(var(--canalco-neutral-100))]">
                     <tr className="bg-[hsl(var(--canalco-primary))]/10 text-[hsl(var(--canalco-neutral-700))]">
                       <Th className="text-left sticky left-0 bg-[hsl(var(--canalco-neutral-100))]">Código</Th>
                       <Th className="text-left sticky left-[70px] bg-[hsl(var(--canalco-neutral-100))]">UCAP</Th>

@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 
@@ -433,14 +434,14 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
           <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-6">
 
             {/* Membrete */}
-            <div className="flex items-center justify-between mb-3">
-              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-              <div className="text-center px-3">
+            <EncabezadoFormato
+              className="mb-3"
+              codigo="GJ-003-F"
+              titulo={<>
                 <h1 className="font-bold text-[13px]">CONTRATO INDIVIDUAL DE TRABAJO</h1>
                 <p className="font-bold text-[12px]">A TÉRMINO INDEFINIDO</p>
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-            </div>
+              </>}
+            />
 
             <p className="text-[11px] font-bold mb-4">NIT 900.456.735-7</p>
 

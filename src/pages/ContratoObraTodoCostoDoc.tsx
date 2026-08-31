@@ -8,6 +8,7 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { TabsDocumentos } from '@/components/juridica/TabsDocumentos';
 import { AccionesFlujo } from '@/components/juridica/AccionesFlujo';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
 
@@ -348,17 +349,17 @@ export default function ContratoObraTodoCostoDoc({ solicitud }: { solicitud: GcS
           <div className="doc bg-white border border-[#0a2a52] text-[12px] text-black shadow-md px-8 py-6">
 
             {/* Membrete */}
-            <div className="flex items-center justify-between mb-3">
-              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-14 object-contain" />
-              <div className="text-center px-3">
+            <EncabezadoFormato
+              className="mb-3"
+              codigo="GJ-006-F"
+              titulo={<>
                 <h1 className="font-bold text-[13px]">CONTRATO DE OBRA A TODO COSTO</h1>
                 {/* Rótulo interno: un contrato firmado no puede decir «plantilla marco». */}
                 <p className="no-print font-bold text-[11px] text-[hsl(var(--canalco-neutral-500))]">
                   PLANTILLA MARCO - RÉGIMEN PRIVADO
                 </p>
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-14 object-contain" />
-            </div>
+              </>}
+            />
 
             <p className="text-[11px] font-bold mb-4">NIT 900.456.735-7</p>
 

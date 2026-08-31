@@ -33,7 +33,7 @@ import { TabsDocumentos, rutaDocumento } from '@/components/juridica/TabsDocumen
 import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
 
 /**
- * Formato GTH-002-F · "Solicitud de prestación de servicios, alquiler, obra y/o suministro"
+ * Formato GTH-012-F · "Solicitud de prestación de servicios, alquiler, obra y/o suministro"
  * (G. jurídica del módulo Gestión del conocimiento).
  *
  * Se diligencia en pantalla, se guarda en el sistema (una fila por solicitud, el cuerpo
@@ -42,7 +42,7 @@ import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
  */
 
 const GESTION = 'juridica';
-const FORMATO = 'GTH-002-F';
+const FORMATO = 'GTH-012-F';
 
 interface FormState {
   dia: string; mes: string; anio: string;
@@ -66,7 +66,7 @@ interface FormState {
   /** Cuál de los dos formatos de requisición rige (ver `tipoRequisicionDe`). */
   tipoRequisicion: string;
   /**
-   * Cuerpo del GTH-001-F cuando el trámite va por requisición de personal. `null`
+   * Cuerpo del GTH-013-F cuando el trámite va por requisición de personal. `null`
    * mientras nadie lo toque: así se sigue derivando de la solicitud —fechas,
    * remuneración, herramientas— en vez de congelar un prellenado que quedó viejo.
    */
@@ -126,7 +126,7 @@ export default function SolicitudPrestacionServiciosPage() {
   // lo propone el tipo de contrato. No depende de la etapa: la requisición va antes
   // que todo lo demás —pide 15 días de anticipación— y se abre desde el borrador.
   const tipoReq = tipoRequisicionDe(f.tipoRequisicion, f.tipoContrato);
-  // Mientras nadie escriba en el GTH-001-F se deriva de lo que ya tiene la solicitud;
+  // Mientras nadie escriba en el GTH-013-F se deriva de lo que ya tiene la solicitud;
   // al primer cambio pasa a mandar lo escrito.
   const requisicion = f.requisicionPersonal ?? prellenarRequisicion(f);
 
@@ -450,7 +450,7 @@ export default function SolicitudPrestacionServiciosPage() {
               <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-16 object-contain" />
             </div>
             {/* El título y el código son los del formato que se esté diligenciando: un
-                GTH-001-F impreso bajo el encabezado del GTH-002-F sería otro documento. */}
+                GTH-013-F impreso bajo el encabezado del GTH-012-F sería otro documento. */}
             <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[15px] text-black border-r border-[#0a2a52]">
               {tipoReq === 'personal'
                 ? 'SOLICITUD DE REQUISICIÓN DE PERSONAL'
@@ -461,8 +461,8 @@ export default function SolicitudPrestacionServiciosPage() {
                 <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-12 object-contain" />
               </div>
               <div className="grid grid-cols-[auto_1fr] text-[11px]">
-                <CodeCell label="Código" value={tipoReq === 'personal' ? 'GTH-001-F' : 'GTH-002-F'} />
-                <CodeCell label="Fecha" value={tipoReq === 'personal' ? '19/04/2023' : '25/07/2023'} />
+                <CodeCell label="Código" value={tipoReq === 'personal' ? 'GTH-013-F' : 'GTH-012-F'} />
+                <CodeCell label="Fecha" value={tipoReq === 'personal' ? '31/08/2026' : '31/08/2026'} />
                 <CodeCell label="Versión" value={tipoReq === 'personal' ? '1' : '2'} last />
               </div>
             </div>

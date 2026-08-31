@@ -160,7 +160,7 @@ export const getTipo = (key: string | undefined | null): TipoContrato | undefine
   TIPOS_CONTRATO.find((t) => t.key === key);
 
 /**
- * Tipos de contrato que exigen la Solicitud de Requisición de Personal (GTH-001-F).
+ * Tipos de contrato que exigen la Solicitud de Requisición de Personal (GTH-012-F).
  *
  * Son los que implican **seleccionar a una persona**: hay una vacante, un cargo y un
  * proceso de selección de Gestión Humana detrás. No es un adorno del trámite — la
@@ -189,11 +189,11 @@ export const requiereRequisicionPersonal = (tipo: string | undefined | null): bo
 export type TipoRequisicion = 'personal' | 'servicios';
 
 export const TIPOS_REQUISICION: { key: TipoRequisicion; nombre: string; formato: string }[] = [
-  { key: 'personal', nombre: 'Requisición de personal', formato: 'GTH-001-F' },
+  { key: 'personal', nombre: 'Requisición de personal', formato: 'GTH-013-F' },
   {
     key: 'servicios',
     nombre: 'Solicitud de prestación de servicios, alquiler, obra y/o suministro',
-    formato: 'GTH-002-F',
+    formato: 'GTH-012-F',
   },
 ];
 
