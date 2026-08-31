@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_HORAS_EXTRAS } from '@/config/formatosGestion';
+import { buscarFicha, nombreDeFicha } from '@/utils/prellenarFormato';
 import {
   type HorasExtrasEstado,
   type HorasExtrasTransicion,
@@ -156,6 +157,28 @@ export default function HorasExtrasPage() {
 
   const set = <K extends keyof HorasExtrasState>(k: K, v: HorasExtrasState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
+
+  /**
+   * Con la cédula llegan el nombre y el cargo de la ficha de personal. Se dispara al salir
+   * de la casilla —no en cada tecla— y solo llena lo que está en blanco, para no pisar lo
+   * que alguien acabe de escribir. La cédula se normaliza a solo dígitos: la ficha, la
+   * aprobación (valor hora) y la nómina cruzan por el número, no por «CC 123».
+   */
+  const prellenar = async () => {
+    if (locked) return;
+    const cedula = f.cedula.replace(/\D/g, '');
+    if (cedula !== f.cedula) set('cedula', cedula);
+    if (!cedula) return;
+    const ficha = await buscarFicha(cedula);
+    if (!ficha) return;
+    // Solo se llena lo que está en blanco: prellenar es ayudar, no corregir lo que alguien
+    // ya escribió (la ficha puede estar desactualizada frente a lo que se sabe hoy).
+    setF((p) => ({
+      ...p,
+      nombre: p.nombre.trim() ? p.nombre : nombreDeFicha(ficha),
+      cargo: p.cargo.trim() ? p.cargo : (ficha.cargo ?? ''),
+    }));
+  };
 
   const setFila = <K extends keyof Fila>(i: number, k: K, v: Fila[K]) =>
     setF((p) => ({ ...p, filas: p.filas.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)) }));
@@ -317,9 +340,9 @@ export default function HorasExtrasPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[9px] content-start">
-              <Meta label="CÓDIGO:" value="GTH-011-F" />
-              <Meta label="FECHA:" value="31/08/2026" />
-              <Meta label="VERSIÓN:" value="2" last />
+              <Meta label="CÓDIGO:" value="GTH-016-F" />
+              <Meta label="FECHA:" value="16/02/2026" />
+              <Meta label="VERSIÓN:" value="4" last />
             </div>
           </div>
 
@@ -334,7 +357,7 @@ export default function HorasExtrasPage() {
               teclea: la nómina lo calcula con el salario de la ficha ÷ 210. */}
           <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
             <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} />
-            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} readOnly={locked} />
+            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} onBlur={prellenar} readOnly={locked} />
             <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} />
             <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} last />
           </div>
@@ -607,8 +630,8 @@ function DatoSelect({ label, value, onChange, opciones, last, readOnly }: {
   );
 }
 
-function Dato({ label, value, onChange, last, readOnly }: {
-  label: string; value: string; onChange: (v: string) => void; last?: boolean; readOnly?: boolean;
+function Dato({ label, value, onChange, onBlur, last, readOnly }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; last?: boolean; readOnly?: boolean;
 }) {
   return (
     <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + (last ? '' : 'border-r border-black')}>
@@ -616,6 +639,7 @@ function Dato({ label, value, onChange, last, readOnly }: {
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         readOnly={readOnly}
         className="flex-grow min-w-0 bg-transparent outline-none text-[9px]"
       />
