@@ -159,6 +159,13 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
     { to: '/dashboard/gestion-conocimiento/talento-humano/vacaciones', label: 'Solicitud de vacaciones' },
     { to: '/dashboard/gestion-conocimiento/talento-humano/horas-extras', label: 'Horas extras' },
     { to: '/dashboard/gestion-conocimiento/talento-humano/terminacion', label: 'Terminación anticipada' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/otrosi-salarial', label: 'Otrosí de modificación salarial' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/sustitucion-empleador', label: 'Sustitución de empleador' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/peticion-incapacidad', label: 'Derecho de petición — incapacidad' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/constancia-terminacion-sjc', label: 'Constancia de terminación sin justa causa' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/notificacion-terminacion-jc', label: 'Notificación de terminación con justa causa' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/terminacion-periodo-prueba', label: 'Terminación en período de prueba' },
+    { to: '/dashboard/gestion-conocimiento/talento-humano/terminacion-anticipada-unilateral', label: 'Terminación anticipada unilateral (prestación)' },
   ],
   'gestion-conocimiento/contable': [
     { to: '/dashboard/gestion-conocimiento/contable/anticipos', label: 'Anticipos' },

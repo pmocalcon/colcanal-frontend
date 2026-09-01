@@ -76,7 +76,8 @@ export default function SolicitudAnticipoPage() {
 
   const estado = (sol?.estado as AnticipoEstado | undefined) ?? undefined;
   const locked = !esEditable(estado ?? null); // el formato solo se edita en borrador
-  const esTesoreria = (user?.nombreRol ?? '').trim() === 'Coordinador Financiero';
+  // Tesorería del anticipo es Aurora, cuyo rol en el sistema es "Compras".
+  const esTesoreria = (user?.nombreRol ?? '').trim() === 'Compras';
   // Tesorería puede diligenciar la sección de pago cuando el anticipo está en pendiente_pago.
   const lockedPago = !(esEditable(estado ?? null) || (estado === 'pendiente_pago' && esTesoreria));
 
@@ -95,6 +96,14 @@ export default function SolicitudAnticipoPage() {
       fechaFirmaSolicitante: prev.fechaFirmaSolicitante || hoy(),
     }));
   }, [user, solicitudId]);
+
+  // Al llegar al paso de pago, "Recibido por (Tesorería)" se llena con quien está en
+  // sesión y puede diligenciarlo (Tesorería o PMO). Queda editable por si recibe otra
+  // persona; solo se rellena si está vacío, para no pisar lo ya escrito.
+  useEffect(() => {
+    if (estado !== 'pendiente_pago' || lockedPago) return;
+    setF((prev) => (prev.entregaRecibidoPor ? prev : { ...prev, entregaRecibidoPor: user?.nombre || '' }));
+  }, [estado, lockedPago, user]);
 
   useEffect(() => {
     if (solicitudId === null) return;
@@ -201,7 +210,8 @@ export default function SolicitudAnticipoPage() {
             <Button variant="outline" onClick={() => setF({ ...EMPTY, fechaSolicitud: hoy(), consecutivo: f.consecutivo })} className="gap-2">
               <Eraser className="w-4 h-4" /> Limpiar
             </Button>
-            {solicitudId !== null && f.consecutivo && (
+            {/* Solo se legaliza un anticipo ya pagado: antes del pago no hay nada que legalizar. */}
+            {solicitudId !== null && f.consecutivo && estado === 'pagado' && (
               <Button variant="outline" onClick={() => navigate(`/dashboard/gestion-conocimiento/contable/legalizacion/nueva?anticipo=${encodeURIComponent(f.consecutivo)}`)} className="gap-2" title="Crear la legalización de este anticipo">
                 <Receipt className="w-4 h-4" /> Legalizar
               </Button>

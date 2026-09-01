@@ -41,7 +41,7 @@ export const ANTICIPO_ESTADOS: Record<AnticipoEstado, EstadoMeta> = {
 
 const ROLES_GERENCIA_PROYECTOS = ['Gerencia de Proyectos']; // Lorena
 const ROLES_GERENCIA = ['Gerencia']; // Dra. Gloria
-const ROLES_TESORERIA = ['Coordinador Financiero']; // Aurora
+const ROLES_TESORERIA = ['Compras']; // Aurora (su rol en el sistema es Compras)
 
 export interface AnticipoTransicion {
   accion: string;

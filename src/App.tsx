@@ -80,6 +80,13 @@ import AprobacionGarantiasPage from './pages/AprobacionGarantiasPage'
 import GestionFormatosHomePage from './pages/GestionFormatosHomePage'
 import FormatoListPage from './pages/FormatoListPage'
 import ActaTerminacionPage from './pages/ActaTerminacionPage'
+import OtrosiSalarialPage from './pages/OtrosiSalarialPage'
+import SustitucionEmpleadorPage from './pages/SustitucionEmpleadorPage'
+import DerechoPeticionIncapacidadPage from './pages/DerechoPeticionIncapacidadPage'
+import ConstanciaTerminacionSinJustaCausaPage from './pages/ConstanciaTerminacionSinJustaCausaPage'
+import NotificacionTerminacionJustaCausaPage from './pages/NotificacionTerminacionJustaCausaPage'
+import TerminacionPeriodoPruebaPage from './pages/TerminacionPeriodoPruebaPage'
+import TerminacionAnticipadaUnilateralPage from './pages/TerminacionAnticipadaUnilateralPage'
 import ContestacionTutelaPage from './pages/ContestacionTutelaPage'
 import PoderTutelaPage from './pages/PoderTutelaPage'
 import RequerimientoAclaracionPage from './pages/RequerimientoAclaracionPage'
@@ -362,6 +369,20 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/juridica/contratos" element={<SolicitudesJuridicaListPage />} />
           <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion" element={<FormatoListPage gestion="talento-humano" slug="terminacion" />} />
           <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion/:id" element={<ActaTerminacionPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/otrosi-salarial" element={<FormatoListPage gestion="talento-humano" slug="otrosi-salarial" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/otrosi-salarial/:id" element={<OtrosiSalarialPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/sustitucion-empleador" element={<FormatoListPage gestion="talento-humano" slug="sustitucion-empleador" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/sustitucion-empleador/:id" element={<SustitucionEmpleadorPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/peticion-incapacidad" element={<FormatoListPage gestion="talento-humano" slug="peticion-incapacidad" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/peticion-incapacidad/:id" element={<DerechoPeticionIncapacidadPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/constancia-terminacion-sjc" element={<FormatoListPage gestion="talento-humano" slug="constancia-terminacion-sjc" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/constancia-terminacion-sjc/:id" element={<ConstanciaTerminacionSinJustaCausaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/notificacion-terminacion-jc" element={<FormatoListPage gestion="talento-humano" slug="notificacion-terminacion-jc" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/notificacion-terminacion-jc/:id" element={<NotificacionTerminacionJustaCausaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion-periodo-prueba" element={<FormatoListPage gestion="talento-humano" slug="terminacion-periodo-prueba" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion-periodo-prueba/:id" element={<TerminacionPeriodoPruebaPage />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion-anticipada-unilateral" element={<FormatoListPage gestion="talento-humano" slug="terminacion-anticipada-unilateral" />} />
+          <Route path="/dashboard/gestion-conocimiento/talento-humano/terminacion-anticipada-unilateral/:id" element={<TerminacionAnticipadaUnilateralPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela" element={<FormatoListPage gestion="juridica" slug="tutela" />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/tutela/:id" element={<ContestacionTutelaPage />} />
           <Route path="/dashboard/gestion-conocimiento/juridica/poder" element={<FormatoListPage gestion="juridica" slug="poder" />} />

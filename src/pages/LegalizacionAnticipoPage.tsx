@@ -32,7 +32,7 @@ const GESTION = 'contable';
 const FORMATO = 'GCT-006-F';
 const FORMATO_ANTICIPO = 'GF-005-F';
 
-interface Factura { proveedor: string; nitRut: string; fecha: string; concepto: string; valor: string; }
+interface Factura { proveedor: string; nitRut: string; fecha: string; concepto: string; valor: string; soporteUrl: string; }
 
 interface FormState {
   anticipoConsecutivo: string;
@@ -41,6 +41,8 @@ interface FormState {
   anticipoBeneficiario: string;
   empresa: string; nit: string; fecha: string;
   facturas: Factura[];
+  /** Link general de los soportes (carpeta de SharePoint con todas las facturas). */
+  soportesUrl: string;
   anticipoPorLegalizar: string;
   numConsignacion: string;
   /** Reclasificación del concepto entre anticipo y legalización (la registra Contabilidad). */
@@ -52,12 +54,13 @@ interface FormState {
   totalFacturas?: number; saldoCaja?: number;
 }
 
-const emptyFactura = (): Factura => ({ proveedor: '', nitRut: '', fecha: '', concepto: '', valor: '' });
+const emptyFactura = (): Factura => ({ proveedor: '', nitRut: '', fecha: '', concepto: '', valor: '', soporteUrl: '' });
 
 const EMPTY: FormState = {
   anticipoConsecutivo: '', anticipoValor: '', anticipoProyecto: '', anticipoBeneficiario: '',
   empresa: '', nit: '', fecha: '',
   facturas: [emptyFactura(), emptyFactura(), emptyFactura()],
+  soportesUrl: '',
   anticipoPorLegalizar: '', numConsignacion: '',
   reclasificacionConcepto: '', reclasificacionObs: '',
   firmaElaboro: '', fechaElaboro: '',
@@ -174,6 +177,15 @@ export default function LegalizacionAnticipoPage() {
       const all = await gestionConocimientoService.list({ gestion: GESTION });
       const ant = all.find((r) => r.formato === FORMATO_ANTICIPO && normCode(r.data?.consecutivo) === normCode(code));
       if (!ant) { toast.error(`No existe un anticipo con el código ${code}`); return; }
+      // Regla: solo se legaliza un anticipo ya pagado. Antes del pago no hay nada que
+      // legalizar —el dinero no ha salido de Tesorería—, así que no se deja enlazar.
+      if (ant.estado !== 'pagado') {
+        toast.error(
+          `El anticipo N.º ${ant.data?.consecutivo ?? code} aún no está pagado. `
+          + `Solo se puede legalizar cuando Tesorería registre el pago.`,
+        );
+        return;
+      }
       setF((prev) => ({
         ...prev,
         anticipoConsecutivo: ant.data?.consecutivo ?? code,
@@ -362,6 +374,7 @@ export default function LegalizacionAnticipoPage() {
                 <Th w="96px">Fecha</Th>
                 <Th>Concepto</Th>
                 <Th w="120px">Valor (COP)</Th>
+                <Th w="150px">Soporte (link)</Th>
                 <th className="no-print border border-[#0a2a52] w-8 bg-[hsl(var(--canalco-neutral-100))]" />
               </tr>
             </thead>
@@ -374,6 +387,7 @@ export default function LegalizacionAnticipoPage() {
                   <td className="border border-[#0a2a52] px-1"><Cellinput value={x.fecha} onChange={(v) => setFactura(i, { fecha: v })} type="date" /></td>
                   <td className="border border-[#0a2a52] px-1"><Cellinput value={x.concepto} onChange={(v) => setFactura(i, { concepto: v })} /></td>
                   <td className="border border-[#0a2a52] px-1"><Cellinput value={x.valor} onChange={(v) => setFactura(i, { valor: v })} right /></td>
+                  <td className="border border-[#0a2a52] px-1"><SoporteCell value={x.soporteUrl} onChange={(v) => setFactura(i, { soporteUrl: v })} /></td>
                   <td className="no-print border border-[#0a2a52] text-center">
                     <button onClick={() => delFactura(i)} title="Quitar fila" className="text-[hsl(var(--canalco-neutral-400))] hover:text-red-600">
                       <Trash2 className="w-3.5 h-3.5 inline" />
@@ -384,6 +398,7 @@ export default function LegalizacionAnticipoPage() {
               <tr className="bg-[hsl(var(--canalco-neutral-100))] font-bold">
                 <td colSpan={5} className="border border-[#0a2a52] text-right px-2 py-1">TOTAL FACTURAS Y RECIBOS</td>
                 <td className="border border-[#0a2a52] text-right px-1 py-1 tabular-nums">{money(totalFacturas)}</td>
+                <td className="border border-[#0a2a52]" />
                 <td className="no-print border border-[#0a2a52]" />
               </tr>
             </tbody>
@@ -392,6 +407,12 @@ export default function LegalizacionAnticipoPage() {
             <Button variant="outline" size="sm" onClick={addFactura} className="gap-1 h-7 text-xs">
               <Plus className="w-3.5 h-3.5" /> Agregar factura
             </Button>
+          </div>
+
+          {/* Link general de los soportes (una sola carpeta con todas las facturas) */}
+          <div className="grid grid-cols-[200px_1fr] border-b border-[#0a2a52]">
+            <LabelCell>Carpeta de soportes (link)</LabelCell>
+            <div className="px-2 py-1.5"><SoporteCell value={f.soportesUrl} onChange={(v) => set('soportesUrl', v)} /></div>
           </div>
 
           {/* Conciliación */}
@@ -546,6 +567,39 @@ function FirmaFecha({ nombre, onNombre, fecha, onFecha }: {
         <span className="text-[11px] font-semibold">Fecha:</span>
         <input value={fecha} onChange={(e) => onFecha(e.target.value)} type="date" className="flex-1 bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] text-[12px]" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Celda de soporte: un enlace (SharePoint, OneDrive, Drive…) hacia el archivo de la
+ * factura. Se pega la URL; el botón la abre en otra pestaña. Al imprimir se muestra la
+ * URL como texto —el input conserva su valor— para que el PDF firmado deje rastro de
+ * dónde está el soporte.
+ */
+function SoporteCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const url = (value ?? '').trim();
+  const href = url && !/^https?:\/\//i.test(url) ? `https://${url}` : url;
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="url"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Pega el link…"
+        className="w-full bg-transparent outline-none text-[12px] py-1 disabled:text-[hsl(var(--canalco-neutral-500))]"
+      />
+      {url && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          title="Abrir soporte"
+          className="shrink-0 text-[hsl(var(--canalco-primary))] hover:opacity-70"
+        >
+          <Link2 className="w-3.5 h-3.5" />
+        </a>
+      )}
     </div>
   );
 }

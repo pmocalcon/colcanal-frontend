@@ -1,6 +1,6 @@
 import {
-  Banknote, CalendarClock, Clock4, FileQuestion, FileSignature, FileX2, Forward, Gavel, Hourglass,
-  MailCheck, Plane, Scale, ScrollText, Users,
+  Banknote, CalendarClock, Clock4, FileQuestion, FileSignature, FileX2, Forward, Gavel, HeartPulse,
+  Hourglass, MailCheck, Plane, Scale, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -53,6 +53,13 @@ export const FORMATO_PRESTAMO = 'GTH-007-F';
 export const FORMATO_PERMISO = 'GTH-009-F';
 export const FORMATO_VACACIONES = 'GTH-018-F';
 export const FORMATO_HORAS_EXTRAS = 'GTH-016-F';
+export const FORMATO_OTROSI_SALARIAL = 'OTROSI-SALARIAL';
+export const FORMATO_SUSTITUCION_EMPLEADOR = 'SUSTITUCION-EMPLEADOR';
+export const FORMATO_PETICION_INCAPACIDAD = 'PETICION-INCAPACIDAD';
+export const FORMATO_CONSTANCIA_TERMINACION_SJC = 'CONSTANCIA-TERMINACION-SJC';
+export const FORMATO_NOTIFICACION_TERMINACION_JC = 'NOTIFICACION-TERMINACION-JC';
+export const FORMATO_TERMINACION_PERIODO_PRUEBA = 'TERMINACION-PERIODO-PRUEBA';
+export const FORMATO_TERMINACION_ANTICIPADA_UNILATERAL = 'TERMINACION-ANTICIPADA-UNILATERAL';
 
 /**
  * Los roles del área dueña de cada gestión, para los formatos marcados `soloDelArea`.
@@ -294,6 +301,97 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
         columnas: [
           { label: 'Contratista', campo: 'contratista' },
           { label: 'Contrato suscrito el', campo: 'fechaContrato' },
+        ],
+      },
+      {
+        slug: 'otrosi-salarial',
+        soloDelArea: true,
+        formato: FORMATO_OTROSI_SALARIAL,
+        nombre: 'Otrosí de modificación salarial',
+        descripcion: 'Otrosí de modificación salarial a un contrato individual de trabajo a término indefinido',
+        Icon: Banknote,
+        singular: 'otrosí',
+        columnas: [
+          { label: 'Trabajador', campo: 'nombre' },
+          { label: 'Cargo', campo: 'cargo' },
+        ],
+      },
+      {
+        slug: 'sustitucion-empleador',
+        soloDelArea: true,
+        formato: FORMATO_SUSTITUCION_EMPLEADOR,
+        nombre: 'Sustitución de empleador',
+        descripcion: 'Acta de sustitución de empleador y continuidad laboral',
+        Icon: Users,
+        singular: 'acta',
+        columnas: [
+          { label: 'Trabajador', campo: 'trabajador' },
+          { label: 'Sustitución efectiva', campo: 'fechaSustitucion' },
+        ],
+      },
+      {
+        slug: 'peticion-incapacidad',
+        soloDelArea: true,
+        formato: FORMATO_PETICION_INCAPACIDAD,
+        nombre: 'Derecho de petición — incapacidad',
+        descripcion: 'Derecho de petición ante la EPS/EOC: solicitud de reconocimiento y pago de incapacidad',
+        Icon: HeartPulse,
+        singular: 'petición',
+        columnas: [
+          { label: 'Trabajador', campo: 'trabajador' },
+          { label: 'Incapacidad N.º', campo: 'incapacidadNumero' },
+        ],
+      },
+      {
+        slug: 'constancia-terminacion-sjc',
+        soloDelArea: true,
+        formato: FORMATO_CONSTANCIA_TERMINACION_SJC,
+        nombre: 'Constancia de terminación sin justa causa',
+        descripcion: 'Constancia de comunicación de terminación sin justa causa y negativa a firmar recibido',
+        Icon: FileX2,
+        singular: 'constancia',
+        columnas: [
+          { label: 'Trabajador', campo: 'nombreTrabajador' },
+          { label: 'Fecha efectiva', campo: 'fechaEfectiva' },
+        ],
+      },
+      {
+        slug: 'notificacion-terminacion-jc',
+        soloDelArea: true,
+        formato: FORMATO_NOTIFICACION_TERMINACION_JC,
+        nombre: 'Notificación de terminación con justa causa',
+        descripcion: 'Notificación de terminación del contrato de trabajo con justa causa (modelo de uso especial)',
+        Icon: FileX2,
+        singular: 'notificación',
+        columnas: [
+          { label: 'Trabajador', campo: 'nombreTrabajador' },
+          { label: 'Fecha de la decisión', campo: 'fechaDecision' },
+        ],
+      },
+      {
+        slug: 'terminacion-periodo-prueba',
+        soloDelArea: true,
+        formato: FORMATO_TERMINACION_PERIODO_PRUEBA,
+        nombre: 'Terminación en período de prueba',
+        descripcion: 'Terminación del contrato de trabajo durante el período de prueba',
+        Icon: FileX2,
+        singular: 'comunicación',
+        columnas: [
+          { label: 'Trabajador', campo: 'nombreTrabajador' },
+          { label: 'Fecha efectiva', campo: 'fechaEfectiva' },
+        ],
+      },
+      {
+        slug: 'terminacion-anticipada-unilateral',
+        soloDelArea: true,
+        formato: FORMATO_TERMINACION_ANTICIPADA_UNILATERAL,
+        nombre: 'Terminación anticipada unilateral (prestación)',
+        descripcion: 'Notificación de terminación anticipada unilateral de un contrato de prestación de servicios',
+        Icon: FileX2,
+        singular: 'notificación',
+        columnas: [
+          { label: 'Contratista', campo: 'contratista' },
+          { label: 'Fecha efectiva', campo: 'fechaEfectiva' },
         ],
       },
     ],
