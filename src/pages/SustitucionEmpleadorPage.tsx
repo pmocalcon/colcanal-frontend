@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { FORMATO_SUSTITUCION_EMPLEADOR } from '@/config/formatosGestion';
 import { buscarFicha, nombreDeFicha } from '@/utils/prellenarFormato';
 
@@ -211,16 +212,16 @@ export default function SustitucionEmpleadorPage() {
         <TextosDocumento value={textosCtx}>
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            {/* Membrete */}
-            <div className="flex items-center gap-4 border border-[#0a2a52] p-3">
-              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="h-10 object-contain shrink-0" />
-              <p className="flex-grow text-center font-bold text-[13px] text-[hsl(var(--canalco-neutral-700))]">
-                ACTA DE SUSTITUCIÓN DE EMPLEADOR Y CONTINUIDAD LABORAL
-              </p>
-            </div>
-
-            {/* Título */}
-            <p className="text-center font-bold pt-2">ACTA DE SUSTITUCIÓN DE EMPLEADOR Y CONTINUIDAD LABORAL</p>
+            {/* Membrete con recuadro de codificación */}
+            <EncabezadoFormato
+              codigo="GTH-015-F"
+              fecha="01/09/2026"
+              titulo={
+                <h2 className="font-bold text-[13px] leading-tight">
+                  ACTA DE SUSTITUCIÓN DE EMPLEADOR Y CONTINUIDAD LABORAL
+                </h2>
+              }
+            />
 
             {/* Identificación */}
             <table className="w-full border-collapse text-[12px]">

@@ -21,7 +21,7 @@ import {
 import { textoSla } from '@/utils/juridicaWorkflow';
 
 /**
- * Horas Extras Personal · formato GTH-016-F (G. de talento humano).
+ * Horas Extras Personal · formato GTH-011-F (G. de talento humano).
  *
  * La planilla **registra horas**, igual que el papel oficial: por día y por tipo (diurna,
  * recargo nocturno, nocturna, diurna festiva, nocturna festiva), con el recargo de cada
@@ -340,7 +340,7 @@ export default function HorasExtrasPage() {
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
             <div className="grid grid-cols-[auto_1fr] text-[9px] content-start">
-              <Meta label="CÓDIGO:" value="GTH-016-F" />
+              <Meta label="CÓDIGO:" value="GTH-011-F" />
               <Meta label="FECHA:" value="16/02/2026" />
               <Meta label="VERSIÓN:" value="4" last />
             </div>

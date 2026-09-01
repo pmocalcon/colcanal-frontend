@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { FORMATO_TERMINACION_ANTICIPADA_UNILATERAL } from '@/config/formatosGestion';
 
 /**
@@ -204,14 +205,16 @@ export default function TerminacionAnticipadaUnilateralPage() {
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-3">
 
             {/* Membrete */}
-            <div className="flex items-start justify-between gap-4">
-              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="h-12 object-contain" />
-              <div className="text-center px-3 self-center">
-                <h2 className="font-bold text-[13px] leading-tight">NOTIFICACIÓN DE TERMINACIÓN ANTICIPADA UNILATERAL</h2>
-                <p className="font-bold text-[11px]">CONTRATO DE PRESTACIÓN DE SERVICIOS</p>
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="h-12 object-contain" />
-            </div>
+            <EncabezadoFormato
+              codigo="GTH-020-F"
+              fecha="01/09/2026"
+              titulo={
+                <>
+                  <h2 className="font-bold text-[13px] leading-tight">NOTIFICACIÓN DE TERMINACIÓN ANTICIPADA UNILATERAL</h2>
+                  <p className="font-bold text-[11px]">CONTRATO DE PRESTACIÓN DE SERVICIOS</p>
+                </>
+              }
+            />
             <p className="font-bold text-[11px]">NIT {f.nit}</p>
 
             {/* Control previo — no se imprime en la carta final */}

@@ -255,7 +255,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
         slug: 'permiso',
         formato: FORMATO_PERMISO,
         nombre: 'Solicitud de permiso',
-        descripcion: 'Permiso del empleado (GTH-009-F): motivo, fecha y horario',
+        descripcion: 'Permiso del empleado (GTH-010-F): motivo, fecha y horario',
         Icon: CalendarClock,
         singular: 'solicitud',
         columnas: [
@@ -268,7 +268,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
         slug: 'vacaciones',
         formato: FORMATO_VACACIONES,
         nombre: 'Solicitud de vacaciones',
-        descripcion: 'Vacaciones del empleado (GTH-018-F): periodo solicitado, días a disfrutar y a compensar',
+        descripcion: 'Vacaciones del empleado (GTH-009-F): periodo solicitado, días a disfrutar y a compensar',
         Icon: Plane,
         singular: 'solicitud',
         columnas: [
@@ -281,7 +281,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
         slug: 'horas-extras',
         formato: FORMATO_HORAS_EXTRAS,
         nombre: 'Horas extras',
-        descripcion: 'Horas extras del personal (GTH-016-F): registro diario y liquidación proyectada',
+        descripcion: 'Horas extras del personal (GTH-011-F): registro diario y liquidación proyectada',
         Icon: Clock4,
         singular: 'planilla',
         columnas: [

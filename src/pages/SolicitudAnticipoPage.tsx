@@ -86,6 +86,8 @@ export default function SolicitudAnticipoPage() {
 
   // Prefill del solicitante y su firma con el usuario en sesión (solo al crear).
   // La firma del Solicitante se llena sola (quien crea la solicitud es quien la firma).
+  // La fecha NO se prefija: se estampa sola cuando el solicitante envía a aprobación,
+  // igual que las demás fechas del recuadro (la del día de la acción).
   useEffect(() => {
     if (solicitudId !== null) return;
     setF((prev) => ({
@@ -93,7 +95,6 @@ export default function SolicitudAnticipoPage() {
       solicitante: prev.solicitante || user?.nombre || '',
       cargoSolicitante: prev.cargoSolicitante || user?.cargo || '',
       firmaSolicitante: prev.firmaSolicitante || user?.nombre || '',
-      fechaFirmaSolicitante: prev.fechaFirmaSolicitante || hoy(),
     }));
   }, [user, solicitudId]);
 
@@ -256,6 +257,7 @@ export default function SolicitudAnticipoPage() {
                   </div>
                   <div className="grid grid-cols-[auto_1fr] text-[11px]">
                     <CodeCell label="Código" value="GF-005-F" />
+                    <CodeCell label="Fecha" value="01/09/2026" />
                     <CodeCell label="Versión" value="1" last />
                   </div>
                 </td>
@@ -355,10 +357,10 @@ export default function SolicitudAnticipoPage() {
             </thead>
             <tbody>
               <tr>
-                <SignTd><FirmaFecha nombre={f.firmaSolicitante} onNombre={(v) => set('firmaSolicitante', v)} fecha={f.fechaFirmaSolicitante} onFecha={(v) => set('fechaFirmaSolicitante', v)} /></SignTd>
-                <SignTd><FirmaFecha nombre={f.firmaJefe} onNombre={(v) => set('firmaJefe', v)} fecha={f.fechaFirmaJefe} onFecha={(v) => set('fechaFirmaJefe', v)} /></SignTd>
-                <SignTd><FirmaFecha nombre={f.firmaGerenteProy} onNombre={(v) => set('firmaGerenteProy', v)} fecha={f.fechaFirmaGerenteProy} onFecha={(v) => set('fechaFirmaGerenteProy', v)} /></SignTd>
-                <SignTd><FirmaFecha nombre={f.firmaGerenciaGral} onNombre={(v) => set('firmaGerenciaGral', v)} fecha={f.fechaFirmaGerenciaGral} onFecha={(v) => set('fechaFirmaGerenciaGral', v)} /></SignTd>
+                <SignTd><FirmaFecha nombre={f.firmaSolicitante} onNombre={(v) => set('firmaSolicitante', v)} fecha={f.fechaFirmaSolicitante} /></SignTd>
+                <SignTd><FirmaFecha nombre={f.firmaJefe} onNombre={(v) => set('firmaJefe', v)} fecha={f.fechaFirmaJefe} /></SignTd>
+                <SignTd><FirmaFecha nombre={f.firmaGerenteProy} onNombre={(v) => set('firmaGerenteProy', v)} fecha={f.fechaFirmaGerenteProy} /></SignTd>
+                <SignTd><FirmaFecha nombre={f.firmaGerenciaGral} onNombre={(v) => set('firmaGerenciaGral', v)} fecha={f.fechaFirmaGerenciaGral} /></SignTd>
               </tr>
             </tbody>
           </table>
@@ -396,6 +398,12 @@ const fmtFecha = (d?: string | Date | null) =>
   d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
 const fmtFechaHora = (d?: string | Date | null) =>
   d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+// Fecha de firma en dd/mm/aaaa a partir del 'aaaa-mm-dd' guardado, sin pasar por Date
+// para no correr un día por zona horaria.
+const fmtFechaFirma = (iso?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+};
 
 function AnticipoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
   sol: GcSolicitud;
@@ -521,8 +529,8 @@ function SignTd({ children }: { children: React.ReactNode }) {
   return <td className="border border-[#0a2a52] align-top px-3 pt-6 pb-2">{children}</td>;
 }
 
-function FirmaFecha({ nombre, onNombre, fecha, onFecha }: {
-  nombre: string; onNombre: (v: string) => void; fecha: string; onFecha: (v: string) => void;
+function FirmaFecha({ nombre, onNombre, fecha }: {
+  nombre: string; onNombre: (v: string) => void; fecha: string;
 }) {
   return (
     <div className="text-left">
@@ -530,9 +538,11 @@ function FirmaFecha({ nombre, onNombre, fecha, onFecha }: {
         <span className="text-[11px] font-semibold">Firma:</span>
         <input value={nombre} onChange={(e) => onNombre(e.target.value)} className="flex-1 bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] text-[12px]" />
       </div>
+      {/* La fecha no se escribe: es la del momento en que se hizo la acción (aprobación),
+          la estampa el servidor. Aquí solo se muestra. */}
       <div className="flex items-baseline gap-2">
         <span className="text-[11px] font-semibold">Fecha:</span>
-        <input value={fecha} onChange={(e) => onFecha(e.target.value)} type="date" className="flex-1 bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] text-[12px]" />
+        <span className="flex-1 text-[12px] border-b border-dotted border-[hsl(var(--canalco-neutral-300))] min-h-[1.1rem]">{fmtFechaFirma(fecha)}</span>
       </div>
     </div>
   );

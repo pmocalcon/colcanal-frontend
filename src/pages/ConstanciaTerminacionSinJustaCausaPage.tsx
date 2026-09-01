@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieMembrete } from '@/components/juridica/PieMembrete';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { FORMATO_CONSTANCIA_TERMINACION_SJC } from '@/config/formatosGestion';
 import { buscarFicha, nombreDeFicha } from '@/utils/prellenarFormato';
 
@@ -238,14 +239,16 @@ export default function ConstanciaTerminacionSinJustaCausaPage() {
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-3">
 
             {/* Membrete */}
-            <div className="flex items-start justify-between gap-4">
-              <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="h-12 object-contain" />
-              <div className="text-center px-3 self-center">
-                <h2 className="font-bold text-[13px] leading-tight">CONSTANCIA DE COMUNICACIÓN DE TERMINACIÓN SIN JUSTA CAUSA</h2>
-                <p className="font-bold text-[11px]">Y NEGATIVA A FIRMAR RECIBIDO</p>
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="h-12 object-contain" />
-            </div>
+            <EncabezadoFormato
+              codigo="GTH-017-F"
+              fecha="01/09/2026"
+              titulo={
+                <>
+                  <h2 className="font-bold text-[13px] leading-tight">CONSTANCIA DE COMUNICACIÓN DE TERMINACIÓN SIN JUSTA CAUSA</h2>
+                  <p className="font-bold text-[11px]">Y NEGATIVA A FIRMAR RECIBIDO</p>
+                </>
+              }
+            />
             <p className="font-bold text-[11px]">NIT {f.nit}</p>
 
             {/* Control interno — no se imprime en la versión final */}

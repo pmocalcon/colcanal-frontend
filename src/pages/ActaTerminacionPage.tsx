@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { TextosDocumento, useTextosDocumento, TextoEd } from '@/components/juridica/textoEditable';
 import { PieElaboracion } from '@/components/juridica/PieElaboracion';
+import { EncabezadoFormato } from '@/components/juridica/EncabezadoFormato';
 import { FORMATO_CONTRATACION, FORMATO_TERMINACION } from '@/config/formatosGestion';
 
 /**
@@ -319,18 +320,22 @@ export default function ActaTerminacionPage() {
         <TextosDocumento value={textosCtx}>
           <div className="doc bg-white border border-[#e6e6f0] text-[12px] text-black shadow-md px-10 py-8 space-y-4">
 
-            {/* Membrete */}
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="h-12 object-contain" />
-                <input
-                  value={f.contratanteNit}
-                  onChange={(e) => set('contratanteNit', e.target.value)}
-                  className="mt-1 w-32 bg-transparent outline-none font-bold text-[11px] disabled:opacity-100 disabled:text-black"
-                />
-              </div>
-              <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="h-12 object-contain" />
-            </div>
+            {/* Membrete con recuadro de codificación */}
+            <EncabezadoFormato
+              codigo="GTH-013-F"
+              fecha="01/09/2026"
+              titulo={
+                <>
+                  <h2 className="font-bold text-[13px] leading-tight">ACTA DE TERMINACIÓN ANTICIPADA DE MUTUO ACUERDO</h2>
+                  <p className="font-bold text-[11px]">CONTRATO DE PRESTACIÓN DE SERVICIOS</p>
+                </>
+              }
+            />
+            <input
+              value={f.contratanteNit}
+              onChange={(e) => set('contratanteNit', e.target.value)}
+              className="w-40 bg-transparent outline-none font-bold text-[11px] disabled:opacity-100 disabled:text-black"
+            />
 
             {/* Título */}
             <div className="text-center font-bold text-[12px] pt-2">
