@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowLeftRight, Plus, FileText, Trash2, Loader2, Receipt, Wallet, Inbox, Filter } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Plus, FileText, Trash2, Loader2, Receipt, Wallet, Inbox, Filter, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import {
@@ -19,6 +19,11 @@ import {
   estadoLabel as labelCuentas,
   estadoBadgeClass as badgeCuentas,
 } from '@/utils/cuentasCompaniasWorkflow';
+import {
+  CAJA_MENOR_ESTADOS,
+  estadoLabel as labelCajaMenor,
+  estadoBadgeClass as badgeCajaMenor,
+} from '@/utils/cajaMenorWorkflow';
 
 /**
  * Listado de un sub-módulo de G. contable y tributaria:
@@ -28,12 +33,13 @@ import {
  * La misma página sirve a los dos: el sub-módulo llega por `tipo` desde la ruta.
  */
 
-export type TipoContable = 'anticipos' | 'legalizaciones' | 'cuentas-companias';
+export type TipoContable = 'anticipos' | 'legalizaciones' | 'cuentas-companias' | 'caja-menor';
 
 const GESTION = 'contable';
 const FORMATO_ANTICIPO = 'GF-005-F';
 const FORMATO_LEGALIZACION = 'GCT-006-F';
 const FORMATO_CUENTAS = 'GF-004-F5';
+const FORMATO_CAJA_MENOR = 'GF-007-F';
 
 const fmtCOP = (v: any) => {
   if (v === undefined || v === null || v === '') return '—';
@@ -42,6 +48,13 @@ const fmtCOP = (v: any) => {
 };
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/** El total del reembolso es la suma de su tabla; no se guarda como campo aparte. */
+const totalCajaMenor = (s: GcSolicitud) =>
+  (Array.isArray(s.data?.items) ? s.data.items : []).reduce(
+    (acc: number, it: Record<string, any>) => acc + (parseInt(String(it?.valor ?? '').replace(/[^\d-]/g, ''), 10) || 0),
+    0,
+  );
 
 /** Le toca actuar al usuario: el backend ya resolvió rol y jerarquía. */
 const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
@@ -83,6 +96,18 @@ const CONFIG = {
     vacio: 'Aún no hay autorizaciones entre compañías.',
     vacioCta: 'Crear la primera',
     sinCoincidencias: 'Ninguna autorización coincide con los filtros.',
+  },
+  'caja-menor': {
+    formato: FORMATO_CAJA_MENOR,
+    titulo: 'Caja menor',
+    subtitulo: 'Reembolso de Caja Menor (GF-007-F)',
+    Icon: Coins,
+    ruta: 'caja-menor',
+    nuevo: 'Nuevo reembolso',
+    estados: CAJA_MENOR_ESTADOS,
+    vacio: 'Aún no hay reembolsos de caja menor.',
+    vacioCta: 'Crear el primero',
+    sinCoincidencias: 'Ningún reembolso coincide con los filtros.',
   },
 } as const;
 
@@ -235,6 +260,51 @@ export default function SolicitudesContableListPage({ tipo }: { tipo: TipoContab
                     <td className="px-4 py-3 text-right tabular-nums">{fmtCOP(s.data?.valor)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block text-[11px] font-medium rounded px-2 py-1 ${badgeAnticipo(s.estado)}`}>{labelAnticipo(s.estado)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{fecha(s.updatedAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {s.estado === 'borrador' && (
+                        <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, s.solicitudId)} title="Eliminar" className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : tipo === 'caja-menor' ? (
+          <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[hsl(var(--canalco-neutral-100))] text-left text-xs uppercase tracking-wide text-[hsl(var(--canalco-neutral-500))]">
+                  <th className="px-4 py-3 font-semibold">N.º reembolso</th>
+                  <th className="px-4 py-3 font-semibold">Proyecto</th>
+                  <th className="px-4 py-3 font-semibold">Responsable</th>
+                  <th className="px-4 py-3 font-semibold text-right">Total (COP)</th>
+                  <th className="px-4 py-3 font-semibold">Estado</th>
+                  <th className="px-4 py-3 font-semibold">Actualizado</th>
+                  <th className="px-4 py-3 font-semibold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map((s) => (
+                  <tr
+                    key={s.solicitudId}
+                    onClick={() => navigate(`${base}/caja-menor/${s.solicitudId}`)}
+                    className={`border-t border-[hsl(var(--canalco-neutral-200))] hover:bg-[hsl(var(--canalco-neutral-100))] cursor-pointer ${meToca(s) ? 'bg-amber-50/60' : ''}`}
+                  >
+                    <td className="px-4 py-3 font-mono font-semibold text-[hsl(var(--canalco-primary))]">
+                      {meToca(s) && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 align-middle" title="Espera una acción tuya" />}
+                      {/* El número se asigna al salir de borrador; antes solo existe el id. */}
+                      {s.numero ? String(s.numero).padStart(4, '0') : `#${s.solicitudId}`}
+                    </td>
+                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-900))] max-w-[16rem] truncate">{s.data?.proyecto || '—'}</td>
+                    <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-900))] max-w-[16rem] truncate">{s.data?.responsable || '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtCOP(totalCajaMenor(s))}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block text-[11px] font-medium rounded px-2 py-1 ${badgeCajaMenor(s.estado)}`}>{labelCajaMenor(s.estado)}</span>
                     </td>
                     <td className="px-4 py-3 text-[hsl(var(--canalco-neutral-600))]">{fecha(s.updatedAt)}</td>
                     <td className="px-4 py-3 text-right">

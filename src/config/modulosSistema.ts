@@ -171,6 +171,7 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
     { to: '/dashboard/gestion-conocimiento/contable/anticipos', label: 'Anticipos' },
     { to: '/dashboard/gestion-conocimiento/contable/legalizaciones', label: 'Legalizaciones' },
     { to: '/dashboard/gestion-conocimiento/contable/cuentas-companias', label: 'Cuentas de compañías' },
+    { to: '/dashboard/gestion-conocimiento/contable/caja-menor', label: 'Caja menor' },
   ],
 };
 

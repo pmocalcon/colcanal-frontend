@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowLeftRight, Calculator, Loader2, Receipt, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Calculator, Coins, Loader2, Receipt, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -15,7 +15,8 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 const GESTION = 'contable';
 const FORMATO_ANTICIPO = 'GF-005-F';
 const FORMATO_LEGALIZACION = 'GCT-006-F';
-const FORMATO_CUENTAS = 'GF-004-F5';
+const FORMATO_CUENTAS = 'GF-004-F';
+const FORMATO_CAJA_MENOR = 'GF-007-F';
 
 /** Le toca actuar al usuario: el backend ya resolvió rol y jerarquía. */
 const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
@@ -36,10 +37,17 @@ const SUBMODULOS = [
     Icon: Receipt,
   },
   {
+    slug: 'caja-menor',
+    nombre: 'Caja menor',
+    formato: FORMATO_CAJA_MENOR,
+    description: 'Reembolso de caja menor (GF-007-F): arqueo, firmas y reposición de la caja',
+    Icon: Coins,
+  },
+  {
     slug: 'cuentas-companias',
     nombre: 'Cuentas entre compañías',
     formato: FORMATO_CUENTAS,
-    description: 'Autorización de pago entre compañías (GF-004-F5): uso excepcional y conciliación mensual',
+    description: 'Autorización de pago entre compañías (GF-004-F): uso excepcional y conciliación mensual',
     Icon: ArrowLeftRight,
   },
 ];

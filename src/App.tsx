@@ -114,6 +114,7 @@ import ContratoPage from './pages/ContratoPage'
 import MatrizContratosPage from './pages/MatrizContratosPage'
 import ContableHomePage from './pages/ContableHomePage'
 import CuentasCompaniasPage from './pages/CuentasCompaniasPage'
+import ReembolsoCajaMenorPage from './pages/ReembolsoCajaMenorPage'
 import SolicitudesContableListPage from './pages/SolicitudesContableListPage'
 import SolicitudAnticipoPage from './pages/SolicitudAnticipoPage'
 import LegalizacionAnticipoPage from './pages/LegalizacionAnticipoPage'
@@ -426,6 +427,9 @@ export default function App() {
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias" element={<SolicitudesContableListPage tipo="cuentas-companias" />} />
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/nueva" element={<CuentasCompaniasPage />} />
           <Route path="/dashboard/gestion-conocimiento/contable/cuentas-companias/:id" element={<CuentasCompaniasPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/caja-menor" element={<SolicitudesContableListPage tipo="caja-menor" />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/caja-menor/nueva" element={<ReembolsoCajaMenorPage />} />
+          <Route path="/dashboard/gestion-conocimiento/contable/caja-menor/:id" element={<ReembolsoCajaMenorPage />} />
           {/* Recurso Económico: solo PMO. La página repite la verificación de rol
               y el backend la cierra con RolesGuard. */}
           <Route path="/dashboard/recurso-economico" element={<RecursoEconomicoHomePage />} />
