@@ -492,7 +492,7 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
   onAccion: (accion: string, requiereMotivo?: boolean) => void;
 }) {
   const estado = sol.estado as HorasExtrasEstado;
-  const acciones = accionesDisponibles(estado, nombreRol, esCreador);
+  const acciones = accionesDisponibles(estado, nombreRol, esCreador, sol.accionesPendientes);
   const sla = calcularSla(estado, sol.estadoDesde);
   const terminal = esTerminal(estado);
   const d = sol.data ?? {};

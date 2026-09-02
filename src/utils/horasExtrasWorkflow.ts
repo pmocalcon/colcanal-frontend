@@ -76,20 +76,45 @@ export const HORAS_EXTRAS_TRANSICIONES: HorasExtrasTransicion[] = [
   { accion: 'devolver_administrativa', from: 'aprobado', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, correctiva: true, label: 'Devolver la planilla', tone: 'danger' },
 ];
 
-/** Acciones que el usuario (por su rol) puede ejecutar sobre la planilla en cierto estado. */
+/**
+ * Acciones que el usuario puede ejecutar sobre la planilla.
+ *
+ * `pendientes` es la lista que resuelve el backend, que es el único que conoce la tabla
+ * de autorizaciones. **Cuando llega, manda**: acá no se puede saber quién es el Director
+ * de Proyecto a cargo de quién.
+ *
+ * El cálculo local queda solo como respaldo para respuestas viejas que no la traen. Es
+ * aproximado a propósito, y por eso ya se equivocó: escondía el botón a todo el que
+ * hubiera creado la planilla, y cuando un Director de Proyecto registra la suya el
+ * servidor sí lo deja revisarla —sus jefes son Gerencia y Dirección Técnica, ningún
+ * Director de Proyecto, así que la atiende cualquiera de ellos—. La planilla quedaba
+ * en pantalla, en el estado correcto, sin un solo botón.
+ */
 export function accionesDisponibles(
   estado: HorasExtrasEstado,
   nombreRol: string | undefined,
   esCreador: boolean,
+  pendientes?: string[] | null,
 ): HorasExtrasTransicion[] {
   const rol = nombreRol ?? '';
   const esPmo = esRolPmo(rol);
+
+  if (pendientes) {
+    const puede = new Set(pendientes);
+    return HORAS_EXTRAS_TRANSICIONES.filter((t) => {
+      if (t.from !== estado) return false;
+      // Las correctivas no cuentan como «me toca» y por eso nunca están en la lista,
+      // pero sí deben ofrecerse a quien tiene el rol: son un remedio, no una tarea.
+      if (t.correctiva) return esPmo || t.roles.includes(rol);
+      return puede.has(t.accion);
+    });
+  }
+
   return HORAS_EXTRAS_TRANSICIONES.filter((t) => {
     if (t.from !== estado) return false;
     if (esPmo) return true;
     if (t.soloCreador) return esCreador;
     if (!t.roles.includes(rol)) return false;
-    // El backend comprueba que sea el Director de Proyecto de esa persona.
     return t.jefeAutorizador ? !esCreador : true;
   });
 }
