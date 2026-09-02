@@ -33,11 +33,11 @@ const cop = (v: string | number) => {
 
 type Pestana = 'anios' | 'bancos';
 
-type BorradorAnio = { anio: number | ''; smmlv: string; auxilioTransporte: string; observaciones: string };
+type BorradorAnio = { anio: number | ''; smmlv: string; auxilioTransporte: string; uvt: string; observaciones: string };
 type BorradorBanco = { codigo: number | ''; nombre: string; activo: boolean; original?: number };
 
 const ANIO_VACIO = (anio: number): BorradorAnio => ({
-  anio, smmlv: '', auxilioTransporte: '', observaciones: '',
+  anio, smmlv: '', auxilioTransporte: '', uvt: '', observaciones: '',
 });
 const BANCO_VACIO: BorradorBanco = { codigo: '', nombre: '', activo: true };
 
@@ -123,6 +123,7 @@ function SeccionAnios() {
     anio: f.anio,
     smmlv: String(Number(f.smmlv)),
     auxilioTransporte: String(Number(f.auxilioTransporte)),
+    uvt: String(Number(f.uvt ?? 0) || ''),
     observaciones: f.observaciones ?? '',
   });
 
@@ -138,6 +139,7 @@ function SeccionAnios() {
         anio: Number(borrador.anio),
         smmlv: borrador.smmlv,
         auxilioTransporte: borrador.auxilioTransporte || '0',
+        uvt: borrador.uvt || '0',
         observaciones: borrador.observaciones || null,
       });
       toast.success(`Parámetros de ${borrador.anio} guardados`);
@@ -208,6 +210,13 @@ function SeccionAnios() {
               nota="Mensual. Lo recibe quien devenga menos de 2 mínimos."
             />
             <Campo
+              label="UVT"
+              value={borrador.uvt}
+              onChange={(v) => set('uvt', v)}
+              tipo="number"
+              nota="La que decreta la DIAN. Sin ella la retención en la fuente sale en cero."
+            />
+            <Campo
               label="Observaciones"
               value={borrador.observaciones}
               onChange={(v) => set('observaciones', v)}
@@ -240,6 +249,7 @@ function SeccionAnios() {
                 <th className="px-4 py-2 text-left font-semibold">Año</th>
                 <th className="px-4 py-2 text-right font-semibold">Salario mínimo</th>
                 <th className="px-4 py-2 text-right font-semibold">Auxilio de transporte</th>
+                <th className="px-4 py-2 text-right font-semibold">UVT</th>
                 <th className="px-4 py-2 text-left font-semibold">Observaciones</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -250,6 +260,9 @@ function SeccionAnios() {
                   <td className="px-4 py-2 font-semibold tabular-nums">{f.anio}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{cop(f.smmlv)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{cop(f.auxilioTransporte)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {Number(f.uvt ?? 0) > 0 ? cop(f.uvt) : <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>}
+                  </td>
                   <td className="px-4 py-2 text-[hsl(var(--canalco-neutral-600))] max-w-[220px] truncate" title={f.observaciones ?? ''}>
                     {f.observaciones || '—'}
                   </td>

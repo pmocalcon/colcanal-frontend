@@ -261,7 +261,37 @@ export interface ThParametroNomina {
   anio: number;
   smmlv: string;
   auxilioTransporte: string;
+  /** UVT del año. Sin ella no hay retención en la fuente que calcular. */
+  uvt: string;
   observaciones: string | null;
+}
+
+/** Lo que cada persona puede restar de su base gravable durante el año. */
+export interface ThRetencionFicha {
+  retencionId: number;
+  personaId: number;
+  anio: number;
+  /** «FIJO» es la cifra del certificado; «PORCENTAJE» liquida contra lo devengado del mes. */
+  viviendaModo: 'FIJO' | 'PORCENTAJE';
+  viviendaValor: string;
+  viviendaPorcentaje: string;
+  dependientes: string;
+  medicinaPrepagada: string;
+  pensionesVoluntarias: string;
+  afc: string;
+  sujeto: boolean;
+  observaciones: string | null;
+}
+
+/** Una fila de la tabla de retenciones: la persona y su ficha, si ya la tiene. */
+export interface ThRetencionFila {
+  personaId: number;
+  identificacion: string;
+  nombre: string;
+  cargo: string | null;
+  empresaProyecto: string | null;
+  salario: string | null;
+  ficha: ThRetencionFicha | null;
 }
 
 /**
@@ -401,6 +431,20 @@ export const talentoHumanoService = {
   },
   async borrarParametros(anio: number) {
     await api.delete(`${BASE}/parametros/${anio}`);
+  },
+
+  // ── Tabla de retenciones ──
+  /** Todo el personal activo del año, con su ficha de deducciones si la tiene. */
+  async listRetenciones(anio: number) {
+    const { data } = await api.get<ThRetencionFila[]>(`${BASE}/retenciones/${anio}`);
+    return data;
+  },
+  async guardarRetencion(payload: Partial<ThRetencionFicha> & { personaId: number; anio: number }) {
+    const { data } = await api.post<ThRetencionFicha>(`${BASE}/retenciones`, payload);
+    return data;
+  },
+  async borrarRetencion(anio: number, personaId: number) {
+    await api.delete(`${BASE}/retenciones/${anio}/${personaId}`);
   },
 
   // ── Catálogo de bancos ──

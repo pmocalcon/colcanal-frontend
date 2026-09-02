@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Landmark, Plane, SlidersHorizontal, Users, Wallet } from 'lucide-react';
+import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Landmark, Percent, Plane, SlidersHorizontal, Users, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,6 +67,12 @@ const SECCIONES = [
     nombre: 'Nómina',
     descripcion: 'Novedades del mes y liquidación: devengado, deducciones y neto a pagar',
     Icon: Wallet,
+  },
+  {
+    slug: 'retenciones',
+    nombre: 'Tabla de retenciones',
+    descripcion: 'Deducciones y rentas exentas de cada persona, de donde sale el Retefuente de la nómina',
+    Icon: Percent,
   },
   {
     slug: 'pagos',

@@ -106,6 +106,7 @@ import HorasExtrasListPage from './pages/HorasExtrasListPage'
 import VacacionesListPage from './pages/VacacionesListPage'
 import NominaPage from './pages/NominaPage'
 import ParametrosNominaPage from './pages/ParametrosNominaPage'
+import TablaRetencionesPage from './pages/TablaRetencionesPage'
 import SolicitudesPagoPage from './pages/SolicitudesPagoPage'
 import SolicitudPagoPage from './pages/SolicitudPagoPage'
 import ActaInicioPage from './pages/ActaInicioPage'
@@ -360,6 +361,7 @@ export default function App() {
           <Route path="/dashboard/talento-humano/vacaciones" element={<VacacionesListPage />} />
           <Route path="/dashboard/talento-humano/nomina" element={<NominaPage />} />
           <Route path="/dashboard/talento-humano/parametros" element={<ParametrosNominaPage />} />
+          <Route path="/dashboard/talento-humano/retenciones" element={<TablaRetencionesPage />} />
           <Route path="/dashboard/talento-humano/pagos" element={<SolicitudesPagoPage />} />
           <Route path="/dashboard/talento-humano/pagos/:id" element={<SolicitudPagoPage />} />
           <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />

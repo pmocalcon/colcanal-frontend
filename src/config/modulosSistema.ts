@@ -141,6 +141,7 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
     { to: '/dashboard/talento-humano/prestamos', label: 'Prestamos' },
     { to: '/dashboard/talento-humano/incapacidades', label: 'Incapacidades' },
     { to: '/dashboard/talento-humano/ausentismos', label: 'Ausentismos' },
+    { to: '/dashboard/talento-humano/retenciones', label: 'Tabla de retenciones' },
   ],
   'gestion-conocimiento': [
     { to: '/dashboard/gestion-conocimiento/contable', label: 'G. contable y tributaria' },
