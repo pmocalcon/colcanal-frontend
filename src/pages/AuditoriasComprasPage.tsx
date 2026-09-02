@@ -5,7 +5,6 @@ import type {
   AuditLog,
   MatrixResponse,
   AuditStats,
-  MaterialPurchaseControlResponse,
   SupplierPurchasesResponse,
   RequisitionPurchaseOrdersResponse,
 } from '@/services/audit.service';
@@ -21,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, Grid3x3, BarChart2, Lightbulb, Truck, ChevronRight, ChevronDown } from 'lucide-react';
+import { Menu, AlertCircle, ArrowLeft, Eye, Search, X, LayoutList, BarChart2, Truck, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -48,9 +47,6 @@ import {
 import { formatDateShort } from '@/utils/dateUtils';
 import { msHabiles, formatElapsed } from '@/utils/tiempoHabil';
 import { getMunicipioName } from '@/utils/departmentMapper';
-
-/** Grupo con el que arranca el control de compras, como el Excel de luminarias. */
-const GRUPO_LUMINARIAS = 'LUMINARIAS Y PROYECTORES';
 
 /**
  * El tipo de obra se captura a mano en la requisición, así que llega con variantes
@@ -281,18 +277,17 @@ const ACTION_COLORS: Record<string, string> = {
   devolver_facturas_contabilidad: 'bg-red-500/10 text-red-700 border-red-500/20',
 };
 
-type AuditTab = 'registros' | 'matriz' | 'graficos' | 'control' | 'proveedores';
-const AUDIT_TABS: AuditTab[] = ['registros', 'matriz', 'graficos', 'control', 'proveedores'];
+type AuditTab = 'registros' | 'graficos' | 'proveedores';
+const AUDIT_TABS: AuditTab[] = ['registros', 'graficos', 'proveedores'];
 
 /*
- * Las cinco pestañas las ve cualquiera que entre a Auditorías.
+ * Las tres pestañas las ve cualquiera que entre a Auditorías.
  *
- * «Control de Compras» y «Proveedores» estuvieron reservadas al Analista PMO,
- * pero quien cruza órdenes con facturas o mira los precios por proveedor es
- * justamente quien audita: Gerencia, la Dirección Financiera, Compras. La
- * puerta del módulo es la gestión `auditorias`, y esa es la que decide; una
- * segunda reja por nombre de rol dejaba fuera incluso al Director PMO, que
- * tiene el mismo alcance que el Analista.
+ * «Proveedores» estuvo reservada al Analista PMO, pero quien mira los precios
+ * por proveedor es justamente quien audita: Gerencia, la Dirección Financiera,
+ * Compras. La puerta del módulo es la gestión `auditorias`, y esa es la que
+ * decide; una segunda reja por nombre de rol dejaba fuera incluso al Director
+ * PMO, que tiene el mismo alcance que el Analista.
  */
 
 export default function AuditoriasComprasPage() {
@@ -365,14 +360,6 @@ export default function AuditoriasComprasPage() {
   // ── Stats state ──
   const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
 
-  // ── Control de compras state ──
-  const [control, setControl] = useState<MaterialPurchaseControlResponse | null>(null);
-  const [controlLoading, setControlLoading] = useState(false);
-  const [controlGrupo, setControlGrupo] = useState<string>('');
-  const [controlAnio, setControlAnio] = useState<string>('todos');
-  const [controlSoloFacturadas, setControlSoloFacturadas] = useState(false);
-  const [controlBusqueda, setControlBusqueda] = useState('');
-
   // ── Proveedores state ──
   const [supplierData, setSupplierData] = useState<SupplierPurchasesResponse | null>(null);
   const [supplierLoading, setSupplierLoading] = useState(false);
@@ -381,7 +368,7 @@ export default function AuditoriasComprasPage() {
   const [supplierBusqueda, setSupplierBusqueda] = useState('');
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
 
-  // ── Matriz state ──
+  // ── Datos de la matriz: ya no tiene pestaña, alimentan los Gráficos ──
   const [matrixData, setMatrixData] = useState<MatrixResponse | null>(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
   const [matrixLoaded, setMatrixLoaded] = useState(false);
@@ -529,40 +516,13 @@ export default function AuditoriasComprasPage() {
     }
   }, [graphFrom, graphTo, graphCompany, graphMaterial]);
 
-  const loadControl = useCallback(async () => {
-    try {
-      setControlLoading(true);
-      // El grupo se manda por id, que hay que buscar en la respuesta anterior; en la
-      // primera carga se traen todos y se filtra por nombre al pintar.
-      const grupoId = control?.groups.find((g) => g.name === controlGrupo)?.groupId;
-      const data = await auditService.getMaterialsPurchaseControl({
-        groupId: grupoId,
-        year: controlAnio !== 'todos' ? Number(controlAnio) : undefined,
-        onlyInvoiced: controlSoloFacturadas,
-      });
-      setControl(data);
-      // Al abrir por primera vez se posiciona en luminarias, como el Excel.
-      if (!controlGrupo && data.groups.some((g) => g.name === GRUPO_LUMINARIAS)) {
-        setControlGrupo(GRUPO_LUMINARIAS);
-      }
-    } catch {
-      /* sin interrumpir el resto del tab */
-    } finally {
-      setControlLoading(false);
-    }
-    // control?.groups queda fuera a propósito: solo se usa para traducir nombre a id.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controlGrupo, controlAnio, controlSoloFacturadas]);
-
   useEffect(() => {
-    if (activeTab === 'control') loadControl();
-  }, [activeTab, loadControl]);
-
-  useEffect(() => {
-    if ((activeTab === 'matriz' || activeTab === 'graficos') && !matrixLoaded) {
+    // La matriz ya no tiene pestaña propia, pero Gráficos se alimenta de ella: de ahí
+    // salen las series por mes, los proveedores y las órdenes pendientes de factura.
+    if (activeTab === 'graficos' && !matrixLoaded) {
       loadMatrix({ search: '', from: '2026-01-10', to: '', company: '' });
     }
-    if ((activeTab === 'graficos' || activeTab === 'matriz') && !auditStats) {
+    if (activeTab === 'graficos' && !auditStats) {
       auditService.getStats().then(setAuditStats).catch(() => {});
     }
     if (activeTab === 'graficos' && systemUsers.length === 0) {
@@ -677,42 +637,6 @@ export default function AuditoriasComprasPage() {
       [...new Set(systemUsers.map((u) => (u.cargo ?? '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, 'es')),
     [systemUsers],
-  );
-
-  const controlRows = useMemo(() => {
-    if (!control) return [];
-    const texto = controlBusqueda.trim().toLowerCase();
-    return control.data
-      .filter((f) => !controlGrupo || f.groupName === controlGrupo)
-      .map((f) => {
-        // En Antioquia el municipio es un proyecto; en Valle y Quindío va dentro del
-        // nombre de la unión temporal. La empresa matriz nunca es un municipio, así
-        // que si el nombre no cambia al quitarle el prefijo se deja vacío.
-        let municipio = '';
-        if (f.projectName) {
-          municipio = getMunicipioName(f.projectName);
-        } else if (f.companyName) {
-          const limpio = getMunicipioName(f.companyName);
-          if (limpio !== f.companyName) municipio = limpio;
-        }
-        return { ...f, municipio, tipoObra: tipoObraDe(f.tipoObra) };
-      })
-      .filter((f) => {
-        if (!texto) return true;
-        return [
-          f.municipio,
-          f.purchaseOrderNumber,
-          f.invoiceNumber ?? '',
-          f.materialDescription,
-          f.tipoObra,
-          f.requisitionNumber,
-        ].some((v) => v.toLowerCase().includes(texto));
-      });
-  }, [control, controlGrupo, controlBusqueda]);
-
-  const controlTotalCantidad = useMemo(
-    () => controlRows.reduce((suma, f) => suma + f.quantity, 0),
-    [controlRows]
   );
 
   // ── Proveedores: carga (filtro proveedor/año va al backend) ──
@@ -1074,28 +998,12 @@ export default function AuditoriasComprasPage() {
             Registros
           </Button>
           <Button
-            variant={activeTab === 'matriz' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('matriz')}
-            className={activeTab === 'matriz' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
-          >
-            <Grid3x3 className="w-4 h-4 mr-2" />
-            Matriz de Estados
-          </Button>
-          <Button
             variant={activeTab === 'graficos' ? 'default' : 'outline'}
             onClick={() => setActiveTab('graficos')}
             className={activeTab === 'graficos' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
           >
             <BarChart2 className="w-4 h-4 mr-2" />
             Gráficos
-          </Button>
-          <Button
-            variant={activeTab === 'control' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('control')}
-            className={activeTab === 'control' ? 'bg-[hsl(var(--canalco-primary))] text-white' : ''}
-          >
-            <Lightbulb className="w-4 h-4 mr-2" />
-            Control de Compras
           </Button>
           <Button
             variant={activeTab === 'proveedores' ? 'default' : 'outline'}
@@ -1303,9 +1211,8 @@ export default function AuditoriasComprasPage() {
                                   Cargando las órdenes de compra…
                                 </p>
                               )}
-                              {/* Recorrido de estados de la requisición: lo que la
-                                  pestaña Matriz muestra por fila, aquí sin cambiar de
-                                  pestaña. */}
+                              {/* Recorrido de estados de la requisición, desplegable
+                                  desde la propia fila. */}
                               {!cargandoOc && ordenes && ordenes.estados.length > 0 && (
                                 <div className="mb-3">
                                   <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1.5">
@@ -1483,215 +1390,6 @@ export default function AuditoriasComprasPage() {
         )}
         </>}
 
-        {/* ── MATRIZ TAB ── */}
-        {activeTab === 'matriz' && (
-          <div>
-            {/* Summary counts */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              {[
-                { label: 'Requisiciones en vista', value: matrixData?.rows.length ?? '—', color: 'border-[hsl(var(--canalco-primary))] bg-orange-50 text-orange-800' },
-                { label: 'Actividad últ. 7 días', value: auditStats?.recentLogs ?? '—', color: 'border-orange-400 bg-orange-50 text-orange-700' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className={`rounded-lg border-l-4 p-3 ${color}`}>
-                  <p className="text-2xl font-bold">{value}</p>
-                  <p className="text-xs font-medium mt-0.5 opacity-80">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Filter bar */}
-            <div className="mb-4 bg-white rounded-lg shadow-sm border border-[hsl(var(--canalco-neutral-300))] p-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Search className="w-4 h-4 text-[hsl(var(--canalco-neutral-600))] flex-shrink-0" />
-                <Input
-                  placeholder="N° Requisición"
-                  value={matrixSearch}
-                  onChange={(e) => setMatrixSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleMatrixSearch()}
-                  className="h-9 text-sm w-36"
-                />
-                <Input
-                  placeholder="Empresa / Proyecto"
-                  value={matrixCompany}
-                  onChange={(e) => setMatrixCompany(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleMatrixSearch()}
-                  className="h-9 text-sm w-44"
-                />
-                <Select
-                  value={matrixStateFilter}
-                  onValueChange={(val) => setMatrixStateFilter(val === '_all' ? '' : val)}
-                >
-                  <SelectTrigger className="h-9 text-sm w-44">
-                    <SelectValue placeholder="Filtrar por estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all">Todos los estados</SelectItem>
-                    {(matrixData?.actions ?? []).map((action) => (
-                      <SelectItem key={action} value={action}>
-                        {MATRIX_ACTION_LABELS[action] || action}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="date"
-                  value={matrixFromDate}
-                  onChange={(e) => setMatrixFromDate(e.target.value)}
-                  className="h-9 text-sm w-36"
-                />
-                <Input
-                  type="date"
-                  value={matrixToDate}
-                  onChange={(e) => setMatrixToDate(e.target.value)}
-                  className="h-9 text-sm w-36"
-                />
-                <Button
-                  onClick={handleMatrixSearch}
-                  disabled={matrixLoading}
-                  className="bg-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/90 text-white h-9 px-5"
-                >
-                  <Search className="w-4 h-4 mr-2" />
-                  Buscar
-                </Button>
-                {(matrixApplied.search || matrixApplied.from || matrixApplied.to || matrixApplied.company || matrixStateFilter) && (
-                  <Button variant="outline" onClick={handleMatrixClear} disabled={matrixLoading} className="h-9 px-3" title="Limpiar filtros">
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Loading */}
-            {matrixLoading && (
-              <div className="flex items-center justify-center py-16">
-                <div className="animate-spin w-12 h-12 border-4 border-[hsl(var(--canalco-primary))] border-t-transparent rounded-full" />
-              </div>
-            )}
-
-            {/* Matrix table */}
-            {!matrixLoading && matrixData && (() => {
-              const visibleRows = matrixStateFilter
-                ? matrixData.rows.filter((r) => !!r.events[matrixStateFilter])
-                : matrixData.rows;
-              return (
-              <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="text-xs border-collapse" style={{ minWidth: 'max-content' }}>
-                    <thead>
-                      <tr className="bg-[hsl(var(--canalco-primary))] text-white">
-                        <th
-                          style={{ left: 0, minWidth: 120 }}
-                          className="sticky z-20 bg-[hsl(var(--canalco-primary))] px-3 py-2 text-left font-semibold border-r border-white/20"
-                        >
-                          N° Requisición
-                        </th>
-                        <th
-                          style={{ left: 120, minWidth: 140 }}
-                          className="sticky z-20 bg-[hsl(var(--canalco-primary))] px-3 py-2 text-left font-semibold border-r border-white/20"
-                        >
-                          Empresa
-                        </th>
-                        {matrixData.actions.map((action) => (
-                          <th
-                            key={action}
-                            className="px-2 py-2 text-center font-semibold border-r border-white/20 whitespace-nowrap"
-                            style={{ minWidth: 130 }}
-                          >
-                            {MATRIX_ACTION_LABELS[action] || action}
-                          </th>
-                        ))}
-                        <th
-                          className="px-3 py-2 text-center font-semibold border-r border-white/20 whitespace-nowrap"
-                          style={{ minWidth: 140 }}
-                        >
-                          Estado
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleRows.map((row, rowIdx) => {
-                        const rowBg = rowIdx % 2 === 0 ? 'bg-white' : 'bg-[hsl(var(--canalco-neutral-50))]';
-                        return (
-                          <tr
-                            key={row.requisitionId}
-                            className={`group border-b border-[hsl(var(--canalco-neutral-200))] cursor-pointer hover:bg-blue-50 ${rowBg}`}
-                            onClick={() => navigate(`/dashboard/auditorias/compras/detalle/${row.requisitionId}`)}
-                          >
-                            <td
-                              style={{ left: 0, minWidth: 120 }}
-                              className={`sticky z-10 px-3 py-1.5 font-medium text-[hsl(var(--canalco-primary))] border-r border-[hsl(var(--canalco-neutral-200))] group-hover:bg-blue-50 ${rowBg}`}
-                            >
-                              {row.requisitionNumber}
-                            </td>
-                            <td
-                              style={{ left: 120, minWidth: 140 }}
-                              className={`sticky z-10 px-3 py-1.5 text-[hsl(var(--canalco-neutral-700))] border-r border-[hsl(var(--canalco-neutral-200))] group-hover:bg-blue-50 truncate max-w-[140px] ${rowBg}`}
-                            >
-                              {row.companyName}
-                            </td>
-                            {matrixData.actions.map((action, actionIdx) => {
-                              const date = row.events[action];
-                              const elapsed = date
-                                ? getElapsedFromPrev(row.events, matrixData.actions, actionIdx, festivos)
-                                : null;
-                              const colorClass = MATRIX_ACTION_COLORS[action] || 'bg-gray-100 text-gray-700';
-                              return (
-                                <td
-                                  key={action}
-                                  className="px-2 py-1.5 text-center border-r border-[hsl(var(--canalco-neutral-100))]"
-                                  style={{ minWidth: 130 }}
-                                >
-                                  {date ? (
-                                    <div className="flex flex-col items-center gap-0.5">
-                                      <span className={`inline-block rounded px-1.5 py-0.5 font-medium text-[11px] ${colorClass}`}>
-                                        {formatMatrixDate(date)}
-                                      </span>
-                                      {elapsed && (
-                                        <span className="text-[10px] text-[hsl(var(--canalco-neutral-500))]">
-                                          ▲ {elapsed}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="text-[hsl(var(--canalco-neutral-300))]">—</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td
-                              className="px-2 py-2 text-center border-r border-[hsl(var(--canalco-neutral-100))]"
-                              style={{ minWidth: 180 }}
-                            >
-                              {row.currentStatus ? (
-                                <span
-                                  className="inline-block rounded px-2 py-1 font-medium text-[11px] text-white leading-tight"
-                                  style={{ backgroundColor: row.currentStatus.color || '#6b7280', maxWidth: 170, wordBreak: 'break-word' }}
-                                >
-                                  {row.currentStatus.name}
-                                </span>
-                              ) : (
-                                <span className="text-[hsl(var(--canalco-neutral-300))]">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border-t border-[hsl(var(--canalco-neutral-200))] px-4 py-3 text-sm text-[hsl(var(--canalco-neutral-600))] flex items-center justify-between">
-                  <span>
-                    {visibleRows.length}{matrixStateFilter && visibleRows.length !== matrixData.rows.length ? ` de ${matrixData.rows.length}` : ''} requisiciones · {matrixData.actions.length} estados visibles
-                    {matrixStateFilter && <span className="ml-2 text-[hsl(var(--canalco-primary))] font-medium">· con {MATRIX_ACTION_LABELS[matrixStateFilter] || matrixStateFilter}</span>}
-                  </span>
-                  <span className="text-xs text-[hsl(var(--canalco-neutral-400))]">▲ = tiempo desde el estado anterior, en días hábiles (sin fines de semana ni festivos) · Clic en fila para ver detalle</span>
-                </div>
-              </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* ── GRÁFICOS TAB ── */}
         {activeTab === 'graficos' && (
           <div>
@@ -1833,7 +1531,7 @@ export default function AuditoriasComprasPage() {
                     Actividad por mes
                   </h3>
                   <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mb-6">
-                    Basado en los datos cargados en la matriz · desde 10/01/2026
+                    Basado en la actividad registrada · desde 10/01/2026
                   </p>
 
                   {monthlyChartData.length === 0 ? (
@@ -2336,165 +2034,6 @@ export default function AuditoriasComprasPage() {
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* ── CONTROL DE COMPRAS TAB ── */}
-        {activeTab === 'control' && (
-          <div>
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                Control de compra de materiales: una fila por ítem de orden de compra, con
-                su factura cuando ya está registrada. La información es de solo lectura.
-              </p>
-            </div>
-
-            {/* Filtros */}
-            <div className="mb-4 bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] p-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-[220px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--canalco-neutral-500))]" />
-                  <Input
-                    placeholder="Municipio, orden, factura, material…"
-                    value={controlBusqueda}
-                    onChange={(e) => setControlBusqueda(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-
-                <Select value={controlGrupo} onValueChange={setControlGrupo}>
-                  <SelectTrigger className="w-[240px]">
-                    <SelectValue placeholder="Tipo de material" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(control?.groups ?? []).map((g) => (
-                      <SelectItem key={g.groupId} value={g.name}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={controlAnio} onValueChange={setControlAnio}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Año" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los años</SelectItem>
-                    {(control?.years ?? []).map((a) => (
-                      <SelectItem key={a} value={String(a)}>
-                        {a}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <label className="flex items-center gap-2 text-sm text-[hsl(var(--canalco-neutral-700))] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={controlSoloFacturadas}
-                    onChange={(e) => setControlSoloFacturadas(e.target.checked)}
-                    className="rounded border-[hsl(var(--canalco-neutral-300))]"
-                  />
-                  Solo con factura
-                </label>
-
-                {(controlBusqueda || controlAnio !== 'todos' || controlSoloFacturadas) && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setControlBusqueda('');
-                      setControlAnio('todos');
-                      setControlSoloFacturadas(false);
-                    }}
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Limpiar
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Tabla */}
-            <div className="bg-white rounded-lg border border-[hsl(var(--canalco-neutral-200))] overflow-hidden">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-[hsl(var(--canalco-neutral-100))]">
-                      <TableHead className="w-16">Ítem</TableHead>
-                      <TableHead>Municipio</TableHead>
-                      <TableHead>Orden de Compra</TableHead>
-                      <TableHead>Fecha Factura</TableHead>
-                      <TableHead>Factura</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Tipo de Obra</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead>Requisición</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {controlLoading && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
-                          Cargando…
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {!controlLoading && controlRows.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-10 text-[hsl(var(--canalco-neutral-500))]">
-                          No hay compras que coincidan con el filtro.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {!controlLoading && controlRows.map((f, i) => (
-                      <TableRow key={f.poItemId}>
-                        <TableCell className="text-[hsl(var(--canalco-neutral-500))]">{i + 1}</TableCell>
-                        <TableCell className="font-medium">
-                          {f.municipio || (
-                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{f.purchaseOrderNumber}</TableCell>
-                        <TableCell>
-                          {f.invoiceDate ? formatDateShort(f.invoiceDate) : (
-                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {f.invoiceNumber ?? (
-                            <span className="text-[hsl(var(--canalco-neutral-400))]">Sin factura</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{f.materialDescription}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {f.tipoObra || (
-                            <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {f.quantity.toLocaleString('es-CO')}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-[hsl(var(--canalco-neutral-500))]">
-                          {f.requisitionNumber}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {!controlLoading && controlRows.length > 0 && (
-                <div className="flex justify-between items-center px-4 py-3 border-t border-[hsl(var(--canalco-neutral-200))] bg-[hsl(var(--canalco-neutral-50))] text-sm">
-                  <span className="text-[hsl(var(--canalco-neutral-600))]">
-                    {controlRows.length} {controlRows.length === 1 ? 'compra' : 'compras'}
-                  </span>
-                  <span className="font-semibold">
-                    Total: {controlTotalCantidad.toLocaleString('es-CO')} unidades
-                  </span>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
