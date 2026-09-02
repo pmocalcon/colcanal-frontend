@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
@@ -87,6 +87,12 @@ interface HorasExtrasState {
    * periodo de la planilla; por eso se conserva aunque el formato ya no lo pida suelto.
    */
   periodo: string;
+  /**
+   * Texto libre del recuadro OBSERVACIONES. Nace en blanco: la autorización marco del
+   * 14/02/2023 valía para el mantenimiento de Antioquia, no para toda planilla, así que
+   * quien reporta escribe la que corresponde a estas horas.
+   */
+  observaciones: string;
   filas: Fila[];
 }
 
@@ -96,7 +102,7 @@ const filaVacia = (): Fila => ({
 });
 
 const EMPTY: HorasExtrasState = {
-  nombre: '', cedula: '', mes: '', anio: '', cargo: '', ciudad: '', periodo: '',
+  nombre: '', cedula: '', mes: '', anio: '', cargo: '', ciudad: '', periodo: '', observaciones: '',
   // La planilla nace con renglones en blanco, como el impreso: se llena de arriba abajo
   // sin tener que pulsar «Agregar» en cada línea.
   filas: Array.from({ length: 12 }, filaVacia),
@@ -288,6 +294,11 @@ export default function HorasExtrasPage() {
           body { background: #fff !important; }
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; }
+          /* La letra subió a 12 px y con ella el ancho del formato (1330 px), pero la
+             carta apaisada sigue midiendo lo mismo: ~995 px con márgenes de 8 mm. Sin
+             esta reducción la tabla se parte en dos hojas, y no se deja al criterio del
+             navegador: con la escala de impresión en 100 % nadie la ajusta por uno. */
+          .doc { zoom: 0.74; }
         }
       `}</style>
 
@@ -324,29 +335,29 @@ export default function HorasExtrasPage() {
           />
         )}
 
-        <div className="doc bg-white border border-black text-[9px] text-black shadow-md overflow-x-auto">
+        <div className="doc bg-white border border-black text-[12px] text-black shadow-md overflow-x-auto">
 
           {/* Encabezado del formato */}
           {/* Los anchos van con su logo, no con su posición: Canales necesita más
               caja que Alumbrado, así que al cambiarlos de lado se cambian los dos. */}
-          <div className="grid grid-cols-[160px_1fr_130px_130px] border-b border-black min-w-[1000px]">
+          <div className="grid grid-cols-[160px_1fr_130px_130px] border-b border-black min-w-[1330px]">
             <div className="flex items-center justify-center p-2 border-r border-black">
               <img src="/assets/images/logo-canalco.png" alt="Canales y Contactos" className="max-h-10 object-contain" />
             </div>
-            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[13px] tracking-wide border-r border-black text-black">
+            <div className="flex items-center justify-center text-center px-3 py-2 font-bold text-[16px] tracking-wide border-r border-black text-black">
               HORAS EXTRAS PERSONAL
             </div>
             <div className="flex items-center justify-center p-2 border-r border-black">
               <img src="/assets/images/logo-alumbrado.png" alt="Alumbrado Público" className="max-h-10 object-contain" />
             </div>
-            <div className="grid grid-cols-[auto_1fr] text-[9px] content-start">
+            <div className="grid grid-cols-[auto_1fr] text-[12px] content-start">
               <Meta label="CÓDIGO:" value="GTH-011-F" />
               <Meta label="FECHA:" value="16/02/2026" />
               <Meta label="VERSIÓN:" value="4" last />
             </div>
           </div>
 
-          <p className="px-2 py-1 text-center font-bold border-b border-black min-w-[1000px]">
+          <p className="px-2 py-1 text-center font-bold border-b border-black min-w-[1330px]">
             Horario de jornada laboral establecido:{' '}
             <span className="font-normal">
               De lunes a Viernes de 7:30 a.m. a 12 p.m. y de 1:30 p.m. a 4:30 p.m. Sábados de 8 a.m. a 12:30 p.m.
@@ -355,13 +366,13 @@ export default function HorasExtrasPage() {
 
           {/* Datos del trabajador (campos del formato oficial). El valor hora ya no se
               teclea: la nómina lo calcula con el salario de la ficha ÷ 210. */}
-          <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
+          <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
             <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} />
             <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} onBlur={prellenar} readOnly={locked} />
             <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} />
             <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} last />
           </div>
-          <div className="grid grid-cols-4 border-b border-black min-w-[1000px]">
+          <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
             <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
             <div className="border-r border-black" />
             <div className="border-r border-black" />
@@ -369,7 +380,7 @@ export default function HorasExtrasPage() {
           </div>
 
           {/* Registro diario */}
-          <table className="border-collapse w-full min-w-[1000px] text-[9px]">
+          <table className="border-collapse w-full min-w-[1330px] text-[12px]">
             <thead>
               <tr className="bg-[hsl(var(--canalco-neutral-200))] font-bold text-center">
                 <Th rowSpan={2}>PROYECTO</Th>
@@ -446,17 +457,14 @@ export default function HorasExtrasPage() {
             </tbody>
           </table>
 
-          {/* Observaciones — autorización marco del 14/02/2023, tal como el formato oficial. */}
-          <div className="border-t border-black px-2 py-1.5 min-w-[1000px] leading-snug">
-            <b>OBSERVACIONES:</b> El 14/02/2023 la representante legal y el director de proyectos
-            autorizan la remuneración en dinero de las horas extras que requiera trabajar el personal
-            operativo para cumplir con las labores de mantenimiento en todos los municipios de
-            Antioquia. Estas horas se reconocerán siempre y cuando el supervisor autorice previamente
-            las labores.
+          {/* Observaciones: casilla en blanco, la escribe quien reporta. */}
+          <div className="border-t border-black px-2 py-1.5 min-w-[1330px] leading-snug">
+            <b>OBSERVACIONES:</b>{' '}
+            <Observaciones value={f.observaciones} onChange={(v) => set('observaciones', v)} readOnly={locked} />
           </div>
 
           {/* Pie de firmas del formato oficial. Los nombres van fijos, como en la plantilla. */}
-          <div className="grid grid-cols-4 border-t border-black min-w-[1000px]">
+          <div className="grid grid-cols-4 border-t border-black min-w-[1330px]">
             <Firma titulo="Reportado por:" nombre="" cargo="Jefe inmediato" />
             <Firma titulo="Revisado por:" nombre="Andres Felipe Gomez Lopez" cargo="Director Tecnico" />
             <Firma titulo="Aprobado por:" nombre="Lorena Martinez Jurado" cargo="Gerencia de Proyectos" />
@@ -597,6 +605,33 @@ function Meta({ label, value, last }: { label: string; value: string; last?: boo
   );
 }
 
+/**
+ * El recuadro de OBSERVACIONES. Crece con lo que se escribe en vez de dejar una barra de
+ * desplazamiento: en pantalla se ve todo y, sobre todo, se imprime todo —un textarea con
+ * scroll manda al papel solo la parte visible.
+ */
+function Observaciones({ value, onChange, readOnly }: {
+  value: string; onChange: (v: string) => void; readOnly?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      readOnly={readOnly}
+      rows={2}
+      className="w-full bg-transparent outline-none resize-none overflow-hidden leading-snug align-top"
+    />
+  );
+}
+
 /** Una casilla del pie de firmas: título, espacio para firmar, nombre y cargo. */
 function Firma({ titulo, nombre, cargo, last }: {
   titulo: string; nombre: string; cargo: string; last?: boolean;
@@ -621,7 +656,7 @@ function DatoSelect({ label, value, onChange, opciones, last, readOnly }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
-        className="flex-grow min-w-0 bg-transparent outline-none text-[9px]"
+        className="flex-grow min-w-0 bg-transparent outline-none text-[12px]"
       >
         <option value="" />
         {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -641,7 +676,7 @@ function Dato({ label, value, onChange, onBlur, last, readOnly }: {
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         readOnly={readOnly}
-        className="flex-grow min-w-0 bg-transparent outline-none text-[9px]"
+        className="flex-grow min-w-0 bg-transparent outline-none text-[12px]"
       />
     </div>
   );
@@ -675,7 +710,7 @@ function Cel({ value, onChange, centro, readOnly }: {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       readOnly={readOnly}
-      className={'w-full bg-transparent outline-none text-[9px] ' + (centro ? 'text-center' : '')}
+      className={'w-full bg-transparent outline-none text-[12px] ' + (centro ? 'text-center' : '')}
     />
   );
 }
