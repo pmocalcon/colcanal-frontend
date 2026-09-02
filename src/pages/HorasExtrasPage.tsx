@@ -165,6 +165,31 @@ export default function HorasExtrasPage() {
     setF((p) => ({ ...p, [k]: v }));
 
   /**
+   * Ajusta el formato al ancho disponible. No se calcula contra un número fijo: se mide
+   * lo que el documento pide de verdad (`scrollWidth` con el zoom en 1) y se divide por
+   * lo que hay, así el día que se agregue o se quite una columna sigue cuadrando solo.
+   * Nunca agranda: por encima de su tamaño el formato se ve borroso y desalineado.
+   */
+  const docRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const doc = docRef.current;
+    const caja = doc?.parentElement;
+    if (!caja || !doc) return;
+    const ajustar = () => {
+      doc.style.zoom = '1';
+      const necesario = doc.scrollWidth;
+      const disponible = caja.clientWidth;
+      if (necesario > disponible && disponible > 0) doc.style.zoom = String(disponible / necesario);
+    };
+    ajustar();
+    // Se observa la caja, no el documento: el documento cambia de tamaño al aplicarle el
+    // zoom y observarlo daría un lazo infinito.
+    const ro = new ResizeObserver(ajustar);
+    ro.observe(caja);
+    return () => ro.disconnect();
+  }, [loading]);
+
+  /**
    * Con la cédula llegan el nombre y el cargo de la ficha de personal. Se dispara al salir
    * de la casilla —no en cada tecla— y solo llena lo que está en blanco, para no pisar lo
    * que alguien acabe de escribir. La cédula se normaliza a solo dígitos: la ficha, la
@@ -298,7 +323,7 @@ export default function HorasExtrasPage() {
              carta apaisada sigue midiendo lo mismo: ~995 px con márgenes de 8 mm. Sin
              esta reducción la tabla se parte en dos hojas, y no se deja al criterio del
              navegador: con la escala de impresión en 100 % nadie la ajusta por uno. */
-          .doc { zoom: 0.74; }
+          .doc { zoom: 0.73 !important; }
         }
       `}</style>
 
@@ -335,7 +360,12 @@ export default function HorasExtrasPage() {
           />
         )}
 
-        <div className="doc bg-white border border-black text-[12px] text-black shadow-md overflow-x-auto">
+        {/* El formato mide lo que mide —1330 px de tabla— y la pantalla casi nunca los
+            tiene. En vez de dejar una barra horizontal, que obliga a arrastrar para ver
+            las últimas columnas y las firmas, se encoge hasta caber. `overflow-x-auto`
+            se deja de red: si el navegador no entiende `zoom`, vuelve la barra en lugar
+            de recortar el formato. */}
+        <div ref={docRef} className="doc bg-white border border-black text-[12px] text-black shadow-md overflow-x-auto">
 
           {/* Encabezado del formato */}
           {/* Los anchos van con su logo, no con su posición: Canales necesita más
