@@ -44,6 +44,7 @@ export const PRESTAMO_OBLIGATORIOS: CampoExigido[] = [
   { campo: 'salario', etiqueta: 'Salario' },
   { campo: 'valorSolicitado', etiqueta: 'Valor solicitado' },
   { campo: 'motivo', etiqueta: 'Motivo del préstamo' },
+  { campo: 'pagareLink', etiqueta: 'Soporte del pagaré (enlace al documento firmado)' },
 ];
 
 /** Las horas solo importan si el permiso ocurre dentro de un mismo día. */

@@ -479,6 +479,48 @@ export default function SolicitudPrestamoPage() {
             <Celda label="Motivo de la Solicitud:" value={f.motivo} onChange={(v) => set('motivo', v)} readOnly={locked} last area />
           </div>
 
+          {/* Va antes de las condiciones porque es del solicitante y aquéllas son de
+              Dirección Administrativa: el formato se lee de arriba abajo cambiando de
+              dueño una sola vez.
+
+              Se puede escribir en el borrador y también después de radicado, porque la
+              política dice que el pagaré se firma «antes de la entrega del dinero», o sea
+              cuando ya aprobaron. Si solo se pudiera en borrador habría que adjuntar un
+              documento que todavía no existe; si solo después, no se podría dejar listo
+              cuando ya se tiene. */}
+          <div className="px-2 py-1 border-b border-black flex items-baseline gap-2">
+            <span className="font-bold whitespace-nowrap">Soporte del pagaré:</span>
+            <span className="font-normal italic text-[9px] text-[#4a4a63] whitespace-nowrap">
+              (lo adjunta el solicitante · el pagaré debe estar firmado)
+            </span>
+            <input
+              value={f.pagareLink}
+              onChange={(v) => set('pagareLink', v.target.value)}
+              onBlur={guardarPagare}
+              readOnly={locked && (!esCreador || terminalPrestamo)}
+              placeholder="Enlace al pagaré YA FIRMADO"
+              className="flex-grow min-w-0 bg-transparent outline-none border-b border-black text-[11px]"
+            />
+            {/* En el impreso el enlace se lee; en pantalla abre el documento. */}
+            {f.pagareLink.trim() && (
+              <a
+                href={f.pagareLink.trim()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="no-print inline-flex items-center gap-1 text-[10px] text-blue-700 underline whitespace-nowrap"
+              >
+                <ExternalLink className="w-3 h-3" /> Abrir
+              </a>
+            )}
+          </div>
+          {/* La advertencia va en el formato y no solo en la pantalla: el papel se
+              archiva, y quien lo revise dentro de un año tiene que poder ver que lo que
+              se exigia era un pagare firmado, no cualquier borrador. */}
+          <p className="px-2 py-1 text-[8.5px] italic text-[#4a4a63] border-b border-black">
+            El documento del pagaré que se enlace debe estar <b>firmado</b>. Un pagaré sin
+            firma no sirve como soporte para la empresa.
+          </p>
+
           {/* Condiciones del préstamo: cómo se desembolsa y cómo se descuenta. Las fija
               Dirección Administrativa en su paso, que es quien conoce la nómina; el
               empleado las ve pero no las escribe. */}
@@ -519,38 +561,6 @@ export default function SolicitudPrestamoPage() {
             además firmará un pagaré, antes de la entrega del dinero como soporte para la empresa.
           </p>
 
-          {/* Va pegado a la política porque es la prueba de que se cumplió: el pagaré que
-              ese párrafo exige. Lo adjunta el solicitante, no Dirección Administrativa.
-
-              Y se deja escribir mientras la solicitud siga viva, no solo en borrador: la
-              política dice que el pagaré se firma «antes de la entrega del dinero», o sea
-              después de que aprueban. Si solo se pudiera en borrador habría que adjuntar
-              un documento que todavía no existe. */}
-          <div className="px-2 py-1 border-b border-black flex items-baseline gap-2">
-            <span className="font-bold whitespace-nowrap">Soporte del pagaré:</span>
-            <span className="font-normal italic text-[9px] text-[#4a4a63] whitespace-nowrap">
-              (lo adjunta el solicitante)
-            </span>
-            <input
-              value={f.pagareLink}
-              onChange={(v) => set('pagareLink', v.target.value)}
-              onBlur={guardarPagare}
-              readOnly={!esCreador || terminalPrestamo}
-              placeholder="Pega aquí el enlace al pagaré firmado"
-              className="flex-grow min-w-0 bg-transparent outline-none border-b border-black text-[11px]"
-            />
-            {/* En el impreso el enlace se lee; en pantalla abre el documento. */}
-            {f.pagareLink.trim() && (
-              <a
-                href={f.pagareLink.trim()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="no-print inline-flex items-center gap-1 text-[10px] text-blue-700 underline whitespace-nowrap"
-              >
-                <ExternalLink className="w-3 h-3" /> Abrir
-              </a>
-            )}
-          </div>
 
           {/* Firmas del empleado y de Administrativa */}
           <div className="grid grid-cols-2 border-b border-black">
