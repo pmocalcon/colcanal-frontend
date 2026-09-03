@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_HORAS_EXTRAS } from '@/config/formatosGestion';
@@ -568,6 +569,8 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
 
   return (
     <div className="no-print mb-6 bg-white border border-[#e6e6f0] rounded-xl shadow-sm p-4 space-y-4">
+      <AvisoAnulacion sol={sol} />
+
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-[#4a4a63]">Estado de la planilla:</span>
         <span className={`text-sm font-medium rounded px-2.5 py-1 ${estadoBadgeClass(estado)}`}>
@@ -595,7 +598,7 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
         </div>
       )}
 
-      {terminal && (
+      {estado === 'aprobado' && (
         <p className="text-xs font-medium text-green-700">
           ✓ Planilla aprobada. Lista para liquidar en nómina.
           {acciones.length > 0 && (
@@ -626,6 +629,16 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
       {acciones.length === 0 && !terminal && (
         <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
       )}
+
+      {/* Anular no es un paso del trámite sino salirse de él, así que va separado
+          de «Aprobar» y «Devolver». Quien la puede pedir es el solicitante o quien
+          la tenga ahora en su bandeja; el backend lo vuelve a comprobar. */}
+      <BotonesAnulacion
+        estado={estado}
+        nombreRol={nombreRol}
+        puedeSolicitar={esCreador || acciones.length > 0}
+        onAccion={onAccion}
+      />
 
       {sol.historial && sol.historial.length > 0 && (
         <div className="pt-3 border-t border-[#e6e6f0]">
