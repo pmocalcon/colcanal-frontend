@@ -3,6 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CamposFaltantes, claseFalta } from '@/components/gestionConocimiento/CamposFaltantes';
+import {
+  HORAS_EXTRAS_OBLIGATORIOS,
+  camposFaltantes,
+  etiquetasFaltantes,
+  filasFaltantes,
+} from '@/utils/camposObligatorios';
 import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
@@ -164,6 +171,31 @@ export default function HorasExtrasPage() {
 
   const set = <K extends keyof HorasExtrasState>(k: K, v: HorasExtrasState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
+
+  /*
+   * Lo que falta por diligenciar, recalculado en cada tecla. El servidor lo vuelve a
+   * comprobar al enviar y es el que manda; esto existe para no llegar hasta el botón
+   * para enterarse de que faltaba una casilla del primer renglón.
+   */
+  const faltanCampos = camposFaltantes(HORAS_EXTRAS_OBLIGATORIOS, f);
+  const faltanFilas = filasFaltantes(f.filas);
+  const faltanEtiquetas = [
+    ...etiquetasFaltantes(HORAS_EXTRAS_OBLIGATORIOS, f),
+    ...faltanFilas.flatMap((x) => {
+      const n = x.fila + 1;
+      const nombres: Record<string, string> = {
+        fecha: 'Fecha', proyecto: 'Proyecto', region: 'Región',
+        horaEntrada: 'Hora de entrada', horaSalida: 'Hora de salida', labor: 'Labor ejecutada',
+      };
+      return [
+        ...[...x.campos].map((c) => `Renglón ${n}: ${nombres[c] ?? c}`),
+        ...(x.sinHoras ? [`Renglón ${n}: sin horas`] : []),
+      ];
+    }),
+    ...(f.filas.some((x) => Object.values(x.horas).some((h) => String(h).trim())) ? [] : ['Al menos un renglón con horas']),
+  ];
+  /** Las faltas de cada renglón, para pintar la casilla concreta. */
+  const faltaEnFila = new Map(faltanFilas.map((x) => [x.fila, x]));
 
   /**
    * Ajusta el formato al ancho disponible. No se calcula contra un número fijo: se mide
@@ -361,6 +393,14 @@ export default function HorasExtrasPage() {
           />
         )}
 
+        {/* Solo mientras se puede escribir: en un formato ya enviado el aviso no
+            serviria de nada, porque nadie puede corregirlo. */}
+        {!locked && (
+          <div className="mb-4">
+            <CamposFaltantes faltan={faltanEtiquetas} />
+          </div>
+        )}
+
         {/* El formato mide lo que mide —1330 px de tabla— y la pantalla casi nunca los
             tiene. En vez de dejar una barra horizontal, que obliga a arrastrar para ver
             las últimas columnas y las firmas, se encoge hasta caber. `overflow-x-auto`
@@ -398,16 +438,16 @@ export default function HorasExtrasPage() {
           {/* Datos del trabajador (campos del formato oficial). El valor hora ya no se
               teclea: la nómina lo calcula con el salario de la ficha ÷ 210. */}
           <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
-            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} />
-            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} onBlur={prellenar} readOnly={locked} />
-            <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} />
-            <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} last />
+            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} falta={faltanCampos.has('nombre')} />
+            <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} onBlur={prellenar} readOnly={locked} falta={faltanCampos.has('cedula')} />
+            <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} falta={faltanCampos.has('mes')} />
+            <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} falta={faltanCampos.has('anio')} last />
           </div>
           <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
-            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
+            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} falta={faltanCampos.has('cargo')} />
             <div className="border-r border-black" />
             <div className="border-r border-black" />
-            <Dato label="CIUDAD:" value={f.ciudad} onChange={(v) => set('ciudad', v)} readOnly={locked} last />
+            <Dato label="CIUDAD:" value={f.ciudad} onChange={(v) => set('ciudad', v)} readOnly={locked} falta={faltanCampos.has('ciudad')} last />
           </div>
 
           {/* Registro diario */}
@@ -439,23 +479,31 @@ export default function HorasExtrasPage() {
             <tbody>
               {f.filas.map((fila, i) => {
                 const horas = horasDe(fila);
+                // Un renglon que nadie empezo a llenar no se marca: la planilla nace con
+                // doce para poder escribir de corrido, y pintarlos todos de rojo llenaria
+                // la hoja de avisos por casillas que nadie pensaba llenar.
+                const falta = faltaEnFila.get(i);
+                const pinta = (campo: string) => claseFalta(!!falta?.campos.has(campo));
                 return (
                   <tr key={i}>
-                    <Td><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={locked} /></Td>
-                    <Td><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={locked} /></Td>
-                    <Td><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={locked} /></Td>
-                    <Td><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={locked} centro /></Td>
-                    <Td><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={locked} centro /></Td>
+                    <Td className={pinta('proyecto')}><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={locked} /></Td>
+                    <Td className={pinta('region')}><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={locked} /></Td>
+                    <Td className={pinta('fecha')}><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={locked} /></Td>
+                    <Td className={pinta('horaEntrada')}><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={locked} centro /></Td>
+                    <Td className={pinta('horaSalida')}><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={locked} centro /></Td>
                     <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} readOnly={locked} centro /></Td>
+                    {/* Las cinco columnas se marcan juntas cuando el renglon no trae
+                        ninguna hora: cual de las cinco corresponde lo sabe quien la
+                        trabajo, no el formato. */}
                     {TIPOS_HORA.map((t) => (
-                      <Td key={t.key}>
+                      <Td key={t.key} className={claseFalta(!!falta?.sinHoras)}>
                         <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} readOnly={locked} centro />
                       </Td>
                     ))}
                     {/* Calculada: no se teclea. */}
                     <Td className="text-center font-semibold">{horas > 0 ? horas.toLocaleString('es-CO') : ''}</Td>
                     <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={locked} centro /></Td>
-                    <Td><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={locked} /></Td>
+                    <Td className={pinta('labor')}><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={locked} /></Td>
                     {/* La firma va a mano sobre el impreso. */}
                     <Td />
                     <td className="border-0 px-0.5 no-print align-middle">
@@ -745,11 +793,11 @@ function Firma({ titulo, nombre, cargo, fecha, last }: {
 }
 
 /** Como `Dato`, pero con un desplegable de opciones (p. ej. el mes). */
-function DatoSelect({ label, value, onChange, opciones, last, readOnly }: {
-  label: string; value: string; onChange: (v: string) => void; opciones: readonly string[]; last?: boolean; readOnly?: boolean;
+function DatoSelect({ label, value, onChange, opciones, last, readOnly, falta }: {
+  label: string; value: string; onChange: (v: string) => void; opciones: readonly string[]; last?: boolean; readOnly?: boolean; falta?: boolean;
 }) {
   return (
-    <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + (last ? '' : 'border-r border-black')}>
+    <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + claseFalta(!!falta) + ' ' + (last ? '' : 'border-r border-black')}>
       <span className="font-bold whitespace-nowrap">{label}</span>
       <select
         value={value}
@@ -764,11 +812,13 @@ function DatoSelect({ label, value, onChange, opciones, last, readOnly }: {
   );
 }
 
-function Dato({ label, value, onChange, onBlur, last, readOnly }: {
+function Dato({ label, value, onChange, onBlur, last, readOnly, falta }: {
   label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; last?: boolean; readOnly?: boolean;
+  /** Obligatoria y vacia: se pinta para que se vea sin leer la lista de arriba. */
+  falta?: boolean;
 }) {
   return (
-    <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + (last ? '' : 'border-r border-black')}>
+    <div className={'px-1.5 py-0.5 flex items-baseline gap-1 ' + claseFalta(!!falta) + ' ' + (last ? '' : 'border-r border-black')}>
       <span className="font-bold whitespace-nowrap">{label}</span>
       <input
         value={value}

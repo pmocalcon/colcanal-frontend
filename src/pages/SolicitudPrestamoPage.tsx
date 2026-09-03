@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
+import { CamposFaltantes } from '@/components/gestionConocimiento/CamposFaltantes';
+import { PRESTAMO_OBLIGATORIOS, etiquetasFaltantes } from '@/utils/camposObligatorios';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_PRESTAMO } from '@/config/formatosGestion';
@@ -329,6 +331,16 @@ export default function SolicitudPrestamoPage() {
             esCreador={esCreador}
             onAccion={handleTransicion}
           />
+        )}
+
+        {/* Lo que falta por diligenciar, recalculado en cada tecla. El servidor lo
+            vuelve a comprobar al enviar y es el que manda; esto existe para no llegar
+            hasta el boton para enterarse de que faltaba una casilla. Solo mientras se
+            puede escribir: en un formato ya enviado nadie podria corregirlo. */}
+        {!locked && (
+          <div className="mb-4">
+            <CamposFaltantes faltan={etiquetasFaltantes(PRESTAMO_OBLIGATORIOS, f)} />
+          </div>
         )}
 
         <div className="doc bg-white border border-black text-[11px] text-black shadow-md">
