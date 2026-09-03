@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Banknote, Check, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Banknote, CalendarCheck, Check, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   talentoHumanoService,
@@ -307,6 +307,15 @@ export default function PrestamosListPage() {
                 : `${visibles.length} préstamos · ${totales.activos} con saldo`}
             </p>
           </div>
+
+          {/* El trabajo de todos los meses es este, no abrir un préstamo: va en la
+              cabecera y no escondido entre los filtros. */}
+          <Button
+            onClick={() => navigate('/dashboard/talento-humano/prestamos/cierre')}
+            className="bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00] gap-1.5"
+          >
+            <CalendarCheck className="w-4 h-4" /> Descuento del mes
+          </Button>
         </div>
 
         {/* Lo que de verdad importa: cuánto falta por recuperar. */}

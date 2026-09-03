@@ -165,6 +165,31 @@ export interface ThPrestamo {
   pagos?: ThPrestamoPago[];
 }
 
+/**
+ * Una línea del cierre del mes. Espeja `FilaCierre` del backend.
+ *
+ * `disponible` es el tope: el saldo más lo que ya se haya registrado de ese mismo mes.
+ * Se manda calculado desde el servidor para que la pantalla no tenga que sumarlo —y para
+ * que apague el guardado por la misma cuenta con la que el servidor lo rechazaría—.
+ */
+export interface FilaCierrePrestamo {
+  prestamoId: number;
+  nombre: string;
+  identificacion: string | null;
+  proyecto: string | null;
+  nombreNomina: string | null;
+  valorPrestamo: string | null;
+  valorCuota: string | null;
+  cuotaDescontar: string | null;
+  /** Lo último que se le descontó. Es la cuota de los préstamos que vienen sin una. */
+  ultimaCuota: number;
+  saldo: string | null;
+  disponible: number;
+  yaDescontado: number;
+  abonos: number;
+  sugerido: number;
+}
+
 export interface ResumenPrestamos {
   prestamos: number;
   activos: number;
@@ -565,6 +590,25 @@ export const talentoHumanoService = {
   },
   async resumenPrestamos() {
     const { data } = await api.get<ResumenPrestamos>(`${BASE}/prestamos/resumen`);
+    return data;
+  },
+  /** Lo que hay que descontarle este mes a cada préstamo que todavía debe. */
+  async cierrePrestamos(anio: number, mes: number) {
+    const { data } = await api.get<FilaCierrePrestamo[]>(
+      `${BASE}/prestamos/cierre?anio=${anio}&mes=${mes}`,
+    );
+    return data;
+  },
+  /** Guarda el mes entero. El servidor lo hace en una sola transacción. */
+  async guardarCierrePrestamos(
+    anio: number,
+    mes: number,
+    filas: { prestamoId: number; valor: number }[],
+  ) {
+    const { data } = await api.post<{ anio: number; mes: number; prestamos: number; total: number }>(
+      `${BASE}/prestamos/cierre`,
+      { anio, mes, filas },
+    );
     return data;
   },
   /** Trae el préstamo con su historia de descuentos. */

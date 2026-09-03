@@ -100,6 +100,7 @@ import HorasExtrasPage from './pages/HorasExtrasPage'
 import TalentoHumanoHomePage from './pages/TalentoHumanoHomePage'
 import PersonalListPage from './pages/PersonalListPage'
 import PrestamosListPage from './pages/PrestamosListPage'
+import CierrePrestamosPage from './pages/CierrePrestamosPage'
 import IncapacidadesPage from './pages/IncapacidadesPage'
 import AusentismosPage from './pages/AusentismosPage'
 import HorasExtrasListPage from './pages/HorasExtrasListPage'
@@ -355,6 +356,7 @@ export default function App() {
           <Route path="/dashboard/talento-humano" element={<TalentoHumanoHomePage />} />
           <Route path="/dashboard/talento-humano/personal" element={<PersonalListPage />} />
           <Route path="/dashboard/talento-humano/prestamos" element={<PrestamosListPage />} />
+          <Route path="/dashboard/talento-humano/prestamos/cierre" element={<CierrePrestamosPage />} />
           <Route path="/dashboard/talento-humano/incapacidades" element={<IncapacidadesPage />} />
           <Route path="/dashboard/talento-humano/ausentismos" element={<AusentismosPage />} />
           <Route path="/dashboard/talento-humano/horas-extras" element={<HorasExtrasListPage />} />
