@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, HeartPulse, Loader2, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Campo, Selector } from '@/components/talentoHumano/campos';
+import { Campo, CampoCalculado, Selector } from '@/components/talentoHumano/campos';
+import { buscarFicha, nombreDeFicha } from '@/utils/prellenarFormato';
 import { talentoHumanoService, type ThIncapacidad } from '@/services/talentoHumano.service';
 
 /**
@@ -37,6 +38,25 @@ const cop = (v: unknown) => {
 const fecha = (iso: string | null) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '');
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '—');
+};
+
+/**
+ * Los días de una incapacidad, contando los dos extremos: del 3 al 5 son **tres** días,
+ * no dos. Es como los cuenta la EPS y como está el archivo importado.
+ *
+ * Se resta en UTC a propósito. Con fechas locales, el día que cambia la hora dura 23 o 25
+ * horas y la división por 86.400.000 se corre un día; en UTC todos los días miden igual.
+ * Devuelve nulo si falta una fecha o si el fin es anterior al inicio: preferible dejar el
+ * campo como estaba a escribir un número negativo o inventado.
+ */
+const diasEntre = (inicio?: string | null, fin?: string | null): number | null => {
+  const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(inicio ?? '');
+  const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(fin ?? '');
+  if (!a || !b) return null;
+  const desde = Date.UTC(+a[1], +a[2] - 1, +a[3]);
+  const hasta = Date.UTC(+b[1], +b[2] - 1, +b[3]);
+  if (hasta < desde) return null;
+  return Math.round((hasta - desde) / 86_400_000) + 1;
 };
 
 type Borrador = Partial<ThIncapacidad>;
@@ -98,7 +118,38 @@ export default function IncapacidadesPage() {
   }, [visibles]);
 
   const set = <K extends keyof ThIncapacidad>(k: K, v: ThIncapacidad[K]) =>
-    setBorrador((p) => (p ? { ...p, [k]: v } : p));
+    setBorrador((p) => {
+      if (!p) return p;
+      const sig = { ...p, [k]: v };
+      // El total de días sale de las fechas, no se digita. Solo se pisa cuando las dos
+      // fechas dan un número: si alguna falta, se respeta lo que ya estuviera guardado
+      // —lo importado del archivo trae el total sin traer siempre las fechas—.
+      if (k === 'fechaInicio' || k === 'fechaFin') {
+        const dias = diasEntre(sig.fechaInicio, sig.fechaFin);
+        if (dias !== null) sig.totalDias = dias;
+      }
+      return sig;
+    });
+
+  /**
+   * Con la cédula llegan el nombre, la empresa y el salario de la ficha de personal. Se
+   * dispara al salir de la casilla —no en cada tecla— y solo llena lo que está en blanco,
+   * para no pisar lo que alguien acabe de escribir. La cédula se normaliza a solo dígitos:
+   * la ficha cruza por el número, no por «CC 123».
+   */
+  const prellenar = async () => {
+    const cedula = (borrador?.identificacion ?? '').replace(/\D/g, '');
+    if (!cedula) return;
+    if (cedula !== borrador?.identificacion) set('identificacion', cedula);
+    const ficha = await buscarFicha(cedula);
+    if (!ficha) return;
+    setBorrador((p) => (p ? {
+      ...p,
+      nombre: p.nombre?.trim() ? p.nombre : nombreDeFicha(ficha),
+      proyecto: p.proyecto?.trim() ? p.proyecto : (ficha.empresaProyecto ?? ''),
+      salario: String(p.salario ?? '').trim() ? p.salario : (ficha.salario ?? ''),
+    } : p));
+  };
 
   const guardar = async () => {
     if (!borrador) return;
@@ -202,7 +253,7 @@ export default function IncapacidadesPage() {
             </header>
 
             <div className="p-5 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3">
-              <Campo label="Identificación *" value={borrador.identificacion ?? ''} onChange={(v) => set('identificacion', v)} />
+              <Campo label="Identificación *" value={borrador.identificacion ?? ''} onChange={(v) => set('identificacion', v)} onBlur={prellenar} nota="Al salir de la casilla trae el nombre, la empresa y el salario de la ficha." />
               <Campo label="Nombre *" value={borrador.nombre ?? ''} onChange={(v) => set('nombre', v)} ancho="md:col-span-2" />
               <Campo label="Empresa o proyecto" value={borrador.proyecto ?? ''} onChange={(v) => set('proyecto', v)} />
 
@@ -215,7 +266,14 @@ export default function IncapacidadesPage() {
               <Campo label="Fecha fin" value={borrador.fechaFin ?? ''} onChange={(v) => set('fechaFin', v)} tipo="date" />
               <Campo label="Periodo (como se escribe)" value={borrador.periodoTexto ?? ''} onChange={(v) => set('periodoTexto', v)} ancho="md:col-span-2" />
 
-              <Campo label="Total días" value={borrador.totalDias ?? ''} onChange={(v) => set('totalDias', v === '' ? null : Number(v))} tipo="number" />
+              {/* Con las dos fechas el total no se digita. Sin ellas —registros viejos que
+                  se importaron con el total pero sin fechas— sigue siendo escribible, para
+                  no dejar un dato guardado sin manera de corregirlo. */}
+              {diasEntre(borrador.fechaInicio, borrador.fechaFin) !== null ? (
+                <CampoCalculado label="Total días" value={String(borrador.totalDias ?? '')} nota="Del inicio al fin, contando los dos días." />
+              ) : (
+                <Campo label="Total días" value={borrador.totalDias ?? ''} onChange={(v) => set('totalDias', v === '' ? null : Number(v))} tipo="number" nota="Se calcula solo al poner las dos fechas." />
+              )}
               <Campo label="Días empresa" value={borrador.diasEmpresa ?? ''} onChange={(v) => set('diasEmpresa', v === '' ? null : Number(v))} tipo="number" />
               <Campo label="Días EPS/ARL" value={borrador.diasEntidad ?? ''} onChange={(v) => set('diasEntidad', v === '' ? null : Number(v))} tipo="number" />
               <Selector label="Estado" value={borrador.estado ?? ''} opciones={ESTADOS} onChange={(v) => set('estado', v)} />

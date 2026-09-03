@@ -6,10 +6,12 @@
  * borde entre dos casillas contiguas se nota de inmediato.
  */
 
-export function Campo({ label, value, onChange, tipo, ancho, paso, nota }: {
+export function Campo({ label, value, onChange, onBlur, tipo, ancho, paso, nota }: {
   label: string;
   value: string | number;
   onChange: (v: string) => void;
+  /** Al salir de la casilla. Para lo que no se hace en cada tecla: buscar una ficha. */
+  onBlur?: () => void;
   tipo?: string;
   ancho?: string;
   /** Para los `number`: «any» deja escribir decimales sin que el navegador los rechace. */
@@ -25,6 +27,7 @@ export function Campo({ label, value, onChange, tipo, ancho, paso, nota }: {
         step={tipo === 'number' ? (paso ?? 'any') : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded px-2 py-1 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
       />
       {nota && (
