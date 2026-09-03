@@ -235,9 +235,15 @@ export default function SolicitudPermisoPage() {
     }
   };
 
-  const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
-    let motivo: string | undefined;
-    if (requiereMotivo) {
+  /**
+   * `motivoDado` llega de la anulación, que pide el motivo en su propio cuadro de
+   * diálogo —ahí cabe una explicación de verdad y se puede decir antes qué va a pasar—.
+   * El resto del flujo sigue con el prompt del navegador, que para un «devolver» de una
+   * línea alcanza.
+   */
+  const handleTransicion = async (accion: string, requiereMotivo?: boolean, motivoDado?: string) => {
+    let motivo: string | undefined = motivoDado?.trim() || undefined;
+    if (requiereMotivo && !motivo) {
       const m = window.prompt('Indica el motivo:');
       if (m === null) return;
       if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
@@ -573,7 +579,7 @@ function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
   sol: GcSolicitud;
   nombreRol?: string;
   esCreador: boolean;
-  onAccion: (accion: string, requiereMotivo?: boolean) => void;
+  onAccion: (accion: string, requiereMotivo?: boolean, motivo?: string) => void | Promise<void>;
 }) {
   const estado = sol.estado as PermisoEstado;
   const acciones = accionesDisponibles(estado, nombreRol, esCreador);
