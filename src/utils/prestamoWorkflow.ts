@@ -14,6 +14,7 @@
  */
 import { sumarDiasHabiles, diasHabilesEntre } from './juridicaWorkflow';
 import { esRolPmo } from './rolesPmo';
+import { claseAnulacion, esAnulado, etiquetaAnulacion } from './anulacionWorkflow';
 
 export type PrestamoEstado =
   | 'borrador'
@@ -102,11 +103,19 @@ const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {
   green: 'bg-green-100 text-green-800',
 };
 
-export const estadoLabel = (estado: string) => PRESTAMO_ESTADOS[estado as PrestamoEstado]?.label ?? estado;
+
+/**
+ * La etiqueta y el distintivo cubren también los estados de anulación, que no son de
+ * este flujo sino transversales a los cuatro formatos de Talento Humano.
+ * @see anulacionWorkflow
+ */
+export const estadoLabel = (estado: string) =>
+  PRESTAMO_ESTADOS[estado as PrestamoEstado]?.label ?? etiquetaAnulacion(estado) ?? estado;
 export const estadoBadgeClass = (estado: string) =>
-  TONE_CLASSES[PRESTAMO_ESTADOS[estado as PrestamoEstado]?.tone ?? 'gray'];
+  claseAnulacion(estado) ?? TONE_CLASSES[PRESTAMO_ESTADOS[estado as PrestamoEstado]?.tone ?? 'gray'];
 
 /** Estado terminal del flujo. */
-export const esTerminal = (estado: string) => estado === 'aprobado';
+/** Terminal: no queda nada por hacer. Una anulada tampoco admite más pasos. */
+export const esTerminal = (estado: string) => estado === 'aprobado' || esAnulado(estado);
 /** Solo se puede editar el formato mientras está en borrador. */
 export const esEditable = (estado: string | null | undefined) => !estado || estado === 'borrador';
