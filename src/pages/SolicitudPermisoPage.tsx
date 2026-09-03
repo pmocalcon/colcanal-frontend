@@ -472,9 +472,13 @@ export default function SolicitudPermisoPage() {
           {/* 4. Firmas */}
           <div className="px-2 py-2 border-t border-black">
             <p className="font-bold mb-8">4. FIRMAS</p>
+            {/* El orden del papel sigue el orden del trámite: primero lo revisa la
+                Dirección Administrativa y Financiera y después lo aprueba el jefe
+                inmediato. Estaban al revés y el impreso hacía leer la firma final antes
+                que la primera. */}
             <div className="grid grid-cols-2 gap-8">
-              <Firma titulo="Aprobado por:" nombre={f.aprobadoPor} cargo="Jefe inmediato" />
               <Firma titulo="Revisado por:" nombre="" cargo="Dir. Administrativa y Financiera" />
+              <Firma titulo="Aprobado por:" nombre={f.aprobadoPor} cargo="Jefe inmediato" />
             </div>
           </div>
         </div>
