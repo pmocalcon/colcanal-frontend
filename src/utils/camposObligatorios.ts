@@ -67,6 +67,7 @@ export const PERMISO_OBLIGATORIOS: CampoExigido[] = [
   { campo: 'descripcionMotivo', etiqueta: 'Descripción del motivo' },
   { campo: 'anexaSoporte', etiqueta: 'Anexa soporte' },
   { campo: 'tipoSoporte', etiqueta: 'Tipo de soporte', si: (d) => d.anexaSoporte === 'si' },
+  { campo: 'soporteLink', etiqueta: 'Soporte de permiso (enlace)', si: (d) => d.anexaSoporte === 'si' },
 ];
 
 export const VACACIONES_OBLIGATORIOS: CampoExigido[] = [
