@@ -160,6 +160,19 @@ export const gestionConocimientoService = {
     return data;
   },
 
+  /**
+   * Adjunta el enlace de un soporte cuando el formato ya salió del borrador.
+   *
+   * El resto del documento sigue cerrado —lo que se avaló debe ser lo que se paga—, pero
+   * el pagaré del préstamo y el soporte del permiso se firman después de radicar, así que
+   * tienen su propia puerta. El servidor comprueba el campo, quién lo escribe y que el
+   * enlace sea http(s).
+   */
+  async saveEnlaceSoporte(id: number, campo: string, url: string): Promise<GcSolicitud> {
+    const { data } = await api.patch<GcSolicitud>(`${BASE}/${id}/enlace-soporte`, { campo, url });
+    return data;
+  },
+
   async saveChecklist(id: number, checklist: Record<string, any>): Promise<GcSolicitud> {
     const { data } = await api.patch<GcSolicitud>(`${BASE}/${id}/checklist`, { checklist });
     return data;

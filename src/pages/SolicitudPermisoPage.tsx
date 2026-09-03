@@ -216,6 +216,25 @@ export default function SolicitudPermisoPage() {
    * y solo puede escribirlo en el mismo acto en que aprueba o niega. Las casillas de firma
    * del papel las marca el backend según el rol de quien decide.
    */
+  /**
+   * Guarda el enlace del soporte cuando el permiso ya salió del borrador.
+   *
+   * En borrador viaja con «Guardar». Después el formato está cerrado y el enlace entra
+   * por su propia puerta, que existe porque el soporte a veces llega días más tarde que
+   * la solicitud. Al salir de la casilla, no en cada tecla.
+   */
+  const guardarSoporte = async () => {
+    if (!docId || editaSolicitud) return;
+    if ((sol?.data?.soporteLink ?? '') === f.soporteLink) return;
+    try {
+      const guardada = await gestionConocimientoService.saveEnlaceSoporte(docId, 'soporteLink', f.soporteLink);
+      setSol(guardada);
+      toast.success('Soporte del permiso guardado');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo guardar el enlace');
+    }
+  };
+
   const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
     let motivo: string | undefined;
     if (requiereMotivo) {
@@ -451,9 +470,9 @@ export default function SolicitudPermisoPage() {
                   />
                 </td>
               </tr>
-              {/* Cierra la aprobación interna y abre las firmas. Lo puede poner tanto
-                  quien pide el permiso —es él quien tiene el soporte— como el jefe al
-                  revisarlo, porque a veces el documento llega después de radicado. */}
+              {/* Cierra la aprobación interna y abre las firmas. Lo adjunta quien pide el
+                  permiso, que es quien tiene el documento, y puede hacerlo también
+                  después de radicar: el soporte a veces llega días más tarde. */}
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top">
                   SOPORTE DE PERMISO
@@ -462,7 +481,8 @@ export default function SolicitudPermisoPage() {
                   <input
                     value={f.soporteLink}
                     onChange={(e) => set('soporteLink', e.target.value)}
-                    readOnly={!editaSolicitud && !editaAprobacion}
+                    onBlur={guardarSoporte}
+                    readOnly={!esCreador || esTerminal(estado ?? '')}
                     placeholder="Pega aquí el enlace al soporte"
                     className="w-full bg-transparent outline-none text-[11px]"
                   />

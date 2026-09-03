@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, ExternalLink, History, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
 import { CamposFaltantes } from '@/components/gestionConocimiento/CamposFaltantes';
@@ -94,6 +94,12 @@ interface PrestamoState {
   fechaDesembolso: string;
   numeroCuotas: string;
   valorCuota: string;
+  /**
+   * Enlace al pagaré ya firmado, que la política del formato exige antes de entregar el
+   * dinero. Se guarda el enlace y no el archivo, igual que el soporte del permiso: el
+   * formato se imprime y un adjunto dentro del sistema no viaja con el papel.
+   */
+  pagareLink: string;
 
   // 3. Uso exclusivo de la empresa
   valorAprobado: string;
@@ -117,7 +123,7 @@ const EMPTY: PrestamoState = {
   telefonoResidencia: '', celular: '', otros: '',
   cargo: '', area: '', salario: '',
   valorSolicitado: '', motivo: '',
-  fechaDesembolso: '', numeroCuotas: '', valorCuota: '',
+  fechaDesembolso: '', numeroCuotas: '', valorCuota: '', pagareLink: '',
   valorAprobado: '',
   firmaEmpleado: '', fechaFirmaEmpleado: '',
   firmaAdministrativa: '', fechaFirmaAdministrativa: '',
@@ -143,6 +149,8 @@ export default function SolicitudPrestamoPage() {
   // que firmaron los demás, y editarlo por debajo dejaría firmas sobre otro texto.
   const locked = !esEditable(estado ?? null);
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
+  /** Aprobado o anulado: ya no se le adjunta nada. */
+  const terminalPrestamo = esTerminal(estado ?? '');
   // Fuera del borrador hay dos zonas que sí se diligencian, cada una en su paso y por
   // quien manda ahí: las condiciones del préstamo son de Dirección Administrativa y el
   // valor aprobado es de Gerencia. Ambas viajan con la acción, no con «Guardar».
@@ -219,6 +227,26 @@ export default function SolicitudPrestamoPage() {
       setSol(row);
       setF({ ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> });
     } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
+  };
+
+  /**
+   * Guarda el enlace del pagaré cuando el formato ya salió del borrador.
+   *
+   * En borrador viaja con «Guardar», como todo lo demás. Después, el documento está
+   * cerrado y el enlace entra por su propia puerta —la que existe justamente porque el
+   * pagaré se firma cuando ya aprobaron—. Se dispara al salir de la casilla y no en cada
+   * tecla: si no, sería una petición por letra escrita.
+   */
+  const guardarPagare = async () => {
+    if (!docId || !locked) return;
+    if ((sol?.data?.pagareLink ?? '') === f.pagareLink) return;
+    try {
+      const guardada = await gestionConocimientoService.saveEnlaceSoporte(docId, 'pagareLink', f.pagareLink);
+      setSol(guardada);
+      toast.success('Soporte del pagaré guardado');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'No se pudo guardar el enlace');
+    }
   };
 
   const handleTransicion = async (accion: string, requiereMotivo?: boolean) => {
@@ -490,6 +518,39 @@ export default function SolicitudPrestamoPage() {
             por el Área Administrativa y Financiera será descontado de la nómina en forma mensual
             además firmará un pagaré, antes de la entrega del dinero como soporte para la empresa.
           </p>
+
+          {/* Va pegado a la política porque es la prueba de que se cumplió: el pagaré que
+              ese párrafo exige. Lo adjunta el solicitante, no Dirección Administrativa.
+
+              Y se deja escribir mientras la solicitud siga viva, no solo en borrador: la
+              política dice que el pagaré se firma «antes de la entrega del dinero», o sea
+              después de que aprueban. Si solo se pudiera en borrador habría que adjuntar
+              un documento que todavía no existe. */}
+          <div className="px-2 py-1 border-b border-black flex items-baseline gap-2">
+            <span className="font-bold whitespace-nowrap">Soporte del pagaré:</span>
+            <span className="font-normal italic text-[9px] text-[#4a4a63] whitespace-nowrap">
+              (lo adjunta el solicitante)
+            </span>
+            <input
+              value={f.pagareLink}
+              onChange={(v) => set('pagareLink', v.target.value)}
+              onBlur={guardarPagare}
+              readOnly={!esCreador || terminalPrestamo}
+              placeholder="Pega aquí el enlace al pagaré firmado"
+              className="flex-grow min-w-0 bg-transparent outline-none border-b border-black text-[11px]"
+            />
+            {/* En el impreso el enlace se lee; en pantalla abre el documento. */}
+            {f.pagareLink.trim() && (
+              <a
+                href={f.pagareLink.trim()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="no-print inline-flex items-center gap-1 text-[10px] text-blue-700 underline whitespace-nowrap"
+              >
+                <ExternalLink className="w-3 h-3" /> Abrir
+              </a>
+            )}
+          </div>
 
           {/* Firmas del empleado y de Administrativa */}
           <div className="grid grid-cols-2 border-b border-black">
