@@ -709,8 +709,10 @@ function Firma({ titulo, nombre, cargo, fecha, last }: {
       <div className="font-semibold">{titulo}</div>
       {/* Hueco para firmar a mano. Va sin renglón impreso: la firma se lee sola encima
           del nombre. La altura es fija —no `mt-auto`— para que los cuatro nombres queden
-          a la misma altura aunque unas casillas lleven fecha y otras no. */}
-      <div className="h-9" aria-hidden />
+          a la misma altura aunque unas casillas lleven fecha y otras no, y quedó en 24 px
+          para que el bloque no se hunda contra el borde de abajo: el aire de arriba y el
+          de abajo se parecen y la firma se lee en el medio de la casilla. */}
+      <div className="h-6" aria-hidden />
       {/* Las tres líneas son un solo bloque, centrado bajo el espacio de la firma y leído
           de mayor a menor: quién firma, con qué cargo, y cuándo lo registró el sistema.
           El tamaño hace la jerarquía —12, 11 y 10— para no meter un tercer color en un
