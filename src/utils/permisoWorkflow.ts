@@ -13,16 +13,28 @@ import { sumarDiasHabiles, diasHabilesEntre } from './juridicaWorkflow';
 import { esRolPmo } from './rolesPmo';
 import { claseAnulacion, esAnulado, etiquetaAnulacion } from './anulacionWorkflow';
 
-export type PermisoEstado = 'borrador' | 'pendiente_jefe' | 'aprobado';
+/** Quien revisa antes que el jefe: la Dirección Administrativa y Financiera. */
+const ROL_ADMINISTRATIVA = 'Director Financiero y Administrativo';
+
+export type PermisoEstado =
+  | 'borrador'
+  | 'pendiente_administrativa'
+  | 'pendiente_jefe'
+  | 'aprobado';
 
 interface EstadoMeta {
   label: string;
   sla: number | null;
-  tone: 'gray' | 'amber' | 'green';
+  tone: 'gray' | 'amber' | 'blue' | 'green';
 }
 
 export const PERMISO_ESTADOS: Record<PermisoEstado, EstadoMeta> = {
   borrador: { label: 'Borrador', sla: null, tone: 'gray' },
+  pendiente_administrativa: {
+    label: 'Pendiente de revisión de la Dir. Administrativa y Financiera',
+    sla: 1,
+    tone: 'blue',
+  },
   pendiente_jefe: { label: 'Pendiente de aprobación del jefe de área', sla: 1, tone: 'amber' },
   aprobado: { label: 'Aprobado', sla: null, tone: 'green' },
 };
@@ -31,6 +43,8 @@ export interface PermisoTransicion {
   accion: string;
   from: PermisoEstado;
   to: PermisoEstado;
+  /** Roles autorizados. Vacío en los pasos que resuelve el jefe del solicitante. */
+  roles?: string[];
   soloCreador?: boolean;
   /** El autorizador del creador (su jefe). Se ofrece a quien no es el creador. */
   jefeAutorizador?: boolean;
@@ -40,7 +54,9 @@ export interface PermisoTransicion {
 }
 
 export const PERMISO_TRANSICIONES: PermisoTransicion[] = [
-  { accion: 'enviar', from: 'borrador', to: 'pendiente_jefe', soloCreador: true, label: 'Enviar a aprobación', tone: 'primary' },
+  { accion: 'enviar', from: 'borrador', to: 'pendiente_administrativa', soloCreador: true, label: 'Enviar a revisión', tone: 'primary' },
+  { accion: 'revisar_administrativa', from: 'pendiente_administrativa', to: 'pendiente_jefe', roles: [ROL_ADMINISTRATIVA], label: 'Revisar y enviar al jefe inmediato', tone: 'primary' },
+  { accion: 'devolver_administrativa', from: 'pendiente_administrativa', to: 'borrador', roles: [ROL_ADMINISTRATIVA], requiereMotivo: true, label: 'Devolver al empleado', tone: 'danger' },
   { accion: 'aprobar_jefe', from: 'pendiente_jefe', to: 'aprobado', jefeAutorizador: true, label: 'Aprobar el permiso', tone: 'primary' },
   { accion: 'rechazar_jefe', from: 'pendiente_jefe', to: 'borrador', jefeAutorizador: true, requiereMotivo: true, label: 'Negar el permiso', tone: 'danger' },
 ];
@@ -57,7 +73,7 @@ export function accionesDisponibles(
     if (esPmo) return true;
     if (t.soloCreador) return esCreador;
     if (t.jefeAutorizador) return !esCreador; // el backend valida que sea el autorizador
-    return false;
+    return (t.roles ?? []).includes(nombreRol ?? '');
   });
 }
 
@@ -86,6 +102,7 @@ export function calcularSla(estado: PermisoEstado, estadoDesde: string | null): 
 const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {
   gray: 'bg-[hsl(var(--canalco-neutral-200))] text-[hsl(var(--canalco-neutral-700))]',
   amber: 'bg-amber-100 text-amber-800',
+  blue: 'bg-blue-100 text-blue-800',
   green: 'bg-green-100 text-green-800',
 };
 

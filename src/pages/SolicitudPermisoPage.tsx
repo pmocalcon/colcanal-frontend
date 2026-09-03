@@ -84,13 +84,20 @@ interface PermisoState {
   observaciones: string;
   /** Nombre de quien aprobó; lo escribe el backend. */
   aprobadoPor: string;
+  /**
+   * Nombre de quien revisó por la Dirección Administrativa y Financiera, y su fecha.
+   * También los escribe el backend al ejecutar el paso: la casilla «Revisado por» del
+   * pie dejó de ser preimpresa y ahora dice quién revisó de verdad.
+   */
+  revisadoPor: string;
+  fechaRevision: string;
 }
 
 const EMPTY: PermisoState = {
   fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', jefeInmediato: '',
   desde: '', horaDesde: '', hasta: '', horaHasta: '', remuneracion: '', descripcionMotivo: '',
   anexaSoporte: '', tipoSoporte: '',
-  fechaAprobacion: '', observaciones: '', aprobadoPor: '',
+  fechaAprobacion: '', observaciones: '', aprobadoPor: '', revisadoPor: '', fechaRevision: '',
 };
 
 /**
@@ -477,7 +484,7 @@ export default function SolicitudPermisoPage() {
                 inmediato. Estaban al revés y el impreso hacía leer la firma final antes
                 que la primera. */}
             <div className="grid grid-cols-2 gap-8">
-              <Firma titulo="Revisado por:" nombre="" cargo="Dir. Administrativa y Financiera" />
+              <Firma titulo="Revisado por:" nombre={f.revisadoPor} cargo="Dir. Administrativa y Financiera" />
               <Firma titulo="Aprobado por:" nombre={f.aprobadoPor} cargo="Jefe inmediato" />
             </div>
           </div>
