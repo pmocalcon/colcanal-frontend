@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, ExternalLink, History, Loader2, Printer, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
 import { CamposFaltantes } from '@/components/gestionConocimiento/CamposFaltantes';
@@ -79,6 +79,12 @@ interface PermisoState {
   descripcionMotivo: string;
   anexaSoporte: Excl;
   tipoSoporte: string;
+  /**
+   * Enlace al soporte del permiso —la incapacidad, la citación, el certificado— guardado
+   * donde la empresa guarda sus archivos. Se anota el enlace y no el archivo: el formato
+   * se imprime, y un adjunto dentro del sistema no viaja con el papel firmado.
+   */
+  soporteLink: string;
 
   // ── 3. Aprobación interna ──
   /** La pone el sistema al aprobar. */
@@ -98,7 +104,7 @@ interface PermisoState {
 const EMPTY: PermisoState = {
   fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', jefeInmediato: '',
   desde: '', horaDesde: '', hasta: '', horaHasta: '', remuneracion: '', descripcionMotivo: '',
-  anexaSoporte: '', tipoSoporte: '',
+  anexaSoporte: '', tipoSoporte: '', soporteLink: '',
   fechaAprobacion: '', observaciones: '', aprobadoPor: '', revisadoPor: '', fechaRevision: '',
 };
 
@@ -443,6 +449,34 @@ export default function SolicitudPermisoPage() {
                     readOnly={!editaSolicitud}
                     className={inputCls}
                   />
+                </td>
+              </tr>
+              {/* Cierra la aprobación interna y abre las firmas. Lo puede poner tanto
+                  quien pide el permiso —es él quien tiene el soporte— como el jefe al
+                  revisarlo, porque a veces el documento llega después de radicado. */}
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top">
+                  SOPORTE DE PERMISO
+                </td>
+                <td className="border border-black px-2 py-1 align-top">
+                  <input
+                    value={f.soporteLink}
+                    onChange={(e) => set('soporteLink', e.target.value)}
+                    readOnly={!editaSolicitud && !editaAprobacion}
+                    placeholder="Pega aquí el enlace al soporte"
+                    className="w-full bg-transparent outline-none text-[11px]"
+                  />
+                  {/* En el impreso el enlace se lee, no se pulsa; en pantalla sí abre. */}
+                  {f.soporteLink.trim() && (
+                    <a
+                      href={f.soporteLink.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="no-print inline-flex items-center gap-1 mt-1 text-[11px] text-blue-700 underline"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Abrir el soporte
+                    </a>
+                  )}
                 </td>
               </tr>
             </tbody>
