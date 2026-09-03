@@ -493,11 +493,35 @@ export default function HorasExtrasPage() {
             <Observaciones value={f.observaciones} onChange={(v) => set('observaciones', v)} readOnly={locked} />
           </div>
 
-          {/* Pie de firmas del formato oficial. Los nombres van fijos, como en la plantilla. */}
+          {/* Pie de firmas. Las tres últimas van fijas, como en la plantilla; la primera
+              no puede ir fija porque la planilla la monta quien la monta —un PQRS, un
+              Director de Proyecto— y el impreso debe decir quién la reportó y con qué
+              cargo. El dato se estampa al crear la solicitud, así que la casilla queda
+              en blanco solo mientras la planilla no se ha guardado. */}
           <div className="grid grid-cols-4 border-t border-black min-w-[1330px]">
-            <Firma titulo="Reportado por:" nombre="" cargo="Jefe inmediato" />
-            <Firma titulo="Revisado por:" nombre="Andres Felipe Gomez Lopez" cargo="Director Tecnico" />
-            <Firma titulo="Aprobado por:" nombre="Lorena Martinez Jurado" cargo="Gerencia de Proyectos" />
+            <Firma
+              titulo="Reportado por:"
+              nombre={String(sol?.data?.solicitadoNombre ?? '')}
+              cargo={String(sol?.data?.solicitadoCargo ?? '') || 'Jefe inmediato'}
+              fecha={sol?.createdAt}
+            />
+            {/* El nombre del que de verdad avaló le gana al de la plantilla: si el paso lo
+                ejecutó otra persona —un encargo, un cambio de titular—, imprimir el nombre
+                preimpreso al lado de una fecha real diría que firmó alguien que no firmó. */}
+            <Firma
+              titulo="Revisado por:"
+              nombre={String(sol?.data?.revisadoTecnicaPor ?? '') || 'Andres Felipe Gomez Lopez'}
+              cargo="Director Tecnico"
+              fecha={sol?.data?.fechaRevisionTecnica}
+            />
+            <Firma
+              titulo="Aprobado por:"
+              nombre={String(sol?.data?.aprobadoGpPor ?? '') || 'Lorena Martinez Jurado'}
+              cargo="Gerencia de Proyectos"
+              fecha={sol?.data?.fechaAprobacionGp}
+            />
+            {/* Sin fecha: Dirección Administrativa recibe la planilla aprobada pero no
+                ejecuta ningún paso de aprobación, así que no hay nada que constar. */}
             <Firma titulo="Control Administrativo:" nombre="Daniela Swann Torres" cargo="Dir. Administrativa y Financiera" last />
           </div>
         </div>
@@ -662,15 +686,45 @@ function Observaciones({ value, onChange, readOnly }: {
   );
 }
 
-/** Una casilla del pie de firmas: título, espacio para firmar, nombre y cargo. */
-function Firma({ titulo, nombre, cargo, last }: {
-  titulo: string; nombre: string; cargo: string; last?: boolean;
+/** «2026-09-02» → «02/09/2026». Lo que no reconoce lo devuelve tal cual. */
+const diaMesAnio = (v?: string | null): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v ?? '');
+};
+
+/**
+ * Una casilla del pie de firmas: título, espacio para firmar a mano, nombre y cargo.
+ *
+ * El renglón sigue en blanco a propósito —la planilla se firma de puño y letra—, y
+ * debajo del cargo va la constancia de cuándo esa persona avaló el paso en el sistema.
+ * Son dos cosas distintas y por eso conviven: la firma dice que la revisó, la fecha dice
+ * cuándo quedó registrada. Sin fecha, la casilla se ve igual que antes: el paso todavía
+ * no ha ocurrido y no hay nada que constar.
+ */
+function Firma({ titulo, nombre, cargo, fecha, last }: {
+  titulo: string; nombre: string; cargo: string; fecha?: string | null; last?: boolean;
 }) {
   return (
-    <div className={'px-2 pt-2 pb-1.5 flex flex-col ' + (last ? '' : 'border-r border-black')}>
-      <span className="font-semibold">{titulo}</span>
-      <span className="mt-8 border-t border-black pt-0.5 font-semibold min-h-[1em]">{nombre}</span>
-      <span className="text-[hsl(var(--canalco-neutral-600))]">{cargo}</span>
+    <div className={'px-3 pt-2 pb-2.5 ' + (last ? '' : 'border-r border-black')}>
+      <div className="font-semibold">{titulo}</div>
+      {/* Hueco para firmar a mano. Va sin renglón impreso: la firma se lee sola encima
+          del nombre. La altura es fija —no `mt-auto`— para que los cuatro nombres queden
+          a la misma altura aunque unas casillas lleven fecha y otras no. */}
+      <div className="h-9" aria-hidden />
+      {/* Las tres líneas son un solo bloque, centrado bajo el espacio de la firma y leído
+          de mayor a menor: quién firma, con qué cargo, y cuándo lo registró el sistema.
+          El tamaño hace la jerarquía —12, 11 y 10— para no meter un tercer color en un
+          formato que se imprime. El título se queda a la izquierda: es el rótulo de la
+          casilla, no parte de la firma. */}
+      <div className="text-center">
+        <div className="font-semibold leading-tight min-h-[1em]">{nombre}</div>
+        <div className="text-[11px] leading-tight text-[hsl(var(--canalco-neutral-600))]">{cargo}</div>
+        {fecha ? (
+          <div className="mt-0.5 text-[10px] leading-tight text-[hsl(var(--canalco-neutral-600))]">
+            Registrado en el sistema el {diaMesAnio(fecha)}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
