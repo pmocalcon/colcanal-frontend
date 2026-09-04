@@ -14,7 +14,9 @@ import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimien
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_HORAS_EXTRAS } from '@/config/formatosGestion';
-import { buscarFicha, nombreDeFicha } from '@/utils/prellenarFormato';
+import { nombreDeFicha } from '@/utils/prellenarFormato';
+import { useCompuertaCedula } from '@/hooks/useCompuertaCedula';
+import { AvisoCedula } from '@/components/gestionConocimiento/AvisoCedula';
 import {
   type HorasExtrasEstado,
   type HorasExtrasTransicion,
@@ -168,6 +170,12 @@ export default function HorasExtrasPage() {
   const estado = (sol?.estado as HorasExtrasEstado | undefined) ?? undefined;
   const locked = !esEditable(estado ?? null);
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
+  /** Sin ficha no hay a quién liquidarle las horas: solo la cédula queda abierta. */
+  const compuerta = useCompuertaCedula(f.cedula);
+  const bloqueado = locked || !compuerta.lista;
+  // Estable (useCallback sin dependencias): se puede citar en el efecto de carga sin
+  // arrastrar el objeto entero, que se recrea en cada render.
+  const { abrirGuardada } = compuerta;
 
   const set = <K extends keyof HorasExtrasState>(k: K, v: HorasExtrasState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -232,15 +240,15 @@ export default function HorasExtrasPage() {
     if (locked) return;
     const cedula = f.cedula.replace(/\D/g, '');
     if (cedula !== f.cedula) set('cedula', cedula);
-    if (!cedula) return;
-    const ficha = await buscarFicha(cedula);
+    const { ficha, veniaDeOtra } = await compuerta.validar(cedula);
     if (!ficha) return;
     // Solo se llena lo que está en blanco: prellenar es ayudar, no corregir lo que alguien
     // ya escribió (la ficha puede estar desactualizada frente a lo que se sabe hoy).
+    // Cambiar una cédula ya validada por otra sí pisa: el encabezado es de quien firma.
     setF((p) => ({
       ...p,
-      nombre: p.nombre.trim() ? p.nombre : nombreDeFicha(ficha),
-      cargo: p.cargo.trim() ? p.cargo : (ficha.cargo ?? ''),
+      nombre: veniaDeOtra || !p.nombre.trim() ? nombreDeFicha(ficha) : p.nombre,
+      cargo: veniaDeOtra || !p.cargo.trim() ? (ficha.cargo ?? '') : p.cargo,
     }));
   };
 
@@ -265,7 +273,10 @@ export default function HorasExtrasPage() {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
         setSol(row);
-        setF(desde(row));
+        const datos = desde(row);
+        setF(datos);
+        // Lo ya guardado no se vuelve a pedir: la compuerta es para la planilla nueva.
+        abrirGuardada(datos.cedula);
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la planilla');
       } finally {
@@ -273,14 +284,16 @@ export default function HorasExtrasPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [docId]);
+  }, [docId, abrirGuardada]);
 
   const recargar = async () => {
     if (docId === null) return;
     try {
       const row = await gestionConocimientoService.get(docId);
       setSol(row);
-      setF(desde(row));
+      const datos = desde(row);
+      setF(datos);
+      compuerta.abrirGuardada(datos.cedula);
     } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
   };
 
@@ -382,7 +395,7 @@ export default function HorasExtrasPage() {
           </Button>
           {/* Una vez enviada, la planilla es la que revisaron: no se reescribe. */}
           {!locked && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+            <Button onClick={handleSave} disabled={saving || !compuerta.lista} title={compuerta.lista ? undefined : 'Primero digita la cédula del colaborador'} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
@@ -402,7 +415,14 @@ export default function HorasExtrasPage() {
         {/* Solo mientras se puede escribir: en un formato ya enviado el aviso no
             serviria de nada, porque nadie puede corregirlo. */}
         {!locked && (
-          <div className="mb-4">
+          <div className="mb-4 space-y-2">
+            {!compuerta.lista && (
+              <AvisoCedula
+                buscando={compuerta.buscando}
+                sinFicha={compuerta.sinFicha}
+                etiqueta="la casilla «CEDULA»"
+              />
+            )}
             <CamposFaltantes faltan={faltanEtiquetas} />
           </div>
         )}
@@ -444,16 +464,16 @@ export default function HorasExtrasPage() {
           {/* Datos del trabajador (campos del formato oficial). El valor hora ya no se
               teclea: la nómina lo calcula con el salario de la ficha ÷ 210. */}
           <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
-            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={locked} falta={faltanCampos.has('nombre')} />
+            <Dato label="NOMBRE:" value={f.nombre} onChange={(v) => set('nombre', v)} readOnly={bloqueado} falta={faltanCampos.has('nombre')} />
             <Dato label="CEDULA:" value={f.cedula} onChange={(v) => set('cedula', v)} onBlur={prellenar} readOnly={locked} falta={faltanCampos.has('cedula')} />
-            <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={locked} falta={faltanCampos.has('mes')} />
-            <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={locked} falta={faltanCampos.has('anio')} last />
+            <DatoSelect label="MES:" value={f.mes} onChange={(v) => set('mes', v)} opciones={MESES} readOnly={bloqueado} falta={faltanCampos.has('mes')} />
+            <Dato label="AÑO:" value={f.anio} onChange={(v) => set('anio', v)} readOnly={bloqueado} falta={faltanCampos.has('anio')} last />
           </div>
           <div className="grid grid-cols-4 border-b border-black min-w-[1330px]">
-            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} falta={faltanCampos.has('cargo')} />
+            <Dato label="CARGO:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={bloqueado} falta={faltanCampos.has('cargo')} />
             <div className="border-r border-black" />
             <div className="border-r border-black" />
-            <Dato label="CIUDAD:" value={f.ciudad} onChange={(v) => set('ciudad', v)} readOnly={locked} falta={faltanCampos.has('ciudad')} last />
+            <Dato label="CIUDAD:" value={f.ciudad} onChange={(v) => set('ciudad', v)} readOnly={bloqueado} falta={faltanCampos.has('ciudad')} last />
           </div>
 
           {/* Registro diario */}
@@ -492,28 +512,28 @@ export default function HorasExtrasPage() {
                 const pinta = (campo: string) => claseFalta(!!falta?.campos.has(campo));
                 return (
                   <tr key={i}>
-                    <Td className={pinta('proyecto')}><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={locked} /></Td>
-                    <Td className={pinta('region')}><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={locked} /></Td>
-                    <Td className={pinta('fecha')}><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={locked} /></Td>
-                    <Td className={pinta('horaEntrada')}><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={locked} centro /></Td>
-                    <Td className={pinta('horaSalida')}><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={locked} centro /></Td>
-                    <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} readOnly={locked} centro /></Td>
+                    <Td className={pinta('proyecto')}><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={bloqueado} /></Td>
+                    <Td className={pinta('region')}><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={bloqueado} /></Td>
+                    <Td className={pinta('fecha')}><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={bloqueado} /></Td>
+                    <Td className={pinta('horaEntrada')}><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={bloqueado} centro /></Td>
+                    <Td className={pinta('horaSalida')}><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={bloqueado} centro /></Td>
+                    <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} readOnly={bloqueado} centro /></Td>
                     {/* Las cinco columnas se marcan juntas cuando el renglon no trae
                         ninguna hora: cual de las cinco corresponde lo sabe quien la
                         trabajo, no el formato. */}
                     {TIPOS_HORA.map((t) => (
                       <Td key={t.key} className={claseFalta(!!falta?.sinHoras)}>
-                        <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} readOnly={locked} centro />
+                        <Cel value={fila.horas[t.key] ?? ''} onChange={(v) => setHora(i, t.key, v)} readOnly={bloqueado} centro />
                       </Td>
                     ))}
                     {/* Calculada: no se teclea. */}
                     <Td className="text-center font-semibold">{horas > 0 ? horas.toLocaleString('es-CO') : ''}</Td>
-                    <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={locked} centro /></Td>
-                    <Td className={pinta('labor')}><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={locked} /></Td>
+                    <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={bloqueado} centro /></Td>
+                    <Td className={pinta('labor')}><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={bloqueado} /></Td>
                     {/* La firma va a mano sobre el impreso. */}
                     <Td />
                     <td className="border-0 px-0.5 no-print align-middle">
-                      {!locked && f.filas.length > 1 && (
+                      {!bloqueado && f.filas.length > 1 && (
                         <button type="button" onClick={() => quitarFila(i)} title="Quitar renglón"
                           className="text-red-600 hover:text-red-800">
                           <Trash2 className="w-3 h-3" />
@@ -545,7 +565,7 @@ export default function HorasExtrasPage() {
           {/* Observaciones: casilla en blanco, la escribe quien reporta. */}
           <div className="border-t border-black px-2 py-1.5 min-w-[1330px] leading-snug">
             <b>OBSERVACIONES:</b>{' '}
-            <Observaciones value={f.observaciones} onChange={(v) => set('observaciones', v)} readOnly={locked} />
+            <Observaciones value={f.observaciones} onChange={(v) => set('observaciones', v)} readOnly={bloqueado} />
           </div>
 
           {/* Pie de firmas. Las tres últimas van fijas, como en la plantilla; la primera
@@ -582,7 +602,7 @@ export default function HorasExtrasPage() {
         </div>
 
         <div className="no-print mt-3 flex items-center gap-3">
-          {!locked && (
+          {!bloqueado && (
             <Button type="button" variant="outline" size="sm" onClick={agregarFila} className="h-8 text-[12px] gap-1.5">
               <Plus className="w-4 h-4" /> Agregar renglón
             </Button>

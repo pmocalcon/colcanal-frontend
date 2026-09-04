@@ -22,8 +22,10 @@ import {
 } from '@/utils/prestamoWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
 import {
-  buscarFicha, llenarVacios, estadoCivilDeFicha, tipoDocumentoDeFicha,
+  llenarVacios, estadoCivilDeFicha, tipoDocumentoDeFicha,
 } from '@/utils/prellenarFormato';
+import { useCompuertaCedula } from '@/hooks/useCompuertaCedula';
+import { AvisoCedula } from '@/components/gestionConocimiento/AvisoCedula';
 
 /**
  * Solicitud de Préstamo (G. de talento humano).
@@ -149,6 +151,10 @@ export default function SolicitudPrestamoPage() {
   // que firmaron los demás, y editarlo por debajo dejaría firmas sobre otro texto.
   const locked = !esEditable(estado ?? null);
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
+  /** Sin ficha no hay a quién prestarle: solo la casilla del número queda abierta. */
+  const compuerta = useCompuertaCedula(f.numero);
+  const bloqueado = locked || !compuerta.lista;
+  const { abrirGuardada } = compuerta;
   /** Aprobado o anulado: ya no se le adjunta nada. */
   const terminalPrestamo = esTerminal(estado ?? '');
   // Fuera del borrador hay dos zonas que sí se diligencian, cada una en su paso y por
@@ -173,9 +179,9 @@ export default function SolicitudPrestamoPage() {
    */
   const prellenar = async (cedula: string) => {
     if (locked) return;
-    const ficha = await buscarFicha(cedula);
+    const { ficha, veniaDeOtra } = await compuerta.validar(cedula);
     if (!ficha) return;
-    setF((p) => llenarVacios(p, {
+    const deLaFicha = {
       primerApellido: ficha.primerApellido,
       segundoApellido: ficha.segundoApellido,
       primerNombre: ficha.primerNombre,
@@ -186,7 +192,10 @@ export default function SolicitudPrestamoPage() {
       area: ficha.area ?? '',
       // Llega en nulo salvo para quien ya ve la nómina; ahí se digita como siempre.
       salario: ficha.salario ? String(Math.round(Number(ficha.salario))) : '',
-    }));
+    };
+    // Reemplazar una cédula ya validada por otra sí pisa el bloque de datos personales:
+    // si no, quedaría el nombre de la persona anterior junto a la cédula nueva.
+    setF((p) => (veniaDeOtra ? { ...p, ...deLaFicha } : llenarVacios(p, deLaFicha)));
   };
 
   const set = <K extends keyof PrestamoState>(k: K, v: PrestamoState[K]) =>
@@ -210,7 +219,10 @@ export default function SolicitudPrestamoPage() {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
         setSol(row);
-        setF({ ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> });
+        const datos = { ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> };
+        setF(datos);
+        // Lo ya guardado no se vuelve a pedir: la compuerta es para la solicitud nueva.
+        abrirGuardada(datos.numero);
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
       } finally {
@@ -218,14 +230,16 @@ export default function SolicitudPrestamoPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [docId]);
+  }, [docId, abrirGuardada]);
 
   const recargar = async () => {
     if (docId === null) return;
     try {
       const row = await gestionConocimientoService.get(docId);
       setSol(row);
-      setF({ ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> });
+      const datos = { ...EMPTY, ...(row.data ?? {}) as Partial<PrestamoState> };
+      setF(datos);
+      abrirGuardada(datos.numero);
     } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
   };
 
@@ -348,7 +362,7 @@ export default function SolicitudPrestamoPage() {
           </Button>
           {/* Fuera del borrador el formato ya no se edita: guardar no tendría qué guardar. */}
           {!locked && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+            <Button onClick={handleSave} disabled={saving || !compuerta.lista} title={compuerta.lista ? undefined : 'Primero digita la cédula del colaborador'} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
@@ -373,6 +387,15 @@ export default function SolicitudPrestamoPage() {
             puede escribir: en un formato ya enviado nadie podria corregirlo. */}
         {!locked && (
           <div className="mb-4">
+            {!compuerta.lista && (
+              <div className="mb-2">
+                <AvisoCedula
+                  buscando={compuerta.buscando}
+                  sinFicha={compuerta.sinFicha}
+                  etiqueta="la casilla «Número» de la cédula"
+                />
+              </div>
+            )}
             <CamposFaltantes faltan={etiquetasFaltantes(PRESTAMO_OBLIGATORIOS, f)} />
           </div>
         )}
@@ -405,10 +428,10 @@ export default function SolicitudPrestamoPage() {
           <Seccion titulo="1. INFORMACIÓN BÁSICA" />
 
           <div className="grid grid-cols-4 border-b border-black">
-            <Celda label="1er Apellido" value={f.primerApellido} onChange={(v) => set('primerApellido', v)} readOnly={locked} />
-            <Celda label="2do Apellido" value={f.segundoApellido} onChange={(v) => set('segundoApellido', v)} readOnly={locked} />
-            <Celda label="1er Nombre" value={f.primerNombre} onChange={(v) => set('primerNombre', v)} readOnly={locked} />
-            <Celda label="2do Nombre" value={f.segundoNombre} onChange={(v) => set('segundoNombre', v)} readOnly={locked} last />
+            <Celda label="1er Apellido" value={f.primerApellido} onChange={(v) => set('primerApellido', v)} readOnly={bloqueado} />
+            <Celda label="2do Apellido" value={f.segundoApellido} onChange={(v) => set('segundoApellido', v)} readOnly={bloqueado} />
+            <Celda label="1er Nombre" value={f.primerNombre} onChange={(v) => set('primerNombre', v)} readOnly={bloqueado} />
+            <Celda label="2do Nombre" value={f.segundoNombre} onChange={(v) => set('segundoNombre', v)} readOnly={bloqueado} last />
           </div>
 
           <div className="px-2 py-1.5 border-b border-black flex items-center gap-4 flex-wrap">
@@ -419,7 +442,7 @@ export default function SolicitudPrestamoPage() {
                 label={e.label}
                 checked={f.estadoCivil === e.key}
                 onToggle={() => set('estadoCivil', f.estadoCivil === e.key ? '' : e.key)}
-                disabled={locked}
+                disabled={bloqueado}
               />
             ))}
           </div>
@@ -432,7 +455,7 @@ export default function SolicitudPrestamoPage() {
                 label={t.label}
                 checked={f.tipoDocumento === t.key}
                 onToggle={() => set('tipoDocumento', f.tipoDocumento === t.key ? '' : t.key)}
-                disabled={locked}
+                disabled={bloqueado}
               />
             ))}
           </div>
@@ -446,29 +469,29 @@ export default function SolicitudPrestamoPage() {
               readOnly={locked}
               nota={locked ? undefined : 'Escribe la cédula y sal de la casilla: el resto se llena solo.'}
             />
-            <Renglon label="Expedida:" value={f.expedida} onChange={(v) => set('expedida', v)} readOnly={locked} />
+            <Renglon label="Expedida:" value={f.expedida} onChange={(v) => set('expedida', v)} readOnly={bloqueado} />
           </div>
 
           <div className="grid grid-cols-4 border-b border-black">
-            <Celda label="Dirección residencia:" value={f.direccion} onChange={(v) => set('direccion', v)} readOnly={locked} />
-            <Celda label="Barrio:" value={f.barrio} onChange={(v) => set('barrio', v)} readOnly={locked} />
-            <Celda label="Municipio:" value={f.municipio} onChange={(v) => set('municipio', v)} readOnly={locked} />
-            <Celda label="Departamento:" value={f.departamento} onChange={(v) => set('departamento', v)} readOnly={locked} last />
+            <Celda label="Dirección residencia:" value={f.direccion} onChange={(v) => set('direccion', v)} readOnly={bloqueado} />
+            <Celda label="Barrio:" value={f.barrio} onChange={(v) => set('barrio', v)} readOnly={bloqueado} />
+            <Celda label="Municipio:" value={f.municipio} onChange={(v) => set('municipio', v)} readOnly={bloqueado} />
+            <Celda label="Departamento:" value={f.departamento} onChange={(v) => set('departamento', v)} readOnly={bloqueado} last />
           </div>
 
           <div className="grid grid-cols-3 border-b border-black">
-            <Celda label="Teléfono residencia:" value={f.telefonoResidencia} onChange={(v) => set('telefonoResidencia', v)} readOnly={locked} />
-            <Celda label="Celular:" value={f.celular} onChange={(v) => set('celular', v)} readOnly={locked} />
-            <Celda label="Otros:" value={f.otros} onChange={(v) => set('otros', v)} readOnly={locked} last />
+            <Celda label="Teléfono residencia:" value={f.telefonoResidencia} onChange={(v) => set('telefonoResidencia', v)} readOnly={bloqueado} />
+            <Celda label="Celular:" value={f.celular} onChange={(v) => set('celular', v)} readOnly={bloqueado} />
+            <Celda label="Otros:" value={f.otros} onChange={(v) => set('otros', v)} readOnly={bloqueado} last />
           </div>
 
           {/* ── 2. Datos laborales ── */}
           <Seccion titulo="2. DATOS LABORALES" />
 
           <div className="grid grid-cols-3 border-b border-black">
-            <Celda label="Cargo:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={locked} />
-            <Celda label="Area:" value={f.area} onChange={(v) => set('area', v)} readOnly={locked} />
-            <Celda label="Salario:" value={f.salario} onChange={(v) => set('salario', v)} readOnly={locked} last />
+            <Celda label="Cargo:" value={f.cargo} onChange={(v) => set('cargo', v)} readOnly={bloqueado} />
+            <Celda label="Area:" value={f.area} onChange={(v) => set('area', v)} readOnly={bloqueado} />
+            <Celda label="Salario:" value={f.salario} onChange={(v) => set('salario', v)} readOnly={bloqueado} last />
           </div>
 
           <div className="grid grid-cols-2 border-b border-black">
@@ -478,11 +501,11 @@ export default function SolicitudPrestamoPage() {
               <input
                 value={f.valorSolicitado}
                 onChange={(e) => set('valorSolicitado', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-32 bg-transparent outline-none border-b border-black ml-1 text-[11px]"
               />
             </div>
-            <Celda label="Motivo de la Solicitud:" value={f.motivo} onChange={(v) => set('motivo', v)} readOnly={locked} last area />
+            <Celda label="Motivo de la Solicitud:" value={f.motivo} onChange={(v) => set('motivo', v)} readOnly={bloqueado} last area />
           </div>
 
           {/* Va antes de las condiciones porque es del solicitante y aquéllas son de
