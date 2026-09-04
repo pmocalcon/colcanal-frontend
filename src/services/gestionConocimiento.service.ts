@@ -95,7 +95,26 @@ export interface FichaFormato {
   salario: string | null;
 }
 
+/** Un jefe entre los que puede repartirse una solicitud propia. */
+export interface JefePosible {
+  userId: number;
+  nombre: string;
+  cargo: string | null;
+  rol: string | null;
+}
+
 export const gestionConocimientoService = {
+  /**
+   * Los autorizadores activos del usuario: a cuál de ellos se le envía el formato.
+   *
+   * Tener varios jefes es lo normal en la empresa, y sin elegir el aviso caía en uno
+   * cualquiera. Vacío si no tiene ninguno; ahí el formato sigue el camino de antes.
+   */
+  async misJefes(): Promise<JefePosible[]> {
+    const { data } = await api.get<JefePosible[]>(`${BASE}/mis-jefes`);
+    return data ?? [];
+  },
+
   /** La ficha de una cédula. Nulo si no está: el formato se sigue llenando a mano. */
   async fichaDeCedula(identificacion: string): Promise<FichaFormato | null> {
     const { data } = await api.get<FichaFormato | null>(`${BASE}/ficha`, {

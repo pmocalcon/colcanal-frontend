@@ -22,8 +22,11 @@ import {
 } from '@/utils/vacacionesWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
 import {
-  buscarFicha, llenarVacios, nombreDeFicha, tipoDocumentoDeFicha,
+  llenarVacios, nombreDeFicha, tipoDocumentoDeFicha,
 } from '@/utils/prellenarFormato';
+import { useCompuertaCedula } from '@/hooks/useCompuertaCedula';
+import { AvisoCedula } from '@/components/gestionConocimiento/AvisoCedula';
+import { useMisJefes } from '@/hooks/useMisJefes';
 
 /**
  * Solicitud de Vacaciones · formato GTH-009-F (G. de talento humano).
@@ -100,6 +103,11 @@ interface VacacionesState {
   voBoJefeNombre: string; voBoJefeFecha: string;
   voBoTalentoHumanoNombre: string; voBoTalentoHumanoFecha: string;
   aprobadoPorGerencia: string;
+  /**
+   * El jefe al que se envía el Vo.Bo., por id. No va en el impreso —el formato es un
+   * documento controlado y no tiene esa casilla—: es solo para repartir el trámite.
+   */
+  jefeInmediatoId: string;
 }
 
 const EMPTY: VacacionesState = {
@@ -125,6 +133,7 @@ const EMPTY: VacacionesState = {
   voBoJefeNombre: '', voBoJefeFecha: '',
   voBoTalentoHumanoNombre: '', voBoTalentoHumanoFecha: '',
   aprobadoPorGerencia: '',
+  jefeInmediatoId: '',
 };
 
 /** Los campos que son una fecha de tres casillas. */
@@ -168,6 +177,12 @@ export default function SolicitudVacacionesPage() {
   const estado = (sol?.estado as VacacionesEstado | undefined) ?? undefined;
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
   const locked = !esEditable(estado ?? null);
+  /** Sin ficha no hay a quién darle las vacaciones: solo el documento queda abierto. */
+  const compuerta = useCompuertaCedula(f.documento);
+  const bloqueado = locked || !compuerta.lista;
+  const { abrirGuardada } = compuerta;
+  /** A cuál de sus jefes va el Vo.Bo.: el paso «pendiente del jefe» sigue esta elección. */
+  const { jefes } = useMisJefes();
 
   /**
    * Con el documento llegan el nombre, el cargo, el área y la fecha de ingreso.
@@ -178,17 +193,22 @@ export default function SolicitudVacacionesPage() {
    */
   const prellenar = async (documento: string) => {
     if (locked) return;
-    const ficha = await buscarFicha(documento);
+    const { ficha, veniaDeOtra } = await compuerta.validar(documento);
     if (!ficha) return;
-    setF((p) => llenarVacios(p, {
+    const deLaFicha = {
       nombres: nombreDeFicha(ficha),
-      tipoDocumento: tipoDocumentoDeFicha(ficha.tipoId) === 'TI' ? 'TI' : 'CC',
+      tipoDocumento: (tipoDocumentoDeFicha(ficha.tipoId) === 'TI' ? 'TI' : 'CC') as TipoDocumento,
       cargo: ficha.cargo ?? '',
       areaCargo: ficha.area ?? '',
       fechaIngreso: ficha.fechaIngreso ?? '',
       rhDiasPendientes:
         ficha.diasVacacionesPendientes == null ? '' : String(ficha.diasVacacionesPendientes),
-    }));
+    };
+    // Reemplazar un documento ya validado por otro sí pisa el encabezado: si no, quedaría
+    // el nombre de la persona anterior junto al documento nuevo.
+    setF((p) =>
+      veniaDeOtra ? { ...p, ...deLaFicha, jefeInmediatoId: '' } : llenarVacios(p, deLaFicha),
+    );
   };
 
   const set = <K extends keyof VacacionesState>(k: K, v: VacacionesState[K]) =>
@@ -209,7 +229,10 @@ export default function SolicitudVacacionesPage() {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
         setSol(row);
-        setF(desde(row));
+        const datos = desde(row);
+        setF(datos);
+        // Lo ya guardado no se vuelve a pedir: la compuerta es para la solicitud nueva.
+        abrirGuardada(datos.documento);
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
       } finally {
@@ -217,14 +240,16 @@ export default function SolicitudVacacionesPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [docId]);
+  }, [docId, abrirGuardada]);
 
   const recargar = async () => {
     if (docId === null) return;
     try {
       const row = await gestionConocimientoService.get(docId);
       setSol(row);
-      setF(desde(row));
+      const datos = desde(row);
+      setF(datos);
+      abrirGuardada(datos.documento);
     } catch { /* si falla la recarga, la pantalla se queda con lo que ya tenía */ }
   };
 
@@ -319,7 +344,7 @@ export default function SolicitudVacacionesPage() {
           </Button>
           {/* Una vez enviada, la solicitud es la que se está aprobando: no se reescribe. */}
           {!locked && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+            <Button onClick={handleSave} disabled={saving || !compuerta.lista} title={compuerta.lista ? undefined : 'Primero digita el documento del colaborador'} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
@@ -342,7 +367,42 @@ export default function SolicitudVacacionesPage() {
             puede escribir: en un formato ya enviado nadie podria corregirlo. */}
         {!locked && (
           <div className="mb-4">
+            {!compuerta.lista && (
+              <div className="mb-2">
+                <AvisoCedula
+                  buscando={compuerta.buscando}
+                  sinFicha={compuerta.sinFicha}
+                  etiqueta="la casilla «N.º de documento»"
+                />
+              </div>
+            )}
             <CamposFaltantes faltan={etiquetasFaltantes(VACACIONES_OBLIGATORIOS, f)} />
+            {/*
+              * A qué jefe se le pide el Vo.Bo. Va fuera del impreso: el formato es un
+              * documento controlado y no trae esa casilla, pero el trámite sí necesita
+              * saberlo —antes le caía a cualquiera de sus autorizadores—.
+              */}
+            {jefes.length > 0 && (
+              <div className="no-print mt-2 flex items-center gap-2 rounded-lg border border-[#e6e6f0] bg-[#f7f7fb] px-3 py-2 text-xs">
+                <label htmlFor="jefe-vacaciones" className="font-semibold text-[#16162b]">
+                  Vo.Bo. del jefe:
+                </label>
+                <select
+                  id="jefe-vacaciones"
+                  value={f.jefeInmediatoId}
+                  onChange={(e) => set('jefeInmediatoId', e.target.value)}
+                  disabled={bloqueado}
+                  className="flex-grow bg-transparent outline-none text-xs disabled:opacity-60"
+                >
+                  <option value="">— Elige a quién se envía —</option>
+                  {jefes.map((j) => (
+                    <option key={j.userId} value={j.userId}>
+                      {j.nombre}{j.cargo ? ` · ${j.cargo}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
 
@@ -384,7 +444,7 @@ export default function SolicitudVacacionesPage() {
                       <input
                         value={f.fechaSolicitud[parte]}
                         onChange={(e) => setFecha('fechaSolicitud', parte, e.target.value)}
-                        readOnly={locked}
+                        readOnly={bloqueado}
                         className="w-14 bg-transparent outline-none text-center text-[11px] py-0.5"
                       />
                     </td>
@@ -402,7 +462,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.nombres}
                 onChange={(e) => set('nombres', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
@@ -416,7 +476,7 @@ export default function SolicitudVacacionesPage() {
                       type="checkbox"
                       checked={f.tipoDocumento === t}
                       onChange={() => set('tipoDocumento', f.tipoDocumento === t ? '' : t)}
-                      disabled={locked}
+                      disabled={bloqueado}
                       className="w-3.5 h-3.5 accent-black"
                     />
                   </label>
@@ -438,7 +498,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.cargo}
                 onChange={(e) => set('cargo', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
@@ -447,35 +507,35 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.areaCargo}
                 onChange={(e) => set('areaCargo', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
 
             <Recuadro rotulo="FECHA DE INGRESO A LA EMPRESA">
-              <CasillasFecha valor={f.fechaIngreso} onChange={(p, v) => setFecha('fechaIngreso', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.fechaIngreso} onChange={(p, v) => setFecha('fechaIngreso', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <Recuadro rotulo="PERIODO DE VACACIONES SOLICITADO">
               <div className="flex flex-wrap items-center gap-3">
-                <CasillasMesAnio prefijo="DE:" valor={f.periodoDe} onChange={(p, v) => setPeriodo('periodoDe', p, v)} readOnly={locked} />
-                <CasillasMesAnio prefijo="A:" valor={f.periodoA} onChange={(p, v) => setPeriodo('periodoA', p, v)} readOnly={locked} />
+                <CasillasMesAnio prefijo="DE:" valor={f.periodoDe} onChange={(p, v) => setPeriodo('periodoDe', p, v)} readOnly={bloqueado} />
+                <CasillasMesAnio prefijo="A:" valor={f.periodoA} onChange={(p, v) => setPeriodo('periodoA', p, v)} readOnly={bloqueado} />
               </div>
             </Recuadro>
 
             <Recuadro rotulo="FECHA INICIO PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.fechaInicio} onChange={(p, v) => setFecha('fechaInicio', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.fechaInicio} onChange={(p, v) => setFecha('fechaInicio', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA FINAL PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.fechaFinal} onChange={(p, v) => setFecha('fechaFinal', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.fechaFinal} onChange={(p, v) => setFecha('fechaFinal', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <Recuadro rotulo="DÍAS A DISFRUTAR">
               <input
                 value={f.diasDisfrutar}
                 onChange={(e) => set('diasDisfrutar', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-14 border border-black bg-transparent outline-none text-center text-[11px]"
               />
             </Recuadro>
@@ -484,7 +544,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.diasCompensar}
                 onChange={(e) => set('diasCompensar', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-14 border border-black bg-transparent outline-none text-center text-[11px]"
               />
             </Recuadro>
@@ -498,21 +558,21 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.rhNumeroSolicitud}
                 onChange={(e) => set('rhNumeroSolicitud', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
 
             <Recuadro rotulo="FECHA RECIBIDO SOLICITUD">
-              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA INICIO PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA FINAL PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} readOnly={bloqueado} />
             </Recuadro>
           </div>
 
@@ -524,7 +584,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasDisfrutar}
                   onChange={(e) => set('rhDiasDisfrutar', e.target.value)}
-                  readOnly={locked}
+                  readOnly={bloqueado}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -533,7 +593,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasCompensar}
                   onChange={(e) => set('rhDiasCompensar', e.target.value)}
-                  readOnly={locked}
+                  readOnly={bloqueado}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -544,7 +604,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.rhDiasPendientes}
                 onChange={(e) => set('rhDiasPendientes', e.target.value)}
-                readOnly={locked}
+                readOnly={bloqueado}
                 className="w-10 border-b border-black bg-transparent outline-none text-center text-[10px]"
               />{' '}
               días.
@@ -558,7 +618,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorPrima}
                   onChange={(e) => set('valorPrima', e.target.value)}
-                  readOnly={locked}
+                  readOnly={bloqueado}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
@@ -570,14 +630,14 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorAnticipo}
                   onChange={(e) => set('valorAnticipo', e.target.value)}
-                  readOnly={locked}
+                  readOnly={bloqueado}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
             </Recuadro>
 
             <Recuadro rotulo="FECHA DE PAGO">
-              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} readOnly={bloqueado} />
             </Recuadro>
 
             <div className="border border-black rounded px-2 py-1">
@@ -611,7 +671,7 @@ export default function SolicitudVacacionesPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <Recuadro rotulo="FECHA APROBACIÓN VACACIONES">
-              <CasillasFecha valor={f.fechaAprobacion} onChange={(p, v) => setFecha('fechaAprobacion', p, v)} readOnly={locked} />
+              <CasillasFecha valor={f.fechaAprobacion} onChange={(p, v) => setFecha('fechaAprobacion', p, v)} readOnly={bloqueado} />
             </Recuadro>
             <div className="px-2 pt-6 text-center">
               <div className="mx-auto w-52 border-b border-black h-4" />

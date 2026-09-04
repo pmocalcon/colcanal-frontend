@@ -48,6 +48,14 @@ import {
 } from '@/services/surveys.service';
 import { masterDataService, type Company, type Project } from '@/services/master-data.service';
 
+/** Los ámbitos que hoy tienen significado para una jefatura. */
+const GESTION_COMPRAS = 2;
+const GESTION_TALENTO_HUMANO = 13;
+const AMBITOS = [
+  { id: GESTION_COMPRAS, label: 'Compras — requisiciones y órdenes' },
+  { id: GESTION_TALENTO_HUMANO, label: 'Talento Humano — permisos, vacaciones, préstamos' },
+];
+
 export default function DetalleUsuarioPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -75,6 +83,13 @@ export default function DetalleUsuarioPage() {
   const [newAuthData, setNewAuthData] = useState({
     usuarioAutorizadoId: 0,
     tipoAutorizacion: 'revision' as 'revision' | 'autorizacion' | 'aprobacion',
+    /**
+     * En qué módulo manda esta jefatura. La cadena de mando no es una sola: a un Director
+     * de Proyecto lo aprueba Gerencia en una requisición y Gerencia de Proyectos en un
+     * permiso. Antes se creaba siempre como Compras y por eso Talento Humano terminaba
+     * repartiendo sus formatos con la jerarquía de compras.
+     */
+    gestionId: GESTION_COMPRAS,
   });
   const [addingAuth, setAddingAuth] = useState(false);
 
@@ -266,11 +281,11 @@ export default function DetalleUsuarioPage() {
       await usersService.createAuthorization(userId, {
         usuarioAutorizadoId: newAuthData.usuarioAutorizadoId,
         tipoAutorizacion: newAuthData.tipoAutorizacion,
-        gestionId: 2, // Compras por defecto
+        gestionId: newAuthData.gestionId,
       });
       setSuccessMessage('Autorización agregada correctamente');
       setShowAddModal(false);
-      setNewAuthData({ usuarioAutorizadoId: 0, tipoAutorizacion: 'revision' });
+      setNewAuthData({ usuarioAutorizadoId: 0, tipoAutorizacion: 'revision', gestionId: GESTION_COMPRAS });
       await loadData();
     } catch (err: any) {
       console.error('Error adding authorization:', err);
@@ -671,6 +686,31 @@ export default function DetalleUsuarioPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ámbito</Label>
+              <Select
+                value={String(newAuthData.gestionId)}
+                onValueChange={(value) =>
+                  setNewAuthData({ ...newAuthData, gestionId: Number(value) })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AMBITOS.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                La jefatura solo aplica en el módulo elegido. Quien aprueba una requisición
+                no tiene por qué aprobar un permiso.
+              </p>
             </div>
 
             <div className="space-y-2">

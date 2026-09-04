@@ -22,7 +22,10 @@ import {
   puedeEditarAprobacion,
 } from '@/utils/permisoWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
-import { buscarFicha, llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
+import { llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
+import { useCompuertaCedula } from '@/hooks/useCompuertaCedula';
+import { AvisoCedula } from '@/components/gestionConocimiento/AvisoCedula';
+import { useMisJefes } from '@/hooks/useMisJefes';
 
 /**
  * Solicitud de Permiso · formato GTH-010-F v2 (G. de talento humano).
@@ -69,6 +72,11 @@ interface PermisoState {
   identificacion: string;
   cargo: string;
   jefeInmediato: string;
+  /**
+   * El jefe al que se envía, por id. El nombre de arriba es lo que se imprime; esto es
+   * lo que el servidor usa para repartir, y por eso son dos campos y no uno.
+   */
+  jefeInmediatoId: string;
 
   // ── 2. Información del permiso ──
   desde: string;
@@ -102,7 +110,7 @@ interface PermisoState {
 }
 
 const EMPTY: PermisoState = {
-  fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', jefeInmediato: '',
+  fechaSolicitud: '', proyecto: '', nombre: '', identificacion: '', cargo: '', jefeInmediato: '', jefeInmediatoId: '',
   desde: '', horaDesde: '', hasta: '', horaHasta: '', remuneracion: '', descripcionMotivo: '',
   anexaSoporte: '', tipoSoporte: '', soporteLink: '',
   fechaAprobacion: '', observaciones: '', aprobadoPor: '', revisadoPor: '', fechaRevision: '',
@@ -125,7 +133,7 @@ const migrar = (saved: Record<string, unknown>): PermisoState => {
 };
 
 /** Filas simples etiqueta/valor de la sección 1. */
-type CampoColaborador = 'fechaSolicitud' | 'proyecto' | 'nombre' | 'identificacion' | 'cargo' | 'jefeInmediato';
+type CampoColaborador = 'fechaSolicitud' | 'proyecto' | 'nombre' | 'identificacion' | 'cargo';
 
 const FILAS_COLABORADOR: { key: CampoColaborador; label: string }[] = [
   { key: 'fechaSolicitud', label: 'FECHA DE SOLICITUD:' },
@@ -134,7 +142,6 @@ const FILAS_COLABORADOR: { key: CampoColaborador; label: string }[] = [
   // Al salir de esta casilla se traen nombre, cargo y proyecto de la ficha de personal.
   { key: 'identificacion', label: 'TIPO Y NÚMERO DE DOCUMENTO:' },
   { key: 'cargo', label: 'CARGO:' },
-  { key: 'jefeInmediato', label: 'JEFE INMEDIATO:' },
 ];
 
 export default function SolicitudPermisoPage() {
@@ -151,6 +158,18 @@ export default function SolicitudPermisoPage() {
   const estado = (sol?.estado as PermisoEstado | undefined) ?? undefined;
   const esCreador = sol?.createdBy != null && sol.createdBy === user?.userId;
   const editaSolicitud = puedeEditarSolicitud(estado ?? null);
+  /**
+   * El tipo y el enlace solo se diligencian cuando se afirma que SÍ se anexa soporte:
+   * mientras la casilla esté en «NO» o sin marcar no hay nada que registrar.
+   */
+  const sinSoporte = f.anexaSoporte !== 'si';
+  /** Solo la cédula está abierta hasta que su ficha aparezca; el resto espera. */
+  const compuerta = useCompuertaCedula(f.identificacion);
+  const fichaLista = compuerta.lista;
+  const editaCampos = editaSolicitud && fichaLista;
+  const { abrirGuardada } = compuerta;
+  /** A cuál de sus jefes se envía: el paso «pendiente del jefe» va al que se elija. */
+  const { jefes } = useMisJefes();
   const editaAprobacion = puedeEditarAprobacion(estado ?? null, user?.nombreRol, esCreador);
 
   /**
@@ -165,14 +184,27 @@ export default function SolicitudPermisoPage() {
     if (!editaSolicitud) return;
     const cedula = f.identificacion.replace(/\D/g, '');
     if (cedula !== f.identificacion) set('identificacion', cedula);
-    if (!cedula) return;
-    const ficha = await buscarFicha(cedula);
+    const { ficha, veniaDeOtra } = await compuerta.validar(cedula);
     if (!ficha) return;
-    setF((p) => llenarVacios(p, {
+    const deLaFicha = {
       nombre: nombreDeFicha(ficha),
       cargo: ficha.cargo ?? '',
       proyecto: ficha.empresaProyecto ?? '',
-    }));
+    };
+    /**
+     * Cambiar una cédula ya validada por otra **sí pisa** el encabezado: si no, quedaría
+     * el nombre de la persona anterior junto a la cédula nueva, que es justo el error
+     * —«la cédula bien y el nombre mal»— que el prellenado existe para evitar. En el
+     * primer llenado se respeta lo escrito a mano, como siempre.
+     *
+     * El jefe no viene de la ficha —no hay de dónde sacarlo— y por eso solo se borra al
+     * cambiar de persona: escrito a mano para alguien, no vale para el siguiente.
+     */
+    setF((p) =>
+      veniaDeOtra
+        ? { ...p, ...deLaFicha, jefeInmediato: '', jefeInmediatoId: '' }
+        : llenarVacios(p, deLaFicha),
+    );
   };
 
   const set = <K extends keyof PermisoState>(k: K, v: PermisoState[K]) =>
@@ -181,8 +213,19 @@ export default function SolicitudPermisoPage() {
   /** Marcar la misma opción otra vez la deja sin marcar. */
   const toggleRemun = (v: Exclude<Remun, ''>) =>
     set('remuneracion', f.remuneracion === v ? '' : v);
-  const toggleSoporte = (v: Exclude<Excl, ''>) =>
-    set('anexaSoporte', f.anexaSoporte === v ? '' : v);
+  /**
+   * Dejar de afirmar que se anexa soporte deja sin sentido el tipo y el enlace, así que
+   * se limpian tanto al marcar «NO» como al desmarcar: de lo contrario quedaría guardado
+   * un soporte que el propio formato ya no declara.
+   */
+  const toggleSoporte = (v: Exclude<Excl, ''>) => {
+    const siguiente = f.anexaSoporte === v ? '' : v;
+    setF((prev) => ({
+      ...prev,
+      anexaSoporte: siguiente,
+      ...(siguiente === 'si' ? {} : { tipoSoporte: '', soporteLink: '' }),
+    }));
+  };
 
   useEffect(() => {
     if (docId === null) { setLoading(false); return; }
@@ -192,7 +235,10 @@ export default function SolicitudPermisoPage() {
         const row = await gestionConocimientoService.get(docId);
         if (cancelled) return;
         setSol(row);
-        setF(migrar((row.data ?? {}) as Record<string, unknown>));
+        const datos = migrar((row.data ?? {}) as Record<string, unknown>);
+        setF(datos);
+        // Lo ya guardado no se vuelve a pedir: la compuerta es para la solicitud nueva.
+        abrirGuardada(datos.identificacion);
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la solicitud');
       } finally {
@@ -200,7 +246,7 @@ export default function SolicitudPermisoPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [docId]);
+  }, [docId, abrirGuardada]);
 
   const recargar = async () => {
     if (docId === null) return;
@@ -320,7 +366,7 @@ export default function SolicitudPermisoPage() {
           </Button>
           {/* «Guardar» es del solicitante. Lo que escribe el jefe va con su decisión. */}
           {editaSolicitud && (
-            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
+            <Button onClick={handleSave} disabled={saving || !fichaLista} title={fichaLista ? undefined : 'Primero digita la cédula del colaborador'} className="gap-2 bg-[#ffe81a] hover:bg-[#ffe81a]/85 text-[#16162b] border border-[#e0cc00]">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
           )}
@@ -367,6 +413,17 @@ export default function SolicitudPermisoPage() {
             </div>
           </div>
 
+          {/* La compuerta: sin ficha no hay a quién diligenciarle el permiso. */}
+          {editaSolicitud && !fichaLista && (
+            <div className="mb-4">
+              <AvisoCedula
+                buscando={compuerta.buscando}
+                sinFicha={compuerta.sinFicha}
+                etiqueta="«Tipo y número de documento»"
+              />
+            </div>
+          )}
+
           {/* 1. Información del colaborador */}
           <Seccion titulo="1. INFORMACIÓN DEL COLABORADOR" />
           <table className="w-full border-collapse">
@@ -387,12 +444,56 @@ export default function SolicitudPermisoPage() {
                           void prellenar();
                         }
                       }}
-                      readOnly={!editaSolicitud}
+                      readOnly={key === 'identificacion' ? !editaSolicitud : !editaCampos}
                       className={inputCls}
                     />
                   </td>
                 </tr>
               ))}
+              {/*
+                * El jefe se elige, no se escribe: antes era texto libre y el sistema
+                * enrutaba por otra parte, así que el papel podía nombrar a una persona
+                * y el trámite caerle a otra. La lista son sus autorizadores activos.
+                */}
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))] align-top w-[38%]">
+                  JEFE INMEDIATO:
+                </td>
+                <td className="border border-black px-2 py-1 align-top">
+                  {editaCampos && jefes.length > 0 ? (
+                    <select
+                      value={f.jefeInmediatoId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const j = jefes.find((x) => String(x.userId) === id);
+                        setF((p) => ({
+                          ...p,
+                          jefeInmediatoId: id,
+                          jefeInmediato: j ? j.nombre.toLocaleUpperCase('es-CO') : '',
+                        }));
+                      }}
+                      className="w-full bg-transparent outline-none text-[11px]"
+                    >
+                      <option value="">— Elige a quién se envía —</option>
+                      {jefes.map((j) => (
+                        <option key={j.userId} value={j.userId}>
+                          {j.nombre.toLocaleUpperCase('es-CO')}
+                          {j.cargo ? ` · ${j.cargo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    /* Impreso, sin jefes que ofrecer, o fuera de borrador: solo el nombre. */
+                    <span className="text-[11px]">{f.jefeInmediato}</span>
+                  )}
+                  {editaCampos && jefes.length === 0 && (
+                    <span className="no-print text-[11px] text-[#8a8aa3]">
+                      No tienes un jefe asignado en el sistema; el permiso se enviará por
+                      el camino de siempre.
+                    </span>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
 
@@ -412,7 +513,7 @@ export default function SolicitudPermisoPage() {
                       type="date"
                       value={f[fechaKey]}
                       onChange={(e) => set(fechaKey, e.target.value)}
-                      readOnly={!editaSolicitud}
+                      readOnly={!editaCampos}
                       className={inputCls}
                     />
                   </td>
@@ -422,7 +523,7 @@ export default function SolicitudPermisoPage() {
                       type="time"
                       value={f[horaKey]}
                       onChange={(e) => set(horaKey, e.target.value)}
-                      readOnly={!editaSolicitud}
+                      readOnly={!editaCampos}
                       className={inputCls}
                     />
                   </td>
@@ -433,11 +534,11 @@ export default function SolicitudPermisoPage() {
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO REMUNERADO</td>
                 <td className="border border-black px-2 py-1">
-                  <Cajita checked={f.remuneracion === 'remunerado'} onToggle={() => toggleRemun('remunerado')} disabled={!editaSolicitud} />
+                  <Cajita checked={f.remuneracion === 'remunerado'} onToggle={() => toggleRemun('remunerado')} disabled={!editaCampos} />
                 </td>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO NO REMUNERADO</td>
                 <td className="border border-black px-2 py-1">
-                  <Cajita checked={f.remuneracion === 'no-remunerado'} onToggle={() => toggleRemun('no-remunerado')} disabled={!editaSolicitud} />
+                  <Cajita checked={f.remuneracion === 'no-remunerado'} onToggle={() => toggleRemun('no-remunerado')} disabled={!editaCampos} />
                 </td>
               </tr>
 
@@ -450,7 +551,7 @@ export default function SolicitudPermisoPage() {
                   <textarea
                     value={f.descripcionMotivo}
                     onChange={(e) => set('descripcionMotivo', e.target.value)}
-                    readOnly={!editaSolicitud}
+                    readOnly={!editaCampos}
                     rows={2}
                     className="w-full bg-transparent outline-none resize-y text-[11px]"
                   />
@@ -462,8 +563,8 @@ export default function SolicitudPermisoPage() {
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">ANEXA SOPORTE</td>
                 <td className="border border-black px-2 py-1">
                   <div className="flex items-center gap-4">
-                    <Cajita label="SI" checked={f.anexaSoporte === 'si'} onToggle={() => toggleSoporte('si')} disabled={!editaSolicitud} />
-                    <Cajita label="NO" checked={f.anexaSoporte === 'no'} onToggle={() => toggleSoporte('no')} disabled={!editaSolicitud} />
+                    <Cajita label="SI" checked={f.anexaSoporte === 'si'} onToggle={() => toggleSoporte('si')} disabled={!editaCampos} />
+                    <Cajita label="NO" checked={f.anexaSoporte === 'no'} onToggle={() => toggleSoporte('no')} disabled={!editaCampos} />
                   </div>
                 </td>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">TIPO DE SOPORTE</td>
@@ -471,7 +572,7 @@ export default function SolicitudPermisoPage() {
                   <input
                     value={f.tipoSoporte}
                     onChange={(e) => set('tipoSoporte', e.target.value)}
-                    readOnly={!editaSolicitud}
+                    readOnly={!editaCampos || sinSoporte}
                     className={inputCls}
                   />
                 </td>
@@ -488,8 +589,14 @@ export default function SolicitudPermisoPage() {
                     value={f.soporteLink}
                     onChange={(e) => set('soporteLink', e.target.value)}
                     onBlur={guardarSoporte}
-                    readOnly={!esCreador || esTerminal(estado ?? '')}
-                    placeholder="Pega aquí el enlace al soporte"
+                    readOnly={sinSoporte || esTerminal(estado ?? '') || !(editaCampos || esCreador)}
+                    placeholder={
+                      f.anexaSoporte === 'si'
+                        ? 'Pega aquí el enlace al soporte'
+                        : f.anexaSoporte === 'no'
+                          ? 'No aplica'
+                          : 'Marca «SI» en anexa soporte'
+                    }
                     className="w-full bg-transparent outline-none text-[11px]"
                   />
                   {/* En el impreso el enlace se lee, no se pulsa; en pantalla sí abre. */}
