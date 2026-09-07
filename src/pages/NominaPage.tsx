@@ -464,6 +464,17 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
   const [loading, setLoading] = useState(true);
   const [generando, setGenerando] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
+  /**
+   * Préstamos con saldo que esta liquidación no va a descontar.
+   *
+   * La nómina cruza los préstamos por NOMBRE NOMINA y CUOTA A DESCONTAR, y al que le
+   * falte cualquiera de las dos se lo salta sin decir nada: la persona no aparece con
+   * deducción y sigue debiendo. Se avisa acá, antes de generar, porque después de
+   * generado el periodo hay que reabrirlo para corregirlo.
+   */
+  const [sinDescontar, setSinDescontar] = useState<
+    Array<{ prestamoId: number; nombre: string; saldo: number; motivo: string }>
+  >([]);
 
   const visibles = useMemo(
     () => filas.filter((f) => coincide(filtro ?? '', f.identificacion, f.nombre)),
@@ -488,6 +499,16 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
   };
 
   useEffect(() => { void cargar(false); }, [periodo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // El aviso es información, no un requisito: si la consulta falla se liquida igual.
+  useEffect(() => {
+    let vigente = true;
+    nominaService
+      .prestamosSinDescontar(periodo)
+      .then((r) => vigente && setSinDescontar(r))
+      .catch(() => vigente && setSinDescontar([]));
+    return () => { vigente = false; };
+  }, [periodo]);
 
   const generar = async () => {
     if (!Number(smmlv) || !Number(auxTransporte)) {
@@ -561,6 +582,29 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
           <Button variant="outline" onClick={() => void reabrir()} disabled={reabriendo} className="gap-2 border-red-300 text-red-700 hover:bg-red-50">
             {reabriendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Reabrir periodo
           </Button>
+        </div>
+      )}
+
+      {sinDescontar.length > 0 && (
+        <div className="no-print mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">
+            {sinDescontar.length === 1
+              ? 'Hay un préstamo con saldo que esta nómina no va a descontar'
+              : `Hay ${sinDescontar.length} préstamos con saldo que esta nómina no va a descontar`}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {sinDescontar.map((p) => (
+              <li key={p.prestamoId} className="text-sm text-amber-900">
+                <span className="font-medium">{p.nombre}</span>
+                <span className="tabular-nums"> · saldo {cop(p.saldo)}</span>
+                <span className="text-amber-800"> · {p.motivo}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-800">
+            Complétalo en Préstamos y vuelve a pulsar «Vista previa». Si generas el periodo
+            así, la cuota no se descuenta y hay que reabrirlo para corregirla.
+          </p>
         </div>
       )}
 

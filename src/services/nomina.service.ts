@@ -272,6 +272,24 @@ export const nominaService = {
     });
     return data;
   },
+  /**
+   * Préstamos con saldo que la liquidación del periodo no va a descontar.
+   *
+   * Al que le falte NOMBRE NOMINA o CUOTA A DESCONTAR la nómina se lo salta sin decir
+   * nada, así que la pantalla lo advierte para que se complete el dato antes de generar.
+   */
+  async prestamosSinDescontar(periodo: string) {
+    const { data } = await api.get<
+      Array<{
+        prestamoId: number;
+        nombre: string;
+        identificacion: string | null;
+        saldo: number;
+        motivo: string;
+      }>
+    >(`${BASE}/liquidacion/prestamos-sin-descontar`, { params: { periodo } });
+    return data;
+  },
   async generarNomina(periodo: string, smmlv: number, auxTransporte: number) {
     const { data } = await api.post<{ filas: FilaNomina[] }>(`${BASE}/liquidacion/generar`, {
       periodo, smmlv, auxTransporte,
