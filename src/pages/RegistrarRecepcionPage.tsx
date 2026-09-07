@@ -64,6 +64,14 @@ export default function RegistrarRecepcionPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [receiptItems, setReceiptItems] = useState<Map<number, ReceiptItemState>>(new Map());
   const [editingReceipt, setEditingReceipt] = useState<EditingReceipt | null>(null);
+  /**
+   * El error de la corrección, aparte del de la página.
+   *
+   * El aviso general se pinta arriba del todo, y las recepciones registradas están al
+   * final: al corregir una, el rechazo del servidor quedaba fuera de la pantalla y
+   * parecía que el botón no hacía nada.
+   */
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
   useEffect(() => {
     loadRequisition();
@@ -215,6 +223,7 @@ export default function RegistrarRecepcionPage() {
   };
 
   const handleEditReceipt = (receipt: MaterialReceipt, poItemId: number) => {
+    setErrorEdicion(null);
     setEditingReceipt({
       receiptId: receipt.receiptId,
       poItemId,
@@ -228,12 +237,25 @@ export default function RegistrarRecepcionPage() {
   const handleSaveEdit = async () => {
     if (!editingReceipt) return;
 
+    // Vaciar la casilla y guardar mandaba NaN, que el servidor rechaza con un mensaje
+    // que no habla de lo que pasó. Se dice acá, que es donde está mirando quien corrige.
+    const cantidad = parseFloat(editingReceipt.quantityReceived);
+    if (!Number.isFinite(cantidad)) {
+      setErrorEdicion('Escribe una cantidad. Si no llegó nada, escribe 0.');
+      return;
+    }
+    if (cantidad < 0) {
+      setErrorEdicion('La cantidad no puede ser negativa.');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
+      setErrorEdicion(null);
 
       const updateData: any = {
-        quantityReceived: parseFloat(editingReceipt.quantityReceived),
+        quantityReceived: cantidad,
         receivedDate: editingReceipt.receivedDate,
       };
 
@@ -261,7 +283,8 @@ export default function RegistrarRecepcionPage() {
       }, 1500);
     } catch (err: any) {
       console.error('Error updating receipt:', err);
-      setError(err.response?.data?.message || 'Error al actualizar la recepción');
+      const mensaje = err.response?.data?.message || 'Error al actualizar la recepción';
+      setErrorEdicion(Array.isArray(mensaje) ? mensaje.join(' ') : mensaje);
     } finally {
       setSaving(false);
     }
@@ -655,17 +678,27 @@ export default function RegistrarRecepcionPage() {
                         <TableCell>{receipt.creator?.nombre || 'N/A'}</TableCell>
                         <TableCell className="text-center">
                           {isEditing ? (
-                            <div className="flex gap-2 justify-center">
-                              <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
-                                Guardar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setEditingReceipt(null)}
-                              >
-                                Cancelar
-                              </Button>
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex gap-2 justify-center">
+                                <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
+                                  Guardar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setErrorEdicion(null);
+                                    setEditingReceipt(null);
+                                  }}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                              {errorEdicion && (
+                                <p className="text-xs text-red-700 text-left max-w-[16rem]">
+                                  {errorEdicion}
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <Button
