@@ -160,6 +160,14 @@ export interface ThPrestamo {
   valorCuota: string | null;
   valorCancelado: string | null;
   saldo: string | null;
+  /**
+   * El nombre con el que la nómina cruza este préstamo contra la ficha de Personal.
+   * **En blanco la nómina no descuenta nada**: es como Contabilidad deja un préstamo
+   * quieto sin borrarlo, y también como se queda uno que nadie llenó.
+   */
+  nombreNomina: string | null;
+  /** Lo que de verdad se descuenta cada mes, que no siempre es `valorCuota`. */
+  cuotaDescontar: string | null;
   observaciones: string | null;
   /** Solo viene en el detalle; el listado no las trae. */
   pagos?: ThPrestamoPago[];

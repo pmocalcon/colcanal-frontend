@@ -150,6 +150,26 @@ export default function PrestamosListPage() {
   const [editandoDescontado, setEditandoDescontado] = useState<string | null>(null);
   const [descontadoInput, setDescontadoInput] = useState('');
 
+  /**
+   * El préstamo cuya ficha se está corrigiendo, y los dos campos que se pueden tocar.
+   *
+   * Solo esos dos, y no el préstamo entero, a propósito: lo prestado, las cuotas y el
+   * saldo salen de plata que se movió y no se cambian con un formulario. Estos dos, en
+   * cambio, son **el calendario y el enlace con la nómina**, y venían mal de la hoja que
+   * se importó: 29 de los 46 préstamos traen un mes de inicio que no coincide con el mes
+   * en que empezaron a descontarle.
+   */
+  const [corrigiendo, setCorrigiendo] = useState<number | null>(null);
+  const [correccion, setCorreccion] = useState({ mesInicio: '', nombreNomina: '' });
+  /**
+   * El nombre exacto de la ficha de Personal de esa cédula.
+   *
+   * Es contra este que la nómina cruza el préstamo, así que se ofrece de un clic en vez
+   * de dejar que alguien lo escriba de memoria: un nombre con una letra distinta no falla,
+   * simplemente deja el préstamo sin descontar y nadie se entera.
+   */
+  const [nombreFicha, setNombreFicha] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     talentoHumanoService
@@ -220,6 +240,64 @@ export default function PrestamosListPage() {
       await refrescar(prestamoId);
     } catch {
       toast.error('No se pudo ajustar lo descontado');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  /**
+   * Abre la corrección de la ficha y busca, en paralelo, el nombre de la ficha de
+   * Personal de esa cédula.
+   *
+   * Si el préstamo no trae cédula —la hoja vieja casi nunca la traía— no hay contra qué
+   * buscar y el campo se deja a mano; por eso el fallo de la búsqueda no molesta con un
+   * error, solo deja de ofrecer la sugerencia.
+   */
+  const abrirCorreccion = (p: ThPrestamo) => {
+    setCorrigiendo(p.prestamoId);
+    setCorreccion({
+      mesInicio: (p.mesInicio ?? '').slice(0, 7),
+      nombreNomina: p.nombreNomina ?? '',
+    });
+    setNombreFicha(null);
+    if (!p.identificacion) return;
+    void talentoHumanoService
+      .listPersonal({ buscar: p.identificacion })
+      .then((gente) => {
+        const exacta = gente.filter((g) => g.identificacion === p.identificacion);
+        if (exacta.length === 1) setNombreFicha(exacta[0].nombre);
+      })
+      .catch(() => {});
+  };
+
+  /**
+   * Guarda el mes de inicio y el nombre de nómina.
+   *
+   * El mes viaja como el primero del mes: en la hoja el día siempre es 1 y el plan se
+   * arma por mes, así que un día distinto no significaría nada y sí ensuciaría la
+   * comparación con los pagos, que solo tienen año y mes.
+   */
+  const guardarCorreccion = async (prestamoId: number) => {
+    if (correccion.mesInicio && !/^\d{4}-\d{2}$/.test(correccion.mesInicio)) {
+      toast.error('El mes de inicio no es válido');
+      return;
+    }
+    const nombre = correccion.nombreNomina.trim();
+    setGuardando(true);
+    try {
+      await talentoHumanoService.updatePrestamo(prestamoId, {
+        mesInicio: correccion.mesInicio ? `${correccion.mesInicio}-01` : null,
+        nombreNomina: nombre || null,
+      });
+      toast.success(
+        nombre
+          ? 'Ficha corregida. La nómina vuelve a descontarle la cuota.'
+          : 'Ficha corregida. Sin nombre en nómina, el préstamo queda quieto.',
+      );
+      setCorrigiendo(null);
+      await refrescar(prestamoId);
+    } catch {
+      toast.error('No se pudo guardar la corrección');
     } finally {
       setGuardando(false);
     }
@@ -600,14 +678,37 @@ export default function PrestamosListPage() {
                                 </div>
                                 );
                               })() : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="mt-3 gap-1.5"
-                                  onClick={() => { setAbonando(p.prestamoId); setAbono(nuevoAbono()); }}
-                                >
-                                  <Plus className="w-3.5 h-3.5" /> Registrar abono
-                                </Button>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={() => { setAbonando(p.prestamoId); setAbono(nuevoAbono()); }}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Registrar abono
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={() => abrirCorreccion(detalle)}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" /> Corregir datos
+                                  </Button>
+                                </div>
+                              )}
+
+                              {corrigiendo === p.prestamoId && (
+                                <CorregirFicha
+                                  valores={correccion}
+                                  setValores={setCorreccion}
+                                  nombreFicha={nombreFicha}
+                                  teniaNombre={Boolean((detalle.nombreNomina ?? '').trim())}
+                                  identificacion={detalle.identificacion}
+                                  guardando={guardando}
+                                  guardar={() => guardarCorreccion(p.prestamoId)}
+                                  cancelar={() => setCorrigiendo(null)}
+                                />
                               )}
                             </>
                           )}
@@ -954,6 +1055,127 @@ function TablaDePagos({ meses, onBorrar }: {
           </tr>
         </tfoot>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Corrige los dos datos de la ficha que la nómina necesita bien puestos.
+ *
+ * **Por qué solo estos dos.** El valor prestado, las cuotas y el saldo son plata que se
+ * movió: se corrigen registrando o borrando pagos, que es lo que deja rastro. El mes de
+ * inicio y el nombre de nómina no son plata —son el calendario y el enlace con la
+ * liquidación— y los dos llegaron mal de la hoja que se importó.
+ *
+ * **Lo del nombre no es un campo más.** Con el nombre en blanco la nómina no descuenta
+ * nada: es como Contabilidad deja un préstamo quieto sin borrarlo. Así que llenarlo
+ * reanuda el descuento y vaciarlo lo detiene, y eso se dice acá con todas las letras en
+ * vez de dejar que alguien lo descubra en la liquidación del mes.
+ */
+function CorregirFicha({
+  valores,
+  setValores,
+  nombreFicha,
+  teniaNombre,
+  identificacion,
+  guardando,
+  guardar,
+  cancelar,
+}: {
+  valores: { mesInicio: string; nombreNomina: string };
+  setValores: (v: { mesInicio: string; nombreNomina: string }) => void;
+  /** El nombre de la ficha de Personal de esa cédula, si se pudo resolver. */
+  nombreFicha: string | null;
+  /** Si el préstamo ya traía nombre de nómina, para saber si esto lo reanuda o lo detiene. */
+  teniaNombre: boolean;
+  identificacion: string | null;
+  guardando: boolean;
+  guardar: () => void;
+  cancelar: () => void;
+}) {
+  const nombre = valores.nombreNomina.trim();
+  const coincide = Boolean(nombreFicha) && nombre === nombreFicha;
+  // Lo que va a cambiar en la liquidación del mes, dicho antes de guardar y no después.
+  const efecto = !teniaNombre && nombre
+    ? { tono: 'text-emerald-800', texto: 'Al guardar, la nómina vuelve a descontarle la cuota de este préstamo.' }
+    : teniaNombre && !nombre
+      ? { tono: 'text-amber-800', texto: 'Al guardar, la nómina deja de descontarle: el préstamo queda quieto con su saldo.' }
+      : null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-[hsl(var(--canalco-neutral-300))] bg-white p-3">
+      <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-800))] mb-2">
+        Corregir la ficha
+      </p>
+
+      <div className="flex flex-wrap gap-3 items-start">
+        <label className="text-xs">
+          <span className="block mb-1 text-[hsl(var(--canalco-neutral-600))]">Mes de inicio</span>
+          <input
+            type="month"
+            value={valores.mesInicio}
+            onChange={(e) => setValores({ ...valores, mesInicio: e.target.value })}
+            className="border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm"
+          />
+          <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+            El mes de la primera cuota. De acá sale el plan de pagos.
+          </span>
+        </label>
+
+        <label className="text-xs flex-grow min-w-[260px]">
+          <span className="block mb-1 text-[hsl(var(--canalco-neutral-600))]">Nombre en nómina</span>
+          <input
+            value={valores.nombreNomina}
+            onChange={(e) => setValores({ ...valores, nombreNomina: e.target.value })}
+            placeholder="En blanco, la nómina no le descuenta"
+            className="w-full border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm"
+          />
+          {/*
+            La sugerencia se ofrece de un clic porque el cruce es por texto exacto: una
+            tilde o un segundo apellido de más no da error, solo deja el préstamo sin
+            descontar y nadie se entera hasta que alguien revisa la cartera.
+          */}
+          {nombreFicha && !coincide && (
+            <button
+              type="button"
+              onClick={() => setValores({ ...valores, nombreNomina: nombreFicha })}
+              className="mt-1 text-[11px] text-[hsl(var(--canalco-primary))] hover:underline text-left"
+            >
+              Usar «{nombreFicha}», como está en la ficha de Personal
+            </button>
+          )}
+          {nombreFicha && coincide && (
+            <span className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
+              <Check className="w-3 h-3" /> Coincide con la ficha de Personal
+            </span>
+          )}
+          {!nombreFicha && (
+            <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+              {identificacion
+                ? 'No se encontró ficha de Personal con esa cédula: escríbelo igual a como aparece en la nómina.'
+                : 'Este préstamo no tiene cédula, así que no hay ficha contra qué compararlo. Escríbelo igual a como aparece en la nómina.'}
+            </span>
+          )}
+        </label>
+      </div>
+
+      {efecto && (
+        <p className={`mt-2 text-[11px] font-medium ${efecto.tono}`}>{efecto.texto}</p>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" onClick={guardar} disabled={guardando} className="gap-1.5">
+          {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          Guardar
+        </Button>
+        <Button size="sm" variant="ghost" onClick={cancelar} disabled={guardando} className="gap-1.5">
+          <X className="w-4 h-4" /> Cancelar
+        </Button>
+      </div>
+
+      <p className="mt-2 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+        No se toca el saldo ni lo descontado: eso se corrige registrando o borrando pagos.
+      </p>
     </div>
   );
 }
