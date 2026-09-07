@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Grafo de Graphify: lo reconstruye `graphify watch` en cada cambio y pesa varios MB.
+graphify-out/
