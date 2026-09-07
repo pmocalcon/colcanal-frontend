@@ -79,7 +79,7 @@ export const cerritoConfig: ActaConfig = {
     },
     {
       label: 'VALOR ACTA DE EXPANSIÓN:',
-      value: 'SETENTA Y SEIS MILLONES OCHOCIENTOS NOVENTA Y CINCO MIL SETECIENTOS CUARENTA Y DOS PESOS MONEDA LEGAL ($76.895.742 ML)',
+      value: '{{VALOR_TOTAL}}',
     },
     {
       label: 'PLAZO DE EJECUCIÓN:',
@@ -104,7 +104,7 @@ export const cerritoConfig: ActaConfig = {
     'Que con base en la anterior autorización, en la Cláusula Primera del otrosí No. 4 al contrato de Concesión No. 01 de 2014, del 5 de diciembre del 2017, se encuentra "PARÁGRAFO CUARTO: Cualquier excedente que el contratante recaude por concepto del tributo de alumbrado público será invertido en obras de expansión y/o modernización que ejecutará el concesionario, para cuyo propósito se suscribirán actas de obra en las que se establezca con exactitud el monto de la obra de expansión o modernización o iluminación ornamental y navideña en los espacios públicos del Municipio a ejecutar, la fuente de financiamiento, las especificaciones técnicas, la forma de pago y la disposición de los recursos necesarios para garantizar su mantenimiento preventivo y correctivo al formar parte de la infraestructura concesionada, así como a la actividad de iluminación ornamental y navideña en los espacios públicos del Municipio".',
     'Que por lo expuesto en el literal que antecede, el desarrollo de tales actividades dependerá de la existencia de recursos suficientes para ellas, y para su realización solo requerirá de actas firmadas para el efecto, por el Municipio y el Concesionario.',
     'Que el Concesionario presentó las cantidades de expansión y presupuesto, en el cual la administración municipal aprobó que el Concesionario instalará la iluminación en el sector del Municipio. Y la Supervisión del contrato revisó el presupuesto, conceptuando que el valor unitario de cada uno de los ítems corresponde a los precios de referencia fijados en el contrato de Concesión, actualizados de acuerdo con el Índice de Precios al Productor en la oferta interna, que fueron debidamente analizados, encontrándolos justificados y siendo aprobado.',
-    'Que el Municipio de El Cerrito advirtió que cuenta con los recursos necesarios para la ejecución de la expansión, toda vez, que posee el recurso correspondiente al recaudo del impuesto de alumbrado público por la sobretasa al avalúo catastral realizado a los lotes a través del impuesto predial unificado, los cuales se encuentran en las cuentas del Municipio y la destinación para la reposición por valor de setenta y seis millones ochocientos noventa y cinco mil setecientos cuarenta y dos pesos ($76.895.742 ML) será asumida desde dicho recurso.',
+    'Que el Municipio de El Cerrito advirtió que cuenta con los recursos necesarios para la ejecución de la expansión, toda vez, que posee el recurso correspondiente al recaudo del impuesto de alumbrado público por la sobretasa al avalúo catastral realizado a los lotes a través del impuesto predial unificado, los cuales se encuentran en las cuentas del Municipio y la destinación para la reposición por valor de {{VALOR_TOTAL}} será asumida desde dicho recurso.',
     'El Municipio requiere adelantar el presente proyecto de Expansión con el fin de dar cumplimiento parcial a la acción popular con número de proceso 76001333300320180003800 (01), de la demandante Sandra Liliana Montenegro, en el cual el tribunal administrativo del Valle emitió sentencia de segunda instancia, la cual confirma la sentencia de primera instancia que ampara los derechos de la comunidad.',
     'Que, con fundamento en todo lo antes motivado, las partes',
   ],
@@ -120,7 +120,7 @@ export const cerritoConfig: ActaConfig = {
     },
     {
       title: 'TERCERO: VALOR DE LA EXPANSIÓN',
-      content: 'El valor de la presente acta de autorización será de: setenta y seis millones ochocientos noventa y cinco mil setecientos cuarenta y dos pesos ($76.895.742 ML).',
+      content: 'El valor de la presente acta de autorización será de: {{VALOR_TOTAL}}.',
     },
     {
       title: 'CUARTO: CUADRO DE CANTIDADES DE EXPANSIÓN',
@@ -132,7 +132,7 @@ export const cerritoConfig: ActaConfig = {
     },
     {
       title: 'QUINTO: FORMA Y CONDICIONES DE PAGO',
-      content: 'El proyecto de expansión de infraestructura de uso exclusivo del Sistema de Alumbrado Público en el Municipio de El Cerrito se ejecutará con el recurso correspondiente al recaudo del impuesto de alumbrado público por la sobretasa al avalúo catastral realizado a los lotes a través del impuesto predial unificado, determinados con corte a 31 de octubre de 2025.\n\nLas partes acuerdan que el pago del costo de esta reposición de infraestructura del Sistema de Alumbrado Público aquí autorizada se hará a través de un único pago por la totalidad del valor de la presente acta por valor de setenta y seis millones ochocientos noventa y cinco mil setecientos cuarenta y dos pesos ($76.895.742 ML) al momento de la firma del Acta de Inicio, a partir de la cual contará el tiempo de ejecución de conformidad con el plazo de ejecución acordado. Una vez ejecutado el proyecto se realizará un acta de liquidación final de conformidad con las cantidades instaladas y debidamente soportado relacionando los activos instalados con su ubicación georreferenciada. Las actas serán firmadas por el Contratante o por el Supervisor y por el Concesionario.',
+      content: 'El proyecto de expansión de infraestructura de uso exclusivo del Sistema de Alumbrado Público en el Municipio de El Cerrito se ejecutará con el recurso correspondiente al recaudo del impuesto de alumbrado público por la sobretasa al avalúo catastral realizado a los lotes a través del impuesto predial unificado, determinados con corte a 31 de octubre de 2025.\n\nLas partes acuerdan que el pago del costo de esta reposición de infraestructura del Sistema de Alumbrado Público aquí autorizada se hará a través de un único pago por la totalidad del valor de la presente acta por valor de {{VALOR_TOTAL}} al momento de la firma del Acta de Inicio, a partir de la cual contará el tiempo de ejecución de conformidad con el plazo de ejecución acordado. Una vez ejecutado el proyecto se realizará un acta de liquidación final de conformidad con las cantidades instaladas y debidamente soportado relacionando los activos instalados con su ubicación georreferenciada. Las actas serán firmadas por el Contratante o por el Supervisor y por el Concesionario.',
     },
     {
       title: 'SEXTO: SITIOS DE ENTREGA E INSTALACIÓN',

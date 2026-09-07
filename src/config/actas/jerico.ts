@@ -58,11 +58,11 @@ export const jericoConfig: ActaConfig = {
     },
     {
       label: 'VALOR ESTIMADO MODERNIZACIÓN:',
-      value: 'SIETE MILLONES OCHOCIENTOS SEIS MIL NOVECIENTOS SETENTA Y CINCO PESOS ($7.806.975)',
+      value: '{{VALOR_TOTAL}}',
     },
     {
       label: 'VALOR ACTA DE MODERNIZACIÓN:',
-      value: 'SIETE MILLONES OCHOCIENTOS SEIS MIL NOVECIENTOS SETENTA Y CINCO PESOS ($7.806.975)',
+      value: '{{VALOR_TOTAL}}',
     },
     {
       label: 'PLAZO DE EJECUCIÓN:',
@@ -99,7 +99,7 @@ export const jericoConfig: ActaConfig = {
     },
     {
       title: 'TERCERO - EL VALOR DE LA MODERNIZACIÓN',
-      content: 'El valor de la modernización autorizada será de: siete millones ochocientos seis mil novecientos setenta y cinco pesos ($7.806.975) MCTE.',
+      content: 'El valor de la modernización autorizada será de: {{VALOR_TOTAL}}.',
     },
     {
       title: 'CUARTO - CUADRO DE CANTIDADES DE OBRA',

@@ -81,7 +81,7 @@ export const puertoasisConfig: ActaConfig = {
     {
       title: 'CLÁUSULA SEGUNDA — VALOR DEL PROYECTO DE ILUMINACIÓN',
       content:
-        'El valor total del proyecto de iluminación es de OCHOCIENTOS NUEVE MILLONES DOSCIENTOS SESENTA Y SIETE MIL SEISCIENTOS DOCE PESOS CON CUARENTA Y CINCO CENTAVOS MONEDA CORRIENTE ($809.267.612,45) que corresponde al valor de las obras de expansión en la infraestructura del servicio de alumbrado público en los puntos previamente identificados con sus coordenadas (georeferenciación), con la salvedad de existencia de margen de error una vez se haga la instalación, indicados en el documento ANEXO 1, el cual forma parte integral del presente negocio jurídico, pertenecientes a los sectores urbanos y rurales del municipio de Puerto Asís que a continuación se relacionan:',
+        'El valor total del proyecto de iluminación es de {{VALOR_TOTAL}} que corresponde al valor de las obras de expansión en la infraestructura del servicio de alumbrado público en los puntos previamente identificados con sus coordenadas (georeferenciación), con la salvedad de existencia de margen de error una vez se haga la instalación, indicados en el documento ANEXO 1, el cual forma parte integral del presente negocio jurídico, pertenecientes a los sectores urbanos y rurales del municipio de Puerto Asís que a continuación se relacionan:',
     },
     {
       title: 'CLÁUSULA TERCERA — FUENTE DE FINANCIAMIENTO',

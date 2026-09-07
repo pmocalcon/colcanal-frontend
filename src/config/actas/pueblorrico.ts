@@ -49,7 +49,7 @@ export const pueblorricoConfig: ActaConfig = {
     'Que con base en la anterior autorización, en el contrato de Concesión No 001 de 2022 se encuentra el literal c) de la CLÁUSULA TERCERA, OBLIGACIONES DE LAS PARTES: 1) POR PARTE DEL CONTRATISTA que dice: "... La Expansión vegetativa anual del 1% a que se refiere la oferta aceptada por LA CONTRATANTE, o cualquier otra adicional que se requiera, se realizará siempre y cuando existan recursos disponibles para remunerar al Concesionario por ella, para lo cual las partes y el interventor, suscribirán las actas respectivas."',
     'El desarrollo de tales actividades dependerá de la existencia de recursos suficientes para ellas, y para su realización solo requerirá de actas firmadas para el efecto, por el Municipio, la Interventoría y el Concesionario.',
     'Que en el comité técnico mensual del 26 de septiembre de 2024 se presentaron los diferentes proyectos de expansión, cantidades y presupuestos, en el cual la administración municipal aprobó los proyectos que se describen en el presente documento con los valores determinados para ello.',
-    'Que El Municipio cuenta con los recursos necesarios para la ejecución de la obra de expansión, según los excedentes a favor del Municipio de Pueblorrico que se encuentran en la cuenta de la Fiducia del Banco de Bogotá y la destinación para la expansión por valor de VEINTITRES MILLONES QUINIENTOS CINCUENTA Y UN MIL SEISCIENTOS CINCUENTA Y OCHO PESOS MONEDA LEGAL ($23.551.658,28) M/CTE.',
+    'Que El Municipio cuenta con los recursos necesarios para la ejecución de la obra de expansión, según los excedentes a favor del Municipio de Pueblorrico que se encuentran en la cuenta de la Fiducia del Banco de Bogotá y la destinación para la expansión por valor de {{VALOR_TOTAL}}.',
   ],
 
   // Cierra las consideraciones y entra a ACUERDAN. No es una consideración más:
@@ -89,7 +89,7 @@ export const pueblorricoConfig: ActaConfig = {
     },
     {
       title: 'CLÁUSULA SEGUNDA — VALOR DEL PROYECTO',
-      content: 'El valor total del proyecto de la expansión es de VEINTITRÉS MILLONES QUINIENTOS CINCUENTA Y UN MIL SEISCIENTOS CINCUENTA Y OCHO PESOS MONEDA LEGAL ($23.551.658,28) M/CTE así:',
+      content: 'El valor total del proyecto de la expansión es de {{VALOR_TOTAL}} así:',
     },
     {
       // Va como bloque aparte y no dentro de la SEGUNDA: en el documento tiene su
@@ -111,7 +111,7 @@ export const pueblorricoConfig: ActaConfig = {
     },
     {
       title: 'CLÁUSULA SEXTA — FORMA DE PAGO',
-      content: 'El MUNICIPIO pagará al CONCESIONARIO el valor total de la presente acta de Obra No 1, a la firma del acta de inicio con excedentes del impuesto de alumbrado público correspondiente a la vigencia 2026, la suma de VEINTITRÉS MILLONES QUINIENTOS CINCUENTA Y UN MIL SEISCIENTOS CINCUENTA Y OCHO PESOS MONEDA LEGAL ($23.551.658,28 M/L), previa aprobación de garantías y expedición del registro presupuestal.',
+      content: 'El MUNICIPIO pagará al CONCESIONARIO el valor total de la presente acta de Obra No {{NUM_ACTA}}, a la firma del acta de inicio con excedentes del impuesto de alumbrado público correspondiente a la vigencia 2026, la suma de {{VALOR_TOTAL}}, previa aprobación de garantías y expedición del registro presupuestal.',
     },
     {
       title: 'CLÁUSULA SÉPTIMA — VALORES PRESUPUESTOS DE EXPANSIÓN',

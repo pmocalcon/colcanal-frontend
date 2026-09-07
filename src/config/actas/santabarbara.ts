@@ -26,8 +26,11 @@ export const santabarbaraConfig: ActaConfig = {
     actaFecha: 'XX DE MARZO DE 2026',
     actaNumero: '01-2026',
     actaReferenciaAnterior: '01-2026',
-    // Presupuesto en SMMLV (verificar contra el acta): $57.629.710 / SMMLV.
-    smmlvPresupuesto: '40.48',
+    // Lo calcula la página: valor total del acta ÷ salario mínimo del año, que sale de
+    // los parámetros de nómina. Va vacío a propósito —el 40.48 que había aquí estaba
+    // sacado del valor viejo y del salario de 2025, y con las cifras de hoy son 108—;
+    // un respaldo equivocado es peor que ninguno, y el campo se puede digitar.
+    smmlvPresupuesto: '',
     munNombre: 'JORGE MARIO QUINTANA CAÑAVERAL',
     munCc: '15.338.145',
     munCcCiudad: 'Santa Bárbara, Antioquia',
@@ -69,12 +72,12 @@ export const santabarbaraConfig: ActaConfig = {
 
   clausulas: [
     { title: 'CLÁUSULA PRIMERA — OBJETO', content: 'Ejecutar por parte de la empresa Unión Temporal Alumbrado Público Santa Bárbara, las obras de expansión con saldos disponibles en los sectores Vereda La Liboriana Camino por la Cerrajería, Corregimiento de Damasco Sector El Cementerio, Vereda Camino a la Planta y en el Corregimiento de Versalles Calle Placa Polideportiva.' },
-    { title: 'CLÁUSULA SEGUNDA — VALOR DEL PROYECTO', content: 'El valor total del proyecto de la expansión con saldos disponibles es de CINCUENTA Y SIETE MILLONES SEISCIENTOS VEINTINUEVE MIL SETECIENTOS DIEZ PESOS ($57.629.710) M/CTE, así:' },
+    { title: 'CLÁUSULA SEGUNDA — VALOR DEL PROYECTO', content: 'El valor total del proyecto de la expansión con saldos disponibles es de {{VALOR_TOTAL}}, así:' },
     { title: 'PARÁGRAFO — FUENTE DE FINANCIAMIENTO', content: 'El proyecto de expansión para iluminación en el sistema de alumbrado público de los diferentes sectores determinados en el municipio de Santa Bárbara se ejecutará con los saldos disponibles del recaudo de Alumbrado Público, determinados con corte a 28 de febrero de 2026.' },
     { title: 'CLÁUSULA TERCERA — ALCANCE DE LAS OBRAS A EJECUTAR', content: 'Realizar las obras de expansión y puesta en funcionamiento en los sectores donde se llevará a cabo la expansión correspondiente, esto es: Vereda La Liboriana Camino por la Cerrajería, Corregimiento de Damasco Sector El Cementerio, Vereda Camino a la Planta y en el Corregimiento de Versalles Calle Placa Polideportiva.' },
     { title: 'CLÁUSULA CUARTA — ESPECIFICACIONES TÉCNICAS', content: 'El proyecto de iluminación se realizará con luminarias led de 35W, luminarias led de 80W, brazos galvanizados, postes en fibra de vidrio de 9 m x 510 Kg y red de aluminio aislado #4 aéreo.' },
     { title: 'CLÁUSULA QUINTA — OPERACIÓN Y MANTENIMIENTO', content: 'A cargo del CONCESIONARIO en el marco de la propuesta que hace parte del presente documento y del contrato de Concesión No. LP 002 de 2022.' },
-    { title: 'CLÁUSULA SEXTA — FORMA DE PAGO', content: 'El MUNICIPIO pagará al CONCESIONARIO el valor total de la presente Acta de Obra No 1, a la firma del acta de inicio con los saldos disponibles del impuesto de alumbrado público, la suma de CINCUENTA Y SIETE MILLONES SEISCIENTOS VEINTINUEVE MIL SETECIENTOS DIEZ PESOS ($57.629.710) M/CTE, previa aprobación de garantías.' },
+    { title: 'CLÁUSULA SEXTA — FORMA DE PAGO', content: 'El MUNICIPIO pagará al CONCESIONARIO el valor total de la presente Acta de Obra No {{NUM_ACTA}}, a la firma del acta de inicio con los saldos disponibles del impuesto de alumbrado público, la suma de {{VALOR_TOTAL}}, previa aprobación de garantías.' },
     { title: 'CLÁUSULA SÉPTIMA — VALORES PRESUPUESTOS DE EXPANSIÓN CON SALDOS DEL IMPUESTO', content: 'Los valores que conforman el presupuesto corresponden a las UCAPs, aceptadas por el Municipio dentro de la oferta económica mediante la presente Acta de Obra, así:' },
     { title: 'CLÁUSULA OCTAVA — PLAZO DE EJECUCIÓN', content: 'El plazo para la ejecución de los proyectos de iluminación contemplados en la presente Acta de Obra es de noventa (90) días hábiles contados a partir del inicio de ejecución de las obras, esto cuando se suscriba el acta de inicio.' },
     { title: 'CLÁUSULA NOVENA — GARANTÍAS', content: 'El CONCESIONARIO deberá garantizar la ejecución del presente convenio, por tanto, deberá amparar a favor del Municipio a través de cualquiera de los mecanismos de cobertura de riesgo permitidos por el Decreto 1082 de 2015.' },
