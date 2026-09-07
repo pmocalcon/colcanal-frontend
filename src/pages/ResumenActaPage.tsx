@@ -8,6 +8,7 @@ import {
   directorBudgetsService,
   type DirectorBudget,
 } from '@/services/director-budgets.service';
+import { talentoHumanoService } from '@/services/talentoHumano.service';
 import { getActaConfig } from '@/config/actas';
 import type { EncabezadoTablaRow, GarantiaAmparo } from '@/config/actas/types';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
@@ -255,6 +256,13 @@ export default function ResumenActaPage() {
 
   const [ippCurrent, setIppCurrent] = useState('');
   const lastContratoRef = useRef('');
+
+  // Salario mínimo del año del acta, para expresar el presupuesto en SMMLV. Sale de
+  // los parámetros de nómina y no de una constante: cambia cada 1º de enero.
+  const [smmlv, setSmmlv] = useState<{ anioUsado: number; smmlv: number } | null>(null);
+  // El último valor que calculamos solo. Sirve para saber si lo que hay en el campo
+  // lo pusimos nosotros —y entonces se puede recalcular— o lo escribió alguien.
+  const smmlvAuto = useRef('');
   const [wordStatus, setWordStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
@@ -1174,7 +1182,50 @@ export default function ResumenActaPage() {
     ? `IPP ${MONTH_NAMES_ES[(ippConfig.baseMonth ?? 1) - 1]} ${ippConfig.baseYear}`
     : 'IPP Base';
 
+  // El presupuesto del acta expresado en SMMLV, que va en la tabla de la garantía de
+  // responsabilidad civil. Antes iba escrito a mano en la configuración de cada
+  // municipio y envejecía dos veces —cuando cambiaba el valor de la obra y cuando
+  // cambiaba el salario mínimo—; el de Santa Bárbara decía 40.48 estando en 108.
+  const smmlvPresupuestoCalculado =
+    smmlv && smmlv.smmlv > 0 && valorTotal > 0
+      ? (valorTotal / smmlv.smmlv).toFixed(2)
+      : '';
+
   const isLoading = accessLoading || loading;
+
+  // Trae el salario mínimo del año que diga el acta. Si ese año no está cargado, el
+  // backend responde con el más reciente y avisa cuál usó.
+  useEffect(() => {
+    const anio = Number(docFields.actaYear) || new Date().getFullYear();
+    let vigente = true;
+    talentoHumanoService
+      .getSmmlv(anio)
+      .then((r) => {
+        if (vigente) setSmmlv(r ? { anioUsado: r.anioUsado, smmlv: r.smmlv } : null);
+      })
+      // Sin salario mínimo el campo se queda como esté y se digita a mano, que es
+      // como funcionaba antes. No vale la pena romper el acta por esto.
+      .catch(() => vigente && setSmmlv(null));
+    return () => {
+      vigente = false;
+    };
+  }, [docFields.actaYear]);
+
+  // Escribe el cálculo en el campo, pero cede ante lo que alguien haya escrito: solo
+  // se pisa el valor si sigue siendo el que pusimos nosotros, o el que traía el
+  // archivo de configuración y que ya sabemos que está viejo.
+  useEffect(() => {
+    if (!smmlvPresupuestoCalculado) return;
+    const delArchivo = String(getActaConfig().docFields.smmlvPresupuesto ?? '').trim();
+    setDocFields((prev) => {
+      const actual = String(prev.smmlvPresupuesto ?? '').trim();
+      const sePuedePisar =
+        actual === '' || actual === smmlvAuto.current || actual === delArchivo;
+      if (!sePuedePisar || actual === smmlvPresupuestoCalculado) return prev;
+      return { ...prev, smmlvPresupuesto: smmlvPresupuestoCalculado };
+    });
+    smmlvAuto.current = smmlvPresupuestoCalculado;
+  }, [smmlvPresupuestoCalculado]);
 
   // 1) Navigation state (fast path)
   useEffect(() => {
@@ -1912,7 +1963,15 @@ export default function ResumenActaPage() {
                               </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Valor</td>
-                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>No debe ser inferior a: Doscientos (200) SMMLV para contratos cuyo valor sea inferior o igual a mil quinientos (1.500) SMMLV. En razón a que el presupuesto oficial del presente contrato expresado en SMMLV asciende a la suma de </EditableText><InlineInput value={docFields.smmlvPresupuesto} onChange={setDF('smmlvPresupuesto')} /><EditableText> SMMLV.</EditableText></td>
+                                <td className="border border-gray-500 px-2 py-1 align-top"><EditableText>No debe ser inferior a: Doscientos (200) SMMLV para contratos cuyo valor sea inferior o igual a mil quinientos (1.500) SMMLV. En razón a que el presupuesto oficial del presente contrato expresado en SMMLV asciende a la suma de </EditableText><InlineInput value={docFields.smmlvPresupuesto} onChange={setDF('smmlvPresupuesto')} /><EditableText> SMMLV.</EditableText>{smmlv && String(smmlv.anioUsado) !== String(docFields.actaYear) && (
+                                  /* El año del acta no está cargado en los parámetros de nómina, así
+                                     que la cifra salió con otro salario mínimo y hay que decirlo.
+                                     Va con `print:hidden`, que la exportación borra del clon: el
+                                     aviso se ve mientras se arma el acta y no entra al Word. */
+                                  <span className="ml-2 text-[11px] font-medium text-amber-700 print:hidden">
+                                    Calculado con el salario mínimo de {smmlv.anioUsado}: el año {docFields.actaYear} no está cargado en los parámetros de nómina.
+                                  </span>
+                                )}</td>
                               </tr>
                               <tr>
                                 <td className="border border-gray-500 px-2 py-1 font-semibold bg-gray-50 align-top" contentEditable={canEdit} suppressContentEditableWarning>Vigencia</td>

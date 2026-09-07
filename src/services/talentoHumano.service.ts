@@ -450,6 +450,19 @@ export const talentoHumanoService = {
     const { data } = await api.get<ThParametroNomina | null>(`${BASE}/parametros/${anio}`);
     return data;
   },
+  /**
+   * Solo el salario mínimo del año, sin exigir ser de Talento Humano.
+   *
+   * Lo usan las actas de obra para expresar el presupuesto en SMMLV. Si el año pedido
+   * no está cargado responde con el más reciente, y `anioUsado` dice cuál fue: el acta
+   * tiene que poder advertirlo en vez de dar una cifra calculada con otro año.
+   */
+  async getSmmlv(anio: number) {
+    const { data } = await api.get<{ anio: number; anioUsado: number; smmlv: number } | null>(
+      `${BASE}/smmlv/${anio}`,
+    );
+    return data;
+  },
   async guardarParametros(payload: Partial<ThParametroNomina>) {
     const { data } = await api.post<ThParametroNomina>(`${BASE}/parametros`, payload);
     return data;
