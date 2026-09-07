@@ -17,7 +17,14 @@ import { tipoRequisicionDe } from '@/config/juridicaContratos';
  * la misma en las seis pantallas y con una copia por pantalla acabarían discrepando.
  */
 
-/** Los documentos salen del flujo: cada acción declara en cuál se ejecuta. */
+/**
+ * Los documentos salen del flujo: cada acción declara en cuál se ejecuta.
+ *
+ * La línea de tiempo **no** está acá: no es un documento del trámite sino una lectura de
+ * él, y no hay ninguna acción que se ejecute dentro. Vive en la barra de acciones, al
+ * lado de «Imprimir / PDF», que es donde están las cosas que se miran sobre el trámite y
+ * no las que se diligencian.
+ */
 export type TabDoc = DocumentoJuridica;
 
 /**
@@ -25,7 +32,7 @@ export type TabDoc = DocumentoJuridica;
  * la solicitud, que es la raíz—, así que no hay una tabla de equivalencias que se
  * pueda desincronizar.
  */
-export const rutaDocumento = (solicitudId: number, doc: DocumentoJuridica) =>
+export const rutaDocumento = (solicitudId: number, doc: TabDoc) =>
   `/dashboard/gestion-conocimiento/juridica/${solicitudId}`
   + (doc === 'solicitud' ? '' : `/${doc}`);
 

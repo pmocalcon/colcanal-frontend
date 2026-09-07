@@ -12,12 +12,14 @@ import {
   type GcSolicitud, type GcHistorialEntry,
 } from '@/services/gestionConocimiento.service';
 import {
-  ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla,
+  ESTADOS, estadoLabel, estadoBadgeClass, accionesDisponibles, calcularSla, sumarDiasHabiles, ESTADOS_FINALES,
   documentosConAccion, DOCUMENTO_LABEL, textoSla, accionInfo, ACCION_CREACION,
   ROLES_ADMINISTRATIVA, ROLES_JURIDICA,
   type JuridicaEstado,
 } from '@/utils/juridicaWorkflow';
 import { esRolPmo } from '@/utils/rolesPmo';
+import { medirEtapas } from '@/utils/tiemposDeEtapa';
+import { formatElapsedLargo } from '@/utils/tiempoHabil';
 import {
   TIPOS_CONTRATO, habilitantesPara,
   TIPOS_REQUISICION, tipoRequisicionDe, getTipoRequisicion,
@@ -1360,6 +1362,8 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
   };
   const historial = [creacion, ...(sol.historial ?? [])];
   const hayHistorial = historial.length > 0;
+  /** Cuánto duró cada etapa frente a su plazo, para leerlo junto a lo que pasó. */
+  const etapas = medirEtapas(historial, ESTADOS, ESTADOS_FINALES, sumarDiasHabiles);
 
   return (
     /* Estado e historial van lado a lado: son las dos preguntas que se hacen al abrir
@@ -1554,17 +1558,35 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
       </footer>
     </section>
 
-    {/* Historial: línea de tiempo, con el más reciente arriba y marcado. */}
+    {/* Historial y tiempos en una sola lista: eran dos tarjetas que respondían la misma
+        pregunta —cómo llegó hasta acá— partida en qué pasó y cuánto costó, y cotejarlas
+        obligaba a saltar de una a otra buscando la misma fecha.
+
+        Va del principio al final, al revés que antes: las duraciones encadenan hacia
+        adelante y leídas de arriba abajo en orden inverso no se siguen. */}
     {hayHistorial && (
       <section className={UI.tarjeta}>
-        <header className={`${UI.banda} border-b px-5 py-3.5`}>
+        <header className={`${UI.banda} border-b px-5 py-3.5 flex flex-wrap items-baseline justify-between gap-2`}>
           <h2 className={UI.titulo}>
             <History className="w-4 h-4" /> Historial de actividad
           </h2>
+          <span className="text-xs font-normal text-[#4a4a63]">
+            <b>{formatElapsedLargo(etapas.totalMs)}</b>
+            {etapas.enCurso && ' · en curso'}
+            {etapas.etapasVencidas > 0 ? (
+              <span className="text-red-700 font-semibold">
+                {' '}· {etapas.etapasVencidas} de {etapas.etapasConPlazo} fuera de plazo
+              </span>
+            ) : etapas.etapasConPlazo > 0 ? (
+              <span className="text-green-700"> · plazos cumplidos</span>
+            ) : null}
+          </span>
         </header>
         <div className="p-5">
           <ol className="relative pl-5 space-y-4 before:absolute before:inset-y-1.5 before:left-[3px] before:w-px before:bg-[#e6e6f0]">
-            {[...historial].reverse().map((h, i) => {
+            {etapas.entradas.map((h, i) => {
+              const t = etapas.tiempos[i];
+              const esUltima = i === etapas.entradas.length - 1;
               // Los avisos de vencimiento comparten bitácora con las transiciones,
               // pero no son un cambio de estado: si se pintaran igual, la fila diría
               // "Contrato en ejecución" y parecería que el flujo se movió. Van con su
@@ -1577,7 +1599,11 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
                   {/* El punto lleno marca el movimiento más reciente, que es el que
                       explica en qué estado está la solicitud ahora. */}
                   <span className={'absolute -left-5 top-1.5 w-2 h-2 rounded-full ring-4 ring-white '
-                    + (i === 0 ? 'bg-[#ffe81a] ring-offset-0 outline outline-1 outline-[#e0cc00]' : 'bg-[#c9c9dc]')} />
+                    + (t?.vencido
+                      ? 'bg-red-500'
+                      : esUltima
+                        ? 'bg-[#ffe81a] ring-offset-0 outline outline-1 outline-[#e0cc00]'
+                        : 'bg-[#c9c9dc]')} />
                   <div className="text-[11px] font-mono text-[#4a4a63]">
                     {fmtFechaHora(h.fecha)}
                   </div>
@@ -1652,10 +1678,53 @@ function WorkflowPanel({ sol, nombreRol, esCreador, onAccion, onResolverPoliza, 
                     })()
                   )}
                   </div>
+                  {/* Solo en las que abren etapa: un aviso o una RQ de póliza ocurren
+                      *dentro* de la espera, no son una espera aparte. */}
+                  {t && (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      {/* En la última etapa de un trámite cerrado no hay espera que
+                          medir: ahí se acabó. Sin esto decía «tardó unos segundos». */}
+                      {esUltima && !t.abierto ? (
+                        <span className="inline-flex items-center gap-1 text-[#4a4a63]">
+                          <Clock className="w-3 h-3" /> aquí terminó el trámite
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[#4a4a63]">
+                          <Clock className="w-3 h-3" />
+                          {/* «se quedó así»: es lo que la solicitud pasó en esa
+                              etapa, no lo que tardó quien la atendió. */}
+                          {t.abierto ? 'lleva así ' : 'se quedó así '}
+                          <b>{formatElapsedLargo(t.ms)}</b>
+                        </span>
+                      )}
+                      {t.sla ? (
+                        <span
+                          className={'px-1.5 py-0.5 rounded-full ' + (t.vencido
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800')}
+                          title={t.vence ? `El plazo vencía el ${fmtFechaHora(t.vence.toISOString())}` : undefined}
+                        >
+                          plazo {t.sla === 1 ? '1 día hábil' : `${t.sla} días hábiles`} ·{' '}
+                          {t.vencido ? 'fuera de plazo' : 'a tiempo'}
+                        </span>
+                      ) : (
+                        <span className="text-[#b4b4c4]">sin plazo definido</span>
+                      )}
+                      {etapas.indiceMasLarga === i && !t.abierto && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900">
+                          la etapa más larga
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ol>
+          <p className="text-[11px] text-[#8a8aa3] mt-4">
+            Los tiempos descuentan fines de semana y festivos colombianos. Los plazos son
+            los que el flujo fija para cada etapa.
+          </p>
         </div>
       </section>
     )}

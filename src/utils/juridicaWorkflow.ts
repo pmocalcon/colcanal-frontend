@@ -57,6 +57,14 @@ export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
  */
 export const ORDEN_ESTADOS = Object.keys(ESTADOS) as JuridicaEstado[];
 
+/**
+ * Donde el trámite se acabó: ahí el reloj se detiene.
+ *
+ * Sin esto, la última etapa de un contrato que arrancó hace meses se mediría contra hoy
+ * y diría llevar meses esperando algo que ya ocurrió.
+ */
+export const ESTADOS_FINALES: JuridicaEstado[] = ['finalizado'];
+
 /** ¿El trámite ya pasó por `desde` (o está en él)? Falso si el estado no existe. */
 export const estadoAlcanzo = (estado: string | undefined | null, desde: JuridicaEstado): boolean => {
   const i = ORDEN_ESTADOS.indexOf(estado as JuridicaEstado);
