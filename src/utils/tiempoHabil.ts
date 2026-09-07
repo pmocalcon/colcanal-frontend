@@ -33,10 +33,12 @@ export const esDiaHabil = (d: Date, festivos: Set<string>) => {
  * así que un paso dado el viernes por la tarde y resuelto el lunes por la mañana
  * ya no aparece como «3d»: el fin de semana no le corría el reloj a nadie.
  *
- * Se cuentan las 24 horas de cada día hábil, no la jornada de 7:00 a 16:30. Lo
- * que se pidió fue descontar fines de semana y festivos; recortar además a la
- * jornada mediría otra cosa —horas de trabajo, no tiempo transcurrido— y haría
- * los números incomparables con los que ya se venían mirando.
+ * Se cuentan las 24 horas de cada día hábil, no la jornada —de 7:00 a 16:30, y
+ * hasta las 16:00 los viernes—. Lo que se pidió fue descontar fines de semana y
+ * festivos; recortar además a la jornada mediría otra cosa —horas de trabajo, no
+ * tiempo transcurrido— y haría los números incomparables con los que ya se venían
+ * mirando. Ojo con leerlos juntos: los plazos sí van en jornadas, así que «1 día
+ * hábil» transcurrido no es lo mismo que «1 día hábil» de plazo.
  */
 export function msHabiles(desde: Date, hasta: Date, festivos: Set<string>): number {
   if (hasta <= desde) return 0;

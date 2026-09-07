@@ -66,21 +66,77 @@ export interface RequisitionPurchaseOrder {
   invoicedAmount: number;
   /** Lo que falta por facturar: valor de la orden menos lo facturado. */
   pendingAmount: number;
+  /**
+   * Si ya no se le debe nada. Lo decide el servidor con el mismo margen que el cuadro
+   * de órdenes pendientes —los importes llevan decimales y una diferencia de centavos
+   * es redondeo del IVA, no una factura por cobrar—, para que la misma orden no salga
+   * facturada en una pantalla y morosa en la otra.
+   */
+  saldada: boolean;
+  /**
+   * El número de la factura —o los números, separados por coma, si llegara a haber
+   * varias—. Sin esto el cuadro decía que se envió algo a Contabilidad pero no qué.
+   */
+  invoiceNumbers: string | null;
+  /** La fecha de la propia factura, que no es la del registro en el sistema. */
+  invoiceIssueDate: string | null;
+  /** Todas las facturas de la orden están marcadas como enviadas a Contabilidad. */
+  todasEnviadas: boolean;
+  /** Al menos una lo está: con varias, distingue el envío parcial del completo. */
+  algunaEnviada: boolean;
   /** Fecha del sistema en que la factura se envió a Contabilidad (la última). */
   sentToAccountingAt: string | null;
+  /**
+   * La fecha que digitó quien envió la factura. Es la única disponible en casi todas
+   * —el instante del sistema solo se guarda desde hace poco—, y donde existen las dos
+   * no coinciden: una es lo que se declara y la otra lo que quedó registrado.
+   */
+  sentToAccountingDeclarada: string | null;
   /** Fecha del sistema en que se registró la última factura de la OC. */
   invoiceRegisteredAt: string | null;
 }
 
-/** Un paso del recorrido de estados de la requisición (lo que muestra la Matriz). */
+/**
+ * Un paso del recorrido de la requisición: la espera en un estado, con su plazo y lo
+ * que tardó de verdad.
+ *
+ * `diasHabiles` mide contra el siguiente movimiento, o contra hoy si es el último —de
+ * ahí `abierto`—. `vencido` es nulo cuando el estado no tiene plazo definido: el tiempo
+ * que estuvo ahí se muestra igual, pero no se juzga.
+ */
 export interface RequisitionEstado {
   action: string;
   date: string | null;
+  /** El estado en que quedó la requisición tras este movimiento. */
+  status: string | null;
+  /** Plazo estipulado en días hábiles. Nulo si el estado no tiene SLA. */
+  slaDiasHabiles: number | null;
+  fechaLimite: string | null;
+  /**
+   * Si se pasó del plazo. Lo dice el servidor con el mismo cálculo que marca «Vencida»
+   * en los listados: esta pantalla no puede contradecir esa columna. El **tiempo
+   * transcurrido**, en cambio, lo cuenta el navegador con `tiempoHabil`, que es donde
+   * lo cuentan las demás vistas de auditoría y donde los días son hora de Colombia.
+   */
+  vencido: boolean | null;
+  /** Es el último movimiento: la requisición sigue en este estado. */
+  abierto: boolean;
+}
+
+/** El total del trámite, para verlo sin sumar los pasos. */
+export interface RequisitionRecorridoResumen {
+  inicio: string;
+  fin: string;
+  enCurso: boolean;
+  pasos: number;
+  pasosConPlazo: number;
+  pasosVencidos: number;
 }
 
 export interface RequisitionPurchaseOrdersResponse {
   orders: RequisitionPurchaseOrder[];
   estados: RequisitionEstado[];
+  resumen: RequisitionRecorridoResumen | null;
 }
 
 export interface TimelineEvent {

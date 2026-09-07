@@ -44,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatDateShort } from '@/utils/dateUtils';
+import { formatDateShort, formatDiaCalendario } from '@/utils/dateUtils';
 import { msHabiles, formatElapsed } from '@/utils/tiempoHabil';
 import { getMunicipioName } from '@/utils/departmentMapper';
 
@@ -1211,30 +1211,6 @@ export default function AuditoriasComprasPage() {
                                   Cargando las órdenes de compra…
                                 </p>
                               )}
-                              {/* Recorrido de estados de la requisición, desplegable
-                                  desde la propia fila. */}
-                              {!cargandoOc && ordenes && ordenes.estados.length > 0 && (
-                                <div className="mb-3">
-                                  <p className="text-xs font-semibold text-[hsl(var(--canalco-neutral-500))] mb-1.5">
-                                    Recorrido de estados
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {ordenes.estados.map((e, i) => (
-                                      <Fragment key={e.action + i}>
-                                        {i > 0 && (
-                                          <ChevronRight className="w-3 h-3 text-[hsl(var(--canalco-neutral-400))]" />
-                                        )}
-                                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${getActionColor(e.action)}`}>
-                                          {getActionLabel(e.action)}
-                                          {e.date && (
-                                            <span className="opacity-70">· {formatDateShort(e.date)}</span>
-                                          )}
-                                        </span>
-                                      </Fragment>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
                               {!cargandoOc && ordenes && ordenes.orders.length === 0 && (
                                 <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
                                   Esta requisición todavía no tiene órdenes de compra.
@@ -1250,18 +1226,20 @@ export default function AuditoriasComprasPage() {
                                         <th className="px-3 py-2 font-semibold whitespace-nowrap">Estado</th>
                                         <th className="px-3 py-2 font-semibold text-right">Días</th>
                                         <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor OC</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Número de la factura y fecha en que se emitió">Factura</th>
                                         <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Valor factura</th>
                                         <th className="px-3 py-2 font-semibold text-right">Diferencia</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Fecha del sistema en que se envió a Contabilidad">Enviada a contab.</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Fecha del sistema en que se registró la última factura">Factura reg.</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Cuándo se envió a Contabilidad. Las marcadas con ° son fechas digitadas, no registradas por el sistema">Enviada a contab.</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap" title="Cuándo se tecleó la factura en el sistema. No es la fecha de la factura: casi siempre se registra días después de emitida y enviada">Registro en sistema</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {ordenes.orders.map((o) => {
                                         // Una orden sin nada pendiente ya está saldada: los días que
                                         // lleva emitida dejan de ser una alarma y el cero no se pinta
-                                        // en rojo junto a las que sí deben.
-                                        const saldada = o.pendingAmount <= 0;
+                                        // en rojo junto a las que sí deben. El veredicto viene del
+                                        // servidor, con el mismo margen del cuadro de pendientes.
+                                        const saldada = o.saldada;
                                         const tarde = !saldada && o.days >= DIAS_SIN_FACTURA;
                                         return (
                                           <tr
@@ -1303,6 +1281,25 @@ export default function AuditoriasComprasPage() {
                                             <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                                               ${o.totalAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
                                             </td>
+                                            {/* Cuál es la factura, no solo cuánto suma: sin el
+                                                número no se puede cotejar contra el soporte
+                                                físico, que es lo que se hace al auditar. */}
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                              {o.invoiceNumbers ? (
+                                                <div className="flex flex-col">
+                                                  <span className="font-mono text-[12px] text-[hsl(var(--canalco-neutral-800))]">
+                                                    {o.invoiceNumbers}
+                                                  </span>
+                                                  {o.invoiceIssueDate && (
+                                                    <span className="text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+                                                      emitida {formatDiaCalendario(o.invoiceIssueDate)}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-[hsl(var(--canalco-neutral-400))]">sin registrar</span>
+                                              )}
+                                            </td>
                                             <td
                                               className={
                                                 'px-3 py-2 text-right tabular-nums whitespace-nowrap ' +
@@ -1324,8 +1321,36 @@ export default function AuditoriasComprasPage() {
                                                 ? '$0'
                                                 : `$${o.pendingAmount.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
                                             </td>
+                                            {/* El instante del sistema si existe; si no, la
+                                                fecha declarada, marcada con ° para no dar
+                                                por registrado algo que solo se digitó.
+                                                Sin esto la columna salía vacía en 275 de
+                                                288 facturas cuya fecha sí se conoce. */}
+                                            {/* Un guion no distinguía «no se ha enviado» de
+                                                «se envió y no quedó la fecha», que para
+                                                auditar son cosas opuestas. */}
                                             <td className="px-3 py-2 whitespace-nowrap text-[hsl(var(--canalco-neutral-700))]">
-                                              {o.sentToAccountingAt ? formatDateShort(o.sentToAccountingAt) : '—'}
+                                              {!o.invoiceNumbers ? (
+                                                <span className="text-[hsl(var(--canalco-neutral-400))]">—</span>
+                                              ) : o.sentToAccountingAt ? (
+                                                formatDateShort(o.sentToAccountingAt)
+                                              ) : o.sentToAccountingDeclarada ? (
+                                                <span
+                                                  className="text-[hsl(var(--canalco-neutral-500))] italic"
+                                                  title="Fecha declarada por quien envió la factura; el sistema no registró el envío"
+                                                >
+                                                  {formatDiaCalendario(o.sentToAccountingDeclarada)}°
+                                                </span>
+                                              ) : o.algunaEnviada ? (
+                                                <span
+                                                  className="text-amber-700"
+                                                  title="La factura está marcada como enviada, pero no quedó ninguna fecha"
+                                                >
+                                                  enviada, sin fecha
+                                                </span>
+                                              ) : (
+                                                <span className="text-[hsl(var(--canalco-neutral-500))]">sin enviar</span>
+                                              )}
                                             </td>
                                             <td className="px-3 py-2 whitespace-nowrap text-[hsl(var(--canalco-neutral-700))]">
                                               {o.invoiceRegisteredAt ? formatDateShort(o.invoiceRegisteredAt) : '—'}
@@ -1338,7 +1363,12 @@ export default function AuditoriasComprasPage() {
                                   <p className="mt-2 text-xs text-[hsl(var(--canalco-neutral-500))]">
                                     Diferencia = valor de la orden menos lo facturado. En rojo, las que
                                     llevan {DIAS_SIN_FACTURA} días o más sin factura completa.
-                                    «Enviada a contab.» y «Factura reg.» son fechas del sistema.
+                                    «Registro en sistema» es cuándo se tecleó la factura, no cuándo se
+                                    emitió: en las 288 registradas, el envío a contabilidad se declaró
+                                    entre 1 y 174 días antes de teclearla, así que ver una fecha de envío
+                                    anterior a la de registro es lo normal y no una inconsistencia. Las
+                                    marcadas con ° en «Enviada a contab.» las digitó quien envió la
+                                    factura: el sistema no registró ese envío y no se pueden cotejar.
                                   </p>
                                 </div>
                               )}

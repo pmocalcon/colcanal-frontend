@@ -48,6 +48,23 @@ export function formatDateShort(dateString: string | Date): string {
 }
 
 /**
+ * Formatea un día del calendario —el de una factura, no el instante de un registro—.
+ * Ejemplo: "06/08/2026"
+ *
+ * Va aparte de `formatDateShort` porque no convierte de zona horaria: un día no tiene
+ * hora, y pasarlo por `new Date` lo vuelve medianoche de alguna zona. La fecha de una
+ * factura emitida el 6 de agosto no se corre al 5 según dónde se mire, pero eso es
+ * justo lo que pasa cuando llega como «2026-08-06T00:00:00Z» y se formatea en hora de
+ * Colombia. Acá se leen los números tal como vienen.
+ */
+export function formatDiaCalendario(dia: string | null | undefined): string {
+  if (!dia) return '-';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dia);
+  if (!m) return formatDateShort(dia);
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
  * Formatea solo la hora para Colombia
  * Ejemplo: "16:05"
  * Usa Intl.DateTimeFormat para manejo robusto de zona horaria

@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { auditService, type RequisitionDetailResponse } from '@/services/audit.service';
+import {
+  auditService,
+  type RequisitionDetailResponse,
+  type RequisitionPurchaseOrdersResponse,
+} from '@/services/audit.service';
+import { LineaTiempoRequisicion } from '@/components/auditorias/LineaTiempoRequisicion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Menu, AlertCircle, ArrowLeft, Clock, User, Package, FileText, TrendingUp } from 'lucide-react';
+import { Menu, AlertCircle, ArrowLeft, Clock, Package, FileText, TrendingUp } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -14,24 +19,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDateShort, formatDate } from '@/utils/dateUtils';
-import { msHabiles, formatElapsedLargo } from '@/utils/tiempoHabil';
-
-// Mapeo de acciones a etiquetas legibles
-const ACTION_LABELS: Record<string, string> = {
-  crear: 'Creada',
-  revisar: 'Revisada',
-  aprobar: 'Aprobada',
-  rechazar: 'Rechazada',
-  registrar_cotizacion: 'Cotización Registrada',
-  crear_ordenes_compra: 'Órdenes de Compra Generadas',
-  registrar_recepcion: 'Recepción Registrada',
-  // El tramo de facturación, que ocurre sobre la orden de compra: hasta ahora la
-  // línea de tiempo terminaba en la recepción y lo que venía después no se veía.
-  registrar_factura: 'Factura Registrada',
-  enviar_facturas_contabilidad: 'Factura Enviada a Contabilidad',
-  recibir_facturas_contabilidad: 'Factura Recibida por Contabilidad',
-  devolver_facturas_contabilidad: 'Factura Devuelta por Contabilidad',
-};
 
 // Mapeo de acciones a colores
 const ACTION_COLORS: Record<string, string> = {
@@ -64,6 +51,12 @@ export default function AuditoriasComprasDetallePage() {
     else navigate('/dashboard/auditorias/compras');
   };
   const [detail, setDetail] = useState<RequisitionDetailResponse | null>(null);
+  /**
+   * El recorrido con plazos y facturas, que lo sirve el mismo endpoint del desplegable
+   * de la matriz. Va en su propia consulta y no bloquea la pantalla: si falla, el
+   * detalle se ve igual y la línea de tiempo se arma con la bitácora, sin plazos.
+   */
+  const [recorrido, setRecorrido] = useState<RequisitionPurchaseOrdersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -78,18 +71,21 @@ export default function AuditoriasComprasDetallePage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await auditService.getRequisitionDetail(parseInt(requisitionId));
+      const id = parseInt(requisitionId);
+      const [response, oc] = await Promise.all([
+        auditService.getRequisitionDetail(id),
+        auditService
+          .getRequisitionPurchaseOrders(id)
+          .catch(() => null as RequisitionPurchaseOrdersResponse | null),
+      ]);
       setDetail(response);
+      setRecorrido(oc);
     } catch (err) {
       console.error('Error loading requisition detail:', err);
       setError('Error al cargar el detalle de la requisición');
     } finally {
       setLoading(false);
     }
-  };
-
-  const getActionLabel = (action: string) => {
-    return ACTION_LABELS[action] || action;
   };
 
   const getActionColor = (action: string) => {
@@ -136,25 +132,23 @@ export default function AuditoriasComprasDetallePage() {
 
   const { requisition, amounts, timeline } = detail;
 
-  /** Los festivos que manda el backend, para descontarlos de los tiempos. */
-  const festivos = new Set(detail.holidays ?? []);
-
   /**
-   * Cuánto pasó desde el paso anterior, sin contar fines de semana ni festivos.
-   *
-   * Se calcula acá y no en el servidor porque los días hábiles empiezan y terminan
-   * en hora de Colombia: el backend corre en UTC y una requisición aprobada un
-   * viernes por la noche caería en sábado.
+   * Los pasos del recorrido. Los trae el endpoint de órdenes con su plazo y si se
+   * venció; si esa consulta no llegó, se arman con la bitácora del propio detalle para
+   * que la línea de tiempo no desaparezca: se pierden los plazos, no la historia.
    */
-  const transcurrido = (index: number): string | null => {
-    if (index === 0) return null;
-    const ms = msHabiles(
-      new Date(timeline[index - 1].createdAt),
-      new Date(timeline[index].createdAt),
-      festivos,
-    );
-    return ms > 0 ? formatElapsedLargo(ms) : null;
-  };
+  const pasos =
+    recorrido?.estados && recorrido.estados.length > 0
+      ? recorrido.estados
+      : timeline.map((e, i) => ({
+          action: e.action,
+          date: e.createdAt,
+          status: e.newStatus,
+          slaDiasHabiles: null,
+          fechaLimite: null,
+          vencido: null,
+          abierto: i === timeline.length - 1,
+        }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--canalco-neutral-100))] to-white">
@@ -433,78 +427,18 @@ export default function AuditoriasComprasDetallePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {timeline.map((event, index) => {
-                const desdeElAnterior = transcurrido(index);
-                return (
-                <div
-                  key={event.logId}
-                  className="relative pl-8 pb-6 border-l-2 border-[hsl(var(--canalco-neutral-300))] last:border-l-0 last:pb-0"
-                >
-                  {/* Timeline dot */}
-                  <div className="absolute left-[-9px] top-0 w-4 h-4 rounded-full bg-[hsl(var(--canalco-primary))] border-2 border-white shadow"></div>
-
-                  {/* Event content */}
-                  <div className="bg-[hsl(var(--canalco-neutral-100))] rounded-lg p-4">
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div className="flex-1">
-                        <Badge variant="outline" className={`${getActionColor(event.action)} border mb-2`}>
-                          {getActionLabel(event.action)}
-                        </Badge>
-                        <div className="flex items-center gap-2 text-sm text-[hsl(var(--canalco-neutral-700))]">
-                          <User className="w-4 h-4" />
-                          <span className="font-medium">{event.user.nombre}</span>
-                          <span className="text-[hsl(var(--canalco-neutral-500))]">
-                            ({event.user.cargo})
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-[hsl(var(--canalco-neutral-900))]">
-                          {formatDate(event.createdAt)}
-                        </p>
-                        {desdeElAnterior && (
-                          <p className="text-xs text-[hsl(var(--canalco-neutral-600))] flex items-center gap-1 justify-end mt-1">
-                            <Clock className="w-3 h-3" />
-                            {desdeElAnterior} después
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {event.comments && (
-                      <div className="mt-2 pt-2 border-t border-[hsl(var(--canalco-neutral-300))]">
-                        <p className="text-sm text-[hsl(var(--canalco-neutral-700))]">
-                          <strong>Comentarios:</strong> {event.comments}
-                        </p>
-                      </div>
-                    )}
-
-                    {(event.previousStatus || event.newStatus) && (
-                      <div className="mt-2 pt-2 border-t border-[hsl(var(--canalco-neutral-300))] flex items-center gap-2 text-xs">
-                        {event.previousStatus && (
-                          <span className="text-[hsl(var(--canalco-neutral-600))]">
-                            De: <strong>{event.previousStatus}</strong>
-                          </span>
-                        )}
-                        {event.previousStatus && event.newStatus && (
-                          <span className="text-[hsl(var(--canalco-neutral-400))]">→</span>
-                        )}
-                        {event.newStatus && (
-                          <span className="text-[hsl(var(--canalco-neutral-600))]">
-                            A: <strong>{event.newStatus}</strong>
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-xs text-[hsl(var(--canalco-neutral-500))]">
-              Los tiempos van en días hábiles: no cuentan fines de semana ni festivos.
-            </p>
+            {/* Una sola línea de tiempo, la misma del desplegable de la matriz: el
+                estado con su plazo, quién lo movió, lo que anotó y los hitos de las
+                facturas. Antes acá se pintaba un recorrido aparte que no sabía de
+                plazos ni de facturas, y había que mirar las dos para tener la
+                historia completa. */}
+            <LineaTiempoRequisicion
+              pasos={pasos}
+              resumen={recorrido?.resumen ?? null}
+              ordenes={recorrido?.orders ?? []}
+              eventos={timeline}
+              titulo={null}
+            />
           </CardContent>
         </Card>
 
