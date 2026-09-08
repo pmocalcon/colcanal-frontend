@@ -5,7 +5,9 @@ import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Printer, Save } from
 import { Button } from '@/components/ui/button';
 import { AvisoAnulacion, BotonesAnulacion } from '@/components/gestionConocimiento/Anulacion';
 import { CamposFaltantes } from '@/components/gestionConocimiento/CamposFaltantes';
-import { VACACIONES_OBLIGATORIOS, etiquetasFaltantes } from '@/utils/camposObligatorios';
+import {
+  VACACIONES_OBLIGATORIOS, VACACIONES_RRHH_OBLIGATORIOS, etiquetasFaltantes,
+} from '@/utils/camposObligatorios';
 import { useAuth } from '@/contexts/AuthContext';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { FORMATO_VACACIONES } from '@/config/formatosGestion';
@@ -19,6 +21,7 @@ import {
   VACACIONES_ESTADOS,
   esTerminal,
   esEditable,
+  ROL_TALENTO_HUMANO,
 } from '@/utils/vacacionesWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
 import {
@@ -27,6 +30,7 @@ import {
 import { useCompuertaCedula } from '@/hooks/useCompuertaCedula';
 import { AvisoCedula } from '@/components/gestionConocimiento/AvisoCedula';
 import { useMisJefes } from '@/hooks/useMisJefes';
+import { esRolPmo } from '@/utils/rolesPmo';
 
 /**
  * Solicitud de Vacaciones · formato GTH-009-F (G. de talento humano).
@@ -180,6 +184,16 @@ export default function SolicitudVacacionesPage() {
   /** Sin ficha no hay a quién darle las vacaciones: solo el documento queda abierto. */
   const compuerta = useCompuertaCedula(f.documento);
   const bloqueado = locked || !compuerta.lista;
+  /*
+   * El recuadro «USO EXCLUSIVO ÁREA RECURSOS HUMANOS» se abre en su propio paso, no en
+   * el borrador: lo que ahí se escribe son las fechas y los días que se CONCEDEN, y esa
+   * decisión es de Talento Humano. Mientras la solicitud sube por el jefe, el recuadro
+   * se ve —para saber qué se pidió— pero no se escribe.
+   */
+  const esTalentoHumano =
+    (user?.nombreRol ?? '').trim() === ROL_TALENTO_HUMANO || esRolPmo(user?.nombreRol);
+  const puedeEscribirRh = estado === 'pendiente_talento_humano' && esTalentoHumano;
+  const bloqueadoRh = !puedeEscribirRh;
   const { abrirGuardada } = compuerta;
   /** A cuál de sus jefes va el Vo.Bo.: el paso «pendiente del jefe» sigue esta elección. */
   const { jefes } = useMisJefes();
@@ -267,8 +281,34 @@ export default function SolicitudVacacionesPage() {
       if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
       motivo = m.trim();
     }
+    /*
+     * El recuadro de RR. HH. viaja con el Vo.Bo. y no por «Guardar»: para entonces la
+     * solicitud ya salió del borrador y el resto del formato está cerrado a propósito
+     * —lo que avaló el jefe debe seguir siendo lo que se aprueba—. Es la misma puerta
+     * que usa la sección 3 de las Cuentas de Compañías.
+     */
+    let data: Record<string, any> | undefined;
+    if (accion === 'aprobar_th') {
+      const faltan = etiquetasFaltantes(VACACIONES_RRHH_OBLIGATORIOS, f);
+      if (faltan.length > 0) {
+        toast.error(`Faltan ${faltan.length} casillas del recuadro de Recursos Humanos`);
+        return;
+      }
+      data = {
+        rhNumeroSolicitud: f.rhNumeroSolicitud,
+        rhFechaRecibido: f.rhFechaRecibido,
+        rhFechaInicio: f.rhFechaInicio,
+        rhFechaFinal: f.rhFechaFinal,
+        rhDiasDisfrutar: f.rhDiasDisfrutar,
+        rhDiasCompensar: f.rhDiasCompensar,
+        rhDiasPendientes: f.rhDiasPendientes,
+        valorPrima: f.valorPrima,
+        valorAnticipo: f.valorAnticipo,
+        fechaPago: f.fechaPago,
+      };
+    }
     try {
-      await gestionConocimientoService.transition(docId!, { accion, motivo });
+      await gestionConocimientoService.transition(docId!, { accion, motivo, data });
       toast.success('Acción registrada');
       await recargar();
     } catch (e) {
@@ -403,6 +443,24 @@ export default function SolicitudVacacionesPage() {
                 </select>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Le toca el turno a Talento Humano: se abre el recuadro de abajo y se avisa
+            qué falta. No hay «Guardar» en este paso —el formato ya no está en borrador—,
+            así que lo que se escriba viaja con el Vo.Bo. y conviene decirlo. */}
+        {puedeEscribirRh && (
+          <div className="no-print mb-4">
+            <CamposFaltantes
+              faltan={etiquetasFaltantes(VACACIONES_RRHH_OBLIGATORIOS, f)}
+              titulo="Falta diligenciar del recuadro de Recursos Humanos"
+            />
+            <p className="mt-1.5 text-[11px] text-[#4a4a63]">
+              Diligencia el recuadro «USO EXCLUSIVO ÁREA RECURSOS HUMANOS» y queda
+              guardado al dar el Vo.Bo. Las fechas y los días que escribas ahí son los que
+              se conceden: son los que quedan en las vacaciones del colaborador, no los
+              que pidió arriba.
+            </p>
           </div>
         )}
 
@@ -552,27 +610,34 @@ export default function SolicitudVacacionesPage() {
 
           {/* ── Uso exclusivo de Recursos Humanos ── */}
           <h2 className="font-bold text-[13px] text-center pt-3">USO EXCLUSIVO ÁREA RECURSOS HUMANOS</h2>
+          {/* Fuera del impreso: en el papel el recuadro se explica solo por su título,
+              en pantalla no, y sin esto parece que la casilla está dañada. */}
+          {bloqueadoRh && !esTerminal(estado ?? '') && (
+            <p className="no-print text-[10px] italic text-[#8a8aa3] text-center -mt-1">
+              Lo diligencia Talento Humano al dar su Vo.Bo.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Recuadro rotulo="NÚMERO DE SOLICITUD">
               <input
                 value={f.rhNumeroSolicitud}
                 onChange={(e) => set('rhNumeroSolicitud', e.target.value)}
-                readOnly={bloqueado}
+                readOnly={bloqueadoRh}
                 className="w-full bg-transparent outline-none text-[11px]"
               />
             </Recuadro>
 
             <Recuadro rotulo="FECHA RECIBIDO SOLICITUD">
-              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} readOnly={bloqueado} />
+              <CasillasFecha valor={f.rhFechaRecibido} onChange={(p, v) => setFecha('rhFechaRecibido', p, v)} readOnly={bloqueadoRh} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA INICIO PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} readOnly={bloqueado} />
+              <CasillasFecha valor={f.rhFechaInicio} onChange={(p, v) => setFecha('rhFechaInicio', p, v)} readOnly={bloqueadoRh} />
             </Recuadro>
 
             <Recuadro rotulo="FECHA FINAL PERIODO DE VACACIONES">
-              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} readOnly={bloqueado} />
+              <CasillasFecha valor={f.rhFechaFinal} onChange={(p, v) => setFecha('rhFechaFinal', p, v)} readOnly={bloqueadoRh} />
             </Recuadro>
           </div>
 
@@ -584,7 +649,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasDisfrutar}
                   onChange={(e) => set('rhDiasDisfrutar', e.target.value)}
-                  readOnly={bloqueado}
+                  readOnly={bloqueadoRh}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -593,7 +658,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.rhDiasCompensar}
                   onChange={(e) => set('rhDiasCompensar', e.target.value)}
-                  readOnly={bloqueado}
+                  readOnly={bloqueadoRh}
                   className="w-12 border border-black bg-transparent outline-none text-center text-[11px] font-normal"
                 />
               </span>
@@ -604,7 +669,7 @@ export default function SolicitudVacacionesPage() {
               <input
                 value={f.rhDiasPendientes}
                 onChange={(e) => set('rhDiasPendientes', e.target.value)}
-                readOnly={bloqueado}
+                readOnly={bloqueadoRh}
                 className="w-10 border-b border-black bg-transparent outline-none text-center text-[10px]"
               />{' '}
               días.
@@ -618,7 +683,7 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorPrima}
                   onChange={(e) => set('valorPrima', e.target.value)}
-                  readOnly={bloqueado}
+                  readOnly={bloqueadoRh}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
@@ -630,14 +695,14 @@ export default function SolicitudVacacionesPage() {
                 <input
                   value={f.valorAnticipo}
                   onChange={(e) => set('valorAnticipo', e.target.value)}
-                  readOnly={bloqueado}
+                  readOnly={bloqueadoRh}
                   className="flex-grow min-w-0 bg-transparent outline-none text-[11px]"
                 />
               </span>
             </Recuadro>
 
             <Recuadro rotulo="FECHA DE PAGO">
-              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} readOnly={bloqueado} />
+              <CasillasFecha valor={f.fechaPago} onChange={(p, v) => setFecha('fechaPago', p, v)} readOnly={bloqueadoRh} />
             </Recuadro>
 
             <div className="border border-black rounded px-2 py-1">

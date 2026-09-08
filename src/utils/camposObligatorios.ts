@@ -92,6 +92,16 @@ export const VACACIONES_OBLIGATORIOS: CampoExigido[] = [
   { campo: 'fechaFinal.anio', etiqueta: 'Fecha final · año' },
   { campo: 'diasDisfrutar', etiqueta: 'Días a disfrutar' },
   { campo: 'diasCompensar', etiqueta: 'Días a compensar' },
+];
+
+/**
+ * El recuadro «USO EXCLUSIVO ÁREA RECURSOS HUMANOS», que no se exige al enviar.
+ *
+ * Lo diligencia Talento Humano en su Vo.Bo., que es el paso donde se decide qué se
+ * concede: al radicar, el empleado no puede saber las fechas que aún no le han dado.
+ * Espeja `VACACIONES_TALENTO_HUMANO` del backend.
+ */
+export const VACACIONES_RRHH_OBLIGATORIOS: CampoExigido[] = [
   { campo: 'rhFechaRecibido.dia', etiqueta: 'Fecha recibido · día' },
   { campo: 'rhFechaRecibido.mes', etiqueta: 'Fecha recibido · mes' },
   { campo: 'rhFechaRecibido.anio', etiqueta: 'Fecha recibido · año' },

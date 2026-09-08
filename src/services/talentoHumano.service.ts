@@ -685,6 +685,15 @@ export const talentoHumanoService = {
     const { data } = await api.get<ResumenVacaciones>(`${BASE}/vacaciones/resumen${query({ anio })}`);
     return data;
   },
+  /**
+   * Registrar vacaciones a mano. Lo normal es que las cree el GTH-018-F al aprobarse;
+   * esto es para las que no nacieron del formato —las del sistema anterior—, sin las
+   * cuales la nómina no tiene cómo descontar los días.
+   */
+  async createVacacion(payload: Partial<ThVacacion>) {
+    const { data } = await api.post<ThVacacion>(`${BASE}/vacaciones`, payload);
+    return data;
+  },
   async updateVacacion(id: number, payload: Partial<ThVacacion>) {
     const { data } = await api.patch<ThVacacion>(`${BASE}/vacaciones/${id}`, payload);
     return data;

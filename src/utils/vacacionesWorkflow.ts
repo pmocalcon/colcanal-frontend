@@ -38,7 +38,8 @@ export const VACACIONES_ESTADOS: Record<VacacionesEstado, EstadoMeta> = {
 };
 
 /** Quien da el Vo.Bo. de Talento Humano (tercer recuadro del papel). */
-const ROL_TALENTO_HUMANO = 'Coordinador Talento Humano';
+/** Quien da el Vo.Bo. de Talento Humano y diligencia el recuadro de RR. HH. */
+export const ROL_TALENTO_HUMANO = 'Coordinador Talento Humano';
 const ROL_GERENCIA = 'Gerencia';
 
 export interface VacacionesTransicion {
