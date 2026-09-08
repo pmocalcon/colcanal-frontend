@@ -34,10 +34,15 @@ import {
 } from '@/components/juridica/requisicionPersonalDoc';
 import { TabsDocumentos, rutaDocumento } from '@/components/juridica/TabsDocumentos';
 import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
+import { FORMATO_CONTRATACION } from '@/config/formatosGestion';
 
 /**
- * Formato GTH-012-F · "Solicitud de prestación de servicios, alquiler, obra y/o suministro"
+ * Formatos GTH-012-F y GTH-013-F · "Solicitud de prestación de servicios, alquiler, obra
+ * y/o suministro" y "Requisición de personal"
  * (G. jurídica del módulo Gestión del conocimiento).
+ *
+ * Son dos documentos y una sola pantalla: cuál rige lo dice `tipoReq`, y con él cambia
+ * el código que se imprime en el encabezado.
  *
  * Se diligencia en pantalla, se guarda en el sistema (una fila por solicitud, el cuerpo
  * va en `data` jsonb) y se imprime / exporta a PDF. Ruta nueva: `.../juridica/nueva`;
@@ -45,7 +50,20 @@ import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
  */
 
 const GESTION = 'juridica';
-const FORMATO = 'GTH-012-F';
+/*
+ * La clave de archivo del trámite, no el código impreso.
+ *
+ * Los dos no coinciden y no tienen por qué: en el papel esta solicitud se imprime como
+ * GTH-012-F o como GTH-013-F según sea de servicios o de personal —lo resuelve `tipoReq`
+ * más abajo—, pero en la tabla todas las del trámite de contratación se archivan bajo la
+ * misma clave, que es por donde las busca el listado y por donde corre el consecutivo.
+ *
+ * Sale del catálogo y no de una constante local. Cuando estuvo escrita acá a mano, la
+ * solicitud 57 se guardó bajo un código que el listado no filtraba: existía, se podía
+ * abrir por su enlace y salía en la matriz, pero no aparecía en la lista de solicitudes
+ * ni para su creador. Es justo lo que advierte el comentario de `formatosGestion.ts`.
+ */
+const FORMATO = FORMATO_CONTRATACION;
 
 interface FormState {
   dia: string; mes: string; anio: string;
