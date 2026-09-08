@@ -547,6 +547,14 @@ export default function PersonalListPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3 pt-4 border-t border-[hsl(var(--canalco-neutral-200))]">
                 <Campo label="Salario" value={borrador.salario ?? ''} onChange={(v) => setCalculado('salario', v)} tipo="number" />
                 <Campo label="Auxilio de transporte" value={borrador.auxilioTransporte ?? ''} onChange={(v) => setCalculado('auxilioTransporte', v)} tipo="number" />
+                <CampoCheck
+                  label="¿Lleva auxilio de transporte?"
+                  value={borrador.auxilioTransporteAplica}
+                  onChange={(v) => set('auxilioTransporteAplica', v)}
+                  si="Sí lo recibe"
+                  no="No lo recibe"
+                  nota="Desmarcar solo si la ley no se lo reconoce —un aprendiz del SENA, por ejemplo—. Quien gana 2 SMMLV o más no lo recibe aunque quede marcado."
+                />
                 <Campo label="Auxilio de rodamiento y otros" value={borrador.auxilioRodamiento ?? ''} onChange={(v) => setCalculado('auxilioRodamiento', v)} tipo="number" />
                 <CampoPorcentaje label="Carga prestacional" value={borrador.cargaPrestacionalPct ?? ''} onChange={(v) => setCalculado('cargaPrestacionalPct', v)} />
 

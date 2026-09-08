@@ -40,6 +40,11 @@ export interface ThPersona {
   /** Los numéricos llegan como texto: Postgres devuelve `numeric` así. */
   salario: string | null;
   auxilioTransporte: string | null;
+  /**
+   * Si le corresponde el auxilio de transporte. Por defecto, sí. Solo puede quitarlo:
+   * quien gana dos salarios mínimos o más no lo recibe aunque esté marcado.
+   */
+  auxilioTransporteAplica: boolean;
   auxilioRodamiento: string | null;
   totalSalarios: string | null;
   /** Cuota mensual de la póliza funeraria. Es un descuento: no suma al total de salarios. */

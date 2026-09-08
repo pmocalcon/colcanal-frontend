@@ -44,11 +44,21 @@ export function Campo({ label, value, onChange, onBlur, tipo, ancho, paso, nota 
  * columna llega sin el dato, y en esos casos vale lo mismo que la base —marcada—. Así
  * una ficha vieja no aparece de repente como si no cotizara.
  */
-export function CampoCheck({ label, value, onChange, nota }: {
+/**
+ * Casilla de sí/no para una ficha. `undefined` cuenta como marcada: las columnas nuevas
+ * llegan sin valor y lo normal es que apliquen.
+ *
+ * `si` y `no` existen porque la casilla nació para descuentos y ya no solo sirve para
+ * eso: un auxilio se paga, no se descuenta, y leer «Sí se le descuenta» junto al auxilio
+ * de transporte decía lo contrario de lo que hace.
+ */
+export function CampoCheck({ label, value, onChange, nota, si, no }: {
   label: string;
   value: boolean | undefined;
   onChange: (v: boolean) => void;
   nota?: string;
+  si?: string;
+  no?: string;
 }) {
   return (
     <label className="block cursor-pointer">
@@ -61,7 +71,7 @@ export function CampoCheck({ label, value, onChange, nota }: {
           className="w-4 h-4 accent-[hsl(var(--canalco-primary))]"
         />
         <span className={value !== false ? '' : 'text-[hsl(var(--canalco-neutral-400))]'}>
-          {value !== false ? 'Sí se le descuenta' : 'No se le descuenta'}
+          {value !== false ? (si ?? 'Sí se le descuenta') : (no ?? 'No se le descuenta')}
         </span>
       </span>
       {nota && (
