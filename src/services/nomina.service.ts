@@ -62,6 +62,8 @@ export interface NovedadNomina {
   vacacionesNoHabiles: string | null;
   retencionFuente: string | null;
   serviciosGruporecordar: string | null;
+  /** La cuota de préstamo digitada para el mes. En blanco manda la de la cartera. */
+  prestamo: string | null;
   observaciones: string | null;
 }
 
@@ -78,6 +80,8 @@ export interface CamposNovedad {
   vacacionesNoHabiles?: string | number | null;
   retencionFuente?: string | number | null;
   serviciosGruporecordar?: string | number | null;
+  /** La cuota de préstamo del mes. En blanco manda la CUOTA A DESCONTAR de la cartera. */
+  prestamo?: string | number | null;
   observaciones?: string | null;
 }
 
@@ -212,6 +216,20 @@ export interface EstadoValidacion {
 
 const BASE = '/nomina';
 
+/** Un préstamo que la pantalla de nómina tiene que advertir antes de generar. */
+export interface PrestamoEnAlerta {
+  prestamoId: number;
+  nombre: string;
+  identificacion: string | null;
+  saldo: number;
+  tipo: 'sin_descontar' | 'descuadre';
+  motivo: string;
+  /** Lo que la cartera tiene anotado como descuento por nómina en el periodo. */
+  enCartera: number;
+  /** Lo que la liquidación produciría hoy para este préstamo. */
+  enNomina: number;
+}
+
 export const nominaService = {
   // ── Validación antes de mandar a Financiera ──
   async estadoValidacion(periodo: string) {
@@ -273,21 +291,19 @@ export const nominaService = {
     return data;
   },
   /**
-   * Préstamos con saldo que la liquidación del periodo no va a descontar.
+   * Préstamos sobre los que hay que decir algo antes de cerrar el periodo.
    *
-   * Al que le falte NOMBRE NOMINA o CUOTA A DESCONTAR la nómina se lo salta sin decir
-   * nada, así que la pantalla lo advierte para que se complete el dato antes de generar.
+   * Dos motivos: `sin_descontar`, con saldo y sin poder descontarlo —al que le falte
+   * NOMBRE NOMINA o CUOTA A DESCONTAR la nómina se lo salta sin decir nada—; y
+   * `descuadre`, cuando la cartera tiene anotado para ese mes un descuento distinto del
+   * que la liquidación produce. El segundo hace falta porque la última cuota de un
+   * préstamo es la que lo deja en cero, y sin saldo el primer aviso ya no lo ve.
    */
   async prestamosSinDescontar(periodo: string) {
-    const { data } = await api.get<
-      Array<{
-        prestamoId: number;
-        nombre: string;
-        identificacion: string | null;
-        saldo: number;
-        motivo: string;
-      }>
-    >(`${BASE}/liquidacion/prestamos-sin-descontar`, { params: { periodo } });
+    const { data } = await api.get<PrestamoEnAlerta[]>(
+      `${BASE}/liquidacion/prestamos-sin-descontar`,
+      { params: { periodo } },
+    );
     return data;
   },
   async generarNomina(periodo: string, smmlv: number, auxTransporte: number) {

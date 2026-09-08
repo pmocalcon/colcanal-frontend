@@ -9,9 +9,11 @@ import { talentoHumanoService } from '@/services/talentoHumano.service';
 import ValidacionTab from '@/components/talentoHumano/ValidacionTab';
 import {
   nominaService,
+  type PrestamoEnAlerta,
   type ThPersonaConNovedad,
   type FilaNomina,
   type CamposNovedad,
+  type SugerenciasNovedad,
 } from '@/services/nomina.service';
 
 /**
@@ -263,13 +265,27 @@ const SUGERIBLES = new Set<keyof CamposNovedad>([
   'serviciosGruporecordar',
 ]);
 
-const sugerenciaDe = (p: ThPersonaConNovedad, key: keyof CamposNovedad): number | null =>
-  SUGERIBLES.has(key) ? (p.sugerencias?.[key as keyof SugerenciasNovedad] as number | null) ?? null : null;
+const sugerenciaDe = (p: ThPersonaConNovedad, key: keyof CamposNovedad): number | null => {
+  // La cuota del préstamo no la trae un formato sino la cartera, pero se comporta igual:
+  // en blanco vale ella y digitar es corregirla. Así la casilla enseña de una qué se le
+  // va a descontar si no se toca, que es justo lo que no se sabía.
+  if (key === 'prestamo') return p.prestamoCuota > 0 ? p.prestamoCuota : null;
+  return SUGERIBLES.has(key) ? (p.sugerencias?.[key as keyof SugerenciasNovedad] as number | null) ?? null : null;
+};
+
+/** De dónde sale el valor que la casilla propone, para decirlo en el tooltip. */
+const origenDe = (p: ThPersonaConNovedad, key: keyof CamposNovedad): string =>
+  key === 'prestamo' ? 'la cartera de préstamos' : p.sugerencias.origen.join(' y ');
 
 const CAMPOS_NOMINA: CampoDef[] = [
   { key: 'diasTrabajados', label: 'Días trabajados', w: 'w-16', entero: true },
   { key: 'bonificaciones', label: 'Bonificaciones' },
   { key: 'embargo', label: 'Embargo' },
+  // La cuota del préstamo se propone sola desde la cartera; esta casilla es para el mes
+  // en que no aplica —o aplica distinta—, sin tener que vaciarle la ficha al préstamo.
+  // Se llama «del mes» y la informativa «Cuota cartera» porque estaban las dos con el
+  // mismo nombre, una al lado de la otra, y no se distinguía cuál mandaba.
+  { key: 'prestamo', label: 'Préstamo del mes' },
   { key: 'retencionFuente', label: 'Retención fuente' },
   { key: 'serviciosGruporecordar', label: 'Póliza funeraria' },
 ];
@@ -286,7 +302,7 @@ const CAMPOS_HORAS_INCAPACIDAD: CampoDef[] = [
 
 const CAMPO_VACIO: CamposNovedad = {
   diasTrabajados: 30, horasExtrasValor: '', recargoNocturnoValor: '', bonificaciones: '',
-  embargo: '', incapacidadEmpresa: '', incapacidadEmpleado: '', incapacidadOtros: '', vacacionesHabiles: '',
+  embargo: '', prestamo: '', incapacidadEmpresa: '', incapacidadEmpleado: '', incapacidadOtros: '', vacacionesHabiles: '',
   vacacionesNoHabiles: '', retencionFuente: '', serviciosGruporecordar: '', observaciones: '',
 };
 
@@ -296,6 +312,7 @@ const draftDe = (n: ThPersonaConNovedad['novedad']): CamposNovedad => ({
   recargoNocturnoValor: n?.recargoNocturnoValor ?? '',
   bonificaciones: n?.bonificaciones ?? '',
   embargo: n?.embargo ?? '',
+  prestamo: n?.prestamo ?? '',
   incapacidadEmpresa: n?.incapacidadEmpresa ?? '',
   incapacidadEmpleado: n?.incapacidadEmpleado ?? '',
   incapacidadOtros: n?.incapacidadOtros ?? '',
@@ -385,7 +402,7 @@ function NovedadesTab({ periodo, generado, smmlv, campos, filtro, conObservacion
               <Th>Proyecto</Th>
               {conObservaciones && <Th align="right">Salario básico</Th>}
               {conObservaciones && <Th align="right">Auxilio rodamiento</Th>}
-              {conObservaciones && <Th align="right">Préstamo</Th>}
+              {conObservaciones && <Th align="right">Cuota cartera</Th>}
               {conObservaciones && <Th align="right">Riesgo</Th>}
               {campos.map((c) => <Th key={c.key} align="right">{c.label}</Th>)}
               {conObservaciones && <Th>Observaciones</Th>}
@@ -418,7 +435,7 @@ function NovedadesTab({ periodo, generado, smmlv, campos, filtro, conObservacion
                         placeholder={sugerido != null ? cop(sugerido) : undefined}
                         title={
                           sugerido != null
-                            ? `${cop(sugerido)} — lo trae ${p.sugerencias.origen.join(' y ')}. Escribe un valor solo si hay que corregirlo.`
+                            ? `${cop(sugerido)} — lo trae ${origenDe(p, c.key)}. Escribe un valor solo si hay que corregirlo${c.key === 'prestamo' ? ', o 0 para no descontarle este mes' : ''}.`
                             : undefined
                         }
                       />
@@ -471,10 +488,13 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
    * falte cualquiera de las dos se lo salta sin decir nada: la persona no aparece con
    * deducción y sigue debiendo. Se avisa acá, antes de generar, porque después de
    * generado el periodo hay que reabrirlo para corregirlo.
+   *
+   * Van dos clases de aviso. La segunda —el descuadre contra la cartera— apareció
+   * porque la primera solo miraba préstamos con saldo, y la última cuota de un préstamo
+   * es justo la que lo deja en cero: a CALPA le anotaron $600.000 de agosto a mano y la
+   * nómina nunca los descontó, sin que nada lo dijera.
    */
-  const [sinDescontar, setSinDescontar] = useState<
-    Array<{ prestamoId: number; nombre: string; saldo: number; motivo: string }>
-  >([]);
+  const [sinDescontar, setSinDescontar] = useState<PrestamoEnAlerta[]>([]);
 
   const visibles = useMemo(
     () => filas.filter((f) => coincide(filtro ?? '', f.identificacion, f.nombre)),
@@ -585,28 +605,61 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
         </div>
       )}
 
-      {sinDescontar.length > 0 && (
-        <div className="no-print mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">
-            {sinDescontar.length === 1
-              ? 'Hay un préstamo con saldo que esta nómina no va a descontar'
-              : `Hay ${sinDescontar.length} préstamos con saldo que esta nómina no va a descontar`}
-          </p>
-          <ul className="mt-2 space-y-1">
-            {sinDescontar.map((p) => (
-              <li key={p.prestamoId} className="text-sm text-amber-900">
-                <span className="font-medium">{p.nombre}</span>
-                <span className="tabular-nums"> · saldo {cop(p.saldo)}</span>
-                <span className="text-amber-800"> · {p.motivo}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-amber-800">
-            Complétalo en Préstamos y vuelve a pulsar «Vista previa». Si generas el periodo
-            así, la cuota no se descuenta y hay que reabrirlo para corregirla.
-          </p>
-        </div>
-      )}
+      {sinDescontar.length > 0 && (() => {
+        // Los dos avisos se leen distinto: uno es plata que se va a dejar de cobrar y el
+        // otro es que la cartera y la nómina no cuentan lo mismo de este mes. Se agrupan
+        // para que quien revisa no tenga que deducir de qué se le está hablando.
+        const perdidos = sinDescontar.filter((p) => p.tipo === 'sin_descontar');
+        const descuadres = sinDescontar.filter((p) => p.tipo === 'descuadre');
+        return (
+          <div className="no-print mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+            {perdidos.length > 0 && (
+              <>
+                <p className="text-sm font-semibold text-amber-900">
+                  {perdidos.length === 1
+                    ? 'Hay un préstamo con saldo que esta nómina no va a descontar'
+                    : `Hay ${perdidos.length} préstamos con saldo que esta nómina no va a descontar`}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {perdidos.map((p) => (
+                    <li key={p.prestamoId} className="text-sm text-amber-900">
+                      <span className="font-medium">{p.nombre}</span>
+                      <span className="tabular-nums"> · saldo {cop(p.saldo)}</span>
+                      <span className="text-amber-800"> · {p.motivo}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {descuadres.length > 0 && (
+              <>
+                <p className={`text-sm font-semibold text-amber-900 ${perdidos.length > 0 ? 'mt-3' : ''}`}>
+                  {descuadres.length === 1
+                    ? 'Un préstamo no cuadra con lo que la cartera tiene anotado este mes'
+                    : `${descuadres.length} préstamos no cuadran con lo que la cartera tiene anotado este mes`}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {descuadres.map((p) => (
+                    <li key={p.prestamoId} className="text-sm text-amber-900">
+                      <span className="font-medium">{p.nombre}</span>
+                      <span className="tabular-nums">
+                        {' '}· cartera {cop(p.enCartera)} · nómina {cop(p.enNomina)}
+                      </span>
+                      <span className="text-amber-800"> · {p.motivo}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            <p className="mt-2 text-xs text-amber-800">
+              Complétalo en Préstamos y vuelve a pulsar «Vista previa». Si generas el periodo
+              así, la cuota no se descuenta y hay que reabrirlo para corregirla.
+            </p>
+          </div>
+        );
+      })()}
 
       {!loading && (
         <div className="mb-4 flex flex-wrap gap-6 text-sm">

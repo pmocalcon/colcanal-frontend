@@ -30,7 +30,7 @@ export interface PagoParaPlan {
   tipo?: string | null;
 }
 
-export type EstadoCuota = "pagada" | "parcial" | "pendiente" | "de-mas";
+export type EstadoCuota = "pagada" | "parcial" | "pendiente" | "de-mas" | "saldada";
 
 export interface CuotaPlan {
   /** El número de cuota, de 1 a `numeroCuotas`. */
@@ -73,6 +73,15 @@ export interface Plan {
   totalPagado: number;
   /** Lo descontado en meses que el calendario no contempla. */
   totalFueraDePlan: number;
+  /**
+   * La cuota en que el saldo real llegó a cero, si llegó.
+   *
+   * Es la que de verdad cerró el préstamo, y casi nunca es la última del calendario:
+   * quien abona de más termina antes. Sin esto la pantalla decía «Saldado» y «última
+   * cuota feb 2027» en el mismo renglón, y las cuotas que sobraban seguían pidiendo
+   * plata que ya nadie debe.
+   */
+  saldadaEn: CuotaPlan | null;
 }
 
 const num = (v: unknown): number => {
@@ -115,6 +124,7 @@ export function planDeAmortizacion(
     totalPlan: 0,
     totalPagado: 0,
     totalFueraDePlan: 0,
+    saldadaEn: null,
   };
 
   const total = num(prestamo.valorPrestamo);
@@ -213,6 +223,25 @@ export function planDeAmortizacion(
   for (let i = 0; i <= ultimoConPago; i++) cuotas[i].conHistoria = true;
 
   /*
+   * Dónde se acabó de pagar, y qué hacer con lo que sigue.
+   *
+   * El calendario es lo pactado, pero quien abona de más lo termina antes: de ahí en
+   * adelante las cuotas del plan no son deuda, son renglones de un calendario que ya no
+   * aplica. Se marcan «saldada» para que la tabla no las cobre —antes salían
+   * «pendiente», con su valor, en un préstamo que la misma pantalla daba por saldado—.
+   *
+   * Se busca solo dentro de los meses con historia: más allá del último descuento nadie
+   * ha pagado, y un saldo en cero ahí sería inventado.
+   */
+  let saldadaEnIdx = -1;
+  for (let i = 0; i <= ultimoConPago; i++) {
+    if (Math.round(cuotas[i].saldoReal) <= 0) { saldadaEnIdx = i; break; }
+  }
+  if (saldadaEnIdx >= 0) {
+    for (let i = saldadaEnIdx + 1; i < cuotas.length; i++) cuotas[i].estado = "saldada";
+  }
+
+  /*
    * Los meses en que se pagó algo por fuera del calendario.
    *
    * Pasa todo el tiempo: un abono con la prima de diciembre, o un descuento que siguió
@@ -277,6 +306,7 @@ export function planDeAmortizacion(
     totalPlan: cuotas.reduce((s, c) => s + c.cuota, 0),
     totalPagado,
     totalFueraDePlan: fueraDePlan.reduce((s, f) => s + f.pagado, 0),
+    saldadaEn: saldadaEnIdx >= 0 ? cuotas[saldadaEnIdx] : null,
   };
 }
 

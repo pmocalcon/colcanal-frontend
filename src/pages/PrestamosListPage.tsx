@@ -160,7 +160,7 @@ export default function PrestamosListPage() {
    * en que empezaron a descontarle.
    */
   const [corrigiendo, setCorrigiendo] = useState<number | null>(null);
-  const [correccion, setCorreccion] = useState({ mesInicio: '', nombreNomina: '' });
+  const [correccion, setCorreccion] = useState({ mesInicio: '', nombreNomina: '', cuotaDescontar: '' });
   /**
    * El nombre exacto de la ficha de Personal de esa cédula.
    *
@@ -258,6 +258,7 @@ export default function PrestamosListPage() {
     setCorreccion({
       mesInicio: (p.mesInicio ?? '').slice(0, 7),
       nombreNomina: p.nombreNomina ?? '',
+      cuotaDescontar: p.cuotaDescontar != null ? String(Math.round(Number(p.cuotaDescontar))) : '',
     });
     setNombreFicha(null);
     if (!p.identificacion) return;
@@ -283,16 +284,22 @@ export default function PrestamosListPage() {
       return;
     }
     const nombre = correccion.nombreNomina.trim();
+    const cuota = correccion.cuotaDescontar.trim();
+    if (cuota && !(Number(cuota) > 0)) {
+      toast.error('La cuota a descontar tiene que ser un valor mayor que cero');
+      return;
+    }
     setGuardando(true);
     try {
       await talentoHumanoService.updatePrestamo(prestamoId, {
         mesInicio: correccion.mesInicio ? `${correccion.mesInicio}-01` : null,
         nombreNomina: nombre || null,
+        cuotaDescontar: cuota ? String(Number(cuota)) : null,
       });
       toast.success(
-        nombre
+        nombre && cuota
           ? 'Ficha corregida. La nómina vuelve a descontarle la cuota.'
-          : 'Ficha corregida. Sin nombre en nómina, el préstamo queda quieto.',
+          : 'Ficha corregida. Le falta un dato para que la nómina la descuente.',
       );
       setCorrigiendo(null);
       await refrescar(prestamoId);
@@ -808,13 +815,29 @@ function TablaAmortizacion({
           </span>
         )}
         <span>Descontado <strong className="text-emerald-800">{cop(plan.totalPagado)}</strong></span>
-        {ultima && (
+        {/*
+            Saldado, el mes que importa es aquel en que se acabó de pagar, no el último
+            del calendario: decir «última cuota feb 2027» al lado de «Saldado» hacía
+            pensar que todavía faltaban seis meses de descuento.
+        */}
+        {plan.saldadaEn ? (
+          <span>
+            Se saldó en <strong className="text-emerald-800">
+              {MESES[plan.saldadaEn.mes - 1]} {plan.saldadaEn.anio}
+            </strong>
+            {plan.saldadaEn.numero < plan.cuotas.length && (
+              <span className="text-[hsl(var(--canalco-neutral-400))]">
+                {' '}· en la cuota {plan.saldadaEn.numero} de {plan.cuotas.length}
+              </span>
+            )}
+          </span>
+        ) : ultima ? (
           <span>
             Última cuota <strong className="text-[hsl(var(--canalco-neutral-900))]">
               {MESES[ultima.mes - 1]} {ultima.anio}
             </strong>
           </span>
-        )}
+        ) : null}
         <span className="text-[hsl(var(--canalco-neutral-400))]">Sin intereses: se amortiza capital.</span>
       </div>
 
@@ -887,6 +910,9 @@ const ESTADO_CUOTA = {
   parcial: { fila: 'bg-amber-50/60', texto: 'text-amber-800', etiqueta: 'parcial' },
   'de-mas': { fila: 'bg-emerald-50/60', texto: 'text-emerald-800', etiqueta: 'de más' },
   pendiente: { fila: '', texto: 'text-[hsl(var(--canalco-neutral-400))]', etiqueta: '' },
+  // El préstamo ya se acabó de pagar antes de esta cuota: el renglón queda del
+  // calendario, pero no es deuda. Se apaga y se dice por qué.
+  saldada: { fila: 'opacity-60', texto: 'text-[hsl(var(--canalco-neutral-400))]', etiqueta: 'ya no se debe' },
 } as const;
 
 function RenglonCuota({ c, edicion }: { c: CuotaPlan; edicion: EdicionDescontado }) {
@@ -1082,8 +1108,8 @@ function CorregirFicha({
   guardar,
   cancelar,
 }: {
-  valores: { mesInicio: string; nombreNomina: string };
-  setValores: (v: { mesInicio: string; nombreNomina: string }) => void;
+  valores: { mesInicio: string; nombreNomina: string; cuotaDescontar: string };
+  setValores: (v: { mesInicio: string; nombreNomina: string; cuotaDescontar: string }) => void;
   /** El nombre de la ficha de Personal de esa cédula, si se pudo resolver. */
   nombreFicha: string | null;
   /** Si el préstamo ya traía nombre de nómina, para saber si esto lo reanuda o lo detiene. */
@@ -1094,13 +1120,23 @@ function CorregirFicha({
   cancelar: () => void;
 }) {
   const nombre = valores.nombreNomina.trim();
+  const cuota = Number(valores.cuotaDescontar.trim());
   const coincide = Boolean(nombreFicha) && nombre === nombreFicha;
-  // Lo que va a cambiar en la liquidación del mes, dicho antes de guardar y no después.
-  const efecto = !teniaNombre && nombre
-    ? { tono: 'text-emerald-800', texto: 'Al guardar, la nómina vuelve a descontarle la cuota de este préstamo.' }
-    : teniaNombre && !nombre
-      ? { tono: 'text-amber-800', texto: 'Al guardar, la nómina deja de descontarle: el préstamo queda quieto con su saldo.' }
-      : null;
+  /*
+   * Lo que va a cambiar en la liquidación del mes, dicho antes de guardar.
+   *
+   * Hacen falta los dos datos: con el nombre pero sin cuota la nómina no sabe cuánto
+   * quitar y se lo salta igual —es lo que le pasó a CALPA, que quedó con el descuento
+   * anotado a mano en la cartera y sin deducción en la nómina—.
+   */
+  const listo = Boolean(nombre) && cuota > 0;
+  const efecto = listo
+    ? { tono: 'text-emerald-800', texto: `Al guardar, la nómina le descuenta ${copCero(cuota)} cada mes.` }
+    : nombre && !(cuota > 0)
+      ? { tono: 'text-amber-800', texto: 'Con nombre pero sin cuota, la nómina no sabe cuánto quitar y se lo salta igual.' }
+      : teniaNombre && !nombre
+        ? { tono: 'text-amber-800', texto: 'Al guardar, la nómina deja de descontarle: el préstamo queda quieto con su saldo.' }
+        : null;
 
   return (
     <div className="mt-3 rounded-lg border border-[hsl(var(--canalco-neutral-300))] bg-white p-3">
@@ -1156,6 +1192,22 @@ function CorregirFicha({
                 : 'Este préstamo no tiene cédula, así que no hay ficha contra qué compararlo. Escríbelo igual a como aparece en la nómina.'}
             </span>
           )}
+        </label>
+
+        <label className="text-xs">
+          <span className="block mb-1 text-[hsl(var(--canalco-neutral-600))]">Cuota a descontar</span>
+          <input
+            inputMode="numeric"
+            value={valores.cuotaDescontar}
+            onChange={(e) =>
+              setValores({ ...valores, cuotaDescontar: e.target.value.replace(/[^\d]/g, '') })
+            }
+            placeholder="Sin cuota no descuenta"
+            className="w-36 border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm text-right tabular-nums"
+          />
+          <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+            Lo que la nómina le quita cada mes. No siempre es la cuota del plan.
+          </span>
         </label>
       </div>
 

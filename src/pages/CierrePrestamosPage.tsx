@@ -88,8 +88,22 @@ export default function CierrePrestamosPage() {
     [filas, valores],
   );
   const excedidos = useMemo(() => filas.filter(seExcede).length, [filas, valores]); // eslint-disable-line react-hooks/exhaustive-deps
+  /*
+   * Cuántas filas cambian de verdad.
+   *
+   * El peso de tolerancia ignora el redondeo, pero **poner en cero siempre cuenta**: sin
+   * esa salvedad una cuota de centavos no se podía borrar, porque la diferencia contra
+   * cero quedaba por debajo del umbral y el botón decía «nada que guardar». Espeja la
+   * misma condición de `guardarCierreDelMes`; si una cambia y la otra no, el contador
+   * habilita un guardado que el servidor descarta en silencio.
+   */
   const cambiados = useMemo(
-    () => filas.filter((f) => Math.abs(valorDe(f) - f.yaDescontado) >= 1).length,
+    () =>
+      filas.filter((f) => {
+        const v = valorDe(f);
+        if (v === 0 && Math.abs(f.yaDescontado) > 0) return true;
+        return Math.abs(v - f.yaDescontado) >= 1;
+      }).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filas, valores],
   );
