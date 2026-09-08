@@ -410,6 +410,71 @@ export function RequisicionPersonalCuerpo({ value: f, onChange, firmas }: {
 /* ── Piezas reutilizables del formato ───────────────────── */
 
 /** Banda gris de sección, como las del formato impreso. */
+/**
+ * Cómo se imprimen los controles del formato. Va **dentro** del `@media print` de cada
+ * página que muestra este cuerpo.
+ *
+ * En pantalla las casillas son `input` y `select` de verdad, porque el formato se
+ * diligencia aquí mismo. En el papel esa condición no significa nada y estorba de tres
+ * maneras, las tres visibles en el mismo impreso:
+ *
+ *  - La flecha del desplegable se imprime, y además le roba ancho al valor: «Unión
+ *    Temporal Alumbrado Público Puerto Asís» salía cortado justo donde estaba la flecha.
+ *  - El texto de ayuda de una casilla vacía se pinta igual que uno escrito, así que el
+ *    impreso decía «Nombre del colaborador» como si alguien lo hubiera diligenciado.
+ *  - Un desplegable sin elegir estampa su primera opción —«— Selecciona —»— con la misma
+ *    letra que una respuesta. Eso lo resuelve `ValorImpreso`, que en el papel reemplaza
+ *    el control por su etiqueta y no imprime nada cuando no hay valor.
+ *
+ * Los recuadros y las líneas punteadas SÍ se quedan: esos son del formato impreso, no del
+ * navegador. La regla quita lo que el navegador agrega, nada más.
+ */
+export const IMPRESION_CONTROLES = `
+  .doc select {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-image: none !important;
+    padding-right: 0 !important;
+    /* Solo en el desplegable, y NUNCA en \`input\`: \`Check\` deja la casilla nativa
+       encima de la dibujada con \`opacity-0\`, y devolverle opacidad la imprimiría
+       montada sobre el cuadrito del formato. */
+    opacity: 1 !important;
+  }
+  .doc input, .doc select, .doc textarea {
+    background: transparent !important;
+    color: #000 !important;
+  }
+  .doc input::placeholder,
+  .doc textarea::placeholder { color: transparent !important; opacity: 0 !important; }
+`;
+
+/**
+ * El valor de un control, para el papel.
+ *
+ * Un `input` y un `select` **recortan** lo que no les cabe: no parten la línea ni encogen
+ * la letra. En pantalla no importa —uno mueve el cursor y lo lee—, pero impreso el dato
+ * queda mutilado y el formato firmado dice otra cosa: el contratante salía «Unión
+ * Temporal Alumbrado Público Puerto Asi» y el cargo «Técnico eléctrico - Conduc».
+ *
+ * Al imprimir se cambia el control por texto normal, que sí parte la línea. Va en pareja
+ * con `print:hidden` sobre el control: uno se ve en pantalla y el otro en el papel.
+ *
+ * A un `select` hay que pasarle la **etiqueta** y no el valor guardado: en el papel va
+ * «Natural», no «natural».
+ */
+export function ValorImpreso({ children, className }: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    // `min-h` para que una casilla sin diligenciar conserve el alto que le daba el
+    // control: sin eso la celda se encogería al imprimir y descuadraría la fila.
+    <span className={'hidden print:block whitespace-pre-wrap break-words min-h-[1.2em] ' + (className ?? '')}>
+      {children}
+    </span>
+  );
+}
+
 export function Banda({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-[hsl(var(--canalco-neutral-200))] border-b border-[#0a2a52] px-2 py-0.5 font-bold text-center text-[11px]">
@@ -471,12 +536,15 @@ function Linea({ value, onChange, placeholder }: {
   value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="flex-grow min-w-0 bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[11.5px] py-0.5 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))]"
-    />
+    <>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="flex-grow min-w-0 bg-transparent outline-none border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[11.5px] py-0.5 placeholder:italic placeholder:text-[hsl(var(--canalco-neutral-400))] print:hidden"
+      />
+      <ValorImpreso className="flex-grow min-w-0 text-[11.5px] leading-snug">{value}</ValorImpreso>
+    </>
   );
 }
 

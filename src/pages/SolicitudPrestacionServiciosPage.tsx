@@ -29,7 +29,8 @@ import {
 } from '@/config/juridicaContratos';
 import { EMPRESAS, getEmpresa } from '@/config/empresasCentroCosto';
 import {
-  RequisicionPersonalCuerpo, prellenarRequisicion, type RequisicionState,
+  RequisicionPersonalCuerpo, prellenarRequisicion, IMPRESION_CONTROLES, ValorImpreso,
+  type RequisicionState,
 } from '@/components/juridica/requisicionPersonalDoc';
 import { TabsDocumentos, rutaDocumento } from '@/components/juridica/TabsDocumentos';
 import { valorEnLetras, formatearMiles } from '@/utils/numeroALetras';
@@ -138,6 +139,8 @@ export default function SolicitudPrestacionServiciosPage() {
   // Empresa seleccionada → centro de costo. Si solo tiene un centro, se autocompleta;
   // Canales & Contactos tiene varios (uno por proyecto) y se elige aparte.
   const empresaSel = getEmpresa(f.empresa);
+  /* El centro de costo elegido, para poder imprimir su nombre y no su código. */
+  const centroElegido = empresaSel?.centros.find((c) => c.code === f.centroCosto) ?? null;
   const handleEmpresa = (nombre: string) => {
     const emp = getEmpresa(nombre);
     setF((prev) => ({
@@ -317,6 +320,8 @@ export default function SolicitudPrestacionServiciosPage() {
 
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; margin: 0 !important; max-width: none !important; border: none !important; }
+
+          ${IMPRESION_CONTROLES}
         }
       `}</style>
 
@@ -488,12 +493,13 @@ export default function SolicitudPrestacionServiciosPage() {
                   <select
                     value={f.tipoPersona}
                     onChange={(e) => set('tipoPersona', e.target.value)}
-                    className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5"
+                    className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 print:hidden'}
                   >
                     <option value="">— Selecciona —</option>
                     <option value="natural">Natural</option>
                     <option value="juridica">Jurídica</option>
                   </select>
+                  <ValorImpreso className="text-[12px] leading-snug">{f.tipoPersona === 'natural' ? 'Natural' : f.tipoPersona === 'juridica' ? 'Jurídica' : ''}</ValorImpreso>
                 </div>
               </div>
             </div>
@@ -504,16 +510,21 @@ export default function SolicitudPrestacionServiciosPage() {
                 <div className="px-2 py-1.5 min-w-0">
                   {empresaSel && empresaSel.centros.length > 1 ? (
                     // Canales & Contactos: el código depende del proyecto.
-                    <select
-                      value={f.centroCosto}
-                      onChange={(e) => set('centroCosto', e.target.value)}
-                      className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5"
-                    >
-                      <option value="">— Selecciona el proyecto —</option>
-                      {empresaSel.centros.map((c) => (
-                        <option key={c.code} value={c.code}>{c.proyecto} — {c.code}</option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        value={f.centroCosto}
+                        onChange={(e) => set('centroCosto', e.target.value)}
+                        className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 print:hidden"
+                      >
+                        <option value="">— Selecciona el proyecto —</option>
+                        {empresaSel.centros.map((c) => (
+                          <option key={c.code} value={c.code}>{c.proyecto} — {c.code}</option>
+                        ))}
+                      </select>
+                      <ValorImpreso className="text-[12px] leading-snug">
+                        {centroElegido ? `${centroElegido.proyecto} — ${centroElegido.code}` : ''}
+                      </ValorImpreso>
+                    </>
                   ) : (
                     <div className="text-[12px] py-0.5 min-h-[1.5em]">
                       {f.centroCosto || (
@@ -532,13 +543,14 @@ export default function SolicitudPrestacionServiciosPage() {
                   <select
                     value={f.empresa}
                     onChange={(e) => handleEmpresa(e.target.value)}
-                    className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5"
+                    className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 print:hidden'}
                   >
                     <option value="">— Selecciona el contratante —</option>
                     {EMPRESAS.map((emp) => (
                       <option key={emp.companyId} value={emp.nombre}>{emp.nombre}</option>
                     ))}
                   </select>
+                  <ValorImpreso className="text-[12px] leading-snug">{f.empresa}</ValorImpreso>
                 </div>
               </div>
               {/*
@@ -565,13 +577,14 @@ export default function SolicitudPrestacionServiciosPage() {
               <select
                 value={f.tipoContrato}
                 onChange={(e) => set('tipoContrato', e.target.value)}
-                className="w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5"
+                className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 print:hidden'}
               >
                 <option value="">— Selecciona el tipo de contrato —</option>
                 {TIPOS_CONTRATO.map((t) => (
                   <option key={t.key} value={t.key}>{t.nombre}</option>
                 ))}
               </select>
+                  <ValorImpreso className="text-[12px] leading-snug">{TIPOS_CONTRATO.find((t) => t.key === f.tipoContrato)?.nombre ?? ''}</ValorImpreso>
 
               {/* Los documentos necesarios se consultan desde el botón «Documentos
                   necesarios» de la barra superior, en una ventana aparte. */}
@@ -1104,13 +1117,16 @@ function FieldInput({ value, onChange, placeholder, center }: {
   value: string; onChange: (v: string) => void; placeholder?: string; center?: boolean;
 }) {
   return (
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 placeholder:text-[hsl(var(--canalco-neutral-400))] placeholder:italic ' + (center ? 'text-center' : '')}
-    />
+    <>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={'w-full bg-transparent outline-none border-0 border-b border-dotted border-[hsl(var(--canalco-neutral-300))] focus:border-[hsl(var(--canalco-primary))] text-[12px] py-0.5 placeholder:text-[hsl(var(--canalco-neutral-400))] placeholder:italic print:hidden ' + (center ? 'text-center' : '')}
+      />
+      <ValorImpreso className={'text-[12px] leading-snug ' + (center ? 'text-center' : '')}>{value}</ValorImpreso>
+    </>
   );
 }
 

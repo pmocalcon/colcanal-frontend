@@ -8,7 +8,7 @@ import { gestionConocimientoService, type GcSolicitud } from '@/services/gestion
 import { getTipo, tipoRequisicionDe } from '@/config/juridicaContratos';
 import { esRolPmo } from '@/utils/rolesPmo';
 import {
-  RequisicionPersonalCuerpo, Banda, DateBox,
+  RequisicionPersonalCuerpo, Banda, DateBox, IMPRESION_CONTROLES,
   EMPTY_REQUISICION, prellenarRequisicion, type RequisicionState,
 } from '@/components/juridica/requisicionPersonalDoc';
 
@@ -101,6 +101,8 @@ export default function RequisicionPersonalPage() {
           body { background: #fff !important; }
           .no-print { display: none !important; }
           .doc { box-shadow: none !important; }
+
+          ${IMPRESION_CONTROLES}
         }
       `}</style>
 
