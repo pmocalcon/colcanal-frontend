@@ -285,26 +285,26 @@ export default function SolicitudAnticipoPage() {
           {/* 2. Datos del beneficiario */}
           <Sec n="2" title="DATOS DEL BENEFICIARIO" />
           <div className="grid grid-cols-3 border-b border-[#0a2a52]">
-            <Cell label="Tipo beneficiario">
+            <Cell label="Tipo beneficiario" obligatorio>
               <select value={f.tipoBeneficiario} onChange={(e) => set('tipoBeneficiario', e.target.value)} className="w-full bg-transparent outline-none text-[12px] py-0.5">
                 <option value="">— Selecciona —</option>
                 <option value="empleado">Empleado</option>
                 <option value="tercero-proveedor">Tercero/Proveedor</option>
               </select>
             </Cell>
-            <Cell label="¿Tercero creado en BD?">
+            <Cell label="¿Tercero creado en BD?" obligatorio>
               <select value={f.terceroCreado} onChange={(e) => set('terceroCreado', e.target.value)} className="w-full bg-transparent outline-none text-[12px] py-0.5">
                 <option value="">— Selecciona —</option>
                 <option value="si">Sí</option>
                 <option value="no">No</option>
               </select>
             </Cell>
-            <Cell label="C.C. / NIT" last><TInput value={f.ccNit} onChange={(v) => set('ccNit', v)} /></Cell>
+            <Cell label="C.C. / NIT" last obligatorio><TInput value={f.ccNit} onChange={(v) => set('ccNit', v)} /></Cell>
           </div>
           <div className="grid grid-cols-3 border-b border-[#0a2a52]">
-            <Cell label="Nombre / Razón social"><TInput value={f.benefNombre} onChange={(v) => set('benefNombre', v)} /></Cell>
-            <Cell label="Banco"><TInput value={f.banco} onChange={(v) => set('banco', v)} /></Cell>
-            <Cell label="N.º de cuenta" last><TInput value={f.numeroCuenta} onChange={(v) => set('numeroCuenta', v)} /></Cell>
+            <Cell label="Nombre / Razón social" obligatorio><TInput value={f.benefNombre} onChange={(v) => set('benefNombre', v)} /></Cell>
+            <Cell label="Banco" obligatorio><TInput value={f.banco} onChange={(v) => set('banco', v)} /></Cell>
+            <Cell label="N.º de cuenta" last obligatorio><TInput value={f.numeroCuenta} onChange={(v) => set('numeroCuenta', v)} /></Cell>
           </div>
 
           {/* 3. Concepto y naturaleza */}
@@ -501,10 +501,19 @@ function LabelCell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Cell({ label, children, last }: { label: string; children: React.ReactNode; last?: boolean }) {
+/**
+ * Una casilla del formato. `obligatorio` solo marca el rótulo: quien valida es el
+ * servidor al enviar, y duplicar la regla acá la dejaría desactualizada el día que cambie.
+ * La marca existe para que la falta se vea diligenciando y no al final, cuando el envío
+ * rebota.
+ */
+function Cell({ label, children, last, obligatorio }: { label: string; children: React.ReactNode; last?: boolean; obligatorio?: boolean }) {
   return (
     <div className={'grid grid-cols-[1fr] ' + (last ? '' : 'border-r border-[#0a2a52]')}>
-      <div className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[#0a2a52] px-2 py-1 font-semibold text-[11px] text-black">{label}</div>
+      <div className="bg-[hsl(var(--canalco-neutral-100))] border-b border-[#0a2a52] px-2 py-1 font-semibold text-[11px] text-black">
+        {label}
+        {obligatorio && <span className="text-red-600" title="Obligatorio para enviar"> *</span>}
+      </div>
       <div className="px-2 py-1.5 min-h-[2rem] flex items-center">{children}</div>
     </div>
   );
