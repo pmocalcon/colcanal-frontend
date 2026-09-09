@@ -1265,22 +1265,45 @@ export default function PlanAnualPage() {
                                                   {currentActaQuantities.luminarias} lum. · {currentActaQuantities.postes} postes ·{' '}
                                                   {fmtCOP(acta.works.reduce((sum, w) => sum + (workValues.get(w.workId) ?? 0), 0))}
                                                 </span>
+                                                {/* El IPP de todas las obras del acta, que es como suele cambiar:
+                                                    el indice es del mes, no de una obra suelta. */}
+                                                {!isReadOnly && (
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    disabled={ippLoading || ippSaving}
+                                                    onClick={() =>
+                                                      openIppDialog({
+                                                        type: 'acta',
+                                                        title: `Acta ${acta.recordNumber}`,
+                                                        subtitle: `${acta.works.length} obra${acta.works.length !== 1 ? 's' : ''} en ejecucion`,
+                                                        workIds: acta.works.map((w) => w.workId),
+                                                      })
+                                                    }
+                                                  >
+                                                    <Percent className="w-3.5 h-3.5 mr-1" />
+                                                    Cambiar IPP
+                                                  </Button>
+                                                )}
                                               </div>
                                               <div className="overflow-x-auto">
-                                                <div className="min-w-[880px]">
-                                                  <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
+                                                <div className="min-w-[990px]">
+                                                  <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px_110px] gap-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--canalco-neutral-400))] border-b border-[hsl(var(--canalco-neutral-200))]">
                                                     <span>Proyecto</span>
                                                     <span className="text-center">Zona</span>
                                                     <span className="text-center">Cant. luminarias</span>
                                                     <span className="text-center">Cant. postes</span>
                                                     <span className="text-center">Red eléctrica</span>
                                                     <span className="text-center">Valor</span>
+                                                    <span className="text-center">IPP</span>
                                                   </div>
                                                   <ul className="space-y-0.5">
                                                     {acta.works.map((w) => {
                                                       const quantities = getWorkQuantitySummary(w);
                                                       return (
-                                                        <li key={w.workId} className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px] gap-3 items-start px-2 py-1 text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug">
+                                                        <li key={w.workId} className="grid grid-cols-[minmax(0,1fr)_90px_110px_95px_140px_130px_110px] gap-3 items-start px-2 py-1 text-xs text-[hsl(var(--canalco-neutral-600))] leading-snug">
                                                           <span className="min-w-0">{w.name}</span>
                                                           <span className="text-center font-medium truncate" title={formatWorkZone(w)}>
                                                             {formatWorkZone(w)}
@@ -1292,6 +1315,32 @@ export default function PlanAnualPage() {
                                                           </span>
                                                           <span className="text-center font-medium whitespace-nowrap">
                                                             {(workValues.get(w.workId) ?? 0) > 0 ? fmtCOP(workValues.get(w.workId)!) : '—'}
+                                                          </span>
+                                                          {/* El IPP de esta obra sola, para cuando su levantamiento se
+                                                              aprobo con un indice distinto al del resto del acta. */}
+                                                          <span className="text-center">
+                                                            {isReadOnly ? (
+                                                              <span className="text-[hsl(var(--canalco-neutral-300))]">—</span>
+                                                            ) : (
+                                                              <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-[11px] text-[hsl(var(--canalco-primary))]"
+                                                                disabled={ippLoading || ippSaving}
+                                                                onClick={() =>
+                                                                  openIppDialog({
+                                                                    type: 'work',
+                                                                    title: w.name,
+                                                                    subtitle: `Acta ${acta.recordNumber} · ${formatWorkZone(w)}`,
+                                                                    workIds: [w.workId],
+                                                                  })
+                                                                }
+                                                              >
+                                                                <Percent className="w-3 h-3 mr-1" />
+                                                                Cambiar
+                                                              </Button>
+                                                            )}
                                                           </span>
                                                         </li>
                                                       );
