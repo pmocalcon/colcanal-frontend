@@ -7,6 +7,7 @@ import {
   type EmpresaRecurso, type FacturaMes, type RetencionProyecto,
 } from '@/services/recursoEconomico.service';
 import type { LiquidacionResultado } from '@/utils/cregCalc';
+import { ContrasteFactura } from './ContrasteFactura';
 
 /**
  * La factura de concesión de **un** municipio en un mes.
@@ -459,6 +460,23 @@ export function FacturaMunicipio({
             </div>
           </label>
           </fieldset>
+
+          {/*
+            Va después del fieldset y no dentro: al director de proyecto —que es quien
+            tiene la factura en la mano— los campos le llegan bloqueados, y un fieldset
+            deshabilitado apagaría también el botón de cargar el archivo.
+          */}
+          <ContrasteFactura
+            subtotal={subtotal}
+            pago={pago}
+            retenciones={CONCEPTOS_RETENCION.map((c) => ({
+              key: c.key,
+              label: c.label,
+              valor: retencionFactura(f, ret, c.key).valor,
+            }))}
+            empresa={empresas.find((e) => e.companyId === companyId)?.name ?? ''}
+            periodo={periodo}
+          />
 
           <ValidacionDirector
             subtotal={subtotal}
