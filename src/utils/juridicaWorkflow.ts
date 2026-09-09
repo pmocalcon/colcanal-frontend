@@ -22,12 +22,13 @@ export type JuridicaEstado =
   // Fase 2
   | 'en_designacion_supervisor'
   | 'en_acta_inicio'
-  | 'finalizado';
+  | 'finalizado'
+  | 'anulado';
 
 interface EstadoMeta {
   label: string;
   sla: number | null; // días hábiles objetivo
-  tone: 'gray' | 'amber' | 'blue' | 'violet' | 'green';
+  tone: 'gray' | 'amber' | 'blue' | 'violet' | 'green' | 'rojo';
 }
 
 export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
@@ -49,13 +50,21 @@ export const ESTADOS: Record<JuridicaEstado, EstadoMeta> = {
   en_designacion_supervisor: { label: 'Designación de supervisor (Jurídica)', sla: 2, tone: 'violet' },
   en_acta_inicio: { label: 'Acta de inicio (Jurídica)', sla: 2, tone: 'violet' },
   finalizado: { label: 'Contrato en ejecución', sla: null, tone: 'green' },
+  // Fuera del flujo: no es un paso más sino la puerta de salida. Se llega desde
+  // cualquier estado y no se sale.
+  anulado: { label: 'Anulado', sla: null, tone: 'rojo' },
 };
 
 /**
  * Los estados en el orden en que ocurren. `ESTADOS` se declara siguiendo el flujo, así
  * que de ahí sale sin repetir la lista. Espejo de `ORDEN_ESTADOS` del backend.
  */
-export const ORDEN_ESTADOS = Object.keys(ESTADOS) as JuridicaEstado[];
+export const ORDEN_ESTADOS: JuridicaEstado[] = (Object.keys(ESTADOS) as JuridicaEstado[])
+  // «Anulado» queda fuera del orden a propósito: no es una etapa que se alcance, sino
+  // la salida. Si estuviera en la lista, `estadoAlcanzo` diría que una solicitud anulada
+  // ya pasó por todas las etapas anteriores —y le abriría todos los documentos del
+  // trámite— solo por ir de última.
+  .filter((e) => e !== 'anulado');
 
 /**
  * Donde el trámite se acabó: ahí el reloj se detiene.
@@ -63,7 +72,7 @@ export const ORDEN_ESTADOS = Object.keys(ESTADOS) as JuridicaEstado[];
  * Sin esto, la última etapa de un contrato que arrancó hace meses se mediría contra hoy
  * y diría llevar meses esperando algo que ya ocurrió.
  */
-export const ESTADOS_FINALES: JuridicaEstado[] = ['finalizado'];
+export const ESTADOS_FINALES: JuridicaEstado[] = ['finalizado', 'anulado'];
 
 /** ¿El trámite ya pasó por `desde` (o está en él)? Falso si el estado no existe. */
 export const estadoAlcanzo = (estado: string | undefined | null, desde: JuridicaEstado): boolean => {
@@ -371,6 +380,7 @@ const TONE_CLASSES: Record<EstadoMeta['tone'], string> = {
   blue: 'bg-[#eeeef5] text-[#16162b]',
   violet: 'bg-[#eeeef5] text-[#16162b]',
   green: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+  rojo: 'bg-red-50 text-red-800 border border-red-200 line-through',
 };
 
 export const estadoLabel = (estado: string) => ESTADOS[estado as JuridicaEstado]?.label ?? estado;

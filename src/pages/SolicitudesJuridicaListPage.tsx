@@ -1,15 +1,38 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, FileText, Trash2, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, Trash2, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { ESTADOS, estadoLabel, estadoBadgeClass, calcularSla, type JuridicaEstado } from '@/utils/juridicaWorkflow';
 import { getTipo } from '@/config/juridicaContratos';
 import { FORMATO_CONTRATACION } from '@/config/formatosGestion';
+import { useAuth } from '@/contexts/AuthContext';
+import { mensajeDeError } from '@/utils/errorMensaje';
 
 /** Le toca actuar al usuario: el backend ya resolvió rol y jerarquía. */
 const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
+
+/**
+ * Quién puede anular un trámite de contratación.
+ *
+ * La Dirección Administrativa y Financiera, que es la que autoriza contratar y por tanto
+ * la única que puede desautorizarlo, y el PMO. El backend lo vuelve a comprobar: esto
+ * solo evita mostrar un botón que respondería 403.
+ */
+const puedeAnular = (rol?: string | null) => {
+  const r = (rol ?? '').trim();
+  return r === 'Director Financiero y Administrativo' || r === 'Analista PMO';
+};
+
+/**
+ * Dónde tiene sentido anular.
+ *
+ * En borrador no: ahí todavía no hay número gastado ni nadie ha avalado nada, y lo que
+ * corresponde es eliminarlo —que es el otro botón—. Tener dos formas de deshacer lo
+ * mismo solo obliga a elegir entre ellas sin saber en qué se diferencian.
+ */
+const sePuedeAnular = (s: GcSolicitud) => s.estado !== 'borrador' && s.estado !== 'anulado';
 
 /**
  * Listado del trámite de contratación (GTH-002-F): desde aquí se crea uno nuevo o se abre
@@ -20,6 +43,8 @@ const meToca = (s: GcSolicitud) => (s.accionesPendientes?.length ?? 0) > 0;
  */
 export default function SolicitudesJuridicaListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const anulaEsteUsuario = puedeAnular(user?.nombreRol);
   const [rows, setRows] = useState<GcSolicitud[]>([]);
   const [loading, setLoading] = useState(true);
   const [soloPendientes, setSoloPendientes] = useState(false);
@@ -68,6 +93,43 @@ export default function SolicitudesJuridicaListPage() {
       setRows((prev) => prev.filter((r) => r.solicitudId !== id));
     } catch {
       toast.error('No se pudo eliminar');
+    }
+  };
+
+  /**
+   * Anula el trámite: lo saca del flujo sin borrarlo.
+   *
+   * Anular no es eliminar. La solicitud enviada ya gastó un número, tiene avales y
+   * bitácora, y el contratista puede aparecer meses después preguntando por ella: se
+   * conserva marcada, con el motivo y con quién la anuló. Por eso el motivo es
+   * obligatorio —lo exige también el backend—: una anulación sin razón escrita deja un
+   * documento muerto que nadie sabe explicar después.
+   */
+  const handleAnular = async (e: React.MouseEvent, s: GcSolicitud) => {
+    e.stopPropagation();
+    const motivo = window.prompt(
+      [
+        `Anular la solicitud N.º ${s.numero ?? s.solicitudId}.`,
+        '',
+        'Queda registrada como anulada, con su motivo y su historial; no se borra.',
+        'Escriba por qué se anula:',
+      ].join('\n'),
+    );
+    // Cancelar el diálogo devuelve null; escribir en blanco no es un motivo.
+    if (motivo === null) return;
+    if (!motivo.trim()) {
+      toast.error('Hay que decir por qué se anula');
+      return;
+    }
+    try {
+      const actualizada = await gestionConocimientoService.transition(s.solicitudId, {
+        accion: 'anular',
+        motivo: motivo.trim(),
+      });
+      toast.success('Solicitud anulada');
+      setRows((prev) => prev.map((r) => (r.solicitudId === s.solicitudId ? actualizada : r)));
+    } catch (err) {
+      toast.error(mensajeDeError(err, 'No se pudo anular la solicitud'));
     }
   };
 
@@ -280,6 +342,17 @@ export default function SolicitudesJuridicaListPage() {
                         {s.estado === 'borrador' && (
                           <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, s.solicitudId, s.numero)} title="Eliminar" className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600">
                             <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {anulaEsteUsuario && sePuedeAnular(s) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => void handleAnular(e, s)}
+                            title="Anular el trámite"
+                            className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600"
+                          >
+                            <Ban className="w-4 h-4" />
                           </Button>
                         )}
                       </div>
