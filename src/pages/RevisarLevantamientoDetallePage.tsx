@@ -632,16 +632,18 @@ export default function RevisarLevantamientoDetallePage() {
                   }}
                 >
                   <CheckCircle className="w-4 h-4 mr-1.5" />
-                  Aprobar
+                  {survey.workInfoStatus === 'rejected' ? 'Aprobar tras la corrección' : 'Aprobar'}
                 </Button>
-                <Button
-                  size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                  onClick={() => setRejectModal({ open: true, block: 'workInfo' })}
-                >
-                  <XCircle className="w-4 h-4 mr-1.5" />
-                  Rechazar
-                </Button>
+                {survey.workInfoStatus === 'pending' && (
+                  <Button
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => setRejectModal({ open: true, block: 'workInfo' })}
+                  >
+                    <XCircle className="w-4 h-4 mr-1.5" />
+                    Rechazar
+                  </Button>
+                )}
               </div>
             )}
           </PermissionGuard>
@@ -664,9 +666,16 @@ export default function RevisarLevantamientoDetallePage() {
                   <div className="flex items-center gap-3">
                     {getStatusBadge(status)}
                     <PermissionGuard permission="levantamientos:revisar">
-                      {/* Botones visibles en pendiente Y en rechazado: tras corregir el bloque
-                          rechazado, el Director Técnico aprueba/rechaza solo esa sección sin
-                          reabrir todo (los bloques aprobados conservan su estado). */}
+                      {/*
+                        * Un bloque decidido ya no ofrece las dos opciones.
+                        *
+                        * Aprobado no ofrece ninguna. Rechazado conserva «Aprobar» —y solo
+                        * ese— porque es lo que sigue: cuando el director corrige la
+                        * sección, el revisor la aprueba sin reabrir todo el levantamiento,
+                        * que devolvería a pendiente los bloques ya aprobados. «Rechazar»
+                        * se retira: el bloque ya está rechazado, y dejarlo ahí hacía
+                        * parecer que la decisión no se había registrado.
+                        */}
                       {(status === 'pending' || status === 'rejected') && (
                         <div className="flex gap-2">
                           <Button
@@ -681,20 +690,22 @@ export default function RevisarLevantamientoDetallePage() {
                             ) : (
                               <>
                                 <CheckCircle className="w-4 h-4 mr-1" />
-                                Aprobar
+                                {status === 'rejected' ? 'Aprobar tras la corrección' : 'Aprobar'}
                               </>
                             )}
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setRejectModal({ open: true, block: block.key })}
-                            disabled={processingBlock === block.key}
-                            className="bg-red-500 hover:bg-red-600 text-white"
-                          >
-                            <XCircle className="w-4 h-4 mr-1" />
-                            Rechazar
-                          </Button>
+                          {status === 'pending' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setRejectModal({ open: true, block: block.key })}
+                              disabled={processingBlock === block.key}
+                              className="bg-red-500 hover:bg-red-600 text-white"
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Rechazar
+                            </Button>
+                          )}
                         </div>
                       )}
                     </PermissionGuard>
