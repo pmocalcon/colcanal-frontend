@@ -97,11 +97,18 @@ const MESES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
 
-export async function leerOrdenPagoPdf(datos: ArrayBuffer): Promise<LecturaOrdenPago> {
-  const lineas = await lineasDelPdf(datos);
+/**
+ * Saca las cifras de un texto, venga de donde venga.
+ *
+ * Se separa de la lectura del PDF porque el mismo texto puede llegar por dos caminos: de
+ * la capa de texto del archivo, cuando la trae, o de un reconocedor sobre la imagen,
+ * cuando el documento es un escaneo. Lo que se busca es idéntico; lo que cambia es de
+ * dónde salieron las letras, y eso lo decide quien llama.
+ */
+export function extraerOrdenPago(lineas: string[]): LecturaOrdenPago {
   // Se une con espacio y no con salto: la carta parte sus frases en varios renglones y
   // «el valor neto por girar de la factura» puede quedar cortado a la mitad.
-  const todo = lineas.map((l) => l.texto).join(' ').replace(/\s+/g, ' ');
+  const todo = lineas.join(' ').replace(/\s+/g, ' ');
 
   const valorPresentado =
     trasLaFrase(todo, /presentada\s+por\s+valor\s+de/)
@@ -169,6 +176,12 @@ export async function leerOrdenPagoPdf(datos: ArrayBuffer): Promise<LecturaOrden
     valorNeto,
     totalDescuentos,
     retenciones,
-    lineas: lineas.map((l) => l.texto),
+    lineas,
   };
+}
+
+/** La orden leída de la capa de texto del PDF. Falla si el archivo es un escaneo. */
+export async function leerOrdenPagoPdf(datos: ArrayBuffer): Promise<LecturaOrdenPago> {
+  const lineas = await lineasDelPdf(datos);
+  return extraerOrdenPago(lineas.map((l) => l.texto));
 }

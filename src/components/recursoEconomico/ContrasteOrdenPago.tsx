@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileUp, Loader2, ScanText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fmtCOP } from '@/services/recursoEconomico.service';
-import { leerOrdenPagoPdf, type LecturaOrdenPago } from '@/utils/ordenPago';
+import { extraerOrdenPago, leerOrdenPagoPdf, type LecturaOrdenPago } from '@/utils/ordenPago';
+import { ocrDelPdf, type ProgresoOcr } from '@/utils/ocrPdf';
 import { FilaComparada, type RetencionEsperada } from './ContrasteFactura';
 
 /**
@@ -45,26 +46,64 @@ export function ContrasteOrdenPago({
   /** 'YYYY-MM' del mes facturado. */
   periodo: string;
 }) {
+  /** La orden ya buena para comparar. */
   const [orden, setOrden] = useState<LecturaOrdenPago | null>(null);
+  /**
+   * Lo que propuso el reconocedor, todavía sin confirmar.
+   *
+   * Va en su propio estado y no en `orden` a propósito: mientras esté acá no se compara
+   * nada. Una cifra que salió de leer una imagen no puede entrar al cotejo sin que una
+   * persona la haya mirado.
+   */
+  const [propuesta, setPropuesta] = useState<LecturaOrdenPago | null>(null);
+  /** El archivo que resultó ser un escaneo y espera que le den permiso de reconocerlo. */
+  const [escaneo, setEscaneo] = useState<File | null>(null);
+  const [progreso, setProgreso] = useState<ProgresoOcr | null>(null);
   const [archivo, setArchivo] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [leyendo, setLeyendo] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
+  const limpiar = () => {
+    setOrden(null); setPropuesta(null); setEscaneo(null); setProgreso(null); setError(null);
+  };
+
   const cargar = async (file: File | undefined) => {
     if (!file) return;
     setLeyendo(true);
-    setError(null);
+    limpiar();
+    setArchivo(file.name);
     try {
       setOrden(await leerOrdenPagoPdf(await file.arrayBuffer()));
-      setArchivo(file.name);
     } catch (e) {
-      setOrden(null);
-      setError(e instanceof Error ? e.message : 'No se pudo leer el PDF de la orden de pago.');
+      const msg = e instanceof Error ? e.message : '';
+      /*
+       * El escaneo no es un error del usuario sino el caso corriente: las órdenes llegan
+       * fotocopiadas. En vez de dejarlo en un mensaje rojo, se le ofrece el otro camino.
+       */
+      if (/escaneada/.test(msg)) setEscaneo(file);
+      else setError(msg || 'No se pudo leer el PDF de la orden de pago.');
     } finally {
       setLeyendo(false);
       // Para que volver a cargar el mismo archivo dispare el evento otra vez.
       if (entrada.current) entrada.current.value = '';
+    }
+  };
+
+  const reconocer = async () => {
+    if (!escaneo) return;
+    setLeyendo(true);
+    setError(null);
+    setProgreso({ pagina: 1, paginas: 1, avance: 0 });
+    try {
+      const renglones = await ocrDelPdf(await escaneo.arrayBuffer(), setProgreso);
+      setPropuesta(extraerOrdenPago(renglones));
+      setEscaneo(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo leer la imagen.');
+    } finally {
+      setLeyendo(false);
+      setProgreso(null);
     }
   };
 
@@ -77,7 +116,7 @@ export function ContrasteOrdenPago({
         {orden && (
           <button
             type="button"
-            onClick={() => { setOrden(null); setError(null); }}
+            onClick={limpiar}
             className="font-normal text-[hsl(var(--canalco-neutral-500))] hover:text-[hsl(var(--canalco-neutral-800))] flex items-center gap-1"
           >
             <X className="w-3.5 h-3.5" /> quitar
@@ -86,7 +125,7 @@ export function ContrasteOrdenPago({
       </header>
 
       <div className="p-4 space-y-3">
-        {!orden && (
+        {!orden && !propuesta && !escaneo && (
           <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
             Cargue el <strong>PDF</strong> de la orden de pago —la carta con que el municipio
             le pide a la fiduciaria que gire— y el sistema compara el valor presentado, cada
@@ -126,6 +165,51 @@ export function ContrasteOrdenPago({
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </p>
+        )}
+
+        {/*
+          El escaneo no se reconoce solo. Leer una imagen tarda y gasta memoria, y sobre
+          todo entrega cifras que hay que revisar: conviene que sea una decisión y no algo
+          que pasa por haber soltado un archivo.
+        */}
+        {escaneo && !leyendo && (
+          <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-3 space-y-2">
+            <p className="text-sm text-amber-900 flex items-start gap-2">
+              <ScanText className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Este PDF es un escaneo: es una foto del papel y no trae texto que leer. Se
+                le puede pasar un <strong>reconocedor de texto</strong> a la imagen, que
+                propone las cifras para que usted las revise antes de comparar nada.
+              </span>
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void reconocer()}>
+              <ScanText className="w-4 h-4 mr-2" /> Leer la imagen
+            </Button>
+          </div>
+        )}
+
+        {progreso && (
+          <div className="rounded-md bg-[hsl(var(--canalco-neutral-100))] px-3 py-2">
+            <p className="text-xs text-[hsl(var(--canalco-neutral-700))] flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Leyendo la imagen · página {progreso.pagina} de {progreso.paginas}
+            </p>
+            <div className="mt-1.5 h-1.5 rounded-full bg-[hsl(var(--canalco-neutral-300))] overflow-hidden">
+              <div
+                className="h-full bg-[hsl(var(--canalco-primary))] transition-all"
+                style={{ width: `${Math.round(progreso.avance * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {propuesta && (
+          <Revision
+            propuesta={propuesta}
+            retenciones={retenciones}
+            onConfirmar={(confirmada) => { setPropuesta(null); setOrden(confirmada); }}
+            onDescartar={limpiar}
+          />
         )}
 
         {orden && (
@@ -331,5 +415,127 @@ function Dato({ termino, valor }: { termino: string; valor: string }) {
         {valor}
       </dd>
     </div>
+  );
+}
+
+/**
+ * Las cifras que propuso el reconocedor, para revisarlas antes de comparar.
+ *
+ * Este paso es el que hace aceptable leer una imagen en un cotejo de plata. El
+ * reconocedor confunde un 3 con un 8 y se come un punto de millar, y una cifra así no se
+ * puede meter a una comparación que después alguien firma. Acá se ven todas juntas, se
+ * corrigen las que estén mal, y solo entonces entran.
+ *
+ * Se muestra el texto reconocido al lado para poder cotejar sin abrir el PDF aparte.
+ */
+function Revision({ propuesta, retenciones, onConfirmar, onDescartar }: {
+  propuesta: LecturaOrdenPago;
+  retenciones: RetencionEsperada[];
+  onConfirmar: (o: LecturaOrdenPago) => void;
+  onDescartar: () => void;
+}) {
+  /** Lo escrito en cada casilla. Se guarda como texto: es lo que la persona teclea. */
+  const [campos, setCampos] = useState<Record<string, string>>(() => {
+    const num = (v: number | null) => (v == null ? '' : String(v));
+    const base: Record<string, string> = {
+      valorPresentado: num(propuesta.valorPresentado),
+      totalDescuentos: num(propuesta.totalDescuentos),
+      valorNeto: num(propuesta.valorNeto),
+    };
+    for (const r of retenciones) {
+      base[r.key] = num(propuesta.retenciones.find((x) => x.key === r.key)?.valor ?? null);
+    }
+    return base;
+  });
+
+  const set = (k: string, v: string) => setCampos((p) => ({ ...p, [k]: v }));
+
+  /** Vacío es «la orden no lo dice», que no es lo mismo que cero. */
+  const cifra = (k: string): number | null => {
+    const t = (campos[k] ?? '').trim();
+    if (!t) return null;
+    const n = Number(t.replace(/[^\d.,-]/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const confirmar = () => {
+    onConfirmar({
+      ...propuesta,
+      valorPresentado: cifra('valorPresentado'),
+      totalDescuentos: cifra('totalDescuentos'),
+      valorNeto: cifra('valorNeto'),
+      retenciones: retenciones
+        .map((r) => {
+          const valor = cifra(r.key);
+          if (valor == null) return null;
+          const previa = propuesta.retenciones.find((x) => x.key === r.key);
+          return {
+            key: r.key,
+            nombre: previa?.nombre ?? r.label,
+            valor,
+            porcentaje: previa?.porcentaje ?? null,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    });
+  };
+
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3 space-y-3">
+      <p className="text-sm text-amber-900 flex items-start gap-2">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+        <span>
+          Estas cifras las leyó un reconocedor sobre la imagen: <strong>todavía no se ha
+          comparado nada</strong>. Revíselas contra el documento y corrija lo que esté mal.
+          Deje en blanco lo que la orden no diga.
+        </span>
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+        <Casilla etiqueta="Valor presentado" valor={campos.valorPresentado} onValor={(v) => set('valorPresentado', v)} />
+        {retenciones.map((r) => (
+          <Casilla key={r.key} etiqueta={r.label} valor={campos[r.key] ?? ''} onValor={(v) => set(r.key, v)} />
+        ))}
+        <Casilla etiqueta="Total descuentos" valor={campos.totalDescuentos} onValor={(v) => set('totalDescuentos', v)} />
+        <Casilla etiqueta="Neto a girar" valor={campos.valorNeto} onValor={(v) => set('valorNeto', v)} />
+      </div>
+
+      <details className="text-xs">
+        <summary className="cursor-pointer text-amber-900 font-medium">
+          El texto que reconoció ({propuesta.lineas.length} renglones)
+        </summary>
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap bg-white rounded-md p-3 text-[11px] leading-relaxed border border-amber-200">
+          {propuesta.lineas.join('\n')}
+        </pre>
+      </details>
+
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={confirmar}>
+          <CheckCircle2 className="w-4 h-4 mr-2" /> Confirmar y comparar
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDescartar}>
+          Descartar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Casilla({ etiqueta, valor, onValor }: {
+  etiqueta: string;
+  valor: string;
+  onValor: (v: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-[hsl(var(--canalco-neutral-700))]">{etiqueta}</span>
+      <input
+        value={valor}
+        onChange={(e) => onValor(e.target.value)}
+        inputMode="decimal"
+        placeholder="no la dice"
+        className="w-44 h-8 px-2 text-right tabular-nums text-sm border border-[hsl(var(--canalco-neutral-300))] rounded-md bg-white outline-none focus:border-[hsl(var(--canalco-primary))]"
+      />
+    </label>
   );
 }
