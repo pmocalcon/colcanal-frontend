@@ -63,6 +63,17 @@ export interface FacturaDian {
    */
   retenciones: FacturaDianTributo[];
   archivo: string;
+  /**
+   * De qué archivo salieron las cifras.
+   *
+   * No es un dato de trámite: en el XML cada importe viene declarado en su etiqueta y no
+   * hay nada que interpretar, mientras que del PDF hay que deducir cuál número es cuál a
+   * partir de los rótulos impresos. Quien mire el resultado tiene derecho a saber cuál de
+   * las dos lecturas está viendo, y la pantalla lo advierte.
+   */
+  fuente: 'xml' | 'pdf';
+  /** Lo que se alcanzó a leer del PDF, para poder revisar la interpretación. */
+  textoLeido?: string[];
 }
 
 /** Error con un texto que se le puede mostrar a quien cargó el archivo. */
@@ -186,6 +197,7 @@ const deInvoice = (invoice: Element, archivo: string): FacturaDian => {
     impuestos: tributos(invoice, 'TaxTotal'),
     retenciones: tributos(invoice, 'WithholdingTaxTotal'),
     archivo,
+    fuente: 'xml',
   };
 };
 
@@ -228,6 +240,45 @@ const deTextoXml = (xml: string, archivo: string, nivel = 0): FacturaDian => {
   );
 };
 
+/**
+ * La representación gráfica, traída al mismo modelo que el XML.
+ *
+ * Lo que el PDF no dice queda en nulo y no en cero: las dos partes son distintas y la
+ * pantalla las pinta distinto —«–» frente a «$0»—, porque «no lo encontré» no autoriza a
+ * nadie a dar por bueno que no lo había. El emisor y el adquiriente se dejan vacíos a
+ * propósito: en el PDF los nombres están mezclados con direcciones y teléfonos, y un
+ * nombre mal recortado dispararía la alarma de «esta factura es de otro municipio» en
+ * facturas correctas.
+ */
+const dePdf = async (datos: ArrayBuffer, archivo: string): Promise<FacturaDian> => {
+  const { leerFacturaPdf } = await import('./facturaPdf');
+  let l;
+  try {
+    l = await leerFacturaPdf(datos);
+  } catch (e) {
+    throw new FacturaDianError(
+      e instanceof Error ? e.message : 'No se pudo leer el PDF de la factura.',
+    );
+  }
+  return {
+    numero: l.numero ?? '(no se encontró en el PDF)',
+    cufe: l.cufe,
+    fechaEmision: l.fechaEmision,
+    moneda: null,
+    emisor: { nombre: '', nit: null },
+    adquiriente: { nombre: '', nit: null },
+    lineas: [],
+    baseGravable: l.baseGravable,
+    totalConImpuestos: l.totalConImpuestos,
+    totalAPagar: l.totalAPagar,
+    impuestos: l.impuestos,
+    retenciones: l.retenciones,
+    archivo,
+    fuente: 'pdf',
+    textoLeido: l.lineas,
+  };
+};
+
 // ── La entrada ───────────────────────────────────────────────────────
 
 /**
@@ -239,14 +290,16 @@ const deTextoXml = (xml: string, archivo: string, nivel = 0): FacturaDian => {
 export async function leerFacturaDian(file: File): Promise<FacturaDian> {
   const nombre = file.name;
   const esZip = /\.zip$/i.test(nombre);
+  const esPdf = /\.pdf$/i.test(nombre);
 
-  if (!esZip && !/\.xml$/i.test(nombre)) {
+  if (!esZip && !esPdf && !/\.xml$/i.test(nombre)) {
     throw new FacturaDianError(
-      'Se espera el XML de la factura electrónica o el ZIP en que la mandaron. '
-      + 'El PDF es la representación gráfica y no trae las cifras en forma legible.',
+      'Se espera la factura electrónica: el XML, su representación en PDF, o el ZIP en '
+      + 'que la mandaron.',
     );
   }
 
+  if (esPdf) return dePdf(await file.arrayBuffer(), nombre);
   if (!esZip) return deTextoXml(await file.text(), nombre);
 
   // fflate ya se usa para leer libros de Excel; se carga aparte para no meterlo en
@@ -254,10 +307,17 @@ export async function leerFacturaDian(file: File): Promise<FacturaDian> {
   const { unzipSync, strFromU8 } = await import('fflate');
   const contenido = unzipSync(new Uint8Array(await file.arrayBuffer()));
   const xmls = Object.keys(contenido).filter((n) => /\.xml$/i.test(n));
+
   if (xmls.length === 0) {
+    // Sin XML queda la representación gráfica, que es peor fuente pero es una fuente.
+    const pdf = Object.keys(contenido).find((n) => /\.pdf$/i.test(n));
+    if (pdf) {
+      const bytes = contenido[pdf];
+      const copia = bytes.slice().buffer as ArrayBuffer;
+      return dePdf(copia, `${nombre} → ${pdf}`);
+    }
     throw new FacturaDianError(
-      'El ZIP no trae ningún XML adentro; suele traer solo el PDF. '
-      + 'Pida el archivo XML de la factura electrónica.',
+      'El ZIP no trae ni el XML ni el PDF de la factura adentro.',
     );
   }
 

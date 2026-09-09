@@ -110,9 +110,11 @@ export function ContrasteFactura({
       <div className="p-4 space-y-3">
         {!factura && (
           <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-            Cargue el <strong>XML</strong> de la factura, o el ZIP en que lo mandaron, y el
-            sistema compara sus cifras con estas. El archivo se lee acá mismo: no se sube
-            ni queda guardado, y ningún campo se llena solo.
+            Cargue la factura —el <strong>XML</strong>, su representación en <strong>PDF</strong>,
+            o el ZIP en que la mandaron— y el sistema compara sus cifras con estas. El
+            archivo se lee acá mismo: no se sube ni queda guardado, y ningún campo se
+            llena solo. Si tiene los dos, prefiera el XML: ahí las cifras vienen
+            declaradas y del PDF hay que deducirlas de los rótulos impresos.
           </p>
         )}
 
@@ -120,7 +122,7 @@ export function ContrasteFactura({
           <input
             ref={entrada}
             type="file"
-            accept=".xml,.zip,application/xml,text/xml,application/zip"
+            accept=".xml,.zip,.pdf,application/xml,text/xml,application/zip,application/pdf"
             className="hidden"
             onChange={(e) => void cargar(e.target.files?.[0])}
           />
@@ -133,7 +135,7 @@ export function ContrasteFactura({
           >
             {leyendo
               ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Leyendo…</>
-              : <><FileUp className="w-4 h-4 mr-2" /> {factura ? 'Cargar otra factura' : 'Cargar la factura (XML o ZIP)'}</>}
+              : <><FileUp className="w-4 h-4 mr-2" /> {factura ? 'Cargar otra factura' : 'Cargar la factura (XML, PDF o ZIP)'}</>}
           </Button>
           {factura && (
             <span className="text-xs text-[hsl(var(--canalco-neutral-500))] truncate max-w-[22rem]">
@@ -216,14 +218,33 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
     );
   }
 
+  const delPdf = factura.fuente === 'pdf';
+
   return (
     <div className="space-y-4">
+      {/*
+        De dónde salieron las cifras. Con el XML no se dice nada —es lo esperado—; con el
+        PDF sí, porque ahí las cifras no vienen declaradas sino deducidas de los rótulos
+        impresos, y quien aprueba tiene que saber cuál de las dos lecturas está mirando.
+      */}
+      {delPdf && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            Estas cifras se leyeron del <strong>PDF</strong>, buscando los rótulos impresos
+            («subtotal», «total a pagar»). Cada proveedor arma el formato a su manera, así
+            que revise abajo el texto que se leyó antes de darle peso. Con el XML no hay
+            nada que deducir.
+          </span>
+        </p>
+      )}
+
       {/* Quién, cuándo y cuál factura */}
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs">
         <Dato termino="Factura" valor={factura.numero} />
         <Dato termino="Emitida" valor={factura.fechaEmision ?? '—'} />
-        <Dato termino="Emisor" valor={factura.emisor.nombre || '—'} />
-        <Dato termino="Adquiriente" valor={factura.adquiriente.nombre || '—'} />
+        {!delPdf && <Dato termino="Emisor" valor={factura.emisor.nombre || '—'} />}
+        {!delPdf && <Dato termino="Adquiriente" valor={factura.adquiriente.nombre || '—'} />}
       </dl>
 
       {/* La comparación */}
@@ -301,7 +322,33 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
         </details>
       )}
 
+      {/*
+        El texto tal como se leyó. Es la prueba de la interpretación: si el subtotal salió
+        raro, acá se ve si fue porque se leyó otro renglón. Sin esto, una lectura mala del
+        PDF sería indistinguible de una factura mala.
+      */}
+      {delPdf && factura.textoLeido && factura.textoLeido.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-[hsl(var(--canalco-neutral-600))] font-medium">
+            El texto que se leyó del PDF ({factura.textoLeido.length} renglones)
+          </summary>
+          <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap bg-[hsl(var(--canalco-neutral-100))] rounded-md p-3 text-[11px] leading-relaxed">
+            {factura.textoLeido.join('\n')}
+          </pre>
+        </details>
+      )}
+
       {/* El veredicto del subtotal, que es la cifra que sí es comparable siempre */}
+      {difSubtotal == null && (
+        <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            No se encontró el subtotal en el archivo, que es la única cifra comparable
+            siempre. Sin ella no hay contraste: cargue el XML de la factura.
+          </span>
+        </p>
+      )}
+
       {difSubtotal != null && (
         difSubtotal === 0 ? (
           <p className="text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 flex items-start gap-2">
