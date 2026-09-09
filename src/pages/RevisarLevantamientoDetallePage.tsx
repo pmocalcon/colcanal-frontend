@@ -606,7 +606,7 @@ export default function RevisarLevantamientoDetallePage() {
             {(['pending', 'in_review'] as string[]).includes((survey as any).status) && (
               <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))] flex items-center gap-3">
                 <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                  Revisión general:
+                  Revisión general (todo el levantamiento):
                 </span>
                 <Button
                   size="sm"
@@ -618,7 +618,7 @@ export default function RevisarLevantamientoDetallePage() {
                   }}
                 >
                   <CheckCircle className="w-4 h-4 mr-1.5" />
-                  Aprobar
+                  Aprobar los 4 bloques
                 </Button>
                 <Button
                   size="sm"
@@ -626,7 +626,7 @@ export default function RevisarLevantamientoDetallePage() {
                   onClick={() => setSurveyRejectModal(true)}
                 >
                   <XCircle className="w-4 h-4 mr-1.5" />
-                  Rechazar
+                  Rechazar los 4 bloques
                 </Button>
               </div>
             )}
@@ -871,7 +871,9 @@ export default function RevisarLevantamientoDetallePage() {
               Rechazar Levantamiento
             </DialogTitle>
             <DialogDescription>
-              Ingresa el motivo del rechazo. Será visible para el creador del levantamiento.
+              Se rechazan <b>los cuatro bloques</b> y a todos se les escribe este mismo
+              motivo, que verá el creador del levantamiento. Si lo que falla es una sola
+              sección, recházala desde su propio encabezado para no devolver las otras tres.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
