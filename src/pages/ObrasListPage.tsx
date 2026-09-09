@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { surveysService, type Work, type WorkActa, type ActaStatus } from '@/services/surveys.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSurveyAccess } from '@/hooks/useSurveyAccess';
+import { mensajeDeError } from '@/utils/errorMensaje';
 import { mapToDepartments, getMunicipioName } from '@/utils/departmentMapper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +85,19 @@ export default function ObrasListPage() {
   const [reviewDialog, setReviewDialog] = useState<{ acta: string; companyId: number; projectId: number | null } | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  /*
+   * Los levantamientos del acta que aun no estan aprobados.
+   *
+   * El acta se revisa como un todo, pero cada obra lleva su propio levantamiento y su
+   * propia revision por bloques. Aprobar el acta sin mirarlos dejaba obras a medias
+   * dentro de un acta ya cursada, y no habia donde enterarse: la pantalla de actas no
+   * mostraba ese estado. Se consultan al abrir el dialogo para poder nombrarlas.
+   */
+  const [reviewPending, setReviewPending] = useState<
+    { workId: number; name: string; surveyId: number | null; status: string | null }[]
+  >([]);
+  const [reviewPendingLoading, setReviewPendingLoading] = useState(false);
+  const [reviewApproveWorks, setReviewApproveWorks] = useState(true);
   const [approveDialog, setApproveDialog] = useState<{ acta: string; companyId: number; projectId: number | null } | null>(null);
   const [approveProjectCode, setApproveProjectCode] = useState('');
   const [approveSubmitting, setApproveSubmitting] = useState(false);
@@ -400,16 +414,103 @@ export default function ObrasListPage() {
     }
   };
 
+  /** Abre el dialogo de revision y averigua que levantamientos siguen sin aprobar. */
+  const openReviewDialog = async (
+    recordNumber: string,
+    companyId: number,
+    projectId: number | null,
+    actaWorks: Work[],
+  ) => {
+    setReviewDialog({ acta: recordNumber, companyId, projectId });
+    setReviewComment('');
+    setReviewApproveWorks(true);
+    setReviewPending([]);
+    setReviewPendingLoading(true);
+    try {
+      const estados = await surveysService.getWorksReviewState(
+        actaWorks.map((w) => w.workId),
+      );
+      const porObra = new Map(estados.map((e) => [e.workId, e]));
+      setReviewPending(
+        actaWorks
+          .map((w) => {
+            const e = porObra.get(w.workId);
+            return {
+              workId: w.workId,
+              name: w.name,
+              surveyId: e?.surveyId ?? null,
+              status: e?.status ?? null,
+            };
+          })
+          // Sin levantamiento tambien cuenta: es una obra que no se puede aprobar y
+          // que conviene ver antes de cursar el acta, no despues.
+          .filter((o) => o.status !== 'approved'),
+      );
+    } catch {
+      toast.error('No se pudo consultar el estado de los levantamientos');
+    } finally {
+      setReviewPendingLoading(false);
+    }
+  };
+
+  /**
+   * Aprueba los levantamientos pendientes del acta, uno por uno.
+   *
+   * Van por `approveAll`, el mismo camino del boton «Aprobar Todo» de la revision, para
+   * que cada uno pase por sus validaciones: quien revisa tiene que ser el revisor
+   * asignado, y el levantamiento tiene que tener IPP. Se continua tras un fallo y se
+   * informa al final: que una obra sin IPP detenga las otras diecisiete no ayuda a
+   * nadie, y callar el fallo seria peor.
+   */
+  const aprobarLevantamientosPendientes = async (): Promise<boolean> => {
+    const conLevantamiento = reviewPending.filter((o) => o.surveyId != null);
+    if (conLevantamiento.length === 0) return true;
+
+    const fallos: string[] = [];
+    for (const obra of conLevantamiento) {
+      try {
+        await surveysService.approveAll(obra.surveyId!);
+      } catch (err) {
+        fallos.push(`${obra.name}: ${mensajeDeError(err, 'no se pudo aprobar')}`);
+      }
+    }
+
+    const aprobadas = conLevantamiento.length - fallos.length;
+    if (aprobadas > 0) {
+      toast.success(
+        aprobadas === 1
+          ? '1 levantamiento aprobado'
+          : `${aprobadas} levantamientos aprobados`,
+      );
+    }
+    if (fallos.length > 0) {
+      toast.error(
+        `No se pudieron aprobar ${fallos.length}: ${fallos.slice(0, 3).join(' · ')}` +
+          (fallos.length > 3 ? ` y ${fallos.length - 3} mas` : ''),
+      );
+      return false;
+    }
+    return true;
+  };
+
   const handleReviewActa = async (approved: boolean) => {
     if (!reviewDialog) return;
     const key = makeActaKey(reviewDialog.companyId, reviewDialog.projectId, reviewDialog.acta);
     try {
       setReviewSubmitting(true);
+      // Primero los levantamientos: si alguno falla, el acta no avanza. Cursarla
+      // igualmente dejaria obras sin aprobar dentro de un acta ya enviada a Gerencia,
+      // que es justo lo que esto viene a evitar.
+      if (approved && reviewApproveWorks && reviewPending.length > 0) {
+        const todoBien = await aprobarLevantamientosPendientes();
+        if (!todoBien) return;
+      }
       const updated = await surveysService.reviewActa(reviewDialog.companyId, reviewDialog.projectId, reviewDialog.acta, approved, reviewComment || undefined);
       setActaStatuses((prev) => new Map(prev).set(key, updated));
       toast.success(approved ? 'Acta enviada a aprobación de Gerencia' : 'Acta devuelta al Director de Proyecto');
       setReviewDialog(null);
       setReviewComment('');
+      setReviewPending([]);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Error al revisar el acta');
     } finally {
@@ -953,7 +1054,7 @@ export default function ObrasListPage() {
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => setReviewDialog({ acta: recordNumber, companyId: actaCompanyId, projectId: actaProjectId })}
+                                      onClick={() => openReviewDialog(recordNumber, actaCompanyId, actaProjectId, actaWorks)}
                                     >
                                       <ThumbsUp className="w-3 h-3 mr-1.5" />
                                       Revisar acta
@@ -1100,7 +1201,7 @@ export default function ObrasListPage() {
       <Footer />
 
       {/* Review Dialog — Director Técnico */}
-      <Dialog open={!!reviewDialog} onOpenChange={(open) => { if (!open) { setReviewDialog(null); setReviewComment(''); } }}>
+      <Dialog open={!!reviewDialog} onOpenChange={(open) => { if (!open) { setReviewDialog(null); setReviewComment(''); setReviewPending([]); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Revisar Acta: {reviewDialog?.acta}</DialogTitle>
@@ -1109,6 +1210,60 @@ export default function ObrasListPage() {
             <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
               ¿Aprueba el acta para que pase a Gerencia de Proyectos, o la devuelve al Director de Proyecto?
             </p>
+
+            {/* Los levantamientos que quedarian sin aprobar dentro del acta. Se nombran
+                uno por uno: «faltan cuatro» no le dice a nadie cuales revisar. */}
+            {reviewPendingLoading && (
+              <p className="text-xs text-[hsl(var(--canalco-neutral-500))]">
+                Consultando el estado de los levantamientos...
+              </p>
+            )}
+
+            {!reviewPendingLoading && reviewPending.length === 0 && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                Los levantamientos de todas las obras del acta ya están aprobados.
+              </p>
+            )}
+
+            {!reviewPendingLoading && reviewPending.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-900 mb-1.5">
+                  Levantamientos sin aprobar ({reviewPending.length})
+                </p>
+                <ul className="max-h-44 overflow-y-auto space-y-1 text-xs text-amber-900">
+                  {reviewPending.map((o) => (
+                    <li key={o.workId} className="flex items-start gap-2 leading-snug">
+                      <span className="mt-1.5 w-1 h-1 rounded-full bg-amber-500 flex-shrink-0" />
+                      <span className="min-w-0">
+                        {o.name}
+                        {o.surveyId == null && (
+                          <span className="text-amber-700 italic"> · sin levantamiento</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <label className="mt-2.5 pt-2.5 border-t border-amber-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reviewApproveWorks}
+                    onChange={(e) => setReviewApproveWorks(e.target.checked)}
+                    disabled={reviewSubmitting}
+                    className="mt-0.5"
+                  />
+                  <span className="text-xs text-amber-900">
+                    Aprobarlos al aprobar el acta
+                    {reviewPending.some((o) => o.surveyId == null) && (
+                      <span className="block text-amber-700 mt-0.5">
+                        Las obras sin levantamiento no se pueden aprobar y quedarán como están.
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1 block">
                 Comentario (obligatorio si rechaza)

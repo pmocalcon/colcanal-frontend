@@ -70,6 +70,15 @@ export interface SurveyItem {
 export type BlockStatus = 'pending' | 'approved' | 'rejected';
 /** Los cinco bloques revisables. `workInfo` es la tarjeta de información de la obra,
  *  donde va el IPP del que dependen los totales de los demás. */
+/** Estado del levantamiento mas reciente de una obra. */
+export interface WorkReviewState {
+  workId: number;
+  surveyId: number;
+  surveyNumber: string | null;
+  status: string;
+  previousMonthIpp: number | null;
+}
+
 export type BlockName =
   | 'workInfo' | 'budget' | 'investment' | 'materials' | 'travelExpenses';
 
@@ -492,6 +501,18 @@ export const surveysService = {
 
   async getSurveyById(id: number): Promise<Survey> {
     const response = await api.get(`/surveys/${id}`);
+    return response.data;
+  },
+
+  /**
+   * En que punto de la revision esta el levantamiento de cada obra, en una sola
+   * peticion. Una obra sin levantamiento no aparece en la respuesta.
+   */
+  async getWorksReviewState(
+    workIds: number[],
+  ): Promise<WorkReviewState[]> {
+    if (workIds.length === 0) return [];
+    const response = await api.post('/surveys/works/review-state', { workIds });
     return response.data;
   },
 
