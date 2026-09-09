@@ -295,10 +295,17 @@ export default function RevisarLevantamientoDetallePage() {
     }));
   }, [survey]);
 
-  // Check if any block has been reviewed (not pending)
+  /**
+   * Si ya hay una decisión que reabrir.
+   *
+   * Cuenta también el rechazo del levantamiento entero, que no marca ningún bloque: sin
+   * eso, devolver el documento completo dejaba la pantalla sin «Reabrir para Edición»
+   * —los cuatro bloques seguían en pendiente— y no había cómo deshacerlo.
+   */
   const hasReviewedBlocks = useMemo(() => {
     if (!survey) return false;
     return (
+      (survey as { status?: string }).status === 'rejected' ||
       survey.budgetStatus !== 'pending' ||
       survey.investmentStatus !== 'pending' ||
       survey.materialsStatus !== 'pending' ||
@@ -626,7 +633,7 @@ export default function RevisarLevantamientoDetallePage() {
                   onClick={() => setSurveyRejectModal(true)}
                 >
                   <XCircle className="w-4 h-4 mr-1.5" />
-                  Rechazar los 4 bloques
+                  Rechazar el levantamiento
                 </Button>
               </div>
             )}
@@ -871,9 +878,10 @@ export default function RevisarLevantamientoDetallePage() {
               Rechazar Levantamiento
             </DialogTitle>
             <DialogDescription>
-              Se rechazan <b>los cuatro bloques</b> y a todos se les escribe este mismo
-              motivo, que verá el creador del levantamiento. Si lo que falla es una sola
-              sección, recházala desde su propio encabezado para no devolver las otras tres.
+              Devuelve el levantamiento <b>completo</b>, sin marcar ninguna sección: para
+              un reparo que es de todo el documento, como el IPP. El motivo lo verá el
+              creador. Si lo que falla es una sección concreta, recházala desde su propio
+              encabezado y así queda señalada.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
