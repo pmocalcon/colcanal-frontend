@@ -33,6 +33,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Footer } from '@/components/ui/footer';
+import { mensajeDeError } from '@/utils/errorMensaje';
 import { PermissionGuard } from '@/components/PermissionGuard';
 
 interface BlockInfo {
@@ -115,9 +116,9 @@ export default function RevisarLevantamientoDetallePage() {
       setError(null);
       const data = await surveysService.getSurveyById(Number(surveyId));
       setSurvey(data);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading survey:', err);
-      setError(err.response?.data?.message || 'Error al cargar el levantamiento');
+      setError(mensajeDeError(err, 'Error al cargar el levantamiento'));
     } finally {
       setLoading(false);
     }
@@ -131,9 +132,9 @@ export default function RevisarLevantamientoDetallePage() {
         status: 'approved',
       });
       setSurvey(updated);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error approving block:', err);
-      setError(err.response?.data?.message || 'Error al aprobar el bloque');
+      setError(mensajeDeError(err, 'Error al aprobar el bloque'));
     } finally {
       setProcessingBlock(null);
     }
@@ -152,9 +153,9 @@ export default function RevisarLevantamientoDetallePage() {
       setSurvey(updated);
       setRejectModal({ open: false, block: null });
       setRejectComments('');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error rejecting block:', err);
-      setError(err.response?.data?.message || 'Error al rechazar el bloque');
+      setError(mensajeDeError(err, 'Error al rechazar el bloque'));
     } finally {
       setProcessingBlock(null);
     }
@@ -175,9 +176,9 @@ export default function RevisarLevantamientoDetallePage() {
       setSurvey(updated);
       setSurveyApproveModal(false);
       setSurveyApproveIpp('');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error approving all:', err);
-      setError(err.response?.data?.message || 'Error al aprobar todo');
+      setError(mensajeDeError(err, 'Error al aprobar todo'));
     } finally {
       setApprovingAll(false);
     }
@@ -202,8 +203,8 @@ export default function RevisarLevantamientoDetallePage() {
       setSurvey(updated);
       setSurveyApproveModal(false);
       setSurveyApproveIpp('');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al aprobar la información de la obra');
+    } catch (err) {
+      setError(mensajeDeError(err, 'Error al aprobar la información de la obra'));
     } finally {
       setReviewingSurvey(false);
     }
@@ -216,9 +217,9 @@ export default function RevisarLevantamientoDetallePage() {
       setSurvey(updated);
       setReopenModal(false);
       setReopenReason('');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error reopening survey:', err);
-      setError(err.response?.data?.message || 'Error al reabrir el levantamiento');
+      setError(mensajeDeError(err, 'Error al reabrir el levantamiento'));
     } finally {
       setReopening(false);
     }
