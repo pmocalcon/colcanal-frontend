@@ -7,6 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { talentoHumanoService } from '@/services/talentoHumano.service';
 import ValidacionTab from '@/components/talentoHumano/ValidacionTab';
+import { coincidePersona } from '@/utils/coincidePersona';
 import {
   nominaService,
   type PrestamoEnAlerta,
@@ -36,23 +37,6 @@ const mesActual = () => {
 
 const cop = (n: number) => (n ? '$' + Math.round(n).toLocaleString('es-CO') : '—');
 const pct = (n: number | null) => (n ? (n * 100).toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + '%' : '—');
-
-/**
- * Deja pasar la fila si la búsqueda coincide con la cédula o el nombre.
- *
- * La cédula se compara sin puntos ni espacios para que dé igual escribirla como se lee
- * («1.053.791») o como está guardada; el nombre, sin tildes y sin importar mayúsculas.
- */
-const sinTildes = (t: string) =>
-  t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
-const coincide = (filtro: string, identificacion: string, nombre: string) => {
-  const q = filtro.trim();
-  if (!q) return true;
-  const soloDigitos = q.replace(/\D/g, '');
-  if (soloDigitos && (identificacion ?? '').replace(/\D/g, '').includes(soloDigitos)) return true;
-  return sinTildes(nombre ?? '').includes(sinTildes(q));
-};
 
 type Tab = 'novedades-nomina' | 'novedades-horas' | 'liquidacion' | 'validacion';
 
@@ -175,21 +159,21 @@ export default function NominaPage() {
             />
           </label>
           {/*
-            Validación no lo lleva: esa pestaña se trabaja de a una persona y trae su
-            propio campo de cédula, así que dos buscadores en pantalla serían dos sitios
-            donde escribir lo mismo.
+            La misma casilla sirve en las cuatro pestañas: en las tres primeras filtra la
+            tabla y en Validación filtra la lista de personas. Antes Validación no la
+            llevaba porque se entraba escribiendo la cédula, pero esa casilla ya no existe
+            —se entra pulsando en la lista— y con la nómina completa en pantalla no había
+            forma de llegar a alguien sin bajar buscando el nombre a ojo.
           */}
-          {tab !== 'validacion' && (
-            <label className="flex items-center gap-1.5 text-xs text-[hsl(var(--canalco-neutral-600))] relative">
-              <Search className="w-3.5 h-3.5 absolute left-2 text-[hsl(var(--canalco-neutral-400))] pointer-events-none" />
-              <input
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-                placeholder="Número de cédula o nombre"
-                className="border border-[hsl(var(--canalco-neutral-300))] rounded-md pl-7 pr-2 py-1.5 w-64 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
-              />
-            </label>
-          )}
+          <label className="flex items-center gap-1.5 text-xs text-[hsl(var(--canalco-neutral-600))] relative">
+            <Search className="w-3.5 h-3.5 absolute left-2 text-[hsl(var(--canalco-neutral-400))] pointer-events-none" />
+            <input
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+              placeholder="Número de cédula o nombre"
+              className="border border-[hsl(var(--canalco-neutral-300))] rounded-md pl-7 pr-2 py-1.5 w-64 text-sm outline-none focus:border-[hsl(var(--canalco-primary))]"
+            />
+          </label>
         </div>
 
         {sinParametros && (
@@ -234,7 +218,7 @@ export default function NominaPage() {
             filtro={filtro}
           />
         )}
-        {tab === 'validacion' && <ValidacionTab periodo={periodo} />}
+        {tab === 'validacion' && <ValidacionTab periodo={periodo} filtro={filtro} />}
       </main>
     </div>
   );
@@ -349,7 +333,7 @@ function NovedadesTab({ periodo, generado, smmlv, campos, filtro, conObservacion
   }, [periodo, smmlv]);
 
   const visibles = useMemo(
-    () => rows.filter((p) => coincide(filtro ?? '', p.identificacion, p.nombre)),
+    () => rows.filter((p) => coincidePersona(filtro ?? '', p.identificacion, p.nombre)),
     [rows, filtro],
   );
 
@@ -497,7 +481,7 @@ function LiquidacionTab({ periodo, generado, onGeneradoChange, smmlv, auxTranspo
   const [sinDescontar, setSinDescontar] = useState<PrestamoEnAlerta[]>([]);
 
   const visibles = useMemo(
-    () => filas.filter((f) => coincide(filtro ?? '', f.identificacion, f.nombre)),
+    () => filas.filter((f) => coincidePersona(filtro ?? '', f.identificacion, f.nombre)),
     [filas, filtro],
   );
 

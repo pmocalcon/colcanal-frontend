@@ -4,6 +4,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, RotateCcw, Send, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { coincidePersona } from '@/utils/coincidePersona';
 import {
   nominaService,
   type CuotasEnCartera,
@@ -52,7 +53,11 @@ const cuando = (f: string | null) => {
 const mensajeDeError = (e: unknown) =>
   (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
 
-export default function ValidacionTab({ periodo }: { periodo: string }) {
+export default function ValidacionTab({ periodo, filtro = '' }: {
+  periodo: string;
+  /** Lo escrito en el buscador de la pantalla. Filtra la lista, no lo que se trae. */
+  filtro?: string;
+}) {
   const [estado, setEstado] = useState<EstadoValidacion | null>(null);
   const [cargandoEstado, setCargandoEstado] = useState(true);
   /** La cédula de la persona abierta. Se guarda para poder refrescarla tras validar. */
@@ -156,6 +161,20 @@ export default function ValidacionTab({ periodo }: { periodo: string }) {
 
   const puedeEnviar = !!estado && estado.bloqueos.length === 0;
   const yaEnviada = !!estado?.envio;
+
+  /**
+   * La lista que se pinta: las pendientes primero y, si hay búsqueda, solo las que casan.
+   *
+   * El filtro es de pantalla y no de consulta: los contadores de arriba y los bloqueos
+   * siguen mirando el periodo entero, porque buscar a una persona no puede hacer parecer
+   * que la nómina ya está lista.
+   */
+  const visibles = useMemo(
+    () => [...(estado?.personas ?? [])]
+      .sort((a, b) => Number(a.validada) - Number(b.validada))
+      .filter((p) => coincidePersona(filtro, p.identificacion, p.nombre)),
+    [estado, filtro],
+  );
 
   return (
     <div className="space-y-5">
@@ -277,11 +296,20 @@ export default function ValidacionTab({ periodo }: { periodo: string }) {
       {estado && estado.personas.length > 0 && (
         <section className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-xl shadow-sm p-5">
           <p className="text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] mb-3">
-            Personas del periodo ({estado.personas.length})
+            Personas del periodo{' '}
+            {/* Con búsqueda se dice cuántas de cuántas, para que no parezca que la nómina
+                encogió: el periodo sigue teniendo las mismas personas. */}
+            {filtro.trim()
+              ? `(${visibles.length} de ${estado.personas.length})`
+              : `(${estado.personas.length})`}
           </p>
+          {filtro.trim() && visibles.length === 0 && (
+            <p className="text-sm text-[hsl(var(--canalco-neutral-500))] py-4">
+              Nadie de la nómina de este periodo coincide con «{filtro.trim()}».
+            </p>
+          )}
           <ul className="divide-y divide-[hsl(var(--canalco-neutral-200))] max-h-[26rem] overflow-y-auto">
-            {[...estado.personas]
-              .sort((a, b) => Number(a.validada) - Number(b.validada))
+            {visibles
               .map((p) => (
                 <li key={p.personaId}>
                   <button
