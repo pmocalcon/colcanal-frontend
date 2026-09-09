@@ -68,7 +68,10 @@ export interface SurveyItem {
 }
 
 export type BlockStatus = 'pending' | 'approved' | 'rejected';
-export type BlockName = 'budget' | 'investment' | 'materials' | 'travelExpenses';
+/** Los cinco bloques revisables. `workInfo` es la tarjeta de información de la obra,
+ *  donde va el IPP del que dependen los totales de los demás. */
+export type BlockName =
+  | 'workInfo' | 'budget' | 'investment' | 'materials' | 'travelExpenses';
 
 export interface Survey {
   surveyId: number;
@@ -103,6 +106,8 @@ export interface Survey {
   description?: string;
   rejectionComments?: string;
   // Block review statuses
+  workInfoStatus?: BlockStatus;
+  workInfoComments?: string;
   budgetStatus?: BlockStatus;
   budgetComments?: string;
   investmentStatus?: BlockStatus;
@@ -241,6 +246,8 @@ export interface ReviewSurveyDto {
 
 export interface ReviewBlockDto {
   block: BlockName;
+  /** Solo al aprobar `workInfo`: es el dato de ese bloque. */
+  previousMonthIpp?: number;
   status: 'approved' | 'rejected';
   comments?: string;
 }
@@ -252,6 +259,8 @@ export interface SurveyDatabaseFilters {
   page?: number;
   limit?: number;
   search?: string;
+  workInfoStatus?: BlockStatus;
+  workInfoComments?: string;
   budgetStatus?: BlockStatus;
   investmentStatus?: BlockStatus;
   materialsStatus?: BlockStatus;
@@ -284,6 +293,8 @@ export interface SurveyDatabaseItem {
   userAddress?: string;
   requestingEntity?: string;
   // Block statuses
+  workInfoStatus: BlockStatus;
+  workInfoComments?: string;
   budgetStatus: BlockStatus;
   budgetComments?: string;
   investmentStatus: BlockStatus;

@@ -99,10 +99,8 @@ export default function RevisarLevantamientoDetallePage() {
   const [surveyApproveModal, setSurveyApproveModal] = useState(false);
   // El mismo diálogo del IPP sirve a los dos botones que aprueban todo: la revisión
   // general y «Aprobar Todo». Ninguno de los dos puede aprobar sin IPP.
-  const [approveMode, setApproveMode] = useState<'general' | 'todo'>('general');
+  const [approveMode, setApproveMode] = useState<'obra' | 'todo'>('obra');
   const [surveyApproveIpp, setSurveyApproveIpp] = useState('');
-  const [surveyRejectModal, setSurveyRejectModal] = useState(false);
-  const [surveyRejectComments, setSurveyRejectComments] = useState('');
   const [reviewingSurvey, setReviewingSurvey] = useState(false);
 
   useEffect(() => {
@@ -192,35 +190,20 @@ export default function RevisarLevantamientoDetallePage() {
       await handleApproveAll(ipp);
       return;
     }
+    // Aprobar la información de la obra: un bloque más, y el IPP viaja con él porque es
+    // su dato. Antes esto aprobaba el levantamiento entero desde la misma tarjeta.
     try {
       setReviewingSurvey(true);
-      const updated = await surveysService.reviewSurvey(Number(surveyId), {
-        action: 'approve',
+      const updated = await surveysService.reviewBlock(Number(surveyId), {
+        block: 'workInfo',
+        status: 'approved',
         previousMonthIpp: ipp,
       });
       setSurvey(updated);
       setSurveyApproveModal(false);
       setSurveyApproveIpp('');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al aprobar el levantamiento');
-    } finally {
-      setReviewingSurvey(false);
-    }
-  };
-
-  const handleSurveyReject = async () => {
-    if (!surveyRejectComments.trim()) return;
-    try {
-      setReviewingSurvey(true);
-      const updated = await surveysService.reviewSurvey(Number(surveyId), {
-        action: 'reject',
-        rejectionComments: surveyRejectComments,
-      });
-      setSurvey(updated);
-      setSurveyRejectModal(false);
-      setSurveyRejectComments('');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al rechazar el levantamiento');
+      setError(err.response?.data?.message || 'Error al aprobar la información de la obra');
     } finally {
       setReviewingSurvey(false);
     }
@@ -269,6 +252,7 @@ export default function RevisarLevantamientoDetallePage() {
   const allBlocksApproved = useMemo(() => {
     if (!survey) return false;
     return (
+      survey.workInfoStatus === 'approved' &&
       survey.budgetStatus === 'approved' &&
       survey.investmentStatus === 'approved' &&
       survey.materialsStatus === 'approved' &&
@@ -279,6 +263,7 @@ export default function RevisarLevantamientoDetallePage() {
   const anyBlockPending = useMemo(() => {
     if (!survey) return true;
     return (
+      survey.workInfoStatus === 'pending' ||
       survey.budgetStatus === 'pending' ||
       survey.investmentStatus === 'pending' ||
       survey.materialsStatus === 'pending' ||
@@ -289,23 +274,26 @@ export default function RevisarLevantamientoDetallePage() {
   // Get all rejected blocks with their comments
   const rejectedBlocks = useMemo(() => {
     if (!survey) return [];
-    return BLOCKS.filter(block => survey[block.statusField] === 'rejected').map(block => ({
-      title: block.title,
-      comments: survey[block.commentsField] as string | undefined,
-    }));
+    // La información de la obra va primera, como en la pantalla: es el bloque 0 y no
+    // está en BLOCKS porque su contenido se dibuja aparte, en su propia tarjeta.
+    const obra =
+      survey.workInfoStatus === 'rejected'
+        ? [{ title: 'INFORMACIÓN DE LA OBRA', comments: survey.workInfoComments }]
+        : [];
+    return [
+      ...obra,
+      ...BLOCKS.filter(block => survey[block.statusField] === 'rejected').map(block => ({
+        title: block.title,
+        comments: survey[block.commentsField] as string | undefined,
+      })),
+    ];
   }, [survey]);
 
-  /**
-   * Si ya hay una decisión que reabrir.
-   *
-   * Cuenta también el rechazo del levantamiento entero, que no marca ningún bloque: sin
-   * eso, devolver el documento completo dejaba la pantalla sin «Reabrir para Edición»
-   * —los cuatro bloques seguían en pendiente— y no había cómo deshacerlo.
-   */
+  /** Si ya hay alguna decisión que reabrir, en cualquiera de los cinco bloques. */
   const hasReviewedBlocks = useMemo(() => {
     if (!survey) return false;
     return (
-      (survey as { status?: string }).status === 'rejected' ||
+      survey.workInfoStatus !== 'pending' ||
       survey.budgetStatus !== 'pending' ||
       survey.investmentStatus !== 'pending' ||
       survey.materialsStatus !== 'pending' ||
@@ -608,32 +596,55 @@ export default function RevisarLevantamientoDetallePage() {
             </div>
           )}
 
-          {/* Survey-level Approve / Reject */}
+          {/* El motivo, cuando este bloque fue devuelto. Igual que en los otros cuatro. */}
+          {survey.workInfoStatus === 'rejected' && (
+            <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-700">Este bloque fue rechazado</p>
+                  {survey.workInfoComments && (
+                    <p className="text-red-600 mt-1">
+                      <span className="font-medium">Motivo:</span> {survey.workInfoComments}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/*
+            * La información de la obra se aprueba y se rechaza sola, como cualquier otro
+            * bloque: el reparo típico de acá es el IPP, y ese no es del presupuesto ni de
+            * los materiales. Aprobarla es además donde se confirma el IPP, porque es el
+            * dato de este bloque y de él salen los totales ajustados de los demás.
+            */}
           <PermissionGuard permission="levantamientos:revisar">
-            {(['pending', 'in_review'] as string[]).includes((survey as any).status) && (
+            {(survey.workInfoStatus === 'pending' || survey.workInfoStatus === 'rejected') && (
               <div className="mt-4 pt-4 border-t border-[hsl(var(--canalco-neutral-200))] flex items-center gap-3">
                 <span className="text-sm font-medium text-[hsl(var(--canalco-neutral-700))]">
-                  Revisión general (todo el levantamiento):
+                  Revisión de este bloque:
                 </span>
+                {getStatusBadge(survey.workInfoStatus)}
                 <Button
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-white"
                   onClick={() => {
-                    setApproveMode('general');
+                    setApproveMode('obra');
                     setSurveyApproveIpp(survey.previousMonthIpp?.toString() ?? '');
                     setSurveyApproveModal(true);
                   }}
                 >
                   <CheckCircle className="w-4 h-4 mr-1.5" />
-                  Aprobar los 4 bloques
+                  Aprobar
                 </Button>
                 <Button
                   size="sm"
                   className="bg-red-600 hover:bg-red-700 text-white"
-                  onClick={() => setSurveyRejectModal(true)}
+                  onClick={() => setRejectModal({ open: true, block: 'workInfo' })}
                 >
                   <XCircle className="w-4 h-4 mr-1.5" />
-                  Rechazar el levantamiento
+                  Rechazar
                 </Button>
               </div>
             )}
@@ -832,10 +843,12 @@ export default function RevisarLevantamientoDetallePage() {
           <DialogHeader>
             <DialogTitle className="text-green-700 flex items-center gap-2">
               <CheckCircle className="w-5 h-5" />
-              Aprobar Levantamiento
+              {approveMode === 'todo' ? 'Aprobar Levantamiento' : 'Aprobar información de la obra'}
             </DialogTitle>
             <DialogDescription>
-              Confirma el IPP del mes anterior. Se aprueban los cuatro bloques.
+              {approveMode === 'todo'
+                ? 'Confirma el IPP del mes anterior. Se aprueban los cinco bloques.'
+                : 'Confirma el IPP del mes anterior, que es el dato de este bloque: de él salen los totales ajustados de los demás. Solo se aprueba la información de la obra.'}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -864,46 +877,6 @@ export default function RevisarLevantamientoDetallePage() {
             >
               {reviewingSurvey || approvingAll ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               Aprobar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Survey Reject Dialog */}
-      <Dialog open={surveyRejectModal} onOpenChange={(open) => { if (!open) { setSurveyRejectModal(false); setSurveyRejectComments(''); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <XCircle className="w-5 h-5" />
-              Rechazar Levantamiento
-            </DialogTitle>
-            <DialogDescription>
-              Devuelve el levantamiento <b>completo</b>, sin marcar ninguna sección: para
-              un reparo que es de todo el documento, como el IPP. El motivo lo verá el
-              creador. Si lo que falla es una sección concreta, recházala desde su propio
-              encabezado y así queda señalada.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Motivo del rechazo..."
-              value={surveyRejectComments}
-              onChange={(e) => setSurveyRejectComments(e.target.value)}
-              rows={4}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setSurveyRejectModal(false); setSurveyRejectComments(''); }} disabled={reviewingSurvey}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleSurveyReject}
-              disabled={reviewingSurvey || !surveyRejectComments.trim()}
-            >
-              {reviewingSurvey ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Rechazar
             </Button>
           </DialogFooter>
         </DialogContent>
