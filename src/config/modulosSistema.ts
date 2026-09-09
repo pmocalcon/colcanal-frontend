@@ -136,12 +136,28 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
     { to: '/dashboard/recurso-economico/parametros', label: 'Parámetros' },
     { to: '/dashboard/recurso-economico/factura', label: 'Factura' },
   ],
+  // El mismo orden y los mismos nombres que las tarjetas de la portada del módulo, para
+  // que quien conoce una encuentre la otra. Faltaban cinco pantallas que sí existen y
+  // solo se alcanzaban entrando por la portada; Nómina, que es la de todos los meses,
+  // era una de ellas.
+  //
+  // «Cierre de préstamos» no tiene tarjeta en la portada: es la vista mensual de la
+  // cartera completa y se llegaba a ella por un botón dentro de Préstamos que se quitó.
+  // Va acá para que la pantalla no quede sin entrada.
   'talento-humano': [
+    { to: '/dashboard/talento-humano/parametros', label: 'Parámetros' },
     { to: '/dashboard/talento-humano/personal', label: 'Personal' },
-    { to: '/dashboard/talento-humano/prestamos', label: 'Prestamos' },
+    { to: '/dashboard/talento-humano/prestamos', label: 'Préstamos' },
+    { to: '/dashboard/talento-humano/prestamos/cierre', label: 'Cierre de préstamos' },
     { to: '/dashboard/talento-humano/incapacidades', label: 'Incapacidades' },
     { to: '/dashboard/talento-humano/ausentismos', label: 'Ausentismos' },
+    { to: '/dashboard/talento-humano/horas-extras', label: 'Horas extras' },
+    { to: '/dashboard/talento-humano/vacaciones', label: 'Vacaciones' },
+    { to: '/dashboard/talento-humano/nomina', label: 'Nómina' },
     { to: '/dashboard/talento-humano/retenciones', label: 'Tabla de retenciones' },
+    // Solicitudes de pago es más cerrado que el resto del módulo y lo filtra
+    // `LayoutSistema` con `puedeVerSolicitudesPago`, igual que la portada.
+    { to: '/dashboard/talento-humano/pagos', label: 'Solicitudes de pago' },
   ],
   'gestion-conocimiento': [
     { to: '/dashboard/gestion-conocimiento/contable', label: 'G. contable y tributaria' },

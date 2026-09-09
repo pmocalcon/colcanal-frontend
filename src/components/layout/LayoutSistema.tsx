@@ -7,6 +7,7 @@ import { modulesService, type Module } from '@/services/modules.service';
 import {
   prepararModulos,
   seccionesDe,
+  SECCIONES_MODULO,
   puedeVerAprobaciones,
   accesoModuloHibrido,
   APROBACIONES,
@@ -17,7 +18,7 @@ import {
 } from '@/config/submodulos';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { puedeVerRecursoEconomico } from '@/utils/rolesPmo';
-import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
+import { puedeVerSolicitudesPago, puedeVerTalentoHumano } from '@/services/talentoHumano.service';
 
 /**
  * Barra lateral del sistema: el navegador de la aplicación.
@@ -150,6 +151,17 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       return SUBMODULOS_OBRAS
         .filter((s) => accesoObras(s.slug, hasPermission, user?.nombreRol))
         .map((s) => ({ to: s.to, label: s.nombre }));
+    }
+    if (slug === 'talento-humano') {
+      /*
+       * Todo el módulo menos Solicitudes de pago, que es más cerrado: ahí están las
+       * cuentas bancarias y lo que se le gira a cada quien. Se filtra con la misma
+       * función que usa la portada, y el backend lo cierra igual con `PagosAccesoGuard`,
+       * así que esto solo evita ofrecer un enlace que daría 403.
+       */
+      const todas = SECCIONES_MODULO['talento-humano'] ?? [];
+      if (puedeVerSolicitudesPago(user?.nombreRol, user?.nombre)) return todas;
+      return todas.filter((s) => !s.to.endsWith('/pagos'));
     }
     if (slug === 'creg') {
       // En CREG el acceso es el permiso granular y nada más.
