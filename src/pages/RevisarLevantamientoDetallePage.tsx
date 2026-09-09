@@ -583,18 +583,13 @@ export default function RevisarLevantamientoDetallePage() {
             </div>
           </div>
 
-          {/* Rejection banner */}
-          {(survey as any).status === 'rejected' && survey.rejectionComments && (
-            <div className="mt-4 pt-4 border-t border-red-200">
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
-                <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-red-700">Levantamiento rechazado</p>
-                  <p className="text-sm text-red-600 mt-0.5">{survey.rejectionComments}</p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/*
+            * Aquí vivía el aviso «Levantamiento rechazado», que leía `rejectionComments`
+            * —el motivo de una decisión sobre el documento entero—. Se retiró porque ya
+            * no hay quien lo escriba desde la pantalla: todo rechazo es de un bloque y
+            * cada bloque muestra el suyo. Lo único que hacía era repetir el aviso de
+            * abajo, palabra por palabra, y sobrevivir a la decisión que lo originó.
+            */}
 
           {/* El motivo, cuando este bloque fue devuelto. Igual que en los otros cuatro. */}
           {survey.workInfoStatus === 'rejected' && (
