@@ -74,7 +74,6 @@ export type BlockStatus = 'pending' | 'approved' | 'rejected';
 export interface WorkReviewState {
   workId: number;
   surveyId: number;
-  surveyNumber: string | null;
   status: string;
   previousMonthIpp: number | null;
 }

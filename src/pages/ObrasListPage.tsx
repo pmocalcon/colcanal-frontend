@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 
@@ -1205,11 +1206,14 @@ export default function ObrasListPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Revisar Acta: {reviewDialog?.acta}</DialogTitle>
+            {/* Declarada como descripción y no como un párrafo suelto: Radix la enlaza
+                con `aria-describedby`, que es lo que lee un lector de pantalla al abrir
+                el diálogo, y sin ella avisa por consola en cada apertura. */}
+            <DialogDescription>
+              ¿Aprueba el acta para que pase a Gerencia de Proyectos, o la devuelve al Director de Proyecto?
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-              ¿Aprueba el acta para que pase a Gerencia de Proyectos, o la devuelve al Director de Proyecto?
-            </p>
 
             {/* Los levantamientos que quedarian sin aprobar dentro del acta. Se nombran
                 uno por uno: «faltan cuatro» no le dice a nadie cuales revisar. */}
@@ -1303,11 +1307,11 @@ export default function ObrasListPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Aprobar Acta: {approveDialog?.acta}</DialogTitle>
+            <DialogDescription>
+              Asigna el código de proyecto para finalizar la aprobación del acta.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-[hsl(var(--canalco-neutral-600))]">
-              Asigna el código de proyecto para finalizar la aprobación del acta.
-            </p>
             <div>
               <label className="text-xs font-medium text-[hsl(var(--canalco-neutral-700))] mb-1 block">
                 Código de proyecto <span className="text-red-500">*</span>
