@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Receipt, SlidersHorizontal, Wallet } from 'lucide-react';
+import { ArrowLeft, FileSearch, Receipt, SlidersHorizontal, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Footer } from '@/components/ui/footer';
@@ -34,6 +34,14 @@ const SECCIONES = [
     nombre: 'Factura',
     descripcion: 'La factura de concesión de cada municipio, mes a mes, y su valor neto',
     Icon: Receipt,
+  },
+  {
+    // Solo lectura: no toca ninguna casilla, así que la ve quien ve la factura.
+    soloPmo: false,
+    slug: 'contraste',
+    nombre: 'Contraste de factura',
+    descripcion: 'Cargar el XML o el PDF de la factura y enfrentarlo con lo que quedó asentado',
+    Icon: FileSearch,
   },
 ];
 

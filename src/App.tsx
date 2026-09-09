@@ -68,6 +68,7 @@ import GestionConocimientoPage from './pages/GestionConocimientoPage'
 import RecursoEconomicoHomePage from './pages/RecursoEconomicoHomePage'
 import RecursoEconomicoPage from './pages/RecursoEconomicoPage'
 import FacturaConcesionPage from './pages/FacturaConcesionPage'
+import ContrasteFacturaPage from '@/pages/ContrasteFacturaPage';
 import SolicitudesJuridicaListPage from './pages/SolicitudesJuridicaListPage'
 import SolicitudPrestacionServiciosPage from './pages/SolicitudPrestacionServiciosPage'
 import ChecklistContratoPage from './pages/ChecklistContratoPage'
@@ -439,6 +440,7 @@ export default function App() {
           <Route path="/dashboard/recurso-economico" element={<RecursoEconomicoHomePage />} />
           <Route path="/dashboard/recurso-economico/parametros" element={<RecursoEconomicoPage />} />
           <Route path="/dashboard/recurso-economico/factura" element={<FacturaConcesionPage />} />
+          <Route path="/dashboard/recurso-economico/contraste" element={<ContrasteFacturaPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

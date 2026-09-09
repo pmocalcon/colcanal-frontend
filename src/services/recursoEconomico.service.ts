@@ -161,43 +161,25 @@ export const facturaDiligenciada = (f: FacturaMes | undefined): boolean =>
   subtotalFactura(f) > 0;
 
 /**
- * Si el visto bueno del director sigue valiendo para lo que hay hoy en la factura.
- *
- * Se compara contra el **valor pago**, que es lo que el director confirma: no basta con
- * que el subtotal no se haya movido, porque cambiar un porcentaje de retención en
- * Parámetros mueve lo que se recibe sin tocar lo facturado, y eso también tiene que
- * volver a revisarse.
- *
- * Un visto sin `valor` es de antes de que esto se validara digitando —cuando bastaba
- * marcar una casilla— y se sigue dando por bueno: invalidar de golpe las facturas ya
- * revisadas obligaría a rehacer meses cerrados por un cambio nuestro, no de ellas.
- */
-export const vistoVigente = (
-  f: FacturaMes | undefined,
-  ret: RetencionProyecto | undefined,
-): boolean => {
-  const v = f?.visto;
-  if (!v) return false;
-  if (typeof v.valor !== 'number') return true;
-  return Math.round(v.valor) === Math.round(valorPagoFactura(f, ret));
-};
-
-/**
  * Qué impide guardar la factura del mes, si algo lo impide.
  *
  * Devuelve el motivo y no un booleano porque el botón de guardar tiene que poder decir
  * por qué está apagado: un botón gris sin explicación se lee como que el sistema se
  * dañó.
+ *
+ * Lo que se exige es **el enlace a la factura**. Las cifras de esta pantalla salen de la
+ * liquidación CREG y de los porcentajes de Parámetros, pero lo que el municipio recibe es
+ * un documento, y sin el enlace no queda dicho cuál: seis meses después nadie puede
+ * empatar estas cifras con la factura que se radicó. Un mes guardado sin enlace es un
+ * número sin respaldo.
+ *
+ * Solo se exige cuando la factura tiene cifras: una vacía no tiene nada que respaldar.
  */
-export const bloqueoDeFactura = (
-  f: FacturaMes | undefined,
-  ret: RetencionProyecto | undefined,
-): string | null => {
+export const bloqueoDeFactura = (f: FacturaMes | undefined): string | null => {
   if (!facturaDiligenciada(f)) return null;
-  if (!f?.visto) return 'Falta que el director de proyecto valide el valor pago de la factura.';
-  if (!vistoVigente(f, ret)) {
-    return 'La factura cambió después de validarla. El director tiene que volver a confirmar el valor pago.';
-  }
+  // No se valida que sea una URL: el campo admite también el correo con que se envió,
+  // y rechazar eso obligaría a inventarse un enlace para poder guardar.
+  if (!f?.link?.trim()) return 'Falta el enlace a la factura.';
   return null;
 };
 

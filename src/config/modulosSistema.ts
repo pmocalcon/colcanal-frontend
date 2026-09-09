@@ -135,6 +135,7 @@ export const SECCIONES_MODULO: Record<string, Seccion[]> = {
   'recurso-economico': [
     { to: '/dashboard/recurso-economico/parametros', label: 'Parámetros' },
     { to: '/dashboard/recurso-economico/factura', label: 'Factura' },
+    { to: '/dashboard/recurso-economico/contraste', label: 'Contraste de factura' },
   ],
   // El mismo orden y los mismos nombres que las tarjetas de la portada del módulo, para
   // que quien conoce una encuentre la otra. Faltaban cinco pantallas que sí existen y

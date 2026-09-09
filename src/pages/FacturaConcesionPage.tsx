@@ -8,14 +8,7 @@ import { puedeValidarFactura, esRolPmo } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { useLiquidacionCreg } from '@/hooks/useLiquidacionCreg';
 import { FacturaMunicipio } from '@/components/recursoEconomico/FacturaMunicipio';
-import { toast } from 'sonner';
-import {
-  bloqueoDeFactura, recursoEconomicoService, type FacturaMes,
-} from '@/services/recursoEconomico.service';
-
-/** El mensaje que manda el backend, que dice más que un «no se pudo». */
-const mensajeDeError = (e: unknown) =>
-  (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+import { bloqueoDeFactura, type FacturaMes } from '@/services/recursoEconomico.service';
 
 /**
  * Factura de concesión: qué se le facturó a un municipio en el mes y cuánto queda neto.
@@ -49,7 +42,7 @@ export default function FacturaConcesionPage() {
    */
   const soloValidar = !esRolPmo(user?.nombreRol);
 
-  const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar, asentar } =
+  const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar } =
     useRecursoEconomico(puedeEntrar);
 
   const [periodo, setPeriodo] = useState<string>(periodoPorDefecto);
@@ -89,32 +82,10 @@ export default function FacturaConcesionPage() {
    * única que se está tocando: bloquear el botón por una factura de otro mes que quedó a
    * medias dejaría la pantalla trancada sin nada visible que arreglar.
    */
-  const bloqueo = useMemo(() => {
-    if (companyId == null) return null;
-    return bloqueoDeFactura(
-      datos.facturas?.[periodo]?.[companyId],
-      datos.retenciones?.[companyId],
-    );
-  }, [datos.facturas, datos.retenciones, periodo, companyId]);
-
-  const validarFactura = async (valor: number) => {
-    if (companyId == null) return;
-    try {
-      asentar(await recursoEconomicoService.validarFactura(periodo, companyId, valor));
-      toast.success('Factura validada');
-    } catch (e) {
-      toast.error(mensajeDeError(e) || 'No se pudo guardar el visto bueno');
-    }
-  };
-
-  const quitarVisto = async () => {
-    if (companyId == null) return;
-    try {
-      asentar(await recursoEconomicoService.quitarVistoFactura(periodo, companyId));
-    } catch (e) {
-      toast.error(mensajeDeError(e) || 'No se pudo quitar el visto bueno');
-    }
-  };
+  const bloqueo = useMemo(
+    () => (companyId == null ? null : bloqueoDeFactura(datos.facturas?.[periodo]?.[companyId])),
+    [datos.facturas, periodo, companyId],
+  );
 
   const volver = () => {
     if (sinGuardar && !window.confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
@@ -178,7 +149,8 @@ export default function FacturaConcesionPage() {
             {/* El botón de guardar está arriba y lejos; el motivo tiene que estar acá. */}
             {bloqueo && !soloValidar && (
               <div className="mx-4 mt-4 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                No se puede guardar: {bloqueo}
+                No se puede guardar: {bloqueo} Va al final de la factura, y puede ser el
+                enlace de la factura electrónica o el del correo con que se envió.
               </div>
             )}
             {sinEmpresa.length > 0 && (
@@ -195,12 +167,8 @@ export default function FacturaConcesionPage() {
               setPeriodo={setPeriodo}
               facturas={datos.facturas ?? {}}
               retenciones={datos.retenciones ?? {}}
-              revisor={user?.nombre ?? ''}
-              revisorRol={user?.nombreRol ?? undefined}
               onFactura={setFactura}
               soloValidar={soloValidar}
-              onValidar={validarFactura}
-              onQuitarVisto={quitarVisto}
               liquidacion={liquidacion(periodo)}
               cregCargando={cregCargando}
               cregError={cregError}
