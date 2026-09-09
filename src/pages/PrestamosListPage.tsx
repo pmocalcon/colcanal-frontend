@@ -301,19 +301,36 @@ export default function PrestamosListPage() {
     }
     const nombre = correccion.nombreNomina.trim();
     const cuota = correccion.cuotaDescontar.trim();
-    if (cuota && !(Number(cuota) > 0)) {
-      toast.error('La cuota a descontar tiene que ser un valor mayor que cero');
+    /*
+     * Cero y casilla vacía significan lo mismo: no hay cuota que descontar.
+     *
+     * Lo dice el propio aviso de esta pantalla —«con nombre pero sin cuota, la nómina no
+     * sabe cuánto quitar y se lo salta igual»—, que ya aparecía con el cero escrito; y lo
+     * hace la nómina, que descuenta solo si la cuota es mayor que cero y si no anota «le
+     * falta la CUOTA A DESCONTAR». El guardado era el único que no estaba de acuerdo: se
+     * negaba a aceptar el cero y de paso bloqueaba el mes de inicio y el nombre, que iban
+     * en el mismo formulario.
+     *
+     * Se guarda como nulo y no como cero, para no dejar dos maneras de decir lo mismo en
+     * la base. `traeColumnasNomina` distingue «nulo» de «cero» al decidir si el préstamo
+     * se cruza por las columnas de nómina, y un cero guardado lo activaría sin que nadie
+     * lo hubiera pedido.
+     */
+    const cuotaNum = cuota === '' ? null : Number(cuota);
+    if (cuotaNum !== null && (!Number.isFinite(cuotaNum) || cuotaNum < 0)) {
+      toast.error('La cuota a descontar no puede ser negativa');
       return;
     }
+    const hayCuota = cuotaNum != null && cuotaNum > 0;
     setGuardando(true);
     try {
       await talentoHumanoService.updatePrestamo(prestamoId, {
         mesInicio: correccion.mesInicio ? `${correccion.mesInicio}-01` : null,
         nombreNomina: nombre || null,
-        cuotaDescontar: cuota ? String(Number(cuota)) : null,
+        cuotaDescontar: hayCuota ? String(cuotaNum) : null,
       });
       toast.success(
-        nombre && cuota
+        nombre && hayCuota
           ? 'Ficha corregida. La nómina vuelve a descontarle la cuota.'
           : 'Ficha corregida. Le falta un dato para que la nómina la descuente.',
       );
