@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, FileText, Trash2, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter, Ban } from 'lucide-react';
+import { ArrowLeft, Plus, FileText, Loader2, Scale, Clock, AlertTriangle, Pencil, Table2, Inbox, Filter, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { gestionConocimientoService, type GcSolicitud } from '@/services/gestionConocimiento.service';
 import { ESTADOS, estadoLabel, estadoBadgeClass, calcularSla, type JuridicaEstado } from '@/utils/juridicaWorkflow';
@@ -26,13 +26,14 @@ const puedeAnular = (rol?: string | null) => {
 };
 
 /**
- * Dónde tiene sentido anular.
+ * Dónde tiene sentido anular: en todo lo que no esté ya anulado, borradores incluidos.
  *
- * En borrador no: ahí todavía no hay número gastado ni nadie ha avalado nada, y lo que
- * corresponde es eliminarlo —que es el otro botón—. Tener dos formas de deshacer lo
- * mismo solo obliga a elegir entre ellas sin saber en qué se diferencian.
+ * Una solicitud creada ya no se borra. Antes el borrador tenía su botón de eliminar y
+ * desaparecía sin dejar rastro; ahora también se anula, que es lo mismo de cara a quien
+ * la abandonó pero conserva quién la empezó, cuándo y por qué se dejó. Un formato que se
+ * evapora es un formato del que nadie puede responder después.
  */
-const sePuedeAnular = (s: GcSolicitud) => s.estado !== 'borrador' && s.estado !== 'anulado';
+const sePuedeAnular = (s: GcSolicitud) => s.estado !== 'anulado';
 
 /**
  * Listado del trámite de contratación (GTH-002-F): desde aquí se crea uno nuevo o se abre
@@ -84,18 +85,6 @@ export default function SolicitudesJuridicaListPage() {
 
   const limpiarFiltros = () => { setSoloPendientes(false); setFiltroEstado(''); };
 
-  const handleDelete = async (e: React.MouseEvent, id: number, numero?: number | null) => {
-    e.stopPropagation();
-    if (!window.confirm(`¿Eliminar la solicitud N.º ${numero ?? id}?`)) return;
-    try {
-      await gestionConocimientoService.remove(id);
-      toast.success('Solicitud eliminada');
-      setRows((prev) => prev.filter((r) => r.solicitudId !== id));
-    } catch {
-      toast.error('No se pudo eliminar');
-    }
-  };
-
   /**
    * Anula el trámite: lo saca del flujo sin borrarlo.
    *
@@ -109,7 +98,11 @@ export default function SolicitudesJuridicaListPage() {
     e.stopPropagation();
     const motivo = window.prompt(
       [
-        `Anular la solicitud N.º ${s.numero ?? s.solicitudId}.`,
+        // El borrador no tiene número —se asigna al enviarlo—, así que se nombra por lo
+        // que es. Poner ahí el id interno sería un número que no aparece en la lista.
+        s.numero != null
+          ? `Anular la solicitud N.º ${s.numero}.`
+          : 'Anular este borrador.',
         '',
         'Queda registrada como anulada, con su motivo y su historial; no se borra.',
         'Escriba por qué se anula:',
@@ -339,11 +332,6 @@ export default function SolicitudesJuridicaListPage() {
                         >
                           <Pencil className="w-4 h-4" />
                         </Button>
-                        {s.estado === 'borrador' && (
-                          <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, s.solicitudId, s.numero)} title="Eliminar" className="text-[hsl(var(--canalco-neutral-500))] hover:text-red-600">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
                         {anulaEsteUsuario && sePuedeAnular(s) && (
                           <Button
                             variant="ghost"
