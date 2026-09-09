@@ -214,13 +214,22 @@ export default function PrestamosListPage() {
    * Reemplaza la cuota previa —borra los pagos de tipo CUOTA de ese mes y registra uno
    * nuevo— y no toca los abonos, que se mueven con su propio botón. Así el número de la
    * columna Descontado queda como el que se escribió más los abonos que hubiera.
+   *
+   * **Un cero borra la cuota del mes** y le devuelve la plata al saldo, que es la misma
+   * convención de la pantalla de cierre. Antes lo rechazaba —`!valor` es cierto para el
+   * cero— y no había forma de deshacer una cuota mal registrada desde acá: el cero es
+   * una respuesta («este mes no se le descontó»), no una casilla sin diligenciar.
+   *
+   * La casilla en blanco sí se rechaza, y esa es la diferencia con el cero: en blanco no
+   * se sabe si quien edita quiso borrar la cuota o se arrepintió a medio camino.
    */
   const guardarDescontado = async (prestamoId: number) => {
     if (!editandoDescontado) return;
     const [anio, mes] = editandoDescontado.split('-').map(Number);
-    const valor = Number(descontadoInput);
-    if (!valor || valor <= 0) {
-      toast.error('Indica un valor descontado válido');
+    const bruto = descontadoInput.trim();
+    const valor = Number(bruto);
+    if (bruto === '' || !Number.isFinite(valor) || valor < 0) {
+      toast.error('Indica un valor descontado válido. Escribe 0 para borrar la cuota del mes.');
       return;
     }
     setGuardando(true);
@@ -232,10 +241,17 @@ export default function PrestamosListPage() {
       for (const cp of cuotasPrevias) {
         await talentoHumanoService.eliminarPago(prestamoId, cp.pagoId);
       }
-      await talentoHumanoService.registrarPago(prestamoId, {
-        anio, mes, valor, tipo: 'CUOTA', medio: 'NOMINA',
-      });
-      toast.success('Cuota del mes registrada. Se recalculó el saldo.');
+      // Con cero no se registra nada: basta con haber borrado la cuota anterior.
+      if (valor > 0) {
+        await talentoHumanoService.registrarPago(prestamoId, {
+          anio, mes, valor, tipo: 'CUOTA', medio: 'NOMINA',
+        });
+      }
+      toast.success(
+        valor > 0
+          ? 'Cuota del mes registrada. Se recalculó el saldo.'
+          : 'Cuota del mes borrada. El saldo vuelve a incluir ese valor.',
+      );
       setEditandoDescontado(null);
       await refrescar(prestamoId);
     } catch {
