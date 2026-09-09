@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { puedeContrastarFactura } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { ContrasteFactura } from '@/components/recursoEconomico/ContrasteFactura';
+import { ContrasteOrdenPago } from '@/components/recursoEconomico/ContrasteOrdenPago';
 import {
   CONCEPTOS_RETENCION, facturaDiligenciada, fmtCOP, retencionFactura,
   subtotalFactura, valorPagoFactura, type FacturaMes,
@@ -124,7 +125,7 @@ export default function ContrasteFacturaPage() {
               Contraste de factura
             </h1>
             <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-              La factura electrónica contra lo que el sistema tiene asentado
+              La factura y la orden de pago contra lo que el sistema tiene asentado
             </p>
           </div>
         </div>
@@ -218,6 +219,22 @@ export default function ContrasteFacturaPage() {
                     valor: retencionFactura(f, ret, c.key).valor,
                   }))}
                   empresa={empresa?.name ?? ''}
+                  periodo={periodo}
+                />
+
+                {/*
+                  Los dos extremos del ciclo, en la misma pantalla: la factura dice lo que
+                  se cobró y la orden de pago lo que el municipio manda girar. Entre las
+                  dos está lo que se retiene, que la factura no trae y la orden sí.
+                */}
+                <ContrasteOrdenPago
+                  subtotal={subtotal}
+                  pago={pago}
+                  retenciones={CONCEPTOS_RETENCION.map((c) => ({
+                    key: c.key,
+                    label: c.label,
+                    valor: retencionFactura(f, ret, c.key).valor,
+                  }))}
                   periodo={periodo}
                 />
               </>

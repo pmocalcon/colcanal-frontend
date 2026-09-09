@@ -261,7 +261,7 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
           <FilaComparada
             concepto="Subtotal facturado"
             sistema={subtotal}
-            factura={base}
+            documento={base}
             nota={base == null ? 'la factura no trae el total de las líneas' : undefined}
             fuerte
           />
@@ -272,7 +272,7 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
                 key={r.key}
                 concepto={r.label}
                 sistema={r.valor}
-                factura={r.enFactura}
+                documento={r.enFactura}
                 nota={r.valor == null ? 'no aplica en este municipio' : undefined}
               />
             ))
@@ -290,7 +290,7 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
             <FilaComparada
               concepto="Valor pago"
               sistema={pago}
-              factura={factura.totalAPagar}
+              documento={factura.totalAPagar}
               fuerte
             />
           )}
@@ -389,16 +389,28 @@ function Dato({ termino, valor }: { termino: string; valor: string }) {
   );
 }
 
-/** Una línea de la comparación, con las dos cifras y si coinciden. */
-function FilaComparada({ concepto, sistema, factura, nota, fuerte }: {
+/**
+ * Una línea de la comparación, con las dos cifras y si coinciden.
+ *
+ * La usan los dos contrastes —el de la factura y el de la orden de pago—, y por eso el
+ * segundo valor se llama `documento` y no `factura`.
+ *
+ * `tolerancia` existe porque el sistema redondea al peso y los documentos traen
+ * centavos: la orden de pago dice $ 348.363.979,60 donde el sistema dice $ 348.363.979.
+ * Sin tolerancia, un peso de redondeo se pintaría igual que una diferencia de verdad, y
+ * a fuerza de ver alarmas falsas nadie mira las ciertas.
+ */
+export function FilaComparada({ concepto, sistema, documento, nota, fuerte, tolerancia = 0 }: {
   concepto: string;
   sistema: number | null;
-  factura: number | null;
+  documento: number | null;
   nota?: string;
   fuerte?: boolean;
+  tolerancia?: number;
 }) {
+  const factura = documento;
   const hayAmbas = sistema != null && factura != null;
-  const igual = hayAmbas && Math.round(sistema) === Math.round(factura);
+  const igual = hayAmbas && Math.abs(Math.round(sistema) - Math.round(factura)) <= tolerancia;
 
   return (
     <tr className={fuerte ? 'font-semibold' : ''}>

@@ -146,7 +146,15 @@ const ROTULOS = {
     /total a pagar|valor a pagar|neto a pagar|total neto/.test(r),
 };
 
-export async function leerFacturaPdf(datos: ArrayBuffer): Promise<LecturaPdf> {
+/**
+ * Los renglones de texto de un PDF, en orden de lectura.
+ *
+ * Va aparte del lector de facturas porque la orden de pago del municipio se lee del
+ * mismo modo: lo que cambia entre los dos documentos es qué se busca, no cómo se saca
+ * el texto de la página. Todo lo de pdf.js —el worker, la tarea de carga, las páginas—
+ * vive acá una sola vez.
+ */
+export async function lineasDelPdf(datos: ArrayBuffer): Promise<LineaPdf[]> {
   /*
    * pdf.js se carga solo cuando alguien suelta un PDF. Pesa más que el resto de la
    * pantalla junta y la mayoría de las facturas entran por el XML, que no lo necesita.
@@ -157,8 +165,8 @@ export async function leerFacturaPdf(datos: ArrayBuffer): Promise<LecturaPdf> {
 
   /*
    * Se guarda la tarea de carga y no solo el documento: lo que libera el worker es
-   * `tarea.destroy()`, no el documento. Sin esto queda un hilo vivo por cada factura
-   * que alguien abra, y quien revisa la nómina de un mes abre diez seguidas.
+   * `tarea.destroy()`, no el documento. Sin esto queda un hilo vivo por cada documento
+   * que alguien abra, y quien revisa un mes abre varios seguidos.
    */
   const tarea = pdfjs.getDocument({ data: new Uint8Array(datos) });
   const doc = await tarea.promise;
@@ -178,6 +186,17 @@ export async function leerFacturaPdf(datos: ArrayBuffer): Promise<LecturaPdf> {
     await tarea.destroy();
   }
 
+  if (lineas.length === 0) {
+    throw new Error(
+      'El PDF no tiene texto: es una imagen escaneada. De un documento escaneado no se '
+      + 'pueden sacar las cifras.',
+    );
+  }
+  return lineas;
+}
+
+export async function leerFacturaPdf(datos: ArrayBuffer): Promise<LecturaPdf> {
+  const lineas = await lineasDelPdf(datos);
   const todo = lineas.map((l) => l.texto).join('\n');
 
   const base = buscarImporte(lineas, ROTULOS.base);
@@ -215,12 +234,6 @@ export async function leerFacturaPdf(datos: ArrayBuffer): Promise<LecturaPdf> {
     ?? /\b([A-Z]{2,6}-?\d{3,12})\b/.exec(todo)?.[1]
     ?? null;
 
-  if (lineas.length === 0) {
-    throw new Error(
-      'El PDF no tiene texto: es una imagen escaneada. Cargue el XML de la factura, '
-      + 'que es el archivo con las cifras.',
-    );
-  }
   if (!base && !conImpuestos && !aPagar) {
     throw new Error(
       'Se leyó el PDF pero no se encontró ningún total con un rótulo reconocible. '
