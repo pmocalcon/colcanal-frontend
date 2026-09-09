@@ -242,7 +242,6 @@ export function FacturaMunicipio({
   empresas, companyId, setCompanyId, periodo, setPeriodo,
   facturas, retenciones, onFactura,
   liquidacion, cregCargando, cregError,
-  soloValidar = false,
 }: {
   empresas: EmpresaRecurso[];
   companyId: number | null;
@@ -257,11 +256,6 @@ export function FacturaMunicipio({
   liquidacion: LiquidacionResultado | null;
   cregCargando: boolean;
   cregError: string | null;
-  /**
-   * El director de proyecto entra a confirmar el valor pago y nada más: ve las cifras
-   * —tiene que verlas para compararlas contra la factura física— pero no las mueve.
-   */
-  soloValidar?: boolean;
 }) {
   const [anio, mes] = periodo.split('-');
   const delMes = facturas[periodo] ?? {};
@@ -335,13 +329,6 @@ export function FacturaMunicipio({
         </p>
       ) : (
         <div className="max-w-2xl space-y-5">
-          {/*
-            Un `fieldset` deshabilitado apaga de una vez todo lo que lleve dentro
-            —campos, botones, el de «traer del CREG»—. Apagarlos uno por uno dejaría que
-            el próximo campo que se agregue nazca editable para el director sin que nadie
-            se dé cuenta.
-          */}
-          <fieldset disabled={soloValidar} className="contents">
           {/* De dónde salen las cifras */}
           <PanelLiquidacion
             liq={liquidacion}
@@ -444,7 +431,6 @@ export function FacturaMunicipio({
               )}
             </div>
           </label>
-          </fieldset>
 
           {/*
             El contraste con la factura electrónica ya no vive acá sino en su propia

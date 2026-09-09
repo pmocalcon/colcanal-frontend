@@ -28,8 +28,9 @@ const SECCIONES = [
     Icon: SlidersHorizontal,
   },
   {
-    // El director de proyecto entra a validar la factura de su municipio.
-    soloPmo: false,
+    // Solo del PMO: acá se diligencia. El director de proyecto ya no entra —su visto
+    // bueno dejó de existir— y lo suyo es Contraste, al que llega por el tablero.
+    soloPmo: true,
     slug: 'factura',
     nombre: 'Factura',
     descripcion: 'La factura de concesión de cada municipio, mes a mes, y su valor neto',

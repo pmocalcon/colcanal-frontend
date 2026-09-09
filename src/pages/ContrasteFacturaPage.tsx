@@ -4,7 +4,7 @@ import { ArrowLeft, FileSearch, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Footer } from '@/components/ui/footer';
 import { useAuth } from '@/contexts/AuthContext';
-import { puedeValidarFactura } from '@/utils/rolesPmo';
+import { puedeContrastarFactura } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { ContrasteFactura } from '@/components/recursoEconomico/ContrasteFactura';
 import {
@@ -65,7 +65,7 @@ function Selector({ label, value, onChange, children }: {
 export default function ContrasteFacturaPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeEntrar = puedeValidarFactura(user?.nombreRol);
+  const puedeEntrar = puedeContrastarFactura(user?.nombreRol);
 
   const { datos, empresas, loading } = useRecursoEconomico(puedeEntrar);
 

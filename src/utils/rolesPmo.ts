@@ -40,13 +40,19 @@ export const puedeVerRecursoEconomico = (nombreRol?: string | null): boolean =>
   esRolPmo(nombreRol);
 
 /**
- * Quién entra a Factura de concesión: el PMO la diligencia y el director de proyecto la
- * valida.
+ * Quién entra a contrastar la factura contra lo asentado.
  *
- * Es a propósito más ancho que `puedeVerRecursoEconomico`: el director **no ve el
- * módulo**, entra solo a esta pantalla y solo a confirmar el valor pago. Espejo de
- * `ROLES_FACTURA` en el backend, que es quien autoriza de verdad —y que además le tiene
- * cerrado el `PUT` del bloque completo—.
+ * Es a propósito más ancho que `puedeVerRecursoEconomico`: el director de proyecto **no
+ * ve el módulo** —no diligencia facturas ni toca la interventoría—, pero es quien tiene
+ * la factura del municipio en la mano, así que entra a esa pantalla por una tarjeta
+ * propia del tablero.
+ *
+ * Antes se llamaba `puedeValidarFactura` y abría la pantalla de diligenciar, donde el
+ * director confirmaba el valor pago. Ese visto bueno ya no existe; contrastar es lo que
+ * quedó en su lugar, y no escribe nada.
+ *
+ * Sigue siendo espejo de `ROLES_FACTURA` en el backend, que es quien autoriza de verdad
+ * la lectura del módulo y que además le tiene cerrado el `PUT` del bloque completo.
  */
-export const puedeValidarFactura = (nombreRol?: string | null): boolean =>
+export const puedeContrastarFactura = (nombreRol?: string | null): boolean =>
   esRolPmo(nombreRol) || esDirectorProyecto(nombreRol);

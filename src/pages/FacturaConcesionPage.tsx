@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2, Receipt, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Footer } from '@/components/ui/footer';
 import { useAuth } from '@/contexts/AuthContext';
-import { puedeValidarFactura, esRolPmo } from '@/utils/rolesPmo';
+import { esRolPmo } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { useLiquidacionCreg } from '@/hooks/useLiquidacionCreg';
 import { FacturaMunicipio } from '@/components/recursoEconomico/FacturaMunicipio';
@@ -33,14 +33,13 @@ const periodoPorDefecto = (): string => {
 export default function FacturaConcesionPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeEntrar = puedeValidarFactura(user?.nombreRol);
   /*
-   * El director de proyecto entra solo a validar: ve las cifras, porque tiene que
-   * compararlas contra la factura que tiene en la mano, pero no las mueve ni guarda el
-   * módulo. El backend le tiene cerrado el `PUT`, así que dejarle los campos abiertos
-   * sería ofrecerle un botón que siempre falla.
+   * Solo el PMO. Antes también entraba el director de proyecto, con los campos
+   * bloqueados, a confirmar el valor pago; ese visto bueno ya no existe y dejarlo entrar
+   * lo pondría delante de una pantalla de digitación donde no tiene nada que hacer. Lo
+   * suyo ahora es Contraste, que es de solo lectura y no está detrás de este permiso.
    */
-  const soloValidar = !esRolPmo(user?.nombreRol);
+  const puedeEntrar = esRolPmo(user?.nombreRol);
 
   const { datos, setDatos, empresas, sinEmpresa, loading, saving, sinGuardar, guardar } =
     useRecursoEconomico(puedeEntrar);
@@ -89,9 +88,7 @@ export default function FacturaConcesionPage() {
 
   const volver = () => {
     if (sinGuardar && !window.confirm('Hay cambios sin guardar. ¿Salir de todas formas?')) return;
-    // El director no ve el módulo: devolverlo a su portada lo dejaría en una pantalla
-    // que le dice que no puede entrar.
-    navigate(soloValidar ? '/dashboard' : '/dashboard/recurso-economico');
+    navigate('/dashboard/recurso-economico');
   };
 
   if (!puedeEntrar) {
@@ -100,8 +97,8 @@ export default function FacturaConcesionPage() {
         <div className="text-center max-w-md px-6">
           <h1 className="text-xl font-bold text-[hsl(var(--canalco-neutral-900))] mb-2">Factura</h1>
           <p className="text-[hsl(var(--canalco-neutral-600))]">
-            Esta pantalla es del PMO y de los directores de proyecto. Si necesitas
-            consultarla, pídesela al Analista o al Director de PMO.
+            Esta pantalla es del PMO. Si eres director de proyecto, lo tuyo es
+            «Contrastar facturas», en el tablero.
           </p>
           <Button className="mt-6" variant="outline" onClick={() => navigate('/dashboard')}>
             Volver
@@ -126,8 +123,7 @@ export default function FacturaConcesionPage() {
               Factura de concesión por municipio y mes de liquidación
             </p>
           </div>
-          {!soloValidar && (
-            <Button
+          <Button
               onClick={guardar}
               disabled={saving || !sinGuardar || !!bloqueo}
               title={bloqueo ?? (sinGuardar ? 'Guardar los cambios' : 'No hay cambios por guardar')}
@@ -135,7 +131,6 @@ export default function FacturaConcesionPage() {
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
             </Button>
-          )}
         </div>
       </header>
 
@@ -147,7 +142,7 @@ export default function FacturaConcesionPage() {
         ) : (
           <div className="bg-white border border-[hsl(var(--canalco-neutral-200))] rounded-lg">
             {/* El botón de guardar está arriba y lejos; el motivo tiene que estar acá. */}
-            {bloqueo && !soloValidar && (
+            {bloqueo && (
               <div className="mx-4 mt-4 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-800">
                 No se puede guardar: {bloqueo} Va al final de la factura, y puede ser el
                 enlace de la factura electrónica o el del correo con que se envió.
@@ -168,7 +163,6 @@ export default function FacturaConcesionPage() {
               facturas={datos.facturas ?? {}}
               retenciones={datos.retenciones ?? {}}
               onFactura={setFactura}
-              soloValidar={soloValidar}
               liquidacion={liquidacion(periodo)}
               cregCargando={cregCargando}
               cregError={cregError}

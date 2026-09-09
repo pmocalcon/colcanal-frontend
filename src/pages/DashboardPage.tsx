@@ -221,17 +221,17 @@ export default function DashboardPage() {
           )}
           {/*
             El director de proyecto no ve el módulo, pero sí la única pantalla que le
-            toca: la factura de su municipio, a confirmar el valor pago. Va como tarjeta
-            propia y no como el módulo entero porque es lo que hace —validar una cifra—,
-            no administrar la interventoría.
+            toca: contrastar la factura de su municipio contra lo que quedó asentado. Va
+            como tarjeta propia y no como el módulo entero porque es lo que hace —cotejar
+            un documento—, no administrar la interventoría.
           */}
           {esDirectorProyecto(user?.nombreRol) && (
             <ModuleCard
-              nombre="Validar facturas"
-              slug="validar-facturas"
+              nombre="Contrastar facturas"
+              slug="contrastar-facturas"
               icono="Wallet"
               hasAccess={true}
-              onClick={() => navigate('/dashboard/recurso-economico/factura')}
+              onClick={() => navigate('/dashboard/recurso-economico/contraste')}
             />
           )}
         </div>
