@@ -5,8 +5,10 @@ import type { CregComparador, ComparadorFila } from '@/services/creg.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  ArrowLeft, Loader2, AlertCircle, AlertTriangle, Download, GitCompare, Search,
+  ArrowLeft, Loader2, AlertCircle, AlertTriangle, BarChart3, ChevronDown, ChevronUp,
+  Download, GitCompare, Search,
 } from 'lucide-react';
+import GraficasComparador from '@/components/creg/GraficasComparador';
 
 /**
  * El mismo elemento, municipio por municipio.
@@ -44,6 +46,14 @@ export default function CregComparadorPage() {
 
   const [busqueda, setBusqueda] = useState('');
   const [soloComparables, setSoloComparables] = useState(true);
+  const [verGraficas, setVerGraficas] = useState(true);
+  /**
+   * El elemento abierto en la gráfica de detalle.
+   *
+   * Se guarda la clave y no la fila: la lista se vuelve a filtrar con cada búsqueda y una
+   * fila guardada quedaría apuntando a un objeto que ya no está en pantalla.
+   */
+  const [seleccion, setSeleccion] = useState<string | null>(null);
 
   useEffect(() => {
     cregService.getComparador()
@@ -51,7 +61,9 @@ export default function CregComparadorPage() {
       .catch(() => { setError('No se pudo cargar el comparador'); setCargando(false); });
   }, []);
 
-  const municipios = datos?.municipios ?? [];
+  // Memorizado porque ahora también alimenta las gráficas: sin esto sería un arreglo
+  // nuevo en cada render y las cuentas de las gráficas se recalcularían todas las veces.
+  const municipios = useMemo(() => datos?.municipios ?? [], [datos]);
 
   const filas = useMemo(() => {
     if (!datos) return [];
@@ -210,6 +222,33 @@ export default function CregComparadorPage() {
               </div>
             </div>
 
+            {/*
+              Las gráficas van antes de la tabla y se pueden esconder: contestan de un
+              vistazo lo que la matriz obliga a leer celda por celda, pero la matriz sigue
+              siendo el dato y quien viene a buscar un valor no debería tener que bajar
+              media pantalla para llegar a ella.
+            */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setVerGraficas((v) => !v)}
+                className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--canalco-neutral-700))] hover:text-[hsl(var(--canalco-neutral-900))] mb-3"
+              >
+                <BarChart3 className="w-4 h-4 text-[hsl(var(--canalco-primary))]" />
+                {verGraficas ? 'Ocultar las gráficas' : 'Ver las gráficas'}
+                {verGraficas ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {verGraficas && (
+                <GraficasComparador
+                  filas={filas}
+                  municipios={municipios}
+                  corto={corto}
+                  seleccion={seleccion}
+                  onSeleccion={setSeleccion}
+                />
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow-md border border-[hsl(var(--canalco-neutral-300))] overflow-hidden">
               <div className="p-4 border-b border-[hsl(var(--canalco-neutral-200))]">
                 <h2 className="text-base font-semibold text-[hsl(var(--canalco-neutral-900))]">
@@ -252,6 +291,8 @@ export default function CregComparadorPage() {
                           key={fila.clave}
                           fila={fila}
                           claves={municipios.map((m) => m.clave)}
+                          activa={fila.clave === seleccion}
+                          onAbrir={() => { setSeleccion(fila.clave); setVerGraficas(true); }}
                         />
                       ))}
                     </tbody>
@@ -266,13 +307,30 @@ export default function CregComparadorPage() {
   );
 }
 
-/** Una fila de la matriz: el elemento y lo que tiene cargado cada municipio. */
-function Fila({ fila, claves }: { fila: ComparadorFila; claves: string[] }) {
+/**
+ * Una fila de la matriz: el elemento y lo que tiene cargado cada municipio.
+ *
+ * Pulsarla la lleva a la gráfica de detalle. No es un enlace ni abre nada: la fila ya
+ * tiene todos los valores a la vista, y lo que agrega la gráfica es la proporción entre
+ * ellos, que en una hilera de números no se ve.
+ */
+function Fila({ fila, claves, activa, onAbrir }: {
+  fila: ComparadorFila;
+  claves: string[];
+  activa: boolean;
+  onAbrir: () => void;
+}) {
   const alerta = fila.veces != null && fila.veces >= UMBRAL_ALERTA;
-  const fondo = alerta ? 'bg-amber-50/60' : '';
+  const fondo = activa ? 'bg-blue-50' : alerta ? 'bg-amber-50/60' : '';
 
   return (
-    <tr className={'border-b border-[hsl(var(--canalco-neutral-200))] ' + fondo}>
+    <tr
+      onClick={onAbrir}
+      className={
+        'border-b border-[hsl(var(--canalco-neutral-200))] cursor-pointer hover:bg-[hsl(var(--canalco-neutral-100))] '
+        + fondo
+      }
+    >
       <th
         scope="row"
         className={'sticky left-0 z-10 text-left font-normal px-4 py-3 align-top ' + (fondo || 'bg-white')}
