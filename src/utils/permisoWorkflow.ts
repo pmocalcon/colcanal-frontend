@@ -1,11 +1,17 @@
 /**
- * Flujo de la Solicitud de Permiso (GTH-009-F) en el frontend. Espeja la máquina de
+ * Flujo de la Solicitud de Permiso (GTH-010-F) en el frontend. Espeja la máquina de
  * estados del backend (permiso-workflow.ts).
+ *
+ *   Borrador → jefe inmediato → Dir. Administrativa y Financiera → Aprobado
  *
  * Quien aprueba es el **jefe de área** del solicitante, y eso no se sabe por el rol sino
  * por la tabla de autorizaciones: al Analista PMO lo aprueba el Director PMO, al Analista
  * Comercial la Directora Comercial. Como es dinámico, aquí el botón se le ofrece a quien
  * no sea el creador y el backend valida que de verdad sea su autorizador.
+ *
+ * Al quedar aprobado se le avisa al Coordinador de Talento Humano, que no decide nada:
+ * se entera porque el permiso aprobado nace como ausentismo y de ahí sale la nómina. Por
+ * eso no es un estado del flujo y aquí no aparece.
  *
  * @see rolesPmo — el PMO (Analista y Director) puede ejecutar cualquier paso.
  */
@@ -13,13 +19,13 @@ import { sumarDiasHabiles, diasHabilesEntre } from './juridicaWorkflow';
 import { esRolPmo } from './rolesPmo';
 import { claseAnulacion, esAnulado, etiquetaAnulacion } from './anulacionWorkflow';
 
-/** Quien revisa antes que el jefe: la Dirección Administrativa y Financiera. */
+/** Quien revisa después del jefe: la Dirección Administrativa y Financiera. */
 const ROL_ADMINISTRATIVA = 'Director Financiero y Administrativo';
 
 export type PermisoEstado =
   | 'borrador'
-  | 'pendiente_administrativa'
   | 'pendiente_jefe'
+  | 'pendiente_administrativa'
   | 'aprobado';
 
 interface EstadoMeta {
@@ -30,12 +36,12 @@ interface EstadoMeta {
 
 export const PERMISO_ESTADOS: Record<PermisoEstado, EstadoMeta> = {
   borrador: { label: 'Borrador', sla: null, tone: 'gray' },
+  pendiente_jefe: { label: 'Pendiente de aprobación del jefe inmediato', sla: 1, tone: 'amber' },
   pendiente_administrativa: {
     label: 'Pendiente de revisión de la Dir. Administrativa y Financiera',
     sla: 1,
     tone: 'blue',
   },
-  pendiente_jefe: { label: 'Pendiente de aprobación del jefe de área', sla: 1, tone: 'amber' },
   aprobado: { label: 'Aprobado', sla: null, tone: 'green' },
 };
 
@@ -54,11 +60,11 @@ export interface PermisoTransicion {
 }
 
 export const PERMISO_TRANSICIONES: PermisoTransicion[] = [
-  { accion: 'enviar', from: 'borrador', to: 'pendiente_administrativa', soloCreador: true, label: 'Enviar a revisión', tone: 'primary' },
-  { accion: 'revisar_administrativa', from: 'pendiente_administrativa', to: 'pendiente_jefe', roles: [ROL_ADMINISTRATIVA], label: 'Revisar y enviar al jefe inmediato', tone: 'primary' },
-  { accion: 'devolver_administrativa', from: 'pendiente_administrativa', to: 'borrador', roles: [ROL_ADMINISTRATIVA], requiereMotivo: true, label: 'Devolver al empleado', tone: 'danger' },
-  { accion: 'aprobar_jefe', from: 'pendiente_jefe', to: 'aprobado', jefeAutorizador: true, label: 'Aprobar el permiso', tone: 'primary' },
+  { accion: 'enviar', from: 'borrador', to: 'pendiente_jefe', soloCreador: true, label: 'Enviar al jefe inmediato', tone: 'primary' },
+  { accion: 'aprobar_jefe', from: 'pendiente_jefe', to: 'pendiente_administrativa', jefeAutorizador: true, label: 'Aprobar y enviar a la Dir. Administrativa', tone: 'primary' },
   { accion: 'rechazar_jefe', from: 'pendiente_jefe', to: 'borrador', jefeAutorizador: true, requiereMotivo: true, label: 'Negar el permiso', tone: 'danger' },
+  { accion: 'revisar_administrativa', from: 'pendiente_administrativa', to: 'aprobado', roles: [ROL_ADMINISTRATIVA], label: 'Revisar y cerrar el permiso', tone: 'primary' },
+  { accion: 'devolver_administrativa', from: 'pendiente_administrativa', to: 'borrador', roles: [ROL_ADMINISTRATIVA], requiereMotivo: true, label: 'Devolver al empleado', tone: 'danger' },
 ];
 
 /** Acciones que el usuario puede ejecutar sobre un permiso en cierto estado. */

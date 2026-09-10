@@ -363,8 +363,8 @@ const NOTIFICATION_TYPES = [
     color: 'text-amber-600',
     bg: 'bg-amber-50',
     title: 'Solicitud de permiso (GTH-010-F)',
-    description: 'Se avisa al jefe de área del solicitante —el que lo autoriza, no un rol fijo— y al empleado cuando su permiso se aprueba o se niega.',
-    trigger: 'Al enviar y al resolver el permiso',
+    description: 'Se avisa primero al jefe de área del solicitante —el que lo autoriza, no un rol fijo—, después a la Dirección Administrativa y Financiera para que lo revise, y al empleado cuando su permiso se aprueba o se le devuelve. Al quedar aprobado se le avisa además al Coordinador de Talento Humano, que no decide nada: se entera porque la ausencia entra a la nómina.',
+    trigger: 'En cada paso del permiso',
   },
   {
     icon: Clock4,

@@ -658,13 +658,12 @@ export default function SolicitudPermisoPage() {
           {/* 4. Firmas */}
           <div className="px-2 py-2 border-t border-black">
             <p className="font-bold mb-8">4. FIRMAS</p>
-            {/* El orden del papel sigue el orden del trámite: primero lo revisa la
-                Dirección Administrativa y Financiera y después lo aprueba el jefe
-                inmediato. Estaban al revés y el impreso hacía leer la firma final antes
-                que la primera. */}
+            {/* El orden del papel sigue el orden del trámite: primero lo aprueba el jefe
+                inmediato y después lo revisa la Dirección Administrativa y Financiera.
+                Se leen de izquierda a derecha en el mismo orden en que se firman. */}
             <div className="grid grid-cols-2 gap-8">
-              <Firma titulo="Revisado por:" nombre={f.revisadoPor} cargo="Dir. Administrativa y Financiera" />
               <Firma titulo="Aprobado por:" nombre={f.aprobadoPor} cargo="Jefe inmediato" />
+              <Firma titulo="Revisado por:" nombre={f.revisadoPor} cargo="Dir. Administrativa y Financiera" />
             </div>
           </div>
         </div>
@@ -738,7 +737,15 @@ function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
       {acciones.length === 0 && !terminal && (
         <p className="text-xs text-[#8a8aa3]">No tienes acciones disponibles en este estado.</p>
       )}
-      {estado === 'aprobado' && <p className="text-xs font-medium text-green-700">✓ Permiso aprobado.</p>}
+      {/* Se dice a quién se le avisó porque es lo que el solicitante iba a preguntar
+          después: el permiso aprobado tiene que llegarle a Talento Humano para que la
+          ausencia entre a la nómina, y así no hay que ir a contarlo aparte. */}
+      {estado === 'aprobado' && (
+        <p className="text-xs font-medium text-green-700">
+          ✓ Permiso aprobado. Queda registrado en Ausentismos y se le avisó al Coordinador
+          de Talento Humano.
+        </p>
+      )}
 
       {/* Anular no es un paso del trámite sino salirse de él, así que va separado
           de «Aprobar» y «Devolver». Quien la puede pedir es el solicitante o quien
