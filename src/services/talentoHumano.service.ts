@@ -173,6 +173,14 @@ export interface ThPrestamo {
   nombreNomina: string | null;
   /** Lo que de verdad se descuenta cada mes, que no siempre es `valorCuota`. */
   cuotaDescontar: string | null;
+  /**
+   * Cómo se cobra: `'NOMINA'` descontándolo de la liquidación, `'DIRECTO'` por fuera.
+   *
+   * `null` es nómina, que es como se cobraron todos hasta que esto existió. Un préstamo
+   * en pago directo no entra a la liquidación ni aparece entre los que tienen problemas:
+   * está fuera a propósito, no por un dato que falte.
+   */
+  formaPago: string | null;
   observaciones: string | null;
   /** Solo viene en el detalle; el listado no las trae. */
   pagos?: ThPrestamoPago[];

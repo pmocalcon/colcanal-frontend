@@ -103,7 +103,12 @@ const nuevoAbono = () => {
   };
 };
 
-const cop = (v: string | null) => {
+/*
+ * Acepta número además de texto porque la mitad de los sitios que la llaman le pasan un
+ * total ya sumado. Por dentro siempre hizo `Number(v)`, así que funcionaba; lo que
+ * fallaba era la firma, y eran dieciséis de los errores de tipo del proyecto.
+ */
+const cop = (v: string | number | null) => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) && n !== 0 ? '$' + Math.round(n).toLocaleString('es-CO') : '—';
 };
@@ -160,7 +165,9 @@ export default function PrestamosListPage() {
    * en que empezaron a descontarle.
    */
   const [corrigiendo, setCorrigiendo] = useState<number | null>(null);
-  const [correccion, setCorreccion] = useState({ mesInicio: '', nombreNomina: '', cuotaDescontar: '' });
+  const [correccion, setCorreccion] = useState(
+    { mesInicio: '', nombreNomina: '', cuotaDescontar: '', formaPago: 'NOMINA' },
+  );
   /**
    * El nombre exacto de la ficha de Personal de esa cédula.
    *
@@ -275,6 +282,8 @@ export default function PrestamosListPage() {
       mesInicio: (p.mesInicio ?? '').slice(0, 7),
       nombreNomina: p.nombreNomina ?? '',
       cuotaDescontar: p.cuotaDescontar != null ? String(Math.round(Number(p.cuotaDescontar))) : '',
+      // El nulo es nómina: así se cobraron todos hasta que esto existió.
+      formaPago: (p.formaPago ?? '').toUpperCase() === 'DIRECTO' ? 'DIRECTO' : 'NOMINA',
     });
     setNombreFicha(null);
     if (!p.identificacion) return;
@@ -322,17 +331,27 @@ export default function PrestamosListPage() {
       return;
     }
     const hayCuota = cuotaNum != null && cuotaNum > 0;
+    const directo = correccion.formaPago === 'DIRECTO';
     setGuardando(true);
     try {
       await talentoHumanoService.updatePrestamo(prestamoId, {
         mesInicio: correccion.mesInicio ? `${correccion.mesInicio}-01` : null,
         nombreNomina: nombre || null,
-        cuotaDescontar: hayCuota ? String(cuotaNum) : null,
+        /*
+         * En pago directo la cuota se borra en vez de quedarse guardada. Es lo que ya
+         * significa la forma de pago, y dejarla puesta sería guardar un dato que nadie
+         * va a usar y que reaparecería descontando si mañana alguien lo devuelve a
+         * nómina sin mirar la cifra vieja.
+         */
+        cuotaDescontar: !directo && hayCuota ? String(cuotaNum) : null,
+        formaPago: directo ? 'DIRECTO' : 'NOMINA',
       });
       toast.success(
-        nombre && hayCuota
-          ? 'Ficha corregida. La nómina vuelve a descontarle la cuota.'
-          : 'Ficha corregida. Le falta un dato para que la nómina la descuente.',
+        directo
+          ? 'Ficha corregida. Este préstamo se paga por fuera de la nómina.'
+          : nombre && hayCuota
+            ? 'Ficha corregida. La nómina vuelve a descontarle la cuota.'
+            : 'Ficha corregida. Le falta un dato para que la nómina la descuente.',
       );
       setCorrigiendo(null);
       await refrescar(prestamoId);
@@ -735,6 +754,10 @@ export default function PrestamosListPage() {
                                   setValores={setCorreccion}
                                   nombreFicha={nombreFicha}
                                   teniaNombre={Boolean((detalle.nombreNomina ?? '').trim())}
+                                  teniaDescuento={
+                                    (detalle.formaPago ?? '').toUpperCase() !== 'DIRECTO'
+                                    && Number(detalle.cuotaDescontar ?? 0) > 0
+                                  }
                                   identificacion={detalle.identificacion}
                                   guardando={guardando}
                                   guardar={() => guardarCorreccion(p.prestamoId)}
@@ -1122,22 +1145,33 @@ function TablaDePagos({ meses, onBorrar }: {
  * reanuda el descuento y vaciarlo lo detiene, y eso se dice acá con todas las letras en
  * vez de dejar que alguien lo descubra en la liquidación del mes.
  */
+interface Correccion {
+  mesInicio: string;
+  nombreNomina: string;
+  cuotaDescontar: string;
+  /** 'NOMINA' o 'DIRECTO'. */
+  formaPago: string;
+}
+
 function CorregirFicha({
   valores,
   setValores,
   nombreFicha,
   teniaNombre,
+  teniaDescuento,
   identificacion,
   guardando,
   guardar,
   cancelar,
 }: {
-  valores: { mesInicio: string; nombreNomina: string; cuotaDescontar: string };
-  setValores: (v: { mesInicio: string; nombreNomina: string; cuotaDescontar: string }) => void;
+  valores: Correccion;
+  setValores: (v: Correccion) => void;
   /** El nombre de la ficha de Personal de esa cédula, si se pudo resolver. */
   nombreFicha: string | null;
   /** Si el préstamo ya traía nombre de nómina, para saber si esto lo reanuda o lo detiene. */
   teniaNombre: boolean;
+  /** Si hasta ahora sí se le descontaba por nómina: pasarlo a directo lo detiene. */
+  teniaDescuento: boolean;
   identificacion: string | null;
   guardando: boolean;
   guardar: () => void;
@@ -1146,6 +1180,7 @@ function CorregirFicha({
   const nombre = valores.nombreNomina.trim();
   const cuota = Number(valores.cuotaDescontar.trim());
   const coincide = Boolean(nombreFicha) && nombre === nombreFicha;
+  const directo = valores.formaPago === 'DIRECTO';
   /*
    * Lo que va a cambiar en la liquidación del mes, dicho antes de guardar.
    *
@@ -1154,13 +1189,25 @@ function CorregirFicha({
    * anotado a mano en la cartera y sin deducción en la nómina—.
    */
   const listo = Boolean(nombre) && cuota > 0;
-  const efecto = listo
-    ? { tono: 'text-emerald-800', texto: `Al guardar, la nómina le descuenta ${copCero(cuota)} cada mes.` }
-    : nombre && !(cuota > 0)
-      ? { tono: 'text-amber-800', texto: 'Con nombre pero sin cuota, la nómina no sabe cuánto quitar y se lo salta igual.' }
-      : teniaNombre && !nombre
-        ? { tono: 'text-amber-800', texto: 'Al guardar, la nómina deja de descontarle: el préstamo queda quieto con su saldo.' }
-        : null;
+  /*
+   * En pago directo no se le reclama nada al formulario: que falte la cuota o el nombre
+   * no es un descuido, es que este préstamo no pasa por la nómina. Avisarle de lo mismo
+   * a alguien que acaba de decir que no quiere descuento sería discutirle su decisión.
+   */
+  const efecto = directo
+    ? {
+      tono: 'text-[hsl(var(--canalco-neutral-600))]',
+      texto: teniaDescuento
+        ? 'Al guardar, la nómina deja de descontarle: la persona lo paga por fuera y el saldo se mueve registrando los pagos acá.'
+        : 'La nómina no lo toca: la persona lo paga por fuera y el saldo se mueve registrando los pagos acá.',
+    }
+    : listo
+      ? { tono: 'text-emerald-800', texto: `Al guardar, la nómina le descuenta ${copCero(cuota)} cada mes.` }
+      : nombre && !(cuota > 0)
+        ? { tono: 'text-amber-800', texto: 'Con nombre pero sin cuota, la nómina no sabe cuánto quitar y se lo salta igual.' }
+        : teniaNombre && !nombre
+          ? { tono: 'text-amber-800', texto: 'Al guardar, la nómina deja de descontarle: el préstamo queda quieto con su saldo.' }
+          : null;
 
   return (
     <div className="mt-3 rounded-lg border border-[hsl(var(--canalco-neutral-300))] bg-white p-3">
@@ -1219,6 +1266,23 @@ function CorregirFicha({
         </label>
 
         <label className="text-xs">
+          <span className="block mb-1 text-[hsl(var(--canalco-neutral-600))]">Forma de pago</span>
+          <select
+            value={valores.formaPago}
+            onChange={(e) => setValores({ ...valores, formaPago: e.target.value })}
+            className="w-40 border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm bg-white"
+          >
+            <option value="NOMINA">Nómina</option>
+            <option value="DIRECTO">Pago directo</option>
+          </select>
+          <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
+            {directo
+              ? 'No entra a la liquidación: la persona lo paga por fuera.'
+              : 'Se descuenta en la liquidación del mes.'}
+          </span>
+        </label>
+
+        <label className="text-xs">
           <span className="block mb-1 text-[hsl(var(--canalco-neutral-600))]">Cuota a descontar</span>
           <input
             inputMode="numeric"
@@ -1226,11 +1290,17 @@ function CorregirFicha({
             onChange={(e) =>
               setValores({ ...valores, cuotaDescontar: e.target.value.replace(/[^\d]/g, '') })
             }
-            placeholder="Sin cuota no descuenta"
-            className="w-36 border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm text-right tabular-nums"
+            placeholder={directo ? 'no aplica' : 'Sin cuota no descuenta'}
+            disabled={directo}
+            className={
+              'w-36 border border-[hsl(var(--canalco-neutral-300))] rounded-md px-2 py-1 text-sm text-right tabular-nums '
+              + (directo ? 'bg-[hsl(var(--canalco-neutral-100))] text-[hsl(var(--canalco-neutral-400))]' : '')
+            }
           />
           <span className="block mt-1 text-[11px] text-[hsl(var(--canalco-neutral-500))]">
-            Lo que la nómina le quita cada mes. No siempre es la cuota del plan.
+            {directo
+              ? 'La nómina no lo descuenta, así que esta casilla no se usa.'
+              : 'Lo que la nómina le quita cada mes. No siempre es la cuota del plan.'}
           </span>
         </label>
       </div>
