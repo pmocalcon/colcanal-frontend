@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileSearch, Receipt, SlidersHorizontal, Wallet } from 'lucide-react';
+import {
+  ArrowLeft, FileBarChart, FileSearch, Receipt, Scale, SlidersHorizontal, Wallet,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Footer } from '@/components/ui/footer';
 import { useAuth } from '@/contexts/AuthContext';
-import { esRolPmo } from '@/utils/rolesPmo';
+import { esRolPmo, puedeContrastarFactura } from '@/utils/rolesPmo';
 
 /**
  * Portada de Recurso Económico.
@@ -44,6 +46,30 @@ const SECCIONES = [
     descripcion: 'Cargar el XML o el PDF de la factura y enfrentarlo con lo que quedó asentado',
     Icon: FileSearch,
   },
+  {
+    // El CEP lo concilia el PMO contra el extracto de la fiducia.
+    soloPmo: true,
+    slug: 'cep',
+    nombre: 'Control de excedentes',
+    descripcion: 'La conciliación mensual de la fiducia: qué entró, qué salió y cuánto le queda al municipio',
+    Icon: Scale,
+  },
+  {
+    // El libro diario del que el CEP saca cinco de sus columnas.
+    soloPmo: true,
+    slug: 'ordenes-pago',
+    nombre: 'Órdenes de pago',
+    descripcion: 'Los giros de la fiducia, uno por uno, con el mes del CEP al que se imputan',
+    Icon: Receipt,
+  },
+  {
+    // Solo lectura: es el papel que el director le presenta a su municipio.
+    soloPmo: false,
+    slug: 'informe',
+    nombre: 'Informe financiero',
+    descripcion: 'El estado de cuenta mensual de la fiducia (GC-001-F), armado del control de excedentes',
+    Icon: FileBarChart,
+  },
 ];
 
 export default function RecursoEconomicoHomePage() {
@@ -51,9 +77,16 @@ export default function RecursoEconomicoHomePage() {
   const { user } = useAuth();
 
   const esPmo = esRolPmo(user?.nombreRol);
+  /*
+   * A los directores de proyecto se les abre la portada con lo suyo —el contraste y el
+   * informe—, no se les cierra el módulo entero. Antes la lista se filtraba por rol pero
+   * el cierre de abajo los sacaba igual, así que el filtro no servía para nada y ellos
+   * llegaban al contraste solo por el tablero, sin manera de encontrar el informe.
+   */
+  const puedeEntrar = esPmo || puedeContrastarFactura(user?.nombreRol);
   const visibles = SECCIONES.filter((s) => esPmo || !s.soloPmo);
 
-  if (!esPmo) {
+  if (!puedeEntrar) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--canalco-neutral-50))]">
         <div className="text-center max-w-md px-6">
@@ -61,8 +94,8 @@ export default function RecursoEconomicoHomePage() {
             Recurso Económico
           </h1>
           <p className="text-[hsl(var(--canalco-neutral-600))]">
-            Este módulo es del PMO. Si necesitas consultarlo, pídeselo al Analista o al
-            Director de PMO.
+            Este módulo es del PMO y de los directores de proyecto. Si necesitas
+            consultarlo, pídeselo al Analista o al Director de PMO.
           </p>
           <Button className="mt-6" variant="outline" onClick={() => navigate('/dashboard')}>
             Volver
@@ -84,7 +117,7 @@ export default function RecursoEconomicoHomePage() {
               <Wallet className="w-6 h-6 text-[hsl(var(--canalco-primary))]" /> Recurso Económico
             </h1>
             <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
-              Parámetros del contrato · Factura de concesión
+              Parámetros del contrato · Factura de concesión · Control de excedentes
             </p>
           </div>
         </div>
