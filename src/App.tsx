@@ -21,6 +21,8 @@ import RegistrarRecepcionPage from './pages/RegistrarRecepcionPage'
 import AuditoriasPage from './pages/AuditoriasPage'
 import AuditoriasComprasPage from './pages/AuditoriasComprasPage'
 import AuditoriasComprasDetallePage from './pages/AuditoriasComprasDetallePage'
+import AuditoriasObrasPage from './pages/AuditoriasObrasPage'
+import AuditoriasObrasDetallePage from './pages/AuditoriasObrasDetallePage'
 import AprobarOrdenesCompraPage from './pages/AprobarOrdenesCompraPage'
 import GestionFacturasPage from './pages/GestionFacturasPage'
 import FacturasOrdenCompraPage from './pages/FacturasOrdenCompraPage'
@@ -168,6 +170,10 @@ export default function App() {
           <Route path="/dashboard/auditorias" element={<AuditoriasPage />} />
           <Route path="/dashboard/auditorias/compras" element={<AuditoriasComprasPage />} />
           <Route path="/dashboard/auditorias/compras/detalle/:requisitionId" element={<AuditoriasComprasDetallePage />} />
+          <Route path="/dashboard/auditorias/obras" element={<AuditoriasObrasPage />} />
+          {/* El acta y la obra comparten pantalla: se lee igual y se salta de una a otra. */}
+          <Route path="/dashboard/auditorias/obras/acta/:actaId" element={<AuditoriasObrasDetallePage />} />
+          <Route path="/dashboard/auditorias/obras/obra/:workId" element={<AuditoriasObrasDetallePage />} />
           {/* Materiales */}
           <Route path="/dashboard/materiales" element={<MaterialesPage />} />
           <Route path="/dashboard/materiales/grupos" element={<GruposMaterialesPage />} />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Menu, ArrowLeft, ShoppingCart, ChevronRight } from 'lucide-react';
+import { Menu, ArrowLeft, ShoppingCart, Hammer, ChevronRight } from 'lucide-react';
 
 // Módulos de gestión disponibles
 const GESTION_MODULES = [
@@ -14,6 +14,16 @@ const GESTION_MODULES = [
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
+  },
+  {
+    slug: 'obras',
+    nombre: 'Obras',
+    descripcion:
+      'Expediente de cada obra y de cada acta: la línea de tiempo, el histórico de estados, los levantamientos y sus bloques',
+    icono: Hammer,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
   },
 ];
 
@@ -158,10 +168,6 @@ export default function AuditoriasPage() {
           })}
         </div>
 
-        {/* Empty state for future modules */}
-        <div className="mt-8 text-center text-[hsl(var(--canalco-neutral-500))] text-sm">
-          <p>Más gestiones estarán disponibles próximamente</p>
-        </div>
       </main>
     </div>
   );
