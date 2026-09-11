@@ -104,7 +104,93 @@ export interface RecursoEconomicoData {
    * miran los diez municipios de una vez, igual que las otras dos tablas.
    */
   facturas?: Record<string, Record<string, FacturaMes>>;
+  /** 'YYYY-MM' -> companyId -> lo que quedó del contraste de ese mes. */
+  contrastes?: Record<string, Record<string, ContrasteGuardado>>;
 }
+
+/**
+ * Un renglón del contraste, como quedó guardado.
+ *
+ * `null` no es cero: en `sistema` significa «no aplica en este municipio» y en
+ * `documento`, «el documento no trae esa cifra».
+ */
+export interface FilaContraste {
+  key: string;
+  label: string;
+  sistema: number | null;
+  documento: number | null;
+}
+
+/** Lo que quedó de contrastar un documento. El archivo no se guarda; esto sí. */
+export interface BloqueContraste {
+  archivo: string;
+  /** De dónde salieron las cifras: 'xml', 'pdf', 'texto' u 'ocr'. */
+  fuente: string;
+  /** El consecutivo de la factura, o el oficio de la orden. */
+  referencia: string | null;
+  /** La fecha de emisión, o el mes del servicio que paga la orden. */
+  fecha: string | null;
+  filas: FilaContraste[];
+  cuadra: boolean;
+  avisos: string[];
+}
+
+export interface ContrasteGuardado {
+  factura?: BloqueContraste;
+  orden?: BloqueContraste;
+  quien: { nombre: string; rol?: string; fecha: string };
+}
+
+/**
+ * Los renglones que el sistema tiene hoy, con los que se coteja lo guardado.
+ *
+ * Viven acá y no junto a cada pantalla por una razón práctica: las claves (`subtotal`,
+ * `neto`, `rteFte`…) son lo que empareja un contraste guardado con las cifras actuales,
+ * así que si las dos listas se escriben en sitios distintos acaban discrepando y el
+ * cotejo deja de encontrar nada —sin fallar, que es lo peor—.
+ */
+export const filasDelSistema = (
+  subtotal: number,
+  pago: number,
+  retenciones: { key: string; label: string; valor: number | null }[],
+): FilaContraste[] => [
+  { key: 'subtotal', label: 'Subtotal facturado', sistema: subtotal, documento: null },
+  ...retenciones.map((r) => ({ key: r.key, label: r.label, sistema: r.valor, documento: null })),
+  { key: 'pago', label: 'Valor pago', sistema: pago, documento: null },
+];
+
+/** Lo mismo para la orden de pago, que compara otros renglones. */
+export const filasDeLaOrden = (
+  subtotal: number,
+  pago: number,
+  retenciones: { key: string; label: string; valor: number | null }[],
+): FilaContraste[] => [
+  { key: 'presentado', label: 'Valor presentado', sistema: subtotal, documento: null },
+  ...retenciones.map((r) => ({ key: r.key, label: r.label, sistema: r.valor, documento: null })),
+  { key: 'retenido', label: 'Total retenido', sistema: subtotal - pago, documento: null },
+  { key: 'neto', label: 'Neto a girar', sistema: pago, documento: null },
+];
+
+/**
+ * Si el contraste se hizo contra cifras que ya no son las de hoy.
+ *
+ * Es la pregunta que de verdad importa al volver a un mes revisado: no «¿se revisó?»
+ * sino «¿se revisó esto?». Si alguien corrigió el AOM después de contrastar, el sello
+ * sigue ahí pero ya no dice nada de las cifras actuales.
+ */
+export const contrasteDesactualizado = (
+  bloque: BloqueContraste | undefined,
+  ahora: FilaContraste[],
+): boolean => {
+  if (!bloque) return false;
+  return bloque.filas.some((guardada) => {
+    const hoy = ahora.find((f) => f.key === guardada.key);
+    if (!hoy) return false;
+    // Se compara al peso: las cifras se guardan redondeadas y el sistema las arma con
+    // decimales, así que exigir igualdad exacta marcaría como viejo un mes intacto.
+    return Math.round(hoy.sistema ?? 0) !== Math.round(guardada.sistema ?? 0);
+  });
+};
 
 /** AOM + inversión + otros: la base sobre la que se calculan las retenciones. */
 export const subtotalFactura = (f: FacturaMes | undefined): number => {
@@ -288,6 +374,35 @@ export const recursoEconomicoService = {
   async quitarVistoFactura(periodo: string, companyId: number): Promise<RecursoEconomicoData> {
     const { data } = await api.delete<{ data: RecursoEconomicoData }>(`${BASE}/factura/visto`, {
       params: { periodo, companyId },
+    });
+    return data?.data ?? {};
+  },
+
+  /**
+   * Guarda lo que dio el contraste de un mes: la factura, la orden, o las dos.
+   *
+   * Se manda un bloque a la vez y el servidor conserva el otro. La orden de pago llega
+   * semanas después de la factura, así que quien contrasta la segunda no tiene por qué
+   * volver a cargar la primera para no borrarla.
+   */
+  async guardarContraste(
+    periodo: string,
+    companyId: number,
+    bloques: { factura?: BloqueContraste; orden?: BloqueContraste },
+  ): Promise<RecursoEconomicoData> {
+    const { data } = await api.put<{ data: RecursoEconomicoData }>(`${BASE}/contraste`, {
+      periodo, companyId, ...bloques,
+    });
+    return data?.data ?? {};
+  },
+
+  async borrarContraste(
+    periodo: string,
+    companyId: number,
+    bloque?: 'factura' | 'orden',
+  ): Promise<RecursoEconomicoData> {
+    const { data } = await api.delete<{ data: RecursoEconomicoData }>(`${BASE}/contraste`, {
+      params: { periodo, companyId, bloque },
     });
     return data?.data ?? {};
   },

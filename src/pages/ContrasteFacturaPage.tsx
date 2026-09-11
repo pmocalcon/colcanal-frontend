@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileSearch, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,9 +8,11 @@ import { puedeContrastarFactura } from '@/utils/rolesPmo';
 import { useRecursoEconomico } from '@/hooks/useRecursoEconomico';
 import { ContrasteFactura } from '@/components/recursoEconomico/ContrasteFactura';
 import { ContrasteOrdenPago } from '@/components/recursoEconomico/ContrasteOrdenPago';
+import { mensajeDeError } from '@/utils/errorMensaje';
 import {
-  CONCEPTOS_RETENCION, facturaDiligenciada, fmtCOP, retencionFactura,
-  subtotalFactura, valorPagoFactura, type FacturaMes,
+  CONCEPTOS_RETENCION, facturaDiligenciada, fmtCOP, recursoEconomicoService,
+  retencionFactura, subtotalFactura, valorPagoFactura,
+  type BloqueContraste, type FacturaMes, type RecursoEconomicoData,
 } from '@/services/recursoEconomico.service';
 
 /**
@@ -83,6 +85,57 @@ export default function ContrasteFacturaPage() {
 
   const subtotal = subtotalFactura(f);
   const pago = valorPagoFactura(f, ret);
+
+  /*
+   * Lo guardado sale de `datos`, pero después de guardar manda lo que devolvió el
+   * servidor. Se lleva aparte y no con `setDatos` del hook a propósito: ese estado es el
+   * borrador del módulo entero y tiene su propio control de «cambios sin guardar».
+   * Meterle el contraste haría que esta pantalla, que no guarda el módulo, apareciera
+   * como si tuviera cambios pendientes.
+   */
+  const [recien, setRecien] = useState<RecursoEconomicoData['contrastes'] | null>(null);
+  const contrastes = recien ?? datos.contrastes ?? {};
+  const guardado = companyId != null ? contrastes[periodo]?.[String(companyId)] : undefined;
+
+  const [guardando, setGuardando] = useState<'factura' | 'orden' | null>(null);
+  const [borrando, setBorrando] = useState<'factura' | 'orden' | null>(null);
+  const [errorContraste, setErrorContraste] = useState<string | null>(null);
+
+  const guardarBloque = useCallback(
+    async (cual: 'factura' | 'orden', bloque: BloqueContraste) => {
+      if (companyId == null) return;
+      setGuardando(cual);
+      setErrorContraste(null);
+      try {
+        const data = await recursoEconomicoService.guardarContraste(periodo, companyId, {
+          [cual]: bloque,
+        });
+        setRecien(data.contrastes ?? {});
+      } catch (e) {
+        setErrorContraste(mensajeDeError(e, 'No se pudo guardar el contraste.'));
+      } finally {
+        setGuardando(null);
+      }
+    },
+    [companyId, periodo],
+  );
+
+  const borrarBloque = useCallback(
+    async (cual: 'factura' | 'orden') => {
+      if (companyId == null) return;
+      setBorrando(cual);
+      setErrorContraste(null);
+      try {
+        const data = await recursoEconomicoService.borrarContraste(periodo, companyId, cual);
+        setRecien(data.contrastes ?? {});
+      } catch (e) {
+        setErrorContraste(mensajeDeError(e, 'No se pudo borrar el contraste.'));
+      } finally {
+        setBorrando(null);
+      }
+    },
+    [companyId, periodo],
+  );
 
   /** Los años con factura, más el actual y el anterior: los mismos que ofrece Factura. */
   const anios = useMemo(() => {
@@ -210,6 +263,12 @@ export default function ContrasteFacturaPage() {
                   </dl>
                 </div>
 
+                {errorContraste && (
+                  <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    {errorContraste}
+                  </p>
+                )}
+
                 <ContrasteFactura
                   subtotal={subtotal}
                   pago={pago}
@@ -220,6 +279,12 @@ export default function ContrasteFacturaPage() {
                   }))}
                   empresa={empresa?.name ?? ''}
                   periodo={periodo}
+                  guardado={guardado?.factura}
+                  quien={guardado?.quien}
+                  onGuardar={(b) => guardarBloque('factura', b)}
+                  onBorrar={() => borrarBloque('factura')}
+                  guardando={guardando === 'factura'}
+                  borrando={borrando === 'factura'}
                 />
 
                 {/*
@@ -236,6 +301,12 @@ export default function ContrasteFacturaPage() {
                     valor: retencionFactura(f, ret, c.key).valor,
                   }))}
                   periodo={periodo}
+                  guardado={guardado?.orden}
+                  quien={guardado?.quien}
+                  onGuardar={(b) => guardarBloque('orden', b)}
+                  onBorrar={() => borrarBloque('orden')}
+                  guardando={guardando === 'orden'}
+                  borrando={borrando === 'orden'}
                 />
               </>
             )}

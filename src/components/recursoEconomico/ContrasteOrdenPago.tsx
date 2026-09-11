@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileUp, Loader2, ScanText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fmtCOP } from '@/services/recursoEconomico.service';
+import {
+  filasDeLaOrden, fmtCOP, type BloqueContraste,
+} from '@/services/recursoEconomico.service';
+import { GuardarContraste, SelloContraste } from './ContrasteGuardado';
 import { extraerOrdenPago, leerOrdenPagoPdf, type LecturaOrdenPago } from '@/utils/ordenPago';
 import { ocrDelPdf, type ProgresoOcr } from '@/utils/ocrPdf';
 import { FilaComparada, type RetencionEsperada } from './ContrasteFactura';
@@ -37,6 +40,7 @@ const TOLERANCIA = 2;
 
 export function ContrasteOrdenPago({
   subtotal, pago, retenciones, periodo,
+  guardado, quien, onGuardar, onBorrar, guardando = false, borrando = false,
 }: {
   /** AOM + inversión + otros, como lo tiene el sistema. */
   subtotal: number;
@@ -45,6 +49,13 @@ export function ContrasteOrdenPago({
   retenciones: RetencionEsperada[];
   /** 'YYYY-MM' del mes facturado. */
   periodo: string;
+  /** El contraste que ya quedó guardado de este mes, si lo hay. */
+  guardado?: BloqueContraste;
+  quien?: { nombre: string; rol?: string; fecha: string };
+  onGuardar?: (bloque: BloqueContraste) => void | Promise<void>;
+  onBorrar?: () => void | Promise<void>;
+  guardando?: boolean;
+  borrando?: boolean;
 }) {
   /** La orden ya buena para comparar. */
   const [orden, setOrden] = useState<LecturaOrdenPago | null>(null);
@@ -60,12 +71,21 @@ export function ContrasteOrdenPago({
   const [escaneo, setEscaneo] = useState<File | null>(null);
   const [progreso, setProgreso] = useState<ProgresoOcr | null>(null);
   const [archivo, setArchivo] = useState<string>('');
+  /**
+   * Si lo que se está comparando salió de reconocer una imagen y no de la capa de texto.
+   *
+   * Se guarda con el contraste porque cambia cuánto vale la constancia: una cifra que una
+   * persona confirmó después de un OCR no es lo mismo que una que venía escrita en el PDF,
+   * y quien lea el registro dentro de tres meses tiene que poder distinguirlas.
+   */
+  const [porOcr, setPorOcr] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leyendo, setLeyendo] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
   const limpiar = () => {
     setOrden(null); setPropuesta(null); setEscaneo(null); setProgreso(null); setError(null);
+    setPorOcr(false);
   };
 
   const cargar = async (file: File | undefined) => {
@@ -125,7 +145,22 @@ export function ContrasteOrdenPago({
       </header>
 
       <div className="p-4 space-y-3">
-        {!orden && !propuesta && !escaneo && (
+        {/*
+          Con un contraste guardado, lo primero es lo que ya se revisó: quien vuelve a un
+          mes revisado viene a mirar qué salió, no a repetirlo.
+        */}
+        {!orden && !propuesta && !escaneo && guardado && (
+          <SelloContraste
+            bloque={guardado}
+            quien={quien}
+            ahora={filasDeLaOrden(subtotal, pago, retenciones)}
+            documento="la orden de pago"
+            onBorrar={() => void onBorrar?.()}
+            borrando={borrando}
+          />
+        )}
+
+        {!orden && !propuesta && !escaneo && !guardado && (
           <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
             Cargue el <strong>PDF</strong> de la orden de pago —la carta con que el municipio
             le pide a la fiduciaria que gire— y el sistema compara el valor presentado, cada
@@ -207,7 +242,7 @@ export function ContrasteOrdenPago({
           <Revision
             propuesta={propuesta}
             retenciones={retenciones}
-            onConfirmar={(confirmada) => { setPropuesta(null); setOrden(confirmada); }}
+            onConfirmar={(confirmada) => { setPropuesta(null); setOrden(confirmada); setPorOcr(true); }}
             onDescartar={limpiar}
           />
         )}
@@ -219,6 +254,11 @@ export function ContrasteOrdenPago({
             pago={pago}
             retenciones={retenciones}
             periodo={periodo}
+            archivo={archivo}
+            origen={porOcr ? 'ocr' : 'texto'}
+            guardado={guardado}
+            onGuardar={onGuardar}
+            guardando={guardando}
           />
         )}
       </div>
@@ -231,12 +271,22 @@ const MESES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
 
-function Resultado({ orden, subtotal, pago, retenciones, periodo }: {
+function Resultado({
+  orden, subtotal, pago, retenciones, periodo, archivo, origen,
+  guardado, onGuardar, guardando,
+}: {
   orden: LecturaOrdenPago;
   subtotal: number;
   pago: number;
   retenciones: RetencionEsperada[];
   periodo: string;
+  /** El nombre del archivo que se cargó, para dejarlo en la constancia. */
+  archivo: string;
+  /** Si las cifras salieron de la capa de texto del PDF o de reconocer la imagen. */
+  origen: 'texto' | 'ocr';
+  guardado?: BloqueContraste;
+  onGuardar?: (bloque: BloqueContraste) => void | Promise<void>;
+  guardando?: boolean;
 }) {
   const totalRetenidoSistema = subtotal - pago;
 
@@ -296,6 +346,34 @@ function Resultado({ orden, subtotal, pago, retenciones, periodo }: {
   }
 
   const difNeto = orden.valorNeto == null ? null : Math.round(orden.valorNeto) - Math.round(pago);
+
+  /*
+   * Lo que se guardaría: las mismas cifras que están a la vista.
+   *
+   * `cuadra` se mide por el neto a girar y no por el valor presentado, porque el neto es
+   * la cifra que de verdad se va a recibir: una orden con el presentado bueno y el neto
+   * malo es una orden que no cuadra. Se acepta la tolerancia de dos pesos por la misma
+   * razón que en la tabla: la orden trae centavos y el sistema redondea al peso.
+   */
+  const bloqueGuardable: BloqueContraste = {
+    archivo,
+    fuente: origen,
+    referencia: orden.oficio || orden.numeroFactura || null,
+    fecha: orden.mesServicio ?? null,
+    filas: [
+      { key: 'presentado', label: 'Valor presentado', sistema: subtotal, documento: orden.valorPresentado },
+      ...retenciones.map((r) => ({
+        key: r.key,
+        label: r.label,
+        sistema: r.valor,
+        documento: enLaOrden(r.key),
+      })),
+      { key: 'retenido', label: 'Total retenido', sistema: totalRetenidoSistema, documento: totalOrden },
+      { key: 'neto', label: 'Neto a girar', sistema: pago, documento: orden.valorNeto },
+    ],
+    cuadra: difNeto != null && Math.abs(difNeto) <= TOLERANCIA,
+    avisos,
+  };
 
   return (
     <div className="space-y-4">
@@ -403,6 +481,16 @@ function Resultado({ orden, subtotal, pago, retenciones, periodo }: {
           {orden.lineas.join('\n')}
         </pre>
       </details>
+
+      {/* Guardar va al final, después del veredicto: es lo último que se hace. */}
+      {onGuardar && (
+        <GuardarContraste
+          onGuardar={() => void onGuardar(bloqueGuardable)}
+          guardando={!!guardando}
+          guardado={guardado}
+          etiqueta="el contraste de la orden"
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,10 @@ import {
   AlertTriangle, CheckCircle2, FileUp, Loader2, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fmtCOP } from '@/services/recursoEconomico.service';
+import {
+  filasDelSistema, fmtCOP, type BloqueContraste,
+} from '@/services/recursoEconomico.service';
+import { GuardarContraste, SelloContraste } from './ContrasteGuardado';
 import {
   FacturaDianError, leerFacturaDian, mismoNombreDeEmpresa, type FacturaDian,
 } from '@/utils/facturaDian';
@@ -52,6 +55,7 @@ export interface RetencionEsperada {
 
 export function ContrasteFactura({
   subtotal, pago, retenciones, empresa, periodo,
+  guardado, quien, onGuardar, onBorrar, guardando = false, borrando = false,
 }: {
   /** AOM + inversión + otros, como lo tiene el sistema. */
   subtotal: number;
@@ -62,6 +66,13 @@ export function ContrasteFactura({
   empresa: string;
   /** 'YYYY-MM' del mes facturado. */
   periodo: string;
+  /** El contraste que ya quedó guardado de este mes, si lo hay. */
+  guardado?: BloqueContraste;
+  quien?: { nombre: string; rol?: string; fecha: string };
+  onGuardar?: (bloque: BloqueContraste) => void | Promise<void>;
+  onBorrar?: () => void | Promise<void>;
+  guardando?: boolean;
+  borrando?: boolean;
 }) {
   const [factura, setFactura] = useState<FacturaDian | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +119,23 @@ export function ContrasteFactura({
       </header>
 
       <div className="p-4 space-y-3">
-        {!factura && (
+        {/*
+          Con un contraste guardado, lo primero que se ve es lo que ya se revisó y no la
+          invitación a cargar un archivo: quien vuelve a un mes revisado viene a mirar qué
+          salió, no a repetirlo.
+        */}
+        {!factura && guardado && (
+          <SelloContraste
+            bloque={guardado}
+            quien={quien}
+            ahora={filasDelSistema(subtotal, pago, retenciones)}
+            documento="la factura"
+            onBorrar={() => void onBorrar?.()}
+            borrando={borrando}
+          />
+        )}
+
+        {!factura && !guardado && (
           <p className="text-xs text-[hsl(var(--canalco-neutral-600))]">
             Cargue la factura —el <strong>XML</strong>, su representación en <strong>PDF</strong>,
             o el ZIP en que la mandaron— y el sistema compara sus cifras con estas. El
@@ -159,6 +186,9 @@ export function ContrasteFactura({
             retenciones={retenciones}
             empresa={empresa}
             periodo={periodo}
+            guardado={guardado}
+            onGuardar={onGuardar}
+            guardando={guardando}
           />
         )}
       </div>
@@ -166,13 +196,18 @@ export function ContrasteFactura({
   );
 }
 
-function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
+function Resultado({
+  factura, subtotal, pago, retenciones, empresa, periodo, guardado, onGuardar, guardando,
+}: {
   factura: FacturaDian;
   subtotal: number;
   pago: number;
   retenciones: RetencionEsperada[];
   empresa: string;
   periodo: string;
+  guardado?: BloqueContraste;
+  onGuardar?: (bloque: BloqueContraste) => void | Promise<void>;
+  guardando?: boolean;
 }) {
   const base = factura.baseGravable;
   const difSubtotal = base == null ? null : Math.round(base) - Math.round(subtotal);
@@ -219,6 +254,40 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
   }
 
   const delPdf = factura.fuente === 'pdf';
+
+  /*
+   * Lo que se guardaría: las mismas cifras que están a la vista, no un resumen aparte.
+   * Se arma acá y no en el servidor porque quién compara con quién es una decisión de
+   * esta pantalla —qué retención del XML casa con qué concepto del sistema—, y mandarla
+   * al servidor sería tener esa decisión escrita dos veces.
+   *
+   * Los renglones que la factura no declara van con `documento` en nulo y no en cero:
+   * que la factura no traiga retenciones es lo normal, y guardar ceros haría que un mes
+   * sano se leyera después como un mes que no cuadró.
+   */
+  const bloqueGuardable: BloqueContraste = {
+    archivo: factura.archivo,
+    fuente: factura.fuente,
+    referencia: factura.numero || null,
+    fecha: factura.fechaEmision ?? null,
+    filas: [
+      { key: 'subtotal', label: 'Subtotal facturado', sistema: subtotal, documento: base },
+      ...filasRetencion.map((r) => ({
+        key: r.key,
+        label: r.label,
+        sistema: r.valor,
+        documento: traeRetenciones ? r.enFactura : null,
+      })),
+      {
+        key: 'pago',
+        label: 'Valor pago',
+        sistema: pago,
+        documento: traeRetenciones ? factura.totalAPagar : null,
+      },
+    ],
+    cuadra: difSubtotal === 0,
+    avisos,
+  };
 
   return (
     <div className="space-y-4">
@@ -374,6 +443,19 @@ function Resultado({ factura, subtotal, pago, retenciones, empresa, periodo }: {
           <span>{a}</span>
         </p>
       ))}
+
+      {/*
+        Guardar va al final, después del veredicto y de los avisos: es lo último que se
+        hace, y ponerlo arriba invitaría a sellar el mes antes de leer por qué no cuadra.
+      */}
+      {onGuardar && (
+        <GuardarContraste
+          onGuardar={() => void onGuardar(bloqueGuardable)}
+          guardando={!!guardando}
+          guardado={guardado}
+          etiqueta="el contraste de la factura"
+        />
+      )}
     </div>
   );
 }
