@@ -278,7 +278,7 @@ const CAMPOS_HORAS_INCAPACIDAD: CampoDef[] = [
   { key: 'horasExtrasValor', label: 'H. Extras $' },
   { key: 'recargoNocturnoValor', label: 'RN $' },
   { key: 'incapacidadEmpresa', label: 'Incapacidad empresa $' },
-  { key: 'incapacidadEmpleado', label: 'Incapacidad empleado $' },
+  { key: 'incapacidadEmpleado', label: 'Incapacidad EPS/ARL $' },
   { key: 'incapacidadOtros', label: 'Incapacidad otros $' },
   { key: 'vacacionesHabiles', label: 'Vacaciones hábiles $' },
   { key: 'vacacionesNoHabiles', label: 'Vacaciones no hábiles $' },
