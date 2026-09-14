@@ -90,6 +90,8 @@ export default function CrearRequisicionPage() {
   // materiales se piden al escoger. Guardarlas era para reusar sus materialItems.
   const [actaGroups, setActaGroups] = useState<ActaGroup[]>([]);
   const [loadingActas, setLoadingActas] = useState(false);
+  /** Ya se terminó de consultar qué actas se ofrecen (bien o con error). */
+  const [actasCargadas, setActasCargadas] = useState(false);
   const [errorActas, setErrorActas] = useState<string | null>(null);
   const [loadingActaDetails, setLoadingActaDetails] = useState(false);
   const [selectedActaId, setSelectedActaId] = useState<number | null>(null);
@@ -109,6 +111,33 @@ export default function CrearRequisicionPage() {
     loadMasterData();
     loadApprovedActas();
   }, []);
+
+  /*
+   * Se llega desde el Cronograma con «Generar requisición»: el acta ya pasó los
+   * requisitos allá (`revisarRequisitosActa`), así que se escoge sola y se llena el
+   * formulario. Una sola vez: después quien diligencia puede cambiarla.
+   */
+  const actaDesdeCronograma = useMemo(() => {
+    const acta = searchParams.get('acta');
+    const company = Number(searchParams.get('company'));
+    if (actaAnticipada || !acta || !company) return null;
+    const project = searchParams.get('project');
+    return { key: `${company}:${project ? Number(project) : 0}:${acta}`, acta };
+  }, [searchParams, actaAnticipada]);
+  const [actaDesdeCronogramaAplicada, setActaDesdeCronogramaAplicada] = useState(false);
+
+  useEffect(() => {
+    if (!actaDesdeCronograma || actaDesdeCronogramaAplicada || !actasCargadas) return;
+    setActaDesdeCronogramaAplicada(true);
+    if (actaGroups.some((g) => g.key === actaDesdeCronograma.key)) {
+      handleActaGroupSelected(actaDesdeCronograma.key);
+    } else if (!errorActas) {
+      setErrorActas(
+        `El acta ${actaDesdeCronograma.acta} no está disponible para requisición. Revise sus requisitos en el Cronograma.`,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actaDesdeCronograma, actaDesdeCronogramaAplicada, actasCargadas, actaGroups]);
 
   const loadApprovedActas = async () => {
     try {
@@ -177,6 +206,7 @@ export default function CrearRequisicionPage() {
       setErrorActas('No se pudo comprobar qué actas están aprobadas. Recargue la página.');
     } finally {
       setLoadingActas(false);
+      setActasCargadas(true);
     }
   };
 

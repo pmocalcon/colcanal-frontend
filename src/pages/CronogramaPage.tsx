@@ -15,8 +15,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { materialsService, type Material } from '@/services/materials.service';
-import { ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Save, Search, CalendarRange, ClipboardList, Layers, Plus, X, Trash2, MapPin, TrendingUp, TrendingDown, Activity, Package, BarChart3, Clock, ShoppingCart, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { HistorialRqObra } from '@/components/cronograma/HistorialRqObra';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { revisarRequisitosActa, type RevisionRequisitosActa } from '@/utils/requisitosRequisicionActa';
 import { workingDayProgress, parseLocalDate, type WorkingDayCount, getColombianHolidays, currentMonthWorkingDays } from '@/utils/colombianCalendar';
 import { GanttTimeline, type GanttRow } from '@/components/GanttTimeline';
 import { ActaGantt, buildActaGanttObras, type ActaGanttObra } from '@/components/ActaGantt';
@@ -57,6 +59,9 @@ export default function CronogramaPage() {
   // El acta se identifica por (empresa, proyecto, número): en Canales el municipio es el proyecto.
   const [actaProjectId, setActaProjectId] = useState<number | null>(null);
   const [cronogramaActionLoading, setCronogramaActionLoading] = useState(false);
+  // «Generar requisición»: qué le falta al acta para pedir sus materiales.
+  const [revisandoRequisicion, setRevisandoRequisicion] = useState(false);
+  const [requisitosActa, setRequisitosActa] = useState<RevisionRequisitosActa | null>(null);
   const [cronogramaRejectOpen, setCronogramaRejectOpen] = useState(false);
   const [cronogramaRejectMotivo, setCronogramaRejectMotivo] = useState('');
   const [actaGanttObras, setActaGanttObras] = useState<ActaGanttObra[]>([]);
@@ -371,6 +376,36 @@ export default function CronogramaPage() {
   }, [isDirty]);
 
   // ── select an acta → load all its works' schedules and build the Gantt rows
+  /**
+   * Revisa si el acta ya puede pedir la requisición de sus materiales. Si cumple con
+   * todo lleva directo al formulario de Compras con el acta puesta; si no, muestra qué
+   * falta. Las condiciones son las mismas del formulario (`revisarRequisitosActa`).
+   */
+  const handleGenerarRequisicion = async () => {
+    if (!selectedActa || actaCompanyId == null) return;
+    const actaWorks = groupedWorksMap.get(selectedActa) ?? [];
+    setRevisandoRequisicion(true);
+    try {
+      const revision = await revisarRequisitosActa({
+        companyId: actaCompanyId,
+        projectId: actaProjectId,
+        actaNumber: selectedActa,
+        works: actaWorks,
+      });
+      if (revision.cumpleTodo) {
+        if (isDirty && !window.confirm('Tienes cambios sin guardar en el cronograma. ¿Deseas continuar y perderlos?')) return;
+        navigate(revision.destino);
+      } else {
+        setRequisitosActa(revision);
+      }
+    } catch (err) {
+      console.error('Error revisando requisitos de la requisición:', err);
+      toast.error('No se pudieron revisar los requisitos del acta. Intenta de nuevo.');
+    } finally {
+      setRevisandoRequisicion(false);
+    }
+  };
+
   const handleSelectActa = useCallback(async (acta: string, actaWorks: Work[]) => {
     if (isDirty) {
       const ok = window.confirm('Tienes cambios sin guardar. ¿Deseas continuar y perder los cambios?');
@@ -4392,6 +4427,40 @@ export default function CronogramaPage() {
         </div>
       </header>
 
+      {/* Requisitos para generar la requisición del acta */}
+      <Dialog open={!!requisitosActa} onOpenChange={(open) => { if (!open) setRequisitosActa(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Requisición del acta {selectedActa}</DialogTitle>
+            <DialogDescription>
+              Faltan {requisitosActa?.requisitos.filter((r) => !r.cumple).length ?? 0} requisitos para generar la requisición de los materiales de esta acta.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-3">
+            {requisitosActa?.requisitos.map((r) => (
+              <li key={r.clave} className="flex items-start gap-2.5">
+                {r.cumple ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <p className={`text-sm font-medium ${r.cumple ? 'text-[hsl(var(--canalco-neutral-600))]' : 'text-[hsl(var(--canalco-neutral-900))]'}`}>
+                    {r.etiqueta}
+                  </p>
+                  {!r.cumple && r.detalle && (
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-0.5 break-words">{r.detalle}</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRequisitosActa(null)}>Entendido</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <main className="flex-1 px-6 py-6 max-w-7xl mx-auto w-full">
         {accessLoading ? (
           <div className="flex items-center justify-center py-20">
@@ -4493,6 +4562,14 @@ export default function CronogramaPage() {
                             </div>
                             {/* ── Flujo de revisión del Plan ── */}
                             <div className="flex flex-col items-end gap-2">
+                              <button
+                                onClick={handleGenerarRequisicion}
+                                disabled={revisandoRequisicion || actaCompanyId == null}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[hsl(var(--canalco-primary))] bg-white px-3 py-1.5 text-sm font-medium text-[hsl(var(--canalco-primary))] hover:bg-[hsl(var(--canalco-primary))]/10 disabled:opacity-60"
+                              >
+                                {revisandoRequisicion ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+                                {revisandoRequisicion ? 'Revisando requisitos...' : 'Generar requisición'}
+                              </button>
                               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                                 cronogramaStatus === 'aprobado' ? 'bg-emerald-100 text-emerald-700'
                                 : cronogramaStatus === 'en_revision' ? 'bg-blue-100 text-blue-700'
