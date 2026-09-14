@@ -314,10 +314,10 @@ export default function ConstanciaAntecedentesPage() {
                   del texto: se repiten de la ficha de arriba y así se escriben una vez. */}
               <p className="text-justify leading-relaxed">
                 Se deja constancia de que, para la finalidad indicada y respecto de{' '}
-                <Hueco value={f.nombre} onChange={(v) => set('nombre', v)} ancho="w-[38%]" />, identificado(a)
+                <Hueco value={f.nombre} onChange={(v) => set('nombre', v)} />, identificado(a)
                 con cédula de ciudadanía No.{' '}
-                <Hueco value={f.cedula} onChange={(v) => set('cedula', v)} ancho="w-[16%]" /> expedida en{' '}
-                <Hueco value={f.lugarExpedicion} onChange={(v) => set('lugarExpedicion', v)} ancho="w-[16%]" />, se
+                <Hueco value={f.cedula} onChange={(v) => set('cedula', v)} /> expedida en{' '}
+                <Hueco value={f.lugarExpedicion} onChange={(v) => set('lugarExpedicion', v)} />, se
                 efectuaron las verificaciones que se relacionan a continuación en los portales oficiales
                 disponibles a la fecha de consulta.
               </p>
@@ -492,13 +492,23 @@ function Celda({ value, onChange }: { value: string; onChange: (v: string) => vo
 }
 
 /** Un dato que va embebido en un párrafo corrido, no en una celda. */
-function Hueco({ value, onChange, ancho }: { value: string; onChange: (v: string) => void; ancho: string }) {
+/**
+ * Un dato dentro del párrafo, del ancho de lo que tiene escrito.
+ *
+ * Tenía un ancho fijo (38 %, 16 %) y el nombre o la cédula ocupaban solo una parte:
+ * quedaba un hueco en blanco antes de la coma, visible en pantalla y en el impreso. El
+ * ancho lo da un texto invisible igual al valor, y el campo se monta encima.
+ */
+function Hueco({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={ancho + ' bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black'}
-    />
+    <span className="relative inline-block align-baseline text-[12px]">
+      <span aria-hidden className="invisible whitespace-pre">{value || '\u00a0\u00a0\u00a0\u00a0'}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 w-full p-0 bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black"
+      />
+    </span>
   );
 }
 
