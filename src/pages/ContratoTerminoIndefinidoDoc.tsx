@@ -76,7 +76,12 @@ const EMPTY: TIState = {
   ciPeriodoPrueba: 'DOS (2) MESES. VALIDAR VÍNCULOS LABORALES SUCESIVOS ANTES DE GENERAR.',
   ciRevisionRit: '[CONFIRMADA / PENDIENTE]',
 
-  // El empleador es siempre el mismo: va escrito, no en blanco.
+  /*
+   * El empleador y su NIT son los de Canales & Contactos porque es el caso corriente,
+   * pero no son fijos: si la solicitud escogió otro CONTRATANTE —una unión temporal—,
+   * el contrato sale a nombre de ese, y el NIT queda por diligenciar. El contrato salía
+   * siempre a nombre de Canales aunque arriba se hubiera escogido una UT.
+   */
   empleador: 'CANALES Y CONTACTOS S.A.S.',
   nit: '900.456.735-7',
   representanteLegal: 'GLORIA LUCÍA ESCALANTE MANZANO',
@@ -138,7 +143,9 @@ const HABILITADO = ['contrato_en_elaboracion', 'pendiente_firma_contrato', 'cont
  * Las claves llevan el prefijo `i` —de indefinido— y son nuevas: la plantilla anterior no
  * guardaba texto editable, así que no hay nada que reutilizar ni con qué chocar.
  */
-const BLOQUES: { k: string; titulo: string; parrafos: string[] }[] = [
+const bloquesDelContrato = (
+  empleadora: string,
+): { k: string; titulo: string; parrafos: string[] }[] => [
   {
     k: 'i1',
     titulo: 'PRIMERA. OBJETO',
@@ -152,7 +159,7 @@ const BLOQUES: { k: string; titulo: string; parrafos: string[] }[] = [
   {
     k: 'i2',
     titulo: 'SEGUNDA. LUGAR DE TRABAJO',
-    parrafos: ['EL EMPLEADO(A) prestará sus servicios principalmente en la sede de CANALES Y CONTACTOS S.A.S. ubicada en Cali, Valle del Cauca, y en los demás lugares dentro del territorio nacional en los que LA EMPLEADORA desarrolle su objeto o actividad y requiera su presencia. LA EMPLEADORA podrá disponer cambios razonables del lugar de prestación del servicio o traslados, de acuerdo con las necesidades empresariales, siempre que no impliquen desmejora de las condiciones laborales, afectación de la dignidad de EL EMPLEADO(A) ni desconocimiento de sus derechos mínimos. Los gastos de traslado a que haya lugar serán reconocidos de conformidad con la ley y las políticas internas aplicables.'],
+    parrafos: [`EL EMPLEADO(A) prestará sus servicios principalmente en la sede de ${empleadora} ubicada en Cali, Valle del Cauca, y en los demás lugares dentro del territorio nacional en los que LA EMPLEADORA desarrolle su objeto o actividad y requiera su presencia. LA EMPLEADORA podrá disponer cambios razonables del lugar de prestación del servicio o traslados, de acuerdo con las necesidades empresariales, siempre que no impliquen desmejora de las condiciones laborales, afectación de la dignidad de EL EMPLEADO(A) ni desconocimiento de sus derechos mínimos. Los gastos de traslado a que haya lugar serán reconocidos de conformidad con la ley y las políticas internas aplicables.`],
   },
   {
     k: 'i2.p',
@@ -232,13 +239,13 @@ const BLOQUES: { k: string; titulo: string; parrafos: string[] }[] = [
   {
     k: 'i12',
     titulo: 'DÉCIMA SEGUNDA. PROBIDAD Y PROHIBICIÓN DE PAGOS INDEBIDOS',
-    parrafos: ['EL EMPLEADO(A) se obliga a desempeñar sus funciones con integridad, ética, transparencia y lealtad hacia CANALES Y CONTACTOS S.A.S. Queda estrictamente prohibido solicitar, recibir, aceptar, ofrecer o entregar, directa o indirectamente, pagos, comisiones, gratificaciones, beneficios, dádivas o cualquier retribución indebida de proveedores, contratistas, clientes, servidores públicos o terceros con quienes LA EMPLEADORA mantenga o pueda mantener relaciones. El incumplimiento comprobado de esta obligación constituirá falta grave y podrá dar lugar a la terminación del contrato con justa causa, previo cumplimiento del procedimiento laboral y disciplinario aplicable, sin perjuicio de las acciones legales y del resarcimiento de los perjuicios debidamente acreditados.'],
+    parrafos: [`EL EMPLEADO(A) se obliga a desempeñar sus funciones con integridad, ética, transparencia y lealtad hacia ${empleadora} Queda estrictamente prohibido solicitar, recibir, aceptar, ofrecer o entregar, directa o indirectamente, pagos, comisiones, gratificaciones, beneficios, dádivas o cualquier retribución indebida de proveedores, contratistas, clientes, servidores públicos o terceros con quienes LA EMPLEADORA mantenga o pueda mantener relaciones. El incumplimiento comprobado de esta obligación constituirá falta grave y podrá dar lugar a la terminación del contrato con justa causa, previo cumplimiento del procedimiento laboral y disciplinario aplicable, sin perjuicio de las acciones legales y del resarcimiento de los perjuicios debidamente acreditados.`],
   },
   {
     k: 'i13',
     titulo: 'DÉCIMA TERCERA. TERMINACIÓN UNILATERAL',
     parrafos: [
-      'El presente contrato se encuentra sujeto a las disposiciones legales que regulan las relaciones laborales y al Reglamento Interno de Trabajo de CANALES Y CONTACTOS S.A.S., el cual será puesto en conocimiento de EL EMPLEADO(A). LA EMPLEADORA podrá terminar unilateralmente el contrato con justa causa cuando se configure una causal legal o contractual válida, garantizando el debido proceso y el derecho de defensa cuando resulten aplicables.',
+      `El presente contrato se encuentra sujeto a las disposiciones legales que regulan las relaciones laborales y al Reglamento Interno de Trabajo de ${empleadora}, el cual será puesto en conocimiento de EL EMPLEADO(A). LA EMPLEADORA podrá terminar unilateralmente el contrato con justa causa cuando se configure una causal legal o contractual válida, garantizando el debido proceso y el derecho de defensa cuando resulten aplicables.`,
       'Son justas causas para terminar unilateralmente el contrato las previstas en el Código Sustantivo del Trabajo y demás normas aplicables. También podrán constituir faltas graves las conductas expresamente calificadas como tales en este contrato, en el Reglamento Interno de Trabajo, en el Manual de Funciones y en las políticas válidamente adoptadas, siempre que la conducta se encuentre debidamente comprobada y su gravedad, reiteración, impacto y circunstancias justifiquen la medida.',
     ],
   },
@@ -256,7 +263,7 @@ const BLOQUES: { k: string; titulo: string; parrafos: string[] }[] = [
     k: 'i15',
     titulo: 'DÉCIMA QUINTA. PROPIEDAD INTELECTUAL',
     parrafos: [
-      'Los documentos, conceptos, bases de datos, informes, metodologías, procedimientos, diseños, desarrollos, software, obras y demás resultados elaborados por EL EMPLEADO(A) en cumplimiento de sus funciones, utilizando recursos de LA EMPLEADORA o siguiendo sus instrucciones, pertenecerán a CANALES Y CONTACTOS S.A.S. en la medida permitida por la ley.',
+      `Los documentos, conceptos, bases de datos, informes, metodologías, procedimientos, diseños, desarrollos, software, obras y demás resultados elaborados por EL EMPLEADO(A) en cumplimiento de sus funciones, utilizando recursos de LA EMPLEADORA o siguiendo sus instrucciones, pertenecerán a ${empleadora} en la medida permitida por la ley.`,
       'EL EMPLEADO(A) transfiere a LA EMPLEADORA, en los términos permitidos por la legislación aplicable, los derechos patrimoniales de autor y demás derechos susceptibles de cesión sobre tales resultados, para todos los territorios, medios y modalidades de explotación, por el término máximo de protección legal. Los derechos morales permanecerán en cabeza de sus titulares conforme a la ley.',
       'EL EMPLEADO(A) se obliga a suscribir los documentos y prestar la colaboración razonablemente necesaria para formalizar, registrar o proteger los derechos de LA EMPLEADORA. Esta obligación continuará después de la terminación del contrato en cuanto resulte necesario para acreditar o proteger la titularidad correspondiente.',
     ],
@@ -339,9 +346,15 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
      * Lo que ya se escribió en la solicitud y en el acta se trae. Solo entra donde el hueco
      * sigue intacto: una vez que alguien escribió en la celda, manda lo escrito.
      */
+    const contratante = String(d.empresa ?? '').trim();
+    const esCanales = !contratante || /canales/i.test(contratante);
     const delTramite: Partial<TIState> = {
       salario: (d.honorarios as string) || '',
       fechaInicio: acta.fechaInicio || '',
+      // El CONTRATANTE de la solicitud es la empleadora del contrato.
+      empleador: esCanales ? '' : contratante,
+      // El NIT de Canales no es el de la unión temporal, y el sistema no lo guarda.
+      nit: esCanales ? '' : '[NIT DE LA EMPLEADORA]',
     };
     const base = { ...EMPTY, ...traerDeLaPlantillaVieja(saved), ...saved };
     for (const [k, v] of Object.entries(delTramite)) {
@@ -502,10 +515,10 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
               <div className="bloque">
                 <TextoEd
                   k="i.comparecencia"
-                  plantilla={'Entre los suscritos a saber, GLORIA LUCÍA ESCALANTE MANZANO, mayor de edad, '
+                  plantilla={`Entre los suscritos a saber, ${f.representanteLegal}, mayor de edad, `
                     + 'identificada con cédula de ciudadanía No. 66.651.423 expedida en El Cerrito, quien actúa '
-                    + 'en calidad de representante legal de CANALES Y CONTACTOS S.A.S., identificada con NIT No. '
-                    + '900.456.735-7, y para efectos del presente contrato se denominará LA EMPLEADORA; y, por '
+                    + `en calidad de representante legal de ${f.empleador}, identificada con NIT No. `
+                    + `${f.nit}, y para efectos del presente contrato se denominará LA EMPLEADORA; y, por `
                     + 'otra parte, [NOMBRE COMPLETO], mayor de edad, identificado(a) con cédula de ciudadanía No. '
                     + '[NÚMERO] expedida en [LUGAR], quien actúa en nombre propio y para efectos del presente '
                     + 'contrato se denominará EL EMPLEADO(A), hemos convenido celebrar el presente contrato '
@@ -513,7 +526,7 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
                 />
               </div>
 
-              {BLOQUES.map((b) => (
+              {bloquesDelContrato(f.empleador).map((b) => (
                 <div key={b.k} className="bloque space-y-1">
                   <p><b>{b.titulo}:</b></p>
                   {b.parrafos.map((texto, i) => (
@@ -532,14 +545,14 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
               </div>
             </div>
 
-            {/* Firmas. La empleadora firma con nombre y empresa a secas —es la misma en
-                todos los contratos—; el empleado sale de los datos de vinculación. */}
+            {/* Firmas. Las dos partes salen de los datos de vinculación: la empleadora es
+                la que se escogió como CONTRATANTE en la solicitud. */}
             <div className="grid grid-cols-2 gap-8 mt-12 text-[12px] bloque">
               <div>
                 <div className="border-t border-black pt-1">
-                  <p className="font-bold">GLORIA LUCÍA ESCALANTE MANZANO</p>
+                  <p className="font-bold">{f.representanteLegal}</p>
                   <p>Representante Legal</p>
-                  <p>CANALES Y CONTACTOS S.A.S.</p>
+                  <p>{f.empleador}</p>
                   <p>LA EMPLEADORA</p>
                 </div>
               </div>
@@ -608,12 +621,34 @@ function Fila({ label, value, onChange, area, filas = 2 }: {
 function FLine({ value, onChange, bold, ancho }: {
   value: string; onChange: (v: string) => void; bold?: boolean; ancho?: string;
 }) {
+  const letra = ' bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
+    + (bold ? 'font-bold' : '');
+  /*
+   * Dentro de un renglón el campo mide lo que tiene escrito.
+   *
+   * Con el ancho fijo del 38 % la cédula dejaba un hueco en blanco antes del «de»:
+   * «C.C. No.1.123.317.895        de Puerto Asís». El ancho lo da un texto invisible
+   * igual al valor y el campo se monta encima.
+   */
+  if (ancho) {
+    return (
+      <span className="relative inline-block align-baseline">
+        <span aria-hidden className={'invisible whitespace-pre text-[12px] ' + (bold ? 'font-bold' : '')}>
+          {value || '\u00a0\u00a0\u00a0\u00a0'}
+        </span>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={'absolute inset-0 w-full p-0' + letra}
+        />
+      </span>
+    );
+  }
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={(ancho ?? 'w-full') + ' bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
-        + (bold ? 'font-bold' : '')}
+      className={'w-full' + letra}
     />
   );
 }
