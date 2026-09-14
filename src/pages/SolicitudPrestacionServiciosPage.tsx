@@ -342,7 +342,13 @@ export default function SolicitudPrestacionServiciosPage() {
           }
 
           .no-print { display: none !important; }
-          .doc { box-shadow: none !important; margin: 0 !important; max-width: none !important; border: none !important; }
+          /* El marco se imprime. Es un formato de recuadros, no una carta: sin el borde
+             exterior las casillas de los extremos salían abiertas —el logo sin su caja,
+             la columna del código sin lado derecho— y el papel se veía cortado. */
+          .doc { box-shadow: none !important; margin: 0 !important; max-width: none !important; }
+          /* Cada franja del formato entera en una hoja: partida a la mitad, la fila
+             quedaba sin borde abajo en una página y sin borde arriba en la siguiente. */
+          .doc > * { break-inside: avoid; }
 
           ${IMPRESION_CONTROLES}
         }
