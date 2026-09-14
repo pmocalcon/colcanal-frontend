@@ -88,7 +88,7 @@ export default function SolicitudPagoPage() {
 
   useEffect(() => {
     void cargar();
-    talentoHumanoService.listBancos().then(setBancos).catch(() => setBancos([]));
+    talentoHumanoService.listBancosPagos().then(setBancos).catch(() => setBancos([]));
   }, [cargar]);
 
   const solicitud = datos?.solicitud;

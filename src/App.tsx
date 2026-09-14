@@ -129,6 +129,7 @@ import LegalizacionAnticipoPage from './pages/LegalizacionAnticipoPage'
 import CambiarPasswordPage from './pages/CambiarPasswordPage'
 import CredencialesPage from './pages/CredencialesPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { RutasDelArea } from './components/talentoHumano/RutasDelArea'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 
 export default function App() {
@@ -364,16 +365,19 @@ export default function App() {
           {/* Talento Humano: modulo propio. No confundir con G. de talento humano, que
               esta dentro de Gestion del conocimiento y es donde se diligencian los formatos. */}
           <Route path="/dashboard/talento-humano" element={<TalentoHumanoHomePage />} />
-          <Route path="/dashboard/talento-humano/personal" element={<PersonalListPage />} />
-          <Route path="/dashboard/talento-humano/prestamos" element={<PrestamosListPage />} />
-          <Route path="/dashboard/talento-humano/prestamos/cierre" element={<CierrePrestamosPage />} />
-          <Route path="/dashboard/talento-humano/incapacidades" element={<IncapacidadesPage />} />
-          <Route path="/dashboard/talento-humano/ausentismos" element={<AusentismosPage />} />
-          <Route path="/dashboard/talento-humano/horas-extras" element={<HorasExtrasListPage />} />
-          <Route path="/dashboard/talento-humano/vacaciones" element={<VacacionesListPage />} />
-          <Route path="/dashboard/talento-humano/nomina" element={<NominaPage />} />
-          <Route path="/dashboard/talento-humano/parametros" element={<ParametrosNominaPage />} />
-          <Route path="/dashboard/talento-humano/retenciones" element={<TablaRetencionesPage />} />
+          {/* Las del área. Quien entra solo a Solicitudes de pago es devuelto ahí. */}
+          <Route element={<RutasDelArea />}>
+            <Route path="/dashboard/talento-humano/personal" element={<PersonalListPage />} />
+            <Route path="/dashboard/talento-humano/prestamos" element={<PrestamosListPage />} />
+            <Route path="/dashboard/talento-humano/prestamos/cierre" element={<CierrePrestamosPage />} />
+            <Route path="/dashboard/talento-humano/incapacidades" element={<IncapacidadesPage />} />
+            <Route path="/dashboard/talento-humano/ausentismos" element={<AusentismosPage />} />
+            <Route path="/dashboard/talento-humano/horas-extras" element={<HorasExtrasListPage />} />
+            <Route path="/dashboard/talento-humano/vacaciones" element={<VacacionesListPage />} />
+            <Route path="/dashboard/talento-humano/nomina" element={<NominaPage />} />
+            <Route path="/dashboard/talento-humano/parametros" element={<ParametrosNominaPage />} />
+            <Route path="/dashboard/talento-humano/retenciones" element={<TablaRetencionesPage />} />
+          </Route>
           <Route path="/dashboard/talento-humano/pagos" element={<SolicitudesPagoPage />} />
           <Route path="/dashboard/talento-humano/pagos/:id" element={<SolicitudPagoPage />} />
           <Route path="/dashboard/gestion-conocimiento" element={<GestionConocimientoPage />} />

@@ -3,7 +3,7 @@ import { ArrowLeft, Banknote, CalendarClock, Clock4, HeartPulse, Landmark, Perce
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { puedeVerSolicitudesPago } from '@/services/talentoHumano.service';
+import { puedeVerSolicitudesPago, soloSolicitudesPago } from '@/services/talentoHumano.service';
 
 /**
  * Portada del módulo Talento Humano.
@@ -91,8 +91,12 @@ export default function TalentoHumanoHomePage() {
    * empresa entera y lo que se le gira a cada quien. A quien no entra no se le pinta la
    * tarjeta —ni siquiera apagada—: invitaría a pedir un acceso que no se va a dar.
    */
-  const visibles = SECCIONES.filter(
-    (s) => s.slug !== 'pagos' || puedeVerSolicitudesPago(user?.nombreRol, user?.nombre),
+  const soloPagos = soloSolicitudesPago(user?.nombreRol, user?.nombre);
+  const visibles = SECCIONES.filter((s) =>
+    // Quien no es del área y entra por el giro ve esa tarjeta y ninguna más.
+    soloPagos
+      ? s.slug === 'pagos'
+      : s.slug !== 'pagos' || puedeVerSolicitudesPago(user?.nombreRol, user?.nombre),
   );
 
   return (

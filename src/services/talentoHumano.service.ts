@@ -520,6 +520,19 @@ export const talentoHumanoService = {
   },
 
   // ── Solicitudes de pago ──
+  /*
+   * Periodos y bancos otra vez, pero desde `/pagos`. Los de `/nomina/periodos` y
+   * `/talento-humano/bancos` exigen el rol del área, y quien entra solo a pagos recibiría
+   * 403: no podría crear una solicitud desde la nómina ni ver el banco de cada línea.
+   */
+  async listPeriodosPagos() {
+    const { data } = await api.get<string[]>(`${PAGOS}/periodos`);
+    return data;
+  },
+  async listBancosPagos() {
+    const { data } = await api.get<ThBanco[]>(`${PAGOS}/bancos`);
+    return data;
+  },
   async listSolicitudesPago() {
     const { data } = await api.get<ThSolicitudPagoResumen[]>(`${PAGOS}/solicitudes`);
     return data;
@@ -741,14 +754,34 @@ export const puedeVerTalentoHumano = (nombreRol?: string): boolean =>
 const PAGOS_ROL_FINANCIERO = 'coordinador financiero';
 const PAGOS_NOMBRE_CONTIENE = 'osorio';
 
+/**
+ * Quienes entran a Solicitudes de pago **sin** ser del área. Espejo de
+ * `ACCESO_SOLO_PAGOS` en el backend (pagos-acceso.guard.ts): si se agrega alguien en un
+ * lado y no en el otro, o ve una tarjeta que da 403 o entra por la URL sin verla.
+ */
+const PAGOS_ADICIONALES: readonly { rol: string; nombreContiene: string }[] = [
+  { rol: 'compras', nombreContiene: 'rivera' },
+];
+
 export const puedeVerSolicitudesPago = (
   nombreRol?: string | null,
   nombre?: string | null,
 ): boolean => {
   const rol = (nombreRol ?? '').trim().toLowerCase();
+  const n = (nombre ?? '').toLowerCase();
   if (rol === 'analista pmo' || rol === 'director pmo') return true;
-  return (
-    rol === PAGOS_ROL_FINANCIERO &&
-    (nombre ?? '').toLowerCase().includes(PAGOS_NOMBRE_CONTIENE)
-  );
+  if (rol === PAGOS_ROL_FINANCIERO && n.includes(PAGOS_NOMBRE_CONTIENE)) return true;
+  return PAGOS_ADICIONALES.some((p) => rol === p.rol && n.includes(p.nombreContiene));
 };
+
+/**
+ * Entra a Talento Humano **solo** para Solicitudes de pago.
+ *
+ * Es el caso de Yamileth Osorio y Aurora Rivera: no son del área, así que no ven la base
+ * de personal, la nómina ni los préstamos, pero sí la pantalla del giro. Para ellas el
+ * módulo existe con una sola tarjeta, y cualquier otra ruta del módulo las devuelve ahí.
+ */
+export const soloSolicitudesPago = (
+  nombreRol?: string | null,
+  nombre?: string | null,
+): boolean => !puedeVerTalentoHumano(nombreRol ?? undefined) && puedeVerSolicitudesPago(nombreRol, nombre);

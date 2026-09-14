@@ -18,7 +18,7 @@ import {
 } from '@/config/submodulos';
 import { useGranularPermissions } from '@/hooks/useGranularPermissions';
 import { puedeVerRecursoEconomico } from '@/utils/rolesPmo';
-import { puedeVerSolicitudesPago, puedeVerTalentoHumano } from '@/services/talentoHumano.service';
+import { puedeVerSolicitudesPago, puedeVerTalentoHumano, soloSolicitudesPago } from '@/services/talentoHumano.service';
 
 /**
  * Barra lateral del sistema: el navegador de la aplicación.
@@ -118,8 +118,13 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       // administración) y, mientras esa gestión no exista, cae al gateo por rol de
       // siempre. A quien no tiene acceso no se le pinta, ni con candado.
       .filter((f) => {
+        // Quien entra solo a Solicitudes de pago ve el módulo aunque no tenga la gestión:
+        // dársela le abriría el área entera. Adentro solo encuentra esa sección.
         if (f.slug === 'talento-humano')
-          return accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol));
+          return (
+            accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol)) ||
+            soloSolicitudesPago(user?.nombreRol, user?.nombre)
+          );
         if (f.slug === 'recurso-economico')
           return accesoModuloHibrido('recurso-economico', modules, puedeVerRecursoEconomico(user?.nombreRol));
         return accesoModuloHibrido('gestion-conocimiento', modules, true);
@@ -131,7 +136,7 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
       ? [{ ...APROBACIONES, acceso: true }]
       : [];
     return [...aprobaciones, ...delBackend, ...fijos];
-  }, [modules, user?.nombreRol]);
+  }, [modules, user?.nombreRol, user?.nombre]);
 
   /*
    * Las secciones de Compras y Obras se calculan con los permisos del usuario, con las
@@ -160,6 +165,9 @@ export function LayoutSistema({ children }: { children: React.ReactNode }) {
        * así que esto solo evita ofrecer un enlace que daría 403.
        */
       const todas = SECCIONES_MODULO['talento-humano'] ?? [];
+      if (soloSolicitudesPago(user?.nombreRol, user?.nombre)) {
+        return todas.filter((s) => s.to.endsWith('/pagos'));
+      }
       if (puedeVerSolicitudesPago(user?.nombreRol, user?.nombre)) return todas;
       return todas.filter((s) => !s.to.endsWith('/pagos'));
     }

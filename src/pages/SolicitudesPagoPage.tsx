@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { ArrowLeft, Banknote, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Campo, Selector } from '@/components/talentoHumano/campos';
-import { nominaService } from '@/services/nomina.service';
 import {
   talentoHumanoService, puedeVerSolicitudesPago, type ThSolicitudPagoResumen,
 } from '@/services/talentoHumano.service';
@@ -74,7 +73,7 @@ export default function SolicitudesPagoPage() {
 
   useEffect(() => {
     void cargar();
-    nominaService.listPeriodos().then(setPeriodos).catch(() => setPeriodos([]));
+    talentoHumanoService.listPeriodosPagos().then(setPeriodos).catch(() => setPeriodos([]));
   }, []);
 
   const total = useMemo(() => filas.reduce((s, f) => s + f.total, 0), [filas]);

@@ -11,7 +11,7 @@ import { Footer } from '@/components/ui/footer';
 import { ErrorMessage } from '@/components/ui/error-message';
 import { puedeVerRecursoEconomico, esDirectorProyecto } from '@/utils/rolesPmo';
 import { prepararModulos, puedeVerAprobaciones, APROBACIONES, accesoModuloHibrido } from '@/config/modulosSistema';
-import { puedeVerTalentoHumano } from '@/services/talentoHumano.service';
+import { puedeVerTalentoHumano, soloSolicitudesPago } from '@/services/talentoHumano.service';
 
 // Qué módulos se muestran, con qué nombre y en qué orden: vive en
 // `config/modulosSistema` porque la barra lateral pinta la misma lista.
@@ -198,7 +198,10 @@ export default function DashboardPage() {
               por la misma razón que Recurso Económico: no hay permiso que pedir, se
               abre por rol. Es el módulo de consulta —personal, préstamos,
               incapacidades—; los formatos se diligencian en Gestión del conocimiento. */}
-          {accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol)) && (
+          {/* También para quien entra solo a Solicitudes de pago: sin la tarjeta no tiene
+              por dónde llegar, aunque el permiso lo tenga. */}
+          {(accesoModuloHibrido('talento-humano', modules, puedeVerTalentoHumano(user?.nombreRol)) ||
+            soloSolicitudesPago(user?.nombreRol, user?.nombre)) && (
             <ModuleCard
               nombre="Talento Humano"
               slug="talento-humano"
