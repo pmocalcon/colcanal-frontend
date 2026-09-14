@@ -1177,7 +1177,22 @@ export default function ResumenActaPage() {
   const baseVal = ippConfig ? ippConfig.initialValue : 0;
   const currentVal = parseFloat(ippCurrent) || 0;
   const factor = baseVal > 0 && currentVal > 0 ? currentVal / baseVal : 1;
-  const valorTotal = totalObra * factor;
+  /*
+   * El valor del acta es la **suma de sus obras, cada una ajustada por IPP y redondeada al
+   * peso**, y no la base completa por el factor.
+   *
+   * Parecen lo mismo y no lo son: cada obra ajustada tiene centavos, y redondear antes o
+   * después de sumar cambia el último peso. La tabla de obras de esta misma pantalla ya
+   * mostraba cada obra redondeada, así que su fila «Total» no coincidía con la suma de
+   * sus propias filas. En el acta 03-2026 de Guacarí las obras sumaban 22.110.207 y el
+   * total decía 22.110.206. Es también como lo cuenta el backend (`getWorksValue`).
+   *
+   * Sin obras cargadas todavía se cae a la cuenta directa, para no mostrar cero.
+   */
+  const valorTotal =
+    works.length > 0 && perWorkTotals.size > 0
+      ? works.reduce((s, w) => s + Math.round((perWorkTotals.get(w.workId) ?? 0) * factor), 0)
+      : Math.round(totalObra * factor);
   const baseLabel = ippConfig
     ? `IPP ${MONTH_NAMES_ES[(ippConfig.baseMonth ?? 1) - 1]} ${ippConfig.baseYear}`
     : 'IPP Base';
