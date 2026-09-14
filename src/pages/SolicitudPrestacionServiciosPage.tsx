@@ -147,6 +147,11 @@ export default function SolicitudPrestacionServiciosPage() {
   // lo propone el tipo de contrato. No depende de la etapa: la requisición va antes
   // que todo lo demás —pide 15 días de anticipación— y se abre desde el borrador.
   const tipoReq = tipoRequisicionDe(f.tipoRequisicion, f.tipoContrato);
+  /**
+   * Quien pide la vacante: la firma «Solicitado por», que estampa el flujo al crear la
+   * solicitud, y si todavía no está, quien creó la solicitud.
+   */
+  const solicitante = (f.solicitadoNombre || sol?.creadorNombre || '').trim();
   // Mientras nadie escriba en el GTH-013-F se deriva de lo que ya tiene la solicitud;
   // al primer cambio pasa a mandar lo escrito.
   const requisicion = f.requisicionPersonal ?? prellenarRequisicion(f);
@@ -578,11 +583,23 @@ export default function SolicitudPrestacionServiciosPage() {
                 el nombre del dato lo comparten el contrato, el acta de inicio y la lista
                 de chequeo, y renombrarlo dejaría sin leer lo ya guardado. Lo que cambia
                 es cómo se le llama a la persona en el papel, no dónde vive el dato.
+
+                En la requisición de personal todavía no hay a quién contratar —para eso
+                se pide la vacante—, así que la casilla muestra a **quien la solicita** y
+                no se escribe. No toca `contratista`: ese dato sigue siendo el de la
+                persona que firme el contrato, que se diligencia cuando se conozca.
               */}
               <div className="grid grid-cols-[110px_1fr]">
                 <MiniLabel>COLABORADOR</MiniLabel>
                 <div className="px-2 py-1.5 min-w-0">
-                  <FieldInput value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre del colaborador" />
+                  {tipoReq === 'personal' ? (
+                    <>
+                      <span className="block text-[12px] py-0.5 print:hidden">{solicitante}</span>
+                      <ValorImpreso className="text-[12px] leading-snug">{solicitante}</ValorImpreso>
+                    </>
+                  ) : (
+                    <FieldInput value={f.contratista} onChange={(v) => set('contratista', v)} placeholder="Nombre del colaborador" />
+                  )}
                 </div>
               </div>
             </div>
