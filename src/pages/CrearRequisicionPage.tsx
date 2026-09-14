@@ -48,6 +48,8 @@ interface ActaGroup {
   companyId: number;
   projectId: number | null;
   obraCount: number;
+  /** El código de contabilidad que Gerencia de Proyectos le dio al acta al aprobarla. */
+  codigoContabilidad: string;
 }
 
 export default function CrearRequisicionPage() {
@@ -88,6 +90,7 @@ export default function CrearRequisicionPage() {
   // materiales se piden al escoger. Guardarlas era para reusar sus materialItems.
   const [actaGroups, setActaGroups] = useState<ActaGroup[]>([]);
   const [loadingActas, setLoadingActas] = useState(false);
+  const [errorActas, setErrorActas] = useState<string | null>(null);
   const [loadingActaDetails, setLoadingActaDetails] = useState(false);
   const [selectedActaId, setSelectedActaId] = useState<number | null>(null);
   const [selectedActaGroup, setSelectedActaGroup] = useState<string>('');
@@ -124,10 +127,10 @@ export default function CrearRequisicionPage() {
         if (!groupMap.has(key)) groupMap.set(key, []);
         groupMap.get(key)!.push(survey);
       });
-      const groups: ActaGroup[] = [];
+      const candidatas: Omit<ActaGroup, 'codigoContabilidad'>[] = [];
       groupMap.forEach((surveys, key) => {
         const recordNumber = surveys[0].work?.recordNumber || surveys[0].projectCode || `${surveys[0].surveyId}`;
-        groups.push({
+        candidatas.push({
           key,
           recordNumber,
           surveys,
@@ -136,11 +139,42 @@ export default function CrearRequisicionPage() {
           obraCount: surveys.length,
         });
       });
+
+      /*
+       * Además de levantamientos aprobados, el acta tiene que estar **aprobada por Gerencia
+       * de Proyectos y tener su código de contabilidad**: sin eso no hay contra qué imputar
+       * la compra. Antes bastaba con los levantamientos, y la lista ofrecía actas todavía
+       * en revisión; se compró contra la 02-2026 de Guacarí escribiendo «02-2026» como
+       * código, que es el número del acta y no un código de contabilidad.
+       *
+       * El presupuesto del acta no se exige.
+       */
+      const estados = candidatas.length
+        ? await surveysService.getWorkActasBulk(
+            candidatas.map((g) => ({
+              companyId: g.companyId,
+              projectId: g.projectId,
+              actaNumber: g.recordNumber,
+            })),
+          )
+        : [];
+      const codigoDe = new Map(
+        estados
+          .filter((a) => a.status === 'aprobada' && (a.projectCode ?? '').trim())
+          .map((a) => [`${a.companyId}:${a.projectId ?? 0}:${a.actaNumber}`, (a.projectCode ?? '').trim()]),
+      );
+      const groups: ActaGroup[] = candidatas
+        .filter((g) => codigoDe.has(g.key))
+        .map((g) => ({ ...g, codigoContabilidad: codigoDe.get(g.key)! }));
       // Actas multi-obra primero, luego por nombre
       groups.sort((a, b) => b.obraCount - a.obraCount || a.recordNumber.localeCompare(b.recordNumber));
       setActaGroups(groups);
     } catch (err) {
       console.error('Error loading approved actas:', err);
+      // Si no se pudo confirmar el estado de las actas no se ofrece ninguna: mostrar la
+      // lista sin comprobar sería volver a ofrecer actas que no están aprobadas.
+      setActaGroups([]);
+      setErrorActas('No se pudo comprobar qué actas están aprobadas. Recargue la página.');
     } finally {
       setLoadingActas(false);
     }
@@ -159,7 +193,9 @@ export default function CrearRequisicionPage() {
         setCompanyId(survey.work.companyId);
       }
 
-      // Código de obra se deja vacío para ingreso manual
+      // El código de contabilidad es el del acta a la que pertenece este levantamiento.
+      const grupo = actaGroups.find((g) => g.surveys.some((sv) => sv.surveyId === surveyId));
+      setCodigoObra(grupo?.codigoContabilidad ?? '');
 
       // Auto-fill ítems desde los materiales del levantamiento
       if (survey.materialItems && survey.materialItems.length > 0) {
@@ -208,6 +244,8 @@ export default function CrearRequisicionPage() {
       if (group.companyId) setCompanyId(group.companyId);
       // El proyecto (municipio) del acta, para no mezclar municipios de Canales.
       setProjectId(group.projectId);
+      // El código de contabilidad es el del acta, no uno que se escriba.
+      setCodigoObra(group.codigoContabilidad);
 
       // Los materiales se piden acá y no vienen en la lista: son los del acta escogida
       // —un puñado de obras—, no los de los 500 levantamientos aprobados del sistema.
@@ -824,24 +862,31 @@ export default function CrearRequisicionPage() {
                       <span className="text-red-500 ml-1">*</span>
                     )}
                   </Label>
+                  {/*
+                    Con un acta escogida el código es el suyo y no se cambia. Se escribía a
+                    mano, y así se colaron requisiciones con el número del acta («02-2026»)
+                    donde iba el código de contabilidad.
+                  */}
                   <Input
                     id="codigo-obra"
                     value={codigoObra}
                     onChange={(e) => setCodigoObra(e.target.value)}
+                    readOnly={!!(selectedActaGroup || selectedActaId)}
                     placeholder={
                       (selectedActaGroup || selectedActaId)
-                        ? 'Código de contabilidad (obligatorio)'
+                        ? 'Código de contabilidad del acta'
                         : 'Ingrese el código de obra (opcional)'
                     }
                     className={
-                      (selectedActaGroup || selectedActaId) && !codigoObra.trim()
-                        ? 'border-red-400 focus-visible:ring-red-400'
+                      (selectedActaGroup || selectedActaId)
+                        ? 'bg-[hsl(var(--canalco-neutral-100))] cursor-not-allowed'
                         : ''
                     }
                   />
-                  {(selectedActaGroup || selectedActaId) && !codigoObra.trim() && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Requerido: ingrese el código de contabilidad para continuar
+                  {(selectedActaGroup || selectedActaId) && codigoObra.trim() && (
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-1">
+                      Código de contabilidad del acta{' '}
+                      {actaGroups.find((g) => g.key === selectedActaGroup)?.recordNumber ?? ''}
                     </p>
                   )}
                 </div>
@@ -896,7 +941,9 @@ export default function CrearRequisicionPage() {
                           ))}
                         {actaGroups.filter((g) => g.companyId === companyId).length === 0 && (
                           <SelectItem value="none" disabled>
-                            {companyId ? 'No hay actas aprobadas para esta empresa' : 'Seleccione una empresa primero'}
+                            {companyId
+                              ? 'No hay actas aprobadas con código de contabilidad para esta empresa'
+                              : 'Seleccione una empresa primero'}
                           </SelectItem>
                         )}
                       </SelectContent>
@@ -906,6 +953,13 @@ export default function CrearRequisicionPage() {
                     <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                       <Loader2 className="w-3 h-3 animate-spin" /> Cargando datos...
                     </div>
+                  )}
+                  {errorActas ? (
+                    <p className="text-xs text-red-600 mt-1">{errorActas}</p>
+                  ) : (
+                    <p className="text-xs text-[hsl(var(--canalco-neutral-500))] mt-1">
+                      Solo aparecen actas aprobadas por Gerencia de Proyectos, con código de contabilidad.
+                    </p>
                   )}
                 </div>
               </div>
