@@ -275,8 +275,11 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
 
   const irSolicitud = () => navigate(`/dashboard/gestion-conocimiento/juridica/${solicitudId}`);
 
+  // El fondo gris y los márgenes son de la pantalla. Al imprimir se pintan los fondos
+  // —así salen los sombreados del formato— y este salía como un marco gris alrededor
+  // de la hoja: en el papel la página queda blanca y sin márgenes.
   return (
-    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))]">
+    <div className="min-h-screen bg-[hsl(var(--canalco-neutral-100))] print:bg-white print:min-h-0">
       <style>{`
         @media print {
           @page { size: Letter portrait; margin: 12mm; }
@@ -315,7 +318,7 @@ export default function ContratoTerminoFijoDoc({ solicitud }: { solicitud: GcSol
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 py-8 print:p-0 print:max-w-none">
         <AccionesFlujo
           sol={sol} documento="contrato" onCambio={setSol}
           onAntes={editable && habilitada ? handleSave : undefined}
