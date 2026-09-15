@@ -456,7 +456,10 @@ export default function ContratoTerminoIndefinidoDoc({ solicitud }: { solicitud:
               </>}
             />
 
-            <p className="text-[11px] font-bold mb-4">NIT 900.456.735-7</p>
+            {/* Sin el NIT suelto bajo el membrete: era el de Canales escrito fijo, y en un
+                contrato de una unión temporal decía un NIT que no es. El NIT de la
+                empleadora va en «DATOS DE LA VINCULACIÓN». */}
+            <div className="mb-4" />
 
             {/* La plantilla lo dice en su propio título: no se muestra en la versión
                 firmable. Va `no-print`, que es la única forma de que la instrucción se
@@ -609,7 +612,7 @@ function Fila({ label, value, onChange, area, filas = 2 }: {
    */
   return (
     <tr>
-      <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[34%] font-bold">{label}</td>
+      <td className="border border-[#0a2a52] px-2 py-1 align-top w-[34%] font-bold">{label}</td>
       <td className="border border-[#0a2a52] px-2 py-1 align-top">
         {area ? (
           <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={filas}
