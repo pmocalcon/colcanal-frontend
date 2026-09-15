@@ -574,7 +574,12 @@ function Fila({ label, value, onChange, area, filas = 2 }: {
   area?: boolean;
   filas?: number;
 }) {
-  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black ';
+  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black print:hidden ';
+  /*
+   * En el papel el dato va como texto y no como campo. Un campo de una línea no parte lo
+   * que no le cabe: lo corta. Impreso, la dirección con correo y celular, o el horario,
+   * salían mutilados y el documento firmado decía menos de lo que se escribió.
+   */
   return (
     <tr>
       <td className="border border-[#0a2a52] bg-[#e7e6e6] px-2 py-1 align-top w-[30%] font-bold">{label}</td>
@@ -585,6 +590,7 @@ function Fila({ label, value, onChange, area, filas = 2 }: {
         ) : (
           <input value={value} onChange={(e) => onChange(e.target.value)} className={comun} />
         )}
+        <span className="hidden print:block whitespace-pre-wrap break-words text-[12px] leading-snug">{value}</span>
       </td>
     </tr>
   );

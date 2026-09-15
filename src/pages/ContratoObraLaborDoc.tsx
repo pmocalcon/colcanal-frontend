@@ -451,7 +451,12 @@ export default function ContratoObraLaborDoc({ solicitud }: { solicitud: GcSolic
 function Fila({ label, value, onChange, area }: {
   label: string; value: string; onChange: (v: string) => void; area?: boolean;
 }) {
-  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black';
+  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black print:hidden';
+  /*
+   * En el papel el dato va como texto y no como campo. Un campo de una línea no parte lo
+   * que no le cabe: lo corta. Impreso, la dirección con correo y celular, o el horario,
+   * salían mutilados y el documento firmado decía menos de lo que se escribió.
+   */
   return (
     <tr>
       <td className="align-top py-0.5 pr-4 w-[34%] font-bold">{label}</td>
@@ -462,6 +467,7 @@ function Fila({ label, value, onChange, area }: {
         ) : (
           <input value={value} onChange={(e) => onChange(e.target.value)} className={comun} />
         )}
+        <span className="hidden print:block whitespace-pre-wrap break-words text-[12px] leading-snug">{value}</span>
       </td>
     </tr>
   );
