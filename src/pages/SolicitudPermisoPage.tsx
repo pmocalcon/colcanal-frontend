@@ -20,6 +20,7 @@ import {
   esTerminal,
   puedeEditarSolicitud,
   puedeEditarAprobacion,
+  puedeEditarRemuneracion,
 } from '@/utils/permisoWorkflow';
 import { textoSla } from '@/utils/juridicaWorkflow';
 import { llenarVacios, nombreDeFicha } from '@/utils/prellenarFormato';
@@ -171,6 +172,8 @@ export default function SolicitudPermisoPage() {
   /** A cuál de sus jefes se envía: el paso «pendiente del jefe» va al que se elija. */
   const { jefes } = useMisJefes();
   const editaAprobacion = puedeEditarAprobacion(estado ?? null, user?.nombreRol, esCreador);
+  /** La Dirección Administrativa corrige la remuneración mientras revisa el permiso. */
+  const editaRemuneracion = puedeEditarRemuneracion(estado ?? null, user?.nombreRol, esCreador);
 
   /**
    * Con la cédula llegan el nombre, el cargo y el proyecto de la ficha de personal.
@@ -295,9 +298,19 @@ export default function SolicitudPermisoPage() {
       if (!m.trim()) { toast.error('Debes indicar el motivo'); return; }
       motivo = m.trim();
     }
-    const data = editaAprobacion ? { observaciones: f.observaciones } : undefined;
+    const data = {
+      ...(editaAprobacion ? { observaciones: f.observaciones } : {}),
+      // La remuneración viaja con la decisión, como el cuadro del jefe: fuera del
+      // borrador el formato está cerrado y «Guardar» no la recibiría. Si cambia, el
+      // backend se lo avisa por correo al empleado.
+      ...(editaRemuneracion ? { remuneracion: f.remuneracion } : {}),
+    };
     try {
-      await gestionConocimientoService.transition(docId!, { accion, motivo, data });
+      await gestionConocimientoService.transition(docId!, {
+        accion,
+        motivo,
+        data: Object.keys(data).length ? data : undefined,
+      });
       toast.success('Acción registrada');
       await recargar();
     } catch (e) {
@@ -534,11 +547,11 @@ export default function SolicitudPermisoPage() {
               <tr>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO REMUNERADO</td>
                 <td className="border border-black px-2 py-1">
-                  <Cajita checked={f.remuneracion === 'remunerado'} onToggle={() => toggleRemun('remunerado')} disabled={!editaCampos} />
+                  <Cajita checked={f.remuneracion === 'remunerado'} onToggle={() => toggleRemun('remunerado')} disabled={!editaCampos && !editaRemuneracion} />
                 </td>
                 <td className="border border-black px-2 py-1 font-bold bg-[hsl(var(--canalco-neutral-100))]">PERMISO NO REMUNERADO</td>
                 <td className="border border-black px-2 py-1">
-                  <Cajita checked={f.remuneracion === 'no-remunerado'} onToggle={() => toggleRemun('no-remunerado')} disabled={!editaCampos} />
+                  <Cajita checked={f.remuneracion === 'no-remunerado'} onToggle={() => toggleRemun('no-remunerado')} disabled={!editaCampos && !editaRemuneracion} />
                 </td>
               </tr>
 
@@ -769,6 +782,10 @@ function PermisoWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
                 <span className="font-medium">{estadoLabel(h.estado)}</span>
                 {h.userName && <span className="text-[#8a8aa3]">· {h.userName}</span>}
                 {h.motivo && <span className="italic text-red-600">— {h.motivo}</span>}
+                {/* La Dirección dejó el permiso remunerado o no: queda a la vista de todos. */}
+                {(h as { nota?: string }).nota && (
+                  <span className="italic text-[#4a4a63]">— {(h as { nota?: string }).nota}</span>
+                )}
               </li>
             ))}
           </ul>

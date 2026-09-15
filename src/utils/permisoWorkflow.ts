@@ -138,6 +138,21 @@ export const esTerminal = (estado: string) => estado === 'aprobado' || esAnulado
 export const puedeEditarSolicitud = (estado: string | null | undefined) =>
   !estado || estado === 'borrador';
 
+/**
+ * Si quien mira puede corregir la casilla de remuneración.
+ *
+ * Es de la Dirección Administrativa y Financiera y solo mientras revisa: el empleado la
+ * marca al pedir el permiso, pero quien sabe si se paga o se descuenta es ella. Antes
+ * tenía que devolver el permiso para que el empleado cambiara esa casilla.
+ */
+export const puedeEditarRemuneracion = (
+  estado: string | null | undefined,
+  nombreRol: string | undefined,
+  esCreador: boolean,
+) =>
+  estado === 'pendiente_administrativa' &&
+  accionesDisponibles('pendiente_administrativa', nombreRol, esCreador).length > 0;
+
 export const puedeEditarAprobacion = (
   estado: string | null | undefined,
   nombreRol: string | undefined,
