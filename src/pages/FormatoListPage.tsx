@@ -150,7 +150,7 @@ export default function FormatoListPage({ gestion, slug }: { gestion: string; sl
                           ? 'font-medium text-[hsl(var(--canalco-neutral-900))]'
                           : 'text-[hsl(var(--canalco-neutral-700))]')}
                       >
-                        {r.data?.[c.campo] || (
+                        {(c.valor ? c.valor(r.data ?? {}) : r.data?.[c.campo]) || (
                           <span className="italic text-[hsl(var(--canalco-neutral-400))]">Sin diligenciar</span>
                         )}
                       </td>

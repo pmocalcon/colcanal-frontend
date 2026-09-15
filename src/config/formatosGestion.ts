@@ -88,7 +88,28 @@ export interface ColumnaListado {
   label: string;
   /** Clave dentro de `data`. */
   campo: string;
+  /**
+   * Qué mostrar cuando no basta con una casilla suelta.
+   *
+   * La fecha del permiso son dos —desde y hasta—, y los permisos viejos la guardaban en
+   * otra casilla. Leer una sola clave dejaba la columna en «Sin diligenciar» aunque el
+   * formato estuviera completo. Vacío o nulo se sigue mostrando como sin diligenciar.
+   */
+  valor?: (data: Record<string, unknown>) => string;
 }
+
+/** «15/09/2026», o «15/09/2026 a 17/09/2026» si el permiso toma varios días. */
+const resumenFechaPermiso = (d: Record<string, unknown>): string => {
+  const dia = (v: unknown): string => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? '').trim());
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v ?? '').trim();
+  };
+  // `fechaPermiso` es la casilla del formato anterior: los permisos de antes la tienen.
+  const desde = dia(d.desde || d.fechaPermiso);
+  const hasta = dia(d.hasta);
+  if (!desde) return '';
+  return !hasta || hasta === desde ? desde : `${desde} a ${hasta}`;
+};
 
 export interface FormatoDoc {
   /** Segmento de la ruta bajo `/gestion-conocimiento/<gestion>/`. */
@@ -260,7 +281,7 @@ export const GESTIONES_FORMATOS: Record<string, GestionFormatos> = {
         singular: 'solicitud',
         columnas: [
           { label: 'Nombre', campo: 'nombre' },
-          { label: 'Fecha del permiso', campo: 'fechaPermiso' },
+          { label: 'Fecha del permiso', campo: 'desde', valor: resumenFechaPermiso },
         ],
         estadoMeta: { label: permisoEstadoLabel, badgeClass: permisoEstadoBadge },
       },
