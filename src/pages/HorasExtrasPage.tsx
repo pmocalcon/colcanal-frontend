@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, ArrowLeft, Clock, History, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
@@ -211,24 +211,50 @@ export default function HorasExtrasPage() {
    * lo que hay, así el día que se agregue o se quite una columna sigue cuadrando solo.
    * Nunca agranda: por encima de su tamaño el formato se ve borroso y desalineado.
    */
-  const docRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
+  const docRef = useRef<HTMLDivElement | null>(null);
+  const ajustarAncho = useCallback(() => {
     const doc = docRef.current;
     const caja = doc?.parentElement;
     if (!caja || !doc) return;
-    const ajustar = () => {
-      doc.style.zoom = '1';
-      const necesario = doc.scrollWidth;
-      const disponible = caja.clientWidth;
-      if (necesario > disponible && disponible > 0) doc.style.zoom = String(disponible / necesario);
+    doc.style.zoom = '1';
+    const necesario = doc.scrollWidth;
+    const disponible = caja.clientWidth;
+    // Dos píxeles de holgura: con el ajuste exacto el redondeo del navegador dejaba la
+    // barra de desplazamiento igual, que es justo lo que se quiere evitar.
+    if (necesario > disponible && disponible > 0) {
+      doc.style.zoom = String(Math.max(0.1, (disponible - 2) / necesario));
+    }
+  }, []);
+
+  /*
+   * Se engancha al aparecer el documento y no en un efecto suelto: el formato se pinta
+   * después de cargar y de saber si está habilitado, y un efecto que corriera antes no
+   * encontraba nada que medir —ni dejaba observador— y la barra se quedaba ahí.
+   */
+  const montarDoc = useCallback((nodo: HTMLDivElement | null) => {
+    docRef.current = nodo;
+    if (!nodo) return;
+    ajustarAncho();
+    // Otra medida en el siguiente cuadro: la primera cae antes de que el navegador
+    // termine de dibujar los campos de fecha y hora, que son los que más ancho piden.
+    requestAnimationFrame(ajustarAncho);
+  }, [ajustarAncho]);
+
+  useEffect(() => {
+    // La caja, no el documento: el documento cambia de tamaño al aplicarle el zoom y
+    // observarlo daría un lazo infinito.
+    const caja = docRef.current?.parentElement;
+    const ro = caja ? new ResizeObserver(ajustarAncho) : null;
+    if (caja && ro) ro.observe(caja);
+    window.addEventListener('resize', ajustarAncho);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', ajustarAncho);
     };
-    ajustar();
-    // Se observa la caja, no el documento: el documento cambia de tamaño al aplicarle el
-    // zoom y observarlo daría un lazo infinito.
-    const ro = new ResizeObserver(ajustar);
-    ro.observe(caja);
-    return () => ro.disconnect();
-  }, [loading]);
+  }, [ajustarAncho, loading]);
+
+  // Un renglón más o menos no cambia el ancho, pero un texto largo en «labor» sí.
+  useLayoutEffect(ajustarAncho);
 
   /**
    * Con la cédula llegan el nombre y el cargo de la ficha de personal. Se dispara al salir
@@ -365,6 +391,18 @@ export default function HorasExtrasPage() {
   return (
     <div className="min-h-screen bg-white">
       <style>{`
+        /* El calendario y el reloj traen su propio icono, que en una casilla de tabla
+           pide más ancho del que tiene la columna y sacaba la barra de desplazamiento.
+           Se oculta el icono y la casilla se abre al hacer clic sobre ella. */
+        .doc input[type="date"]::-webkit-calendar-picker-indicator,
+        .doc input[type="time"]::-webkit-calendar-picker-indicator {
+          display: none;
+        }
+        .doc input[type="date"],
+        .doc input[type="time"] {
+          min-width: 0;
+        }
+
         @media print {
           @page { size: Letter landscape; margin: 8mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -432,7 +470,7 @@ export default function HorasExtrasPage() {
             las últimas columnas y las firmas, se encoge hasta caber. `overflow-x-auto`
             se deja de red: si el navegador no entiende `zoom`, vuelve la barra en lugar
             de recortar el formato. */}
-        <div ref={docRef} className="doc bg-white border border-black text-[12px] text-black shadow-md overflow-x-auto">
+        <div ref={montarDoc} className="doc bg-white border border-black text-[12px] text-black shadow-md overflow-x-auto">
 
           {/* Encabezado del formato */}
           {/* Los anchos van con su logo, no con su posición: Canales necesita más
@@ -514,9 +552,9 @@ export default function HorasExtrasPage() {
                   <tr key={i}>
                     <Td className={pinta('proyecto')}><Cel value={fila.proyecto} onChange={(v) => setFila(i, 'proyecto', v)} readOnly={bloqueado} /></Td>
                     <Td className={pinta('region')}><Cel value={fila.region} onChange={(v) => setFila(i, 'region', v)} readOnly={bloqueado} /></Td>
-                    <Td className={pinta('fecha')}><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={bloqueado} /></Td>
-                    <Td className={pinta('horaEntrada')}><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={bloqueado} centro /></Td>
-                    <Td className={pinta('horaSalida')}><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={bloqueado} centro /></Td>
+                    <Td className={pinta('fecha')}><Cel value={fila.fecha} onChange={(v) => setFila(i, 'fecha', v)} readOnly={bloqueado} tipo="fecha" centro /></Td>
+                    <Td className={pinta('horaEntrada')}><Cel value={fila.horaEntrada} onChange={(v) => setFila(i, 'horaEntrada', v)} readOnly={bloqueado} tipo="hora" centro /></Td>
+                    <Td className={pinta('horaSalida')}><Cel value={fila.horaSalida} onChange={(v) => setFila(i, 'horaSalida', v)} readOnly={bloqueado} tipo="hora" centro /></Td>
                     <Td><Cel value={fila.almuerzo} onChange={(v) => setFila(i, 'almuerzo', v)} readOnly={bloqueado} centro /></Td>
                     {/* Las cinco columnas se marcan juntas cuando el renglon no trae
                         ninguna hora: cual de las cinco corresponde lo sabe quien la
@@ -529,7 +567,7 @@ export default function HorasExtrasPage() {
                     {/* Calculada: no se teclea. */}
                     <Td className="text-center font-semibold">{horas > 0 ? horas.toLocaleString('es-CO') : ''}</Td>
                     <Td><Cel value={fila.codigoLabor} onChange={(v) => setFila(i, 'codigoLabor', v)} readOnly={bloqueado} centro /></Td>
-                    <Td className={pinta('labor')}><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={bloqueado} /></Td>
+                    <Td className={pinta('labor')}><Cel value={fila.labor} onChange={(v) => setFila(i, 'labor', v)} readOnly={bloqueado} multilinea /></Td>
                     {/* La firma va a mano sobre el impreso. */}
                     <Td />
                     <td className="border-0 px-0.5 no-print align-middle">
@@ -595,9 +633,15 @@ export default function HorasExtrasPage() {
               cargo="Gerencia de Proyectos"
               fecha={sol?.data?.fechaAprobacionGp}
             />
-            {/* Sin fecha: Dirección Administrativa recibe la planilla aprobada pero no
-                ejecuta ningún paso de aprobación, así que no hay nada que constar. */}
-            <Firma titulo="Control Administrativo:" nombre="Daniela Swann Torres" cargo="Dir. Administrativa y Financiera" last />
+            {/* La fecha aparece cuando Dirección Administrativa oprime «Revisado»: hasta
+                entonces la casilla va como el papel, con el nombre y sin constancia. */}
+            <Firma
+              titulo="Control Administrativo:"
+              nombre={sol?.data?.controlAdministrativoPor || 'Daniela Swann Torres'}
+              cargo="Dir. Administrativa y Financiera"
+              fecha={sol?.data?.fechaControlAdministrativo}
+              last
+            />
           </div>
         </div>
 
@@ -639,6 +683,7 @@ function HorasExtrasWorkflowPanel({ sol, nombreRol, esCreador, onAccion }: {
     { label: 'Director de Proyecto', quien: d.revisadoPor, fecha: d.fechaRevision },
     { label: 'Dirección Técnica', quien: d.revisadoTecnicaPor, fecha: d.fechaRevisionTecnica },
     { label: 'Gerencia de Proyectos', quien: d.aprobadoGpPor, fecha: d.fechaAprobacionGp },
+    { label: 'Control Administrativo', quien: d.controlAdministrativoPor, fecha: d.fechaControlAdministrativo },
   ].filter((a) => a.quien);
 
   return (
@@ -877,15 +922,124 @@ function Td({ children, className, colSpan }: {
   );
 }
 
-function Cel({ value, onChange, centro, readOnly }: {
-  value: string; onChange: (v: string) => void; centro?: boolean; readOnly?: boolean;
+/** «11/08/2026» → «2026-08-11», que es lo que entiende el calendario. Vacío si no se lee. */
+const aIsoFecha = (v: string): string => {
+  const s = (v ?? '').trim();
+  const dmy = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(s);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+};
+
+/** «2026-08-11» → «11/08/2026», como se escribe en el formato. */
+const aTextoFecha = (iso: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso ?? '').trim());
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso ?? '');
+};
+
+/** «1:30 p.m.» → «13:30», que es lo que entiende el reloj. Vacío si no se lee. */
+const aIsoHora = (v: string): string => {
+  const s = (v ?? '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
+  const m = /^(\d{1,2}):?(\d{2})?(am|pm)?$/.exec(s);
+  if (!m) return '';
+  let h = Number(m[1]);
+  const min = m[2] ?? '00';
+  if (m[3] === 'pm' && h < 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  if (h > 23 || Number(min) > 59) return '';
+  return `${String(h).padStart(2, '0')}:${min}`;
+};
+
+/** «13:30» → «1:30 p.m.», como se escribe en el formato. */
+const aTextoHora = (hhmm: string): string => {
+  const m = /^(\d{2}):(\d{2})$/.exec((hhmm ?? '').trim());
+  if (!m) return hhmm ?? '';
+  const h = Number(m[1]);
+  const sufijo = h < 12 ? 'a.m.' : 'p.m.';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${sufijo}`;
+};
+
+/**
+ * Una casilla del registro diario.
+ *
+ * La fecha y las horas se escogen con el calendario y el reloj del navegador, y se
+ * guardan como las escribe el formato («11/08/2026», «1:30 p.m.»): así siguen
+ * entendiéndose las planillas de antes y la nómina, que lee esas mismas casillas. Al
+ * imprimir se cambia el control por el texto, para que el papel no dependa de cómo
+ * dibuje el navegador un selector.
+ */
+function Cel({ value, onChange, centro, readOnly, tipo, multilinea }: {
+  value: string;
+  onChange: (v: string) => void;
+  centro?: boolean;
+  readOnly?: boolean;
+  tipo?: 'fecha' | 'hora';
+  multilinea?: boolean;
 }) {
+  const comun = 'w-full bg-transparent outline-none text-[12px] disabled:opacity-100 disabled:text-black '
+    + (centro ? 'text-center ' : '');
+
+  if (tipo) {
+    const esFecha = tipo === 'fecha';
+    return (
+      <>
+        <input
+          type={esFecha ? 'date' : 'time'}
+          value={esFecha ? aIsoFecha(value) : aIsoHora(value)}
+          onChange={(e) => onChange(esFecha ? aTextoFecha(e.target.value) : aTextoHora(e.target.value))}
+          // Sin el icono nativo hay que abrirlo al hacer clic; donde `showPicker` no
+          // exista, la casilla se sigue escribiendo y moviendo con las flechas.
+          onClick={(e) => {
+            const campo = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+            if (!readOnly) campo.showPicker?.();
+          }}
+          // `disabled` y no `readOnly`: un campo de fecha en solo lectura igual abre el
+          // calendario y deja cambiar el valor con las flechas.
+          disabled={readOnly}
+          className={comun + 'print:hidden'}
+        />
+        <span className={'hidden print:block text-[12px] whitespace-nowrap ' + (centro ? 'text-center' : '')}>
+          {value}
+        </span>
+      </>
+    );
+  }
+
+  if (multilinea) return <CelTexto value={value} onChange={onChange} readOnly={readOnly} />;
+
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       readOnly={readOnly}
-      className={'w-full bg-transparent outline-none text-[12px] ' + (centro ? 'text-center' : '')}
+      className={comun}
+    />
+  );
+}
+
+/**
+ * Casilla que parte la línea y crece con lo escrito, para la labor ejecutada: en una
+ * casilla de una sola línea «RECORRIDO NOCTURNO …» se veía cortado, en pantalla y en el
+ * papel.
+ */
+function CelTexto({ value, onChange, readOnly }: {
+  value: string; onChange: (v: string) => void; readOnly?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      readOnly={readOnly}
+      rows={1}
+      className="w-full bg-transparent outline-none resize-none overflow-hidden text-[12px] leading-snug align-top"
     />
   );
 }

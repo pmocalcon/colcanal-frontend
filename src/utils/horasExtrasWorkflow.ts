@@ -75,6 +75,9 @@ export const HORAS_EXTRAS_TRANSICIONES: HorasExtrasTransicion[] = [
   // Dirección Administrativa no aprueba: recibe la planilla aprobada y, si las horas no
   // cuadran con lo que va a liquidar, la devuelve al borrador con el motivo.
   { accion: 'devolver_administrativa', from: 'aprobado', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, correctiva: true, label: 'Devolver la planilla', tone: 'danger' },
+  // El visto bueno de Dirección Administrativa: no mueve la planilla, firma el recuadro
+  // «Control Administrativo» del formato con su nombre y la fecha.
+  { accion: 'revisar_administrativa', from: 'aprobado', to: 'aprobado', roles: ROLES_ADMINISTRATIVA, correctiva: true, label: 'Revisado', tone: 'primary' },
 ];
 
 /**
