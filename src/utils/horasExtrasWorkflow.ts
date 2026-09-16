@@ -72,12 +72,13 @@ export const HORAS_EXTRAS_TRANSICIONES: HorasExtrasTransicion[] = [
   { accion: 'devolver_tecnica', from: 'pendiente_direccion_tecnica', to: 'borrador', roles: ROLES_DIRECCION_TECNICA, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
   { accion: 'aprobar_gp', from: 'pendiente_gerencia_proyectos', to: 'aprobado', roles: ROLES_GERENCIA_PROYECTOS, label: 'Aprobar la planilla', tone: 'primary' },
   { accion: 'rechazar_gp', from: 'pendiente_gerencia_proyectos', to: 'borrador', roles: ROLES_GERENCIA_PROYECTOS, requiereMotivo: true, label: 'Devolver la planilla', tone: 'danger' },
-  // Dirección Administrativa no aprueba: recibe la planilla aprobada y, si las horas no
-  // cuadran con lo que va a liquidar, la devuelve al borrador con el motivo.
-  { accion: 'devolver_administrativa', from: 'aprobado', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, correctiva: true, label: 'Devolver la planilla', tone: 'danger' },
-  // El visto bueno de Dirección Administrativa: no mueve la planilla, firma el recuadro
-  // «Control Administrativo» del formato con su nombre y la fecha.
+  // Dirección Administrativa no aprueba: la planilla le llega ya aprobada. Su visto
+  // bueno no la mueve, firma el recuadro «Control Administrativo» del formato con su
+  // nombre y la fecha, y va primero porque es lo que hace con casi todas.
   { accion: 'revisar_administrativa', from: 'aprobado', to: 'aprobado', roles: ROLES_ADMINISTRATIVA, correctiva: true, label: 'Revisado', tone: 'primary' },
+  // Y si las horas no cuadran con lo que va a liquidar, la devuelve al borrador con el
+  // motivo, que es la excepción.
+  { accion: 'devolver_administrativa', from: 'aprobado', to: 'borrador', roles: ROLES_ADMINISTRATIVA, requiereMotivo: true, correctiva: true, label: 'Devolver la planilla', tone: 'danger' },
 ];
 
 /**
